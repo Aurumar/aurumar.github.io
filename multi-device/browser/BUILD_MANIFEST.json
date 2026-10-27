@@ -1,0 +1,845 @@
+{
+  "format": "LB_MD_BROWSER_BUILD_1",
+  "coreBindingSha256": "039f18a4e78b2321e119330ae98e7e24ddc37e9d8dc64b3bb5bfe4d0682861e8",
+  "files": [
+    {
+      "path": "multi-device/lifecycle-contract.mjs",
+      "sourceSha256": "9cdd8d72ace178870c0201cbdcecdb8380f014835686cdc18c2f1d5f7a4bb3f5",
+      "outputSha256": "9cdd8d72ace178870c0201cbdcecdb8380f014835686cdc18c2f1d5f7a4bb3f5",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/lifecycle-client.mjs",
+      "sourceSha256": "248bc7a022324e5f44ec1ecc54b2ba9ab338145805e43e3cacbff9b484e3a916",
+      "outputSha256": "248bc7a022324e5f44ec1ecc54b2ba9ab338145805e43e3cacbff9b484e3a916",
+      "dependencies": [
+        "core/package/src/codec.mjs",
+        "core/package/src/crypto.mjs",
+        "core/package/src/enrollment.mjs",
+        "multi-device/contracts.mjs",
+        "multi-device/lifecycle-contract.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/pending-recipient-wrap.mjs",
+      "sourceSha256": "368c40d4750595a5ade5e4170582fb536cd89b98c2484a1c964da420e4d1e662",
+      "outputSha256": "368c40d4750595a5ade5e4170582fb536cd89b98c2484a1c964da420e4d1e662",
+      "dependencies": [
+        "core/package/src/codec.mjs",
+        "core/package/src/crypto.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/legacy-settlement.mjs",
+      "sourceSha256": "51e28105f65725a42648066eecd4481d5d6f83123215348aa4b71118620359a7",
+      "outputSha256": "51e28105f65725a42648066eecd4481d5d6f83123215348aa4b71118620359a7",
+      "dependencies": [
+        "core/package/src/codec.mjs",
+        "core/package/src/enrollment.mjs",
+        "multi-device/lifecycle-client.mjs",
+        "multi-device/contracts.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/contracts.mjs",
+      "sourceSha256": "ab68b38ace81bc086224525afd5ec4038a6ea4f74581ea0691199ca543e22134",
+      "outputSha256": "ab68b38ace81bc086224525afd5ec4038a6ea4f74581ea0691199ca543e22134",
+      "dependencies": [
+        "core/package/src/codec.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/real-history.mjs",
+      "sourceSha256": "4ca87b881c20dbf767907f4be89e380d8624f30cc1daef64cd6c79524fda2ad8",
+      "outputSha256": "4ca87b881c20dbf767907f4be89e380d8624f30cc1daef64cd6c79524fda2ad8",
+      "dependencies": [
+        "core/package/parent/v2_phase2/source/dag.mjs",
+        "core/package/parent/v2_phase2/source/canonical.mjs",
+        "core/package/src/codec.mjs",
+        "user-app/action-model.mjs",
+        "user-app/whole-life-model.mjs",
+        "multi-device/contracts.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/sequential-service.mjs",
+      "sourceSha256": "ce4be77fa22789dc313a58dbe3ba154d78a487806bfeb9c6c22bc661b60a898a",
+      "outputSha256": "ce4be77fa22789dc313a58dbe3ba154d78a487806bfeb9c6c22bc661b60a898a",
+      "dependencies": [
+        "core/package/src/codec.mjs",
+        "core/package/src/crypto.mjs",
+        "core/package/src/enrollment.mjs",
+        "user-app/action-model.mjs",
+        "user-app/whole-life-projection.mjs",
+        "multi-device/real-history.mjs",
+        "multi-device/contracts.mjs",
+        "product/runtime-contract.mjs",
+        "multi-device/lifecycle-client.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/auth-session.mjs",
+      "sourceSha256": "9e57a26b3304f82c9bd251b21dedb98c19b2094fc3ced22f8ea42bbbe60df588",
+      "outputSha256": "9e57a26b3304f82c9bd251b21dedb98c19b2094fc3ced22f8ea42bbbe60df588",
+      "dependencies": [
+        "core/package/src/codec.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/owner-transport.mjs",
+      "sourceSha256": "d6baebd8f8fe47896cd00b6adb8dd54afb127857fd30e3effc29957627d43241",
+      "outputSha256": "d6baebd8f8fe47896cd00b6adb8dd54afb127857fd30e3effc29957627d43241",
+      "dependencies": [
+        "core/package/src/codec.mjs",
+        "multi-device/contracts.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/enrollment-controller.mjs",
+      "sourceSha256": "0914b5f95befc88804b07c692d353e46275251f0e082eb8d5b7815855d176707",
+      "outputSha256": "0914b5f95befc88804b07c692d353e46275251f0e082eb8d5b7815855d176707",
+      "dependencies": [
+        "core/package/src/codec.mjs",
+        "core/package/src/enrollment.mjs",
+        "core/package/src/crypto.mjs",
+        "multi-device/contracts.mjs",
+        "multi-device/lifecycle-client.mjs",
+        "multi-device/pending-recipient-wrap.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/md-backend.mjs",
+      "sourceSha256": "ebf41c557472e77524b0b7ca29a6160d7692f73207ff12db5bf2543721400310",
+      "outputSha256": "ebf41c557472e77524b0b7ca29a6160d7692f73207ff12db5bf2543721400310",
+      "dependencies": [
+        "core/package/src/codec.mjs",
+        "multi-device/sequential-service.mjs",
+        "multi-device/enrollment-controller.mjs",
+        "core/package/src/enrollment.mjs",
+        "multi-device/contracts.mjs",
+        "user-app/action-model.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/browser/entry.mjs",
+      "sourceSha256": "e818b3cb59e4de4dc2d3753da67b3429589f3f301d6160c63632b77acaba13e7",
+      "outputSha256": "e818b3cb59e4de4dc2d3753da67b3429589f3f301d6160c63632b77acaba13e7",
+      "dependencies": [
+        "multi-device/browser/backend.mjs",
+        "user-app/public/app.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/browser/backend.mjs",
+      "sourceSha256": "d7417be7598689967a5aa8b0b557f42544de2bdb718fd82631ee2159986c3ee1",
+      "outputSha256": "d7417be7598689967a5aa8b0b557f42544de2bdb718fd82631ee2159986c3ee1",
+      "dependencies": [
+        "core/package/src/codec.mjs",
+        "multi-device/auth-session.mjs",
+        "multi-device/owner-transport.mjs",
+        "multi-device/browser/indexeddb-store.mjs",
+        "multi-device/md-backend.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/browser/indexeddb-store.mjs",
+      "sourceSha256": "13d3b8609a39f05dd51a705f62e9a9d1b94f0d20b5e2edf85e1e690904ad23d3",
+      "outputSha256": "13d3b8609a39f05dd51a705f62e9a9d1b94f0d20b5e2edf85e1e690904ad23d3",
+      "dependencies": [
+        "core/package/src/codec.mjs",
+        "core/package/src/crypto.mjs",
+        "core/package/src/enrollment.mjs",
+        "core/package/src/recovery.mjs",
+        "multi-device/contracts.mjs",
+        "multi-device/sequential-service.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/portable/bytes.mjs",
+      "sourceSha256": "9d37c8393afde807e8e1f3b2f913054de3a56fc1df12cba88a603974e1e32f9f",
+      "outputSha256": "9d37c8393afde807e8e1f3b2f913054de3a56fc1df12cba88a603974e1e32f9f",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/portable/node-crypto.mjs",
+      "sourceSha256": "6175a99266e14ddf2a15d5c15bdd5a9eb414c7140932fd89d8266648746e6cd7",
+      "outputSha256": "6175a99266e14ddf2a15d5c15bdd5a9eb414c7140932fd89d8266648746e6cd7",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/src/hash/sha2.js",
+        "multi-device/portable/bytes.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/portable/errors.mjs",
+      "sourceSha256": "9edde2c1c451fe64620d0f7babeeb7e00dea34abfded643bfbb836bb6e46d8d1",
+      "outputSha256": "9edde2c1c451fe64620d0f7babeeb7e00dea34abfded643bfbb836bb6e46d8d1",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/tests/portability.mjs",
+      "sourceSha256": "7932623f488e8cb872e821049d41a833c690aa9b12bb44793064778c769d8771",
+      "outputSha256": "7932623f488e8cb872e821049d41a833c690aa9b12bb44793064778c769d8771",
+      "dependencies": [
+        "core/package/src/codec.mjs",
+        "core/package/src/crypto.mjs",
+        "core/package/src/enrollment.mjs",
+        "core/package/src/recovery.mjs",
+        "core/package/parent/v2_phase2/source/canonical.mjs",
+        "multi-device/real-history.mjs",
+        "user-app/whole-life-projection.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/src/codec.mjs",
+      "sourceSha256": "df80cc7ba650393075b013066a869627c5038862ab0df13fd876d2ad1dac6bd4",
+      "outputSha256": "d15d597d29476f27c0838e755fa214aeb48cb613d7ad4aa2523925c5a03f0f59",
+      "dependencies": [
+        "multi-device/portable/bytes.mjs",
+        "multi-device/portable/node-crypto.mjs",
+        "core/package/parent/v2_phase2/source/canonical.mjs"
+      ],
+      "transforms": [
+        "EXPLICIT_LIMITED_BUFFER_IMPORT"
+      ]
+    },
+    {
+      "path": "core/package/src/crypto.mjs",
+      "sourceSha256": "ea1dc119d1c5ddbec7a4a50448504747ab8d0a3251709f07cc37675288debe5b",
+      "outputSha256": "660037f55ac38378ec4e312ab54dd84210715ffddb8bf0bbd59ed83cc97b7223",
+      "dependencies": [
+        "multi-device/portable/bytes.mjs",
+        "multi-device/portable/node-crypto.mjs",
+        "core/package/node_modules/@hpke/core/esm/mod.js",
+        "core/package/src/codec.mjs"
+      ],
+      "transforms": [
+        "EXPLICIT_LIMITED_BUFFER_IMPORT"
+      ]
+    },
+    {
+      "path": "core/package/src/enrollment.mjs",
+      "sourceSha256": "0be620e5b18a79a68913d8196108b8e323c5198388b6b6192d4d3a374c59851e",
+      "outputSha256": "63468a0c5bc68d2268d25a68378449ba3294f53e0d5ce5af167a01b628cbdc30",
+      "dependencies": [
+        "multi-device/portable/bytes.mjs",
+        "core/package/src/codec.mjs",
+        "core/package/src/crypto.mjs"
+      ],
+      "transforms": [
+        "EXPLICIT_LIMITED_BUFFER_IMPORT"
+      ]
+    },
+    {
+      "path": "core/package/parent/v2_phase2/source/dag.mjs",
+      "sourceSha256": "aaa9fc1f9462e881639bfd16acabd553983ce58405da63ccddc52c05bbda9d83",
+      "outputSha256": "aaa9fc1f9462e881639bfd16acabd553983ce58405da63ccddc52c05bbda9d83",
+      "dependencies": [
+        "core/package/parent/v2_phase2/source/canonical.mjs",
+        "core/package/parent/v2_phase2/source/domain.mjs",
+        "core/package/parent/v2_phase2/source/routine-policy.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/parent/v2_phase2/source/canonical.mjs",
+      "sourceSha256": "247bdfac03142692b7ee981e62ce1b160043cb2dd96bcd3bc39ca3425e89e6df",
+      "outputSha256": "700688b62d069ebc7b554a19322f36be1aaed31f13a4263f82cc28b85c36d401",
+      "dependencies": [
+        "multi-device/portable/node-crypto.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "user-app/action-model.mjs",
+      "sourceSha256": "00ea518319a4d4dedeb98c9978e1079c1a02a433aebc8e395a48be4e69028ed6",
+      "outputSha256": "cf4dc54f4e8060526e2e5294127955e001ede54d9c64f12cf1c091514d182425",
+      "dependencies": [
+        "core/package/parent/v2_phase2/source/dag.mjs",
+        "core/package/parent/v2_phase2/source/canonical.mjs",
+        "core/package/src/codec.mjs",
+        "multi-device/portable/errors.mjs",
+        "user-app/whole-life-model.mjs",
+        "user-app/measurement.mjs",
+        "product/runtime-contract.mjs"
+      ],
+      "transforms": [
+        "PURE_REQUIRE_VALUE_IMPORT"
+      ]
+    },
+    {
+      "path": "user-app/whole-life-model.mjs",
+      "sourceSha256": "d642b2faaccb72094f45ceae41a7fa2781976740d260b51bd936a4c09e87fd73",
+      "outputSha256": "f083c3d6f3c5f0868f2a97083122a719ef0c45a57f272893acaab3e464626220",
+      "dependencies": [
+        "multi-device/portable/errors.mjs",
+        "core/package/src/codec.mjs",
+        "core/package/parent/v2_phase2/source/canonical.mjs"
+      ],
+      "transforms": [
+        "PURE_REQUIRE_VALUE_IMPORT"
+      ]
+    },
+    {
+      "path": "user-app/whole-life-projection.mjs",
+      "sourceSha256": "718ec92ae7ff17a60665be2dba8895f728a4e7b9c5e3b6626d2b196e0dca7288",
+      "outputSha256": "f39c6f3f96efec463092d37294b454eb348a2c99b5103714243ff6f4a44a605e",
+      "dependencies": [
+        "multi-device/portable/errors.mjs",
+        "core/package/parent/v2_phase2/source/canonical.mjs",
+        "user-app/action-model.mjs",
+        "user-app/whole-life-model.mjs",
+        "user-app/measurement.mjs",
+        "product/runtime-contract.mjs"
+      ],
+      "transforms": [
+        "PURE_REQUIRE_VALUE_IMPORT"
+      ]
+    },
+    {
+      "path": "product/runtime-contract.mjs",
+      "sourceSha256": "adf52fe708238abb4c619fd7bff1893279d6db023467f2a36f1b095ba21a4704",
+      "outputSha256": "adf52fe708238abb4c619fd7bff1893279d6db023467f2a36f1b095ba21a4704",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/app.mjs",
+      "sourceSha256": "f23054b571ce0e76b53bb117eb68a7953461ef2a4799954752e1c051d15fcc52",
+      "outputSha256": "f23054b571ce0e76b53bb117eb68a7953461ef2a4799954752e1c051d15fcc52",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "core/package/src/recovery.mjs",
+      "sourceSha256": "cf149dbad6198f910843c7bbef15a710c27a096901618b3982f0aaabc2438082",
+      "outputSha256": "15f1b14cb6cfe816b29a1ef226bfca23115de232c6058c3410ff2d9e18391604",
+      "dependencies": [
+        "core/package/src/codec.mjs",
+        "core/package/src/crypto.mjs",
+        "core/package/src/enrollment.mjs"
+      ],
+      "transforms": [
+        "CAPSULE_AND_AUTHORITY_EXPORT_CLOSURE_ONLY"
+      ]
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/hash/sha2.js",
+      "sourceSha256": "8bcd8b3a0d791dce3907c4f045adabe8f1773c28582d70aca08b2711f08b0409",
+      "outputSha256": "8bcd8b3a0d791dce3907c4f045adabe8f1773c28582d70aca08b2711f08b0409",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/src/hash/md.js",
+        "core/package/node_modules/@hpke/common/esm/src/hash/u64.js",
+        "core/package/node_modules/@hpke/common/esm/src/utils/noble.js",
+        "core/package/node_modules/@hpke/common/esm/src/hash/hash.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/core/esm/mod.js",
+      "sourceSha256": "69af8f9a74c9915e18a87ed7a6737d9065a13834dca09ff8004245df83b2b45a",
+      "outputSha256": "e86266ab6ea6a4057e67ed3da2dee321fa9d641d6f2d881d1461274a1b8e57c9",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/mod.js",
+        "core/package/node_modules/@hpke/core/esm/src/aeads/aesGcm.js",
+        "core/package/node_modules/@hpke/core/esm/src/aeads/exportOnly.js",
+        "core/package/node_modules/@hpke/core/esm/src/native.js",
+        "core/package/node_modules/@hpke/core/esm/src/kems/dhkemX25519.js",
+        "core/package/node_modules/@hpke/core/esm/src/kems/dhkemX448.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/parent/v2_phase2/source/domain.mjs",
+      "sourceSha256": "30820b25a95d2ed693b2aa7229e0afc3f988998d67605b581652de22ca91e60c",
+      "outputSha256": "30820b25a95d2ed693b2aa7229e0afc3f988998d67605b581652de22ca91e60c",
+      "dependencies": [
+        "core/package/parent/v2_phase2/source/canonical.mjs",
+        "core/package/parent/v2_phase2/source/routine-policy.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/parent/v2_phase2/source/routine-policy.mjs",
+      "sourceSha256": "a0ea8cc710269d010378abc89fc2c9f500a224f8e23ea13ee14e781f140af96c",
+      "outputSha256": "a0ea8cc710269d010378abc89fc2c9f500a224f8e23ea13ee14e781f140af96c",
+      "dependencies": [
+        "core/package/parent/v2_phase2/source/canonical.mjs",
+        "core/package/parent/v2_phase2/source/routine-effective.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "user-app/measurement.mjs",
+      "sourceSha256": "9c8cd8a830500921b52824f68a34a0cc4b59246186309c8905b340a1a98d1efa",
+      "outputSha256": "e5e33eedd83801c9e9e7d64f0ec28f08b902f7bfdeffe77e31e8d07ef48da53b",
+      "dependencies": [
+        "multi-device/portable/errors.mjs",
+        "user-app/whole-life-model.mjs"
+      ],
+      "transforms": [
+        "PURE_REQUIRE_VALUE_IMPORT"
+      ]
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/hash/md.js",
+      "sourceSha256": "387acc30ec0ceac8314a75d29685d97904497581d7e1bfc34bb99775fdb90b99",
+      "outputSha256": "387acc30ec0ceac8314a75d29685d97904497581d7e1bfc34bb99775fdb90b99",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/src/utils/noble.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/hash/u64.js",
+      "sourceSha256": "388b96c4386b60ead5e86c50849e55d1a39616ac85eb7168c43fa616b64eb5ab",
+      "outputSha256": "388b96c4386b60ead5e86c50849e55d1a39616ac85eb7168c43fa616b64eb5ab",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/utils/noble.js",
+      "sourceSha256": "c7cc957c67ef9314e259c30e1aaddfdc80deac6196de9632c5dccd7a6a560c25",
+      "outputSha256": "c7cc957c67ef9314e259c30e1aaddfdc80deac6196de9632c5dccd7a6a560c25",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/src/utils/misc.js",
+        "core/package/node_modules/@hpke/common/esm/src/consts.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/hash/hash.js",
+      "sourceSha256": "2d44196f61395a80262e6b397bafae96061cd31cc0f5a76ff342a9dbfcd16b5d",
+      "outputSha256": "2d44196f61395a80262e6b397bafae96061cd31cc0f5a76ff342a9dbfcd16b5d",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/src/utils/noble.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/mod.js",
+      "sourceSha256": "69ff6967a36760e2d390926c4cca1fb4d75854459b05dd6484104c0c763758bd",
+      "outputSha256": "69ff6967a36760e2d390926c4cca1fb4d75854459b05dd6484104c0c763758bd",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/src/errors.js",
+        "core/package/node_modules/@hpke/common/esm/src/algorithm.js",
+        "core/package/node_modules/@hpke/common/esm/src/identifiers.js",
+        "core/package/node_modules/@hpke/common/esm/src/kems/dhkem.js",
+        "core/package/node_modules/@hpke/common/esm/src/kems/dhkemPrimitives/ec.js",
+        "core/package/node_modules/@hpke/common/esm/src/kems/dhkemPrimitives/xCurve.js",
+        "core/package/node_modules/@hpke/common/esm/src/kems/hybridkem.js",
+        "core/package/node_modules/@hpke/common/esm/src/xCryptoKey.js",
+        "core/package/node_modules/@hpke/common/esm/src/kdfs/hkdf.js",
+        "core/package/node_modules/@hpke/common/esm/src/interfaces/aeadEncryptionContext.js",
+        "core/package/node_modules/@hpke/common/esm/src/interfaces/dhkemPrimitives.js",
+        "core/package/node_modules/@hpke/common/esm/src/interfaces/kemInterface.js",
+        "core/package/node_modules/@hpke/common/esm/src/consts.js",
+        "core/package/node_modules/@hpke/common/esm/src/utils/misc.js",
+        "core/package/node_modules/@hpke/common/esm/src/utils/noble.js",
+        "core/package/node_modules/@hpke/common/esm/src/hash/hmac.js",
+        "core/package/node_modules/@hpke/common/esm/src/hash/sha2.js",
+        "core/package/node_modules/@hpke/common/esm/src/hash/sha3.js",
+        "core/package/node_modules/@hpke/common/esm/src/curve/modular.js",
+        "core/package/node_modules/@hpke/common/esm/src/curve/montgomery.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/core/esm/src/aeads/aesGcm.js",
+      "sourceSha256": "81de21290883df20e9e9677d15e36a8152e09af677292f854475e35d4d4f5617",
+      "outputSha256": "cae79cabe7bd97d14e1dd48bf4e9c6b993e3d5e313245ec237e76154a463268b",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/mod.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/core/esm/src/aeads/exportOnly.js",
+      "sourceSha256": "eb6e7f116a30095e3c69f4c26e61a93060fa8056dd685620c7f9c76dfe5c0d89",
+      "outputSha256": "3d8e1f64c8dae35d541437c061c0832f5b4871487bc3cbd7d8460e96b337fd92",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/mod.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/core/esm/src/native.js",
+      "sourceSha256": "273584c3770d330c8f95a8edb447d41441d07b11b2d9f54327cd91094efe2c4b",
+      "outputSha256": "4044db0660a2bc18828a70c5a768598cdb7287e36dd438cccb44f352243fd12c",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/mod.js",
+        "core/package/node_modules/@hpke/core/esm/src/cipherSuiteNative.js",
+        "core/package/node_modules/@hpke/core/esm/src/kems/dhkemNative.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/core/esm/src/kems/dhkemX25519.js",
+      "sourceSha256": "e7238aa23cc50c40ec1f1f38ee62fbe0f8c61b160d5a7d12fde79cb11394c91f",
+      "outputSha256": "356c0e305f57210802aa28c00f1531393a5a7495e7829f2bc8ce928115a18032",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/mod.js",
+        "core/package/node_modules/@hpke/core/esm/src/kems/dhkemPrimitives/x25519.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/core/esm/src/kems/dhkemX448.js",
+      "sourceSha256": "8cbdccdb49eae32444b0ff61998ad6bf1f2ccf27457f67d945eb56dc26ed85bb",
+      "outputSha256": "fc6d7c1a4ee81f57c416f8d45e0d76d25020fc8d82cda85d1af0baf5a0eeda87",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/mod.js",
+        "core/package/node_modules/@hpke/core/esm/src/kems/dhkemPrimitives/x448.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/parent/v2_phase2/source/routine-effective.mjs",
+      "sourceSha256": "52640021106d670063824797b86c0f40dec90eb579ef47c17b76f1cc0e63aeda",
+      "outputSha256": "52640021106d670063824797b86c0f40dec90eb579ef47c17b76f1cc0e63aeda",
+      "dependencies": [
+        "core/package/parent/v2_phase2/source/canonical.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/utils/misc.js",
+      "sourceSha256": "24e15bfdcbb3b9f5c0e151c399b4cdaacfe1d87af0a1eec663f0ba4bd1f8a32d",
+      "outputSha256": "e4fef407140d62980103113af29d3f59b37b98a424a401a18b24f2928f4afbb0",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/_dnt.shims.js",
+        "core/package/node_modules/@hpke/common/esm/src/identifiers.js",
+        "multi-device/portable/node-crypto.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/consts.js",
+      "sourceSha256": "5428171e017c7e6f47291bce8b64d712aabc040484e7ec08de1c4da4636aee00",
+      "outputSha256": "5428171e017c7e6f47291bce8b64d712aabc040484e7ec08de1c4da4636aee00",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/errors.js",
+      "sourceSha256": "2276ea69b2766af2a19ad9bc6a7b72fc6d0c8e083c9d7a6a14cdd848a9f6f61a",
+      "outputSha256": "2276ea69b2766af2a19ad9bc6a7b72fc6d0c8e083c9d7a6a14cdd848a9f6f61a",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/algorithm.js",
+      "sourceSha256": "5993e61af2ed16a810b8ef80c16a1081e4fc973076e9cf60a6204ecd8a73ecd1",
+      "outputSha256": "6719f62065e4a7c8474522f91c9341b87fdccacad01c17e301098de81116fa66",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/_dnt.shims.js",
+        "core/package/node_modules/@hpke/common/esm/src/errors.js",
+        "multi-device/portable/node-crypto.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/identifiers.js",
+      "sourceSha256": "36d32d1da7b5b48b5091b8c8d2e635793ef4a2bd3bd6e1a28e0ae02b68f78b61",
+      "outputSha256": "36d32d1da7b5b48b5091b8c8d2e635793ef4a2bd3bd6e1a28e0ae02b68f78b61",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/kems/dhkem.js",
+      "sourceSha256": "3328af8d6cab77f8962ac51545a7d22810c2c1a5ac1786d9c3d99e31295bae34",
+      "outputSha256": "3328af8d6cab77f8962ac51545a7d22810c2c1a5ac1786d9c3d99e31295bae34",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/src/consts.js",
+        "core/package/node_modules/@hpke/common/esm/src/errors.js",
+        "core/package/node_modules/@hpke/common/esm/src/interfaces/kemInterface.js",
+        "core/package/node_modules/@hpke/common/esm/src/kdfs/hkdf.js",
+        "core/package/node_modules/@hpke/common/esm/src/utils/misc.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/kems/dhkemPrimitives/ec.js",
+      "sourceSha256": "22a0857fbdd70ded725de6b54bcf6b55510c1d6299a6833e3aa7f2ce9cbadd6d",
+      "outputSha256": "22a0857fbdd70ded725de6b54bcf6b55510c1d6299a6833e3aa7f2ce9cbadd6d",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/src/algorithm.js",
+        "core/package/node_modules/@hpke/common/esm/src/consts.js",
+        "core/package/node_modules/@hpke/common/esm/src/kdfs/hkdf.js",
+        "core/package/node_modules/@hpke/common/esm/src/errors.js",
+        "core/package/node_modules/@hpke/common/esm/src/identifiers.js",
+        "core/package/node_modules/@hpke/common/esm/src/interfaces/dhkemPrimitives.js",
+        "core/package/node_modules/@hpke/common/esm/src/utils/bignum.js",
+        "core/package/node_modules/@hpke/common/esm/src/utils/misc.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/kems/dhkemPrimitives/xCurve.js",
+      "sourceSha256": "91bcab1cfa8b60bc55956bbd848781ea24bacea31b833498cf222727d847d0c8",
+      "outputSha256": "91bcab1cfa8b60bc55956bbd848781ea24bacea31b833498cf222727d847d0c8",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/src/consts.js",
+        "core/package/node_modules/@hpke/common/esm/src/errors.js",
+        "core/package/node_modules/@hpke/common/esm/src/kdfs/hkdf.js",
+        "core/package/node_modules/@hpke/common/esm/src/interfaces/dhkemPrimitives.js",
+        "core/package/node_modules/@hpke/common/esm/src/utils/misc.js",
+        "core/package/node_modules/@hpke/common/esm/src/xCryptoKey.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/kems/hybridkem.js",
+      "sourceSha256": "568a3c22071c7e16c57d3a16cce4d3652acaf0d2c94f9c7454436e14247fcf0e",
+      "outputSha256": "568a3c22071c7e16c57d3a16cce4d3652acaf0d2c94f9c7454436e14247fcf0e",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/src/consts.js",
+        "core/package/node_modules/@hpke/common/esm/src/errors.js",
+        "core/package/node_modules/@hpke/common/esm/src/kdfs/hkdf.js",
+        "core/package/node_modules/@hpke/common/esm/src/identifiers.js",
+        "core/package/node_modules/@hpke/common/esm/src/interfaces/dhkemPrimitives.js",
+        "core/package/node_modules/@hpke/common/esm/src/interfaces/kemInterface.js",
+        "core/package/node_modules/@hpke/common/esm/src/utils/misc.js",
+        "core/package/node_modules/@hpke/common/esm/src/xCryptoKey.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/xCryptoKey.js",
+      "sourceSha256": "2702f2520096ec919cc3e36039a47eb5380988df4e4a0c9ad21d9a9b6e7b23dc",
+      "outputSha256": "2702f2520096ec919cc3e36039a47eb5380988df4e4a0c9ad21d9a9b6e7b23dc",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/kdfs/hkdf.js",
+      "sourceSha256": "21a865dd7ebaf9c13a65c85d25fc97a6226d4a5380c6006b1943debfc89e5dd0",
+      "outputSha256": "21a865dd7ebaf9c13a65c85d25fc97a6226d4a5380c6006b1943debfc89e5dd0",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/src/consts.js",
+        "core/package/node_modules/@hpke/common/esm/src/errors.js",
+        "core/package/node_modules/@hpke/common/esm/src/identifiers.js",
+        "core/package/node_modules/@hpke/common/esm/src/algorithm.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/interfaces/aeadEncryptionContext.js",
+      "sourceSha256": "1e80fce686c45cc44ff3c5acb36f81fa3784bca25ffd0c45f869f5a4e9b100b7",
+      "outputSha256": "1e80fce686c45cc44ff3c5acb36f81fa3784bca25ffd0c45f869f5a4e9b100b7",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/interfaces/dhkemPrimitives.js",
+      "sourceSha256": "91eb3f0ef77809195a42db1306ab84da5bcf25b98fcea65e5b5956120bbc588b",
+      "outputSha256": "91eb3f0ef77809195a42db1306ab84da5bcf25b98fcea65e5b5956120bbc588b",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/interfaces/kemInterface.js",
+      "sourceSha256": "4a27f9b0a9dda6ea89809ed4a93eba2c286ab52b9c9d999f856f788586b27ee9",
+      "outputSha256": "4a27f9b0a9dda6ea89809ed4a93eba2c286ab52b9c9d999f856f788586b27ee9",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/hash/hmac.js",
+      "sourceSha256": "85f949fbd7ba2e12718e1fc6f915ab18f224e10e899e9eb5987853fb42a29609",
+      "outputSha256": "85f949fbd7ba2e12718e1fc6f915ab18f224e10e899e9eb5987853fb42a29609",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/src/utils/noble.js",
+        "core/package/node_modules/@hpke/common/esm/src/hash/hash.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/hash/sha3.js",
+      "sourceSha256": "d6e4db56104ee3ccdf200205e56682dd927b5c14c2cc48ef9cee799bd29ac51b",
+      "outputSha256": "d6e4db56104ee3ccdf200205e56682dd927b5c14c2cc48ef9cee799bd29ac51b",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/src/hash/u64.js",
+        "core/package/node_modules/@hpke/common/esm/src/utils/noble.js",
+        "core/package/node_modules/@hpke/common/esm/src/hash/hash.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/curve/modular.js",
+      "sourceSha256": "6b8a0d17302dfaff1ea75cc8be55bf310fe45a4f6fa1a51f941b287b6a375cce",
+      "outputSha256": "6b8a0d17302dfaff1ea75cc8be55bf310fe45a4f6fa1a51f941b287b6a375cce",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/src/consts.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/curve/montgomery.js",
+      "sourceSha256": "3954064b827caa894e3959e47ec424c7352285e0e24ac29d5b60eac5f66640f6",
+      "outputSha256": "3954064b827caa894e3959e47ec424c7352285e0e24ac29d5b60eac5f66640f6",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/src/utils/noble.js",
+        "core/package/node_modules/@hpke/common/esm/src/curve/curve.js",
+        "core/package/node_modules/@hpke/common/esm/src/curve/modular.js",
+        "core/package/node_modules/@hpke/common/esm/src/consts.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/core/esm/src/cipherSuiteNative.js",
+      "sourceSha256": "709d78b20737e20e20950e4f3b3b764c221097456c129d5ddf115d8e6abeefc1",
+      "outputSha256": "5b50e0853545a910b47a2d2f868f79af6ffc1b04d060384d359ed2707fe26b2c",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/mod.js",
+        "core/package/node_modules/@hpke/core/esm/src/exporterContext.js",
+        "core/package/node_modules/@hpke/core/esm/src/recipientContext.js",
+        "core/package/node_modules/@hpke/core/esm/src/senderContext.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/core/esm/src/kems/dhkemNative.js",
+      "sourceSha256": "3c425619d0ac1133874c718bf6e1620f739489b15d2c6e922051a645512cd8b0",
+      "outputSha256": "f3e6c4c002b28b651fb73598182aed44b2aca19520539f5c1cdde3c0392aed83",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/mod.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/core/esm/src/kems/dhkemPrimitives/x25519.js",
+      "sourceSha256": "78c9fe600ab3cc4425786671718d5fd820ee90566d2e72367f89906a64007f5b",
+      "outputSha256": "7f07bfccd6f564c89f90b2f20f2a90bed76a8446189fe42d22198cacb732bea2",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/mod.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/core/esm/src/kems/dhkemPrimitives/x448.js",
+      "sourceSha256": "600f490e023af5f036b81caa0e6ee1ba131a33806574b053cf0a72ab1db4c66f",
+      "outputSha256": "972387d5e33b3e98ba100d56f5d4fd58d64b42bb51c72010993fdc27c8e4662d",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/mod.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/_dnt.shims.js",
+      "sourceSha256": "964bd4f895fc78959f40b3f3c87aa031389468a0221e5650b00445ff059d3715",
+      "outputSha256": "964bd4f895fc78959f40b3f3c87aa031389468a0221e5650b00445ff059d3715",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/utils/bignum.js",
+      "sourceSha256": "212a4d6482648caa9acfa11bd73a8ba971cfcc0fe0fa506d0b632eb861a5b063",
+      "outputSha256": "212a4d6482648caa9acfa11bd73a8ba971cfcc0fe0fa506d0b632eb861a5b063",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/common/esm/src/curve/curve.js",
+      "sourceSha256": "c31b1223eec021c583edc1bf43f4af6e7237752ba6076c5a895969526ac41442",
+      "outputSha256": "c31b1223eec021c583edc1bf43f4af6e7237752ba6076c5a895969526ac41442",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/core/esm/src/exporterContext.js",
+      "sourceSha256": "0d3f865d9d88e0ae8a4fc8e965d85156309a1c938a80354d4397d0bd765e3cf0",
+      "outputSha256": "d429c9516cefcb6271b49e487bfd0e3ea14d1693fa43dc41caa393c32b72bace",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/mod.js",
+        "core/package/node_modules/@hpke/core/esm/src/utils/emitNotSupported.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/core/esm/src/recipientContext.js",
+      "sourceSha256": "4f3a0d1a270f12f97430ec3dc60e0b5f60603ac2fe80237e500d2145c01c7d76",
+      "outputSha256": "680a58b74701647fa7e930aa83a2d9adfca2e31681b808b1c2211711d74a0a85",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/mod.js",
+        "core/package/node_modules/@hpke/core/esm/src/encryptionContext.js",
+        "core/package/node_modules/@hpke/core/esm/src/mutex.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/core/esm/src/senderContext.js",
+      "sourceSha256": "b3ccd80392eb5f28544077930d8697d9056cd2d66d63c233dfc6c2f31212cf77",
+      "outputSha256": "07318d641c12110cb5e9cb9facc58b4c32b50093c890c96bc7fabaf7c897313c",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/mod.js",
+        "core/package/node_modules/@hpke/core/esm/src/encryptionContext.js",
+        "core/package/node_modules/@hpke/core/esm/src/mutex.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/core/esm/src/utils/emitNotSupported.js",
+      "sourceSha256": "d75a9834de4d86f7d548d69aa2e6453a4c7be0d71e72359cc9f54854c4d05d23",
+      "outputSha256": "58da05129b39302da78577f7fd73004eb7e9f1e39647ea6c9d0a178edce6a371",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/mod.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/core/esm/src/encryptionContext.js",
+      "sourceSha256": "1b30cabd063fab65dd79de4ab9ec4a5cb856e0bf7d4571a09d45554acc61db1b",
+      "outputSha256": "2e06adcfef925aea7a243f2fbc9590ee7cdcddb12632540297bddde84257bfd4",
+      "dependencies": [
+        "core/package/node_modules/@hpke/common/esm/mod.js",
+        "core/package/node_modules/@hpke/core/esm/src/exporterContext.js"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "core/package/node_modules/@hpke/core/esm/src/mutex.js",
+      "sourceSha256": "f8d9da85bb40d1a57b0594b74728fbdc01382b0d80d236a0fd44e3b231eabe4d",
+      "outputSha256": "f8d9da85bb40d1a57b0594b74728fbdc01382b0d80d236a0fd44e3b231eabe4d",
+      "dependencies": [],
+      "transforms": []
+    }
+  ],
+  "assets": [
+    {
+      "path": "index.html",
+      "sourcePath": "user-app/public/index.html",
+      "sourceSha256": "628cc04a81db08032e900d3cb4a95fec76e43e3601cb6acc487e222d63d19bd0",
+      "outputSha256": "55f726f05de80334e7f6d2e62e0abd39ed1f32c724525c0d1d3ba4a470006a2e"
+    },
+    {
+      "path": "styles.css",
+      "sourcePath": "user-app/public/styles.css",
+      "sourceSha256": "cc8ee706cc55bdd0a2e89ea58a4826c2b89a552a14a540e69bbda1611aa87e41",
+      "outputSha256": "cc8ee706cc55bdd0a2e89ea58a4826c2b89a552a14a540e69bbda1611aa87e41"
+    },
+    {
+      "path": "public-config.json",
+      "sourcePath": "multi-device/public-config.example.json",
+      "sourceSha256": "41b651d48002d3035a5340d8ce5de7438abb6ff57b6af93b99b30895a8139e0a",
+      "outputSha256": "41b651d48002d3035a5340d8ce5de7438abb6ff57b6af93b99b30895a8139e0a"
+    }
+  ]
+}
