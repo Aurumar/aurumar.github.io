@@ -1,0 +1,9 @@
+{
+  "format": "LB_MD_PUBLIC_CONFIG_1",
+  "authUrl": "https://hurtgraukjfvnsnwsvuf.supabase.co/auth/v1",
+  "issuer": "https://hurtgraukjfvnsnwsvuf.supabase.co/auth/v1",
+  "audience": "authenticated",
+  "publishableKey": "sb_publishable_NLsuhOV2clmmgrF5BWU_mw_TBPoAF98",
+  "edgeUrl": "https://hurtgraukjfvnsnwsvuf.supabase.co/functions/v1/life-brick-owner-sync",
+  "browserOrigin": "https://aurumar.github.io"
+}

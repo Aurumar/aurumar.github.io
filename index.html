@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <title>LIFE BRICK · 삶의 작업실</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/multi-device/browser/entry.mjs"></script>
+</head>
+<body>
+  <aside class="rail">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">▰</span><div>LIFE BRICK<small>삶의 작업실</small></div></div>
+    <p class="rail-label">MY WORKSPACE</p>
+    <nav id="navigation" aria-label="주요 메뉴" hidden></nav>
+    <div class="rail-bottom"><span class="local-dot"></span> <span id="storage-label">암호화 로컬 저장</span><p>한 번의 기록. 다음의 시작.</p><small>WHOLE-LIFE OS</small></div>
+  </aside>
+  <main>
+    <header class="topbar"><div><p class="eyebrow" id="page-kicker">YOUR PRIVATE WORKSPACE</p><h1 id="page-title">삶을 한눈에, 다음을 분명하게.</h1><p id="page-subtitle" class="muted">기록은 쌓이고, 계획은 다듬어집니다.</p></div><div class="header-tools"><span id="session-state" class="pill">잠김</span><button id="save-exit" class="secondary" type="button" hidden>저장 후 종료</button></div></header>
+    <p id="status" class="notice" role="status" aria-live="polite">로컬 앱에 연결하는 중…</p>
+    <section id="setup" class="access-grid" hidden>
+      <article class="panel access-card">
+        <span class="eyebrow">PRIVATE BY DEFAULT</span><h2 id="setup-heading">처음 시작하기</h2>
+        <form id="setup-form" autocomplete="off">
+          <div id="new-only"><p class="muted">다섯 행동으로 시작하세요. 이후 설정에서 이름·분류·순서를 바꾸거나 행동을 추가할 수 있습니다.</p><div id="seed-titles" class="field-grid"></div></div>
+          <label for="unlock-secret">로컬 잠금해제 비밀문구 · 12–1024자</label><input id="unlock-secret" type="password" minlength="12" maxlength="1024" autocomplete="off" required>
+          <div id="recovery-only"><label for="recovery-secret">별도의 복구 비밀문구 · 12–1024자</label><input id="recovery-secret" type="password" minlength="12" maxlength="1024" autocomplete="off"><p class="small muted">두 비밀문구를 다르게 정하고 안전하게 별도 보관하세요. 비밀번호 찾기와 자동 복구는 제공하지 않습니다.</p></div>
+          <button id="setup-submit" type="submit">이 PC에서 시작</button>
+        </form>
+      </article>
+      <article class="intro-panel"><span class="eyebrow">ONE BRICK AT A TIME</span><h2>오늘의 작은 행동부터<br>삶의 전체 그림까지.</h2><div class="intro-bricks" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div><p>행동, 삶의 영역, 계획과 일정, 재정을 한곳에서 살펴봅니다.</p><p class="small">비어 있는 값은 미확인으로 남깁니다.<br>당신의 삶을 하나의 점수로 평가하지 않습니다.</p></article>
+    </section>
+    <section id="workspace" hidden><div id="view-content"></div></section>
+    <footer><span>LOCAL FIRST · 기록과 정정 이력 보존</span><span id="sync-label">연결 상태 확인 중</span></footer>
+  </main>
+  <dialog id="editor" aria-labelledby="editor-title"><form id="editor-form" autocomplete="off"><div class="dialog-head"><div><p class="eyebrow" id="editor-kicker">EDIT YOUR WORKSPACE</p><h2 id="editor-title"></h2></div><button id="editor-cancel-top" type="button" class="icon-button" aria-label="편집 취소">×</button></div><div id="editor-content"></div><p id="editor-error" role="alert"></p><div class="dialog-foot"><span class="small muted">저장하면 변경 이력이 남습니다.</span><div><button id="editor-cancel" type="button" class="secondary">취소</button><button id="editor-save" type="submit">저장</button></div></div></form></dialog>
+</body>
+</html>
