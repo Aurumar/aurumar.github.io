@@ -24,6 +24,7 @@ export const MD_ROUTE_GROUPS=Object.freeze({
  LIFECYCLE:Object.freeze(['lifecycle-state','device-retire','device-retire-reconcile','pair-cancel','enroll-pending-list','enroll-resume','enroll-publish-ack']),
  RECIPIENT:Object.freeze(['enroll-start','enroll-draft-poll','enroll-relay-status','enroll-request-export','enroll-inspect-draft','enroll-approve','enroll-ack-export','enroll-finish']),
  OFFLINE_DRAFTS:Object.freeze(['draft-list','draft-save','draft-discard','draft-commit']),
+ SIGNOUT:Object.freeze(['signout']),
 });
 export const routesFor=groups=>Object.freeze(groups.flatMap(g=>{check(Object.hasOwn(MD_ROUTE_GROUPS,g),'MD_ROUTE_GROUP');return MD_ROUTE_GROUPS[g];}));
 const ownerOnly=new Set(['device-retire','device-retire-reconcile','pair-cancel','sync','acquire','release','reconcile','freeze','pair-begin','pair-request-poll','pair-publish-draft','pair-ack-poll','pair-relay-status','pair-relay-abort-unapproved','pair-inspect','pair-draft-export','pair-inspect-ack','pair-approve','pair-commit','pair-reconcile','pair-abort-expired','draft-commit']);
@@ -109,6 +110,13 @@ export async function createMDBackend({surface,auth,transport,storage,ownership,
    keys(body,[]);const active=needOwner();closing=true;
    try{controller?.close();controller=null;const result=await active.close();service=null;await dropOwner();closing=false;return {...status(),handoffStatus:result.status,handoffCode:result.code??null};}
    catch(error){service?.suspend();throw error;}
+  }
+  // MD03 P2 R2 (browser only: enabled by the SIGNOUT group): close like shutdown, then forget the saved login and unlock phrase.
+  case 'signout':{
+   keys(body,[]);check(!opening&&!closing,'MD_LOCAL_OWNER_CLOSING');closing=true;let result={status:'CLOSED'};
+   try{controller?.close();controller=null;recipient?.close();recipient=null;if(service)result=await service.close();service=null;await dropOwner();}
+   catch(error){result={status:'HOLD',code:typeof error?.code==='string'?error.code:'HOLD_SHUTDOWN'};}
+   await auth.signOut();return {...status(),signOut:result.status==='CLOSED'?'SIGNED_OUT':'SIGNED_OUT_CLOSE_HOLD',closeCode:result.code??null};
   }
   case 'relay-client-preflight':keys(body,[]);await auth.accessToken();check(typeof policy.relayClientPreflight==='function','MD_ROUTE');return policy.relayClientPreflight();
   case 'pair-relay-probe':{

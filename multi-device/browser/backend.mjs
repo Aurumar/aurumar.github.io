@@ -2,45 +2,24 @@
 // Keeps the accepted Site v15 S03 platform behavior exactly: fixed HTTPS origin, IndexedDB store keyed by
 // location.origin, navigator.locks exclusive owner claim 'lb-md-owner:<id>' (ifAvailable), local unlock
 // after the provider session, suspend on offline/pagehide/hidden, relay-client preflight.
-import {check,sha,idOK} from '../../core/package/src/codec.mjs';
+import {check} from '../../core/package/src/codec.mjs';
 import {AuthSession,validatePublicConfig} from '../auth-session.mjs';
 import {OwnerTransport} from '../owner-transport.mjs';
 import {SequentialIDBStore} from './indexeddb-store.mjs';
 import {createMDBackend,routesFor} from '../md-backend.mjs';
-export const BROWSER_ROUTE_GROUPS=Object.freeze(['CORE','TOTP_ENROLL','FREEZE','RELAY_CLIENT_PREFLIGHT','SPONSOR','RECIPIENT']);
-// MD03 B02 noncanonical fix (2026-10-27): the B4 recipient requires a durable pending store and an unlock
-// secret (md-backend enroll-start keys). Expose only the recipient-side durable routes the Windows host has.
-export const BROWSER_RECIPIENT_DURABLE_ROUTES=Object.freeze(['enroll-pending-list','enroll-resume','enroll-publish-ack']);
-export const PENDING_DATABASE_NAME='LIFE_BRICK_PENDING_RECIPIENT_V1';
-// Origin-scoped IndexedDB staging for the sealed pending recipient (LB_B4_PENDING_WRAP_1 ciphertext only).
-// Same port as product/store/pending-record.mjs: list() ids, read(id) bytes|null, publish(id,bytes,expectedSha|null) -> sha.
-// The hash CAS runs inside one readwrite transaction, so concurrent tabs cannot both publish from the same base.
-export function browserPendingRecords({indexedDBImpl=globalThis.indexedDB}={}){
- const STORE='pending';
- const open=()=>{check(globalThis.isSecureContext&&indexedDBImpl,'MD_SECURE_BROWSER_REQUIRED');return new Promise((ok,no)=>{const r=indexedDBImpl.open(PENDING_DATABASE_NAME,1);r.onupgradeneeded=()=>{r.result.createObjectStore(STORE,{keyPath:'key'});};r.onerror=()=>no(r.error??new Error('B4_PENDING_IDB_OPEN'));r.onblocked=()=>no(new Error('B4_PENDING_IDB_BLOCKED'));r.onsuccess=()=>{r.result.onversionchange=()=>r.result.close();ok(r.result);};});};
- const keyOf=id=>{check(idOK(id),'B4_PENDING_ID');return location.origin+'|'+id;};
- async function run(mode,body){const db=await open();try{return await new Promise((ok,no)=>{
-  const tx=db.transaction(STORE,mode,mode==='readwrite'?{durability:'strict'}:{}),store=tx.objectStore(STORE);let result,cause=null;
-  const fail=e=>{cause=e;try{tx.abort();}catch{}};
-  tx.oncomplete=()=>ok(result);tx.onabort=()=>no(cause??tx.error??new Error('B4_PENDING_IDB_ABORT'));tx.onerror=()=>{};
-  try{body(store,v=>{result=v;},fail);}catch(e){fail(e);}
- });}finally{db.close();}}
- return Object.freeze({
-  list:async()=>run('readonly',(s,set,fail)=>{const r=s.getAll();r.onsuccess=()=>{try{set(r.result.filter(x=>x.origin===location.origin&&idOK(x.id)).map(x=>x.id).sort());}catch(e){fail(e);}};}),
-  read:async id=>{const key=keyOf(id);return run('readonly',(s,set,fail)=>{const r=s.get(key);r.onsuccess=()=>{try{const v=r.result;if(v===undefined){set(null);return;}const bytes=new Uint8Array(v.bytes);check(v.key===key&&v.origin===location.origin&&v.id===id&&sha(bytes)===v.hash,'B4_PENDING_INTEGRITY');set(bytes);}catch(e){fail(e);}};});},
-  publish:async(id,bytes,expected)=>{
-   const key=keyOf(id);check(bytes instanceof Uint8Array&&bytes.length>0&&bytes.length<=6_100_000,'B4_PENDING_LIMIT');check(expected===null||idOK(expected),'B4_PENDING_CAS');
-   const hash=sha(bytes),stored=bytes.slice().buffer;
-   return run('readwrite',(s,set,fail)=>{const r=s.get(key);r.onsuccess=()=>{try{const old=r.result;check(expected===null?old===undefined:old!==undefined&&old.hash===expected&&sha(new Uint8Array(old.bytes))===expected,'B4_PENDING_CAS');s.put({key,origin:location.origin,id,hash,bytes:stored});set(hash);}catch(e){fail(e);}};});
-  },
- });
-}
-export async function createBrowserBackend({config,authFactory,transportFactory,syntheticOrigin=false,lockManager=globalThis.navigator?.locks}={}){
+import {createSavedSessionIDB,createRefreshGuard} from './auth-persist-idb.mjs';
+export const BROWSER_ROUTE_GROUPS=Object.freeze(['CORE','TOTP_ENROLL','FREEZE','RELAY_CLIENT_PREFLIGHT','SPONSOR','RECIPIENT','SIGNOUT']);
+// MD03 P2 R2 (noncanonical): saved session = refresh token + local unlock phrase, sealed with one non-extractable AES-GCM key in the
+// origin's IndexedDB LIFE_BRICK_AUTH_PERSIST_V1. The recovery phrase is never stored. Without navigator.locks / secure IndexedDB the
+// backend behaves exactly as before (sign in and unlock every start).
+function openSavedSession({factory,lockManager,origin}){try{return (factory??createSavedSessionIDB)({locks:lockManager,origin});}catch{return null;}}
+const notifySaveFailure=code=>{try{const elsewhere=code==='AUTH_SIGNED_OUT_ELSEWHERE';globalThis.dispatchEvent?.(new CustomEvent('life-brick-saved-session',{detail:{state:elsewhere?'SIGNED_OUT_ELSEWHERE':'SAVE_FAILED',code}}));const out=globalThis.document?.getElementById('status');if(out)out.textContent=(elsewhere?'다른 창에서 로그아웃되어 이 창의 로그인도 종료되었습니다 · 다시 로그인하세요 · ':'로그인 유지 저장 실패 · 이 페이지를 닫으면 다시 로그인해야 할 수 있습니다 · ')+code;}catch{}};
+export async function createBrowserBackend({config,authFactory,transportFactory,syntheticOrigin=false,lockManager=globalThis.navigator?.locks,savedSessionFactory}={}){
  config=validatePublicConfig(config);check(config.browserOrigin===location.origin||(syntheticOrigin&&location.hostname==='127.0.0.1'&&isSecureContext),'MD_FIXED_BROWSER_ORIGIN');
- const auth=authFactory?authFactory(config):new AuthSession(config),transport=transportFactory??((identity,keyring)=>new OwnerTransport({endpoint:config.edgeUrl,auth,identity,accountId:keyring.accountId,vaultId:keyring.vaultId}));
+ const saved=authFactory?null:openSavedSession({factory:savedSessionFactory,lockManager,origin:location.origin});
+ const auth=authFactory?authFactory(config):new AuthSession(config,saved?{persist:saved.auth,refreshGuard:createRefreshGuard({locks:lockManager,origin:location.origin}),onPersistFailure:notifySaveFailure}:{}),transport=transportFactory??((identity,keyring)=>new OwnerTransport({endpoint:config.edgeUrl,auth,identity,accountId:keyring.accountId,vaultId:keyring.vaultId}));
  // Storage port: the release-pinned origin-scoped IndexedDB store (looked up at call time).
  const storage={
-  pending:browserPendingRecords(),
   profiles:()=>SequentialIDBStore.profiles(),
   open:(id,unlockSecret)=>SequentialIDBStore.open(id,unlockSecret),
   createEnrolled:(material,opts)=>SequentialIDBStore.createEnrolled(material,opts),
@@ -58,7 +37,7 @@ export async function createBrowserBackend({config,authFactory,transportFactory,
   return {lost:done,async release(){release();await done;}};
  }};
  const policy={
-  routes:[...routesFor(BROWSER_ROUTE_GROUPS),...BROWSER_RECIPIENT_DURABLE_ROUTES],localUnlockRequiresAuth:true,serverSync:'SERVER_ENCRYPTED_SYNC',
+  routes:routesFor(BROWSER_ROUTE_GROUPS),localUnlockRequiresAuth:true,serverSync:'SERVER_ENCRYPTED_SYNC',
   settings:()=>({surface:'BROWSER',backup:{status:'SYNC_PRIMARY_WINDOWS_THEN_COLD_BACKUP'},recoveryRoot:'이 브라우저에는 recovery private authority를 보관하지 않습니다.'}),
   async relayClientPreflight(){
    check(isSecureContext&&!!crypto.subtle&&!!indexedDB,'RELAY_BROWSER_CAPABILITY');
@@ -70,5 +49,13 @@ export async function createBrowserBackend({config,authFactory,transportFactory,
  // Lifecycle port: the accepted S03 browser signals.
  const suspend=()=>{suspendService();globalThis.dispatchEvent(new CustomEvent('life-brick-md-state',{detail:{state:'READ_ONLY'}}));};
  addEventListener('offline',suspend);addEventListener('pagehide',suspend);document.addEventListener('visibilitychange',()=>{if(document.hidden)suspend();});
- return backend;
+ return saved?withSavedSession({backend,auth,saved}):backend;
+}
+// Wraps the shared backend with the saved session (separate export only so the local tests can drive it with fakes).
+export async function withSavedSession({backend,auth,saved,notify=notifySaveFailure}){
+ // Remember the unlock phrase only after a successful manual unlock, and only that one field of that one route.
+ const request=async(path,body)=>{const result=await backend.request(path,body);if(path==='/api/vault/unlock'&&typeof body?.unlockSecret==='string'){try{await saved.unlock.save(body.unlockSecret);}catch(error){notify(error?.code==='AUTH_SIGNED_OUT_ELSEWHERE'?'AUTH_SIGNED_OUT_ELSEWHERE':'UNLOCK_PERSIST_SAVE_FAILED');}}return result;};
+ // Auto-open at start, only when the provider session resumed without email+TOTP. A refused phrase is forgotten; busy/auth/selection results keep it.
+ try{if(await auth.resume()){const secret=await saved.unlock.load();if(secret){try{await backend.request('/api/vault/unlock',{unlockSecret:secret});}catch(error){if(!/OWNER|BUSY|CLOSING|SELECTION|ALREADY|AUTH/.test(String(error?.code??'')))await saved.unlock.forget();}}}}catch{}
+ return Object.freeze({...backend,request});
 }
