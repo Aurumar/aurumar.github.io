@@ -18,6 +18,8 @@ export async function createBrowserBackend({config,authFactory,transportFactory,
  config=validatePublicConfig(config);check(config.browserOrigin===location.origin||(syntheticOrigin&&location.hostname==='127.0.0.1'&&isSecureContext),'MD_FIXED_BROWSER_ORIGIN');
  const saved=authFactory?null:openSavedSession({factory:savedSessionFactory,lockManager,origin:location.origin});
  const auth=authFactory?authFactory(config):new AuthSession(config,saved?{persist:saved.auth,refreshGuard:createRefreshGuard({locks:lockManager,origin:location.origin}),onPersistFailure:notifySaveFailure}:{}),transport=transportFactory??((identity,keyring)=>new OwnerTransport({endpoint:config.edgeUrl,auth,identity,accountId:keyring.accountId,vaultId:keyring.vaultId}));
+ // M1: the UI reads why the saved login could not be restored (a code and counters, never a secret) from this read-only object.
+ if(!authFactory&&typeof auth.resumeStatus==='object')globalThis.LIFE_BRICK_AUTH_DIAG=Object.freeze({restore:()=>auth.resumeStatus});
  // Storage port: the release-pinned origin-scoped IndexedDB store (looked up at call time).
  const storage={
   profiles:()=>SequentialIDBStore.profiles(),
@@ -54,7 +56,9 @@ export async function createBrowserBackend({config,authFactory,transportFactory,
 // Wraps the shared backend with the saved session (separate export only so the local tests can drive it with fakes).
 export async function withSavedSession({backend,auth,saved,notify=notifySaveFailure}){
  // Remember the unlock phrase only after a successful manual unlock, and only that one field of that one route.
- const request=async(path,body)=>{const result=await backend.request(path,body);if(path==='/api/vault/unlock'&&typeof body?.unlockSecret==='string'){try{await saved.unlock.save(body.unlockSecret);}catch(error){notify(error?.code==='AUTH_SIGNED_OUT_ELSEWHERE'?'AUTH_SIGNED_OUT_ELSEWHERE':'UNLOCK_PERSIST_SAVE_FAILED');}}return result;};
+ // M1: right before a manual unlock, a page that is still signed out tries to restore the saved login once more (the start-up attempt may have been
+ // deferred by a network or server hiccup). One attempt per click; its outcome is only reported through resumeStatus, a failure never blocks the unlock call.
+ const request=async(path,body)=>{if(path==='/api/vault/unlock'&&auth.status?.state==='LOCKED'){try{await auth.resume({reason:'retry'});}catch{}}const result=await backend.request(path,body);if(path==='/api/vault/unlock'&&typeof body?.unlockSecret==='string'){try{await saved.unlock.save(body.unlockSecret);}catch(error){notify(error?.code==='AUTH_SIGNED_OUT_ELSEWHERE'?'AUTH_SIGNED_OUT_ELSEWHERE':'UNLOCK_PERSIST_SAVE_FAILED');}}return result;};
  // Auto-open at start, only when the provider session resumed without email+TOTP. A refused phrase is forgotten; busy/auth/selection results keep it.
  try{if(await auth.resume()){const secret=await saved.unlock.load();if(secret){try{await backend.request('/api/vault/unlock',{unlockSecret:secret});}catch(error){if(!/OWNER|BUSY|CLOSING|SELECTION|ALREADY|AUTH/.test(String(error?.code??'')))await saved.unlock.forget();}}}}catch{}
  return Object.freeze({...backend,request});

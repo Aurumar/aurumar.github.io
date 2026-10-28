@@ -12,6 +12,10 @@ import {check} from '../../core/package/src/codec.mjs';
 // remembered marker is no longer current is refused (AUTH_SIGNED_OUT_ELSEWHERE), so a tab that was still signed in cannot recreate the saved login.
 export const AUTH_DATABASE_NAME='LIFE_BRICK_AUTH_PERSIST_V1';
 export const SIGNOUT_DATABASE_NAME='LIFE_BRICK_AUTH_SIGNOUT_V1';
+// M1: how many starts in a row could not restore the login without a definite rejection (a number and a time, nothing secret). Kept in its own
+// database so the sign-out marker database still holds only the random id; cleared by a successful restore/login, a definite rejection and sign-out.
+export const RESTORE_DATABASE_NAME='LIFE_BRICK_AUTH_RESTORE_V1';
+const DEFERRED_ID='deferred';
 const STORE='saved',KEY_ID='key',AUTH_ID='auth',UNLOCK_ID='unlock',MARKER_ID='marker';
 const AUTH_SEALED='LB_AUTH_PERSIST_SEALED_1',UNLOCK_SEALED='LB_UNLOCK_PERSIST_SEALED_1',AUTH_RECORD='LB_AUTH_PERSIST_1';
 const enc=new TextEncoder(),dec=new TextDecoder('utf-8',{fatal:true});
@@ -36,6 +40,7 @@ export function createSavedSessionIDB({idb=globalThis.indexedDB,crypto=globalThi
  const dropAll=()=>new Promise((ok,no)=>{const r=idb.deleteDatabase(AUTH_DATABASE_NAME);r.onsuccess=()=>ok();r.onerror=()=>no(r.error??new Error('SAVED_IDB_DELETE'));});
  async function withDb(fn,name=AUTH_DATABASE_NAME){const db=await open(name);try{return await fn(db);}finally{db.close();}}
  const readMarker=()=>withDb(async db=>(await readAll(db)).get(MARKER_ID)?.value??null,SIGNOUT_DATABASE_NAME);
+ const readDeferred=()=>withDb(async db=>{const n=(await readAll(db)).get(DEFERRED_ID)?.count;return Number.isSafeInteger(n)&&n>0?n:0;},RESTORE_DATABASE_NAME);
  const randomId=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
  // Returns the key plus the rows that must be written/deleted with it; a missing or unusable key makes the old sealed rows unreadable, so they go.
  async function ensureKey(rows){
@@ -81,8 +86,12 @@ export function createSavedSessionIDB({idb=globalThis.indexedDB,crypto=globalThi
   async marker(){return exclusive(async()=>{try{lastMarker=await readMarker();}catch(error){lastMarker=undefined;throw error;}return lastMarker;});},
   // Forgetting the login (90 idle days, refused session) removes the whole database: token, key and unlock phrase.
   forget(){return exclusive(dropAll);},
+  // Consecutive deferred starts (see auth-session.mjs resume()): +1 and return, read, or clear.
+  noteDeferred(){return exclusive(async()=>{const n=(await readDeferred())+1;await withDb(db=>write(db,[{id:DEFERRED_ID,count:n,at:Math.floor(Date.now()/1000)}],[]),RESTORE_DATABASE_NAME);return n;});},
+  deferredCount(){return exclusive(readDeferred);},
+  clearDeferred(){return exclusive(()=>withDb(db=>write(db,[],[DEFERRED_ID]),RESTORE_DATABASE_NAME));},
   // Explicit sign-out: new marker first (so no other tab can save any more), then the whole saved session is deleted. A failure is thrown, never hidden.
-  signOut(){return exclusive(async()=>{lastMarker=undefined;await withDb(db=>write(db,[{id:MARKER_ID,value:randomId()}],[]),SIGNOUT_DATABASE_NAME);await dropAll();});},
+  signOut(){return exclusive(async()=>{lastMarker=undefined;await withDb(db=>write(db,[{id:MARKER_ID,value:randomId()}],[]),SIGNOUT_DATABASE_NAME);await dropAll();try{await withDb(db=>write(db,[],[DEFERRED_ID]),RESTORE_DATABASE_NAME);}catch{}});},
  };
  const unlock={
   async save(secret){check(typeof secret==='string'&&secret.isWellFormed()&&secret.length>=12&&secret.length<=1024,'UNLOCK_SECRET_PROFILE');await save(UNLOCK_ID,UNLOCK_SEALED,enc.encode(secret));},

@@ -86,8 +86,8 @@
     },
     {
       "path": "multi-device/auth-session.mjs",
-      "sourceSha256": "dcf881a9891236d239e3d3ea892348852b25d613c1ed0f408f4dccb788e557eb",
-      "outputSha256": "dcf881a9891236d239e3d3ea892348852b25d613c1ed0f408f4dccb788e557eb",
+      "sourceSha256": "1ba432c56248dbb1713c20c205e8c253b0925e7024ee5ae67e1539d976f15b4d",
+      "outputSha256": "1ba432c56248dbb1713c20c205e8c253b0925e7024ee5ae67e1539d976f15b4d",
       "dependencies": [
         "core/package/src/codec.mjs"
       ],
@@ -143,8 +143,8 @@
     },
     {
       "path": "multi-device/browser/backend.mjs",
-      "sourceSha256": "3e03d0cd522594d799ca2bc156b0362120a67427d00db02142a857677a96d58e",
-      "outputSha256": "3e03d0cd522594d799ca2bc156b0362120a67427d00db02142a857677a96d58e",
+      "sourceSha256": "2d7fdec87467a2a24e23e5079fce13d30c04792ec5843e527df56c3b5a523876",
+      "outputSha256": "2d7fdec87467a2a24e23e5079fce13d30c04792ec5843e527df56c3b5a523876",
       "dependencies": [
         "core/package/src/codec.mjs",
         "multi-device/auth-session.mjs",
@@ -171,8 +171,8 @@
     },
     {
       "path": "multi-device/browser/auth-persist-idb.mjs",
-      "sourceSha256": "91279ccc0b3cef1d6bbc2f0fb709ab5dc8993a806c37e99e05b64fb442aa7341",
-      "outputSha256": "91279ccc0b3cef1d6bbc2f0fb709ab5dc8993a806c37e99e05b64fb442aa7341",
+      "sourceSha256": "13593bc19420c34a3cab0a16ecb4a273716ca865e913e8ffdb6e245f5a1f745a",
+      "outputSha256": "13593bc19420c34a3cab0a16ecb4a273716ca865e913e8ffdb6e245f5a1f745a",
       "dependencies": [
         "core/package/src/codec.mjs"
       ],
@@ -332,8 +332,8 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "dad3cb685af6215b4f23777891101dd0c71b2484433331a7d07a040f8a82a4dd",
-      "outputSha256": "dad3cb685af6215b4f23777891101dd0c71b2484433331a7d07a040f8a82a4dd",
+      "sourceSha256": "031c5f1df00a378a411623966fee62d42098f1a8533e6e3d3a71b2136ec7c197",
+      "outputSha256": "031c5f1df00a378a411623966fee62d42098f1a8533e6e3d3a71b2136ec7c197",
       "dependencies": [],
       "transforms": []
     },
