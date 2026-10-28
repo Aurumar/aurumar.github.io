@@ -332,8 +332,8 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "031c5f1df00a378a411623966fee62d42098f1a8533e6e3d3a71b2136ec7c197",
-      "outputSha256": "031c5f1df00a378a411623966fee62d42098f1a8533e6e3d3a71b2136ec7c197",
+      "sourceSha256": "422e2112f7419bd27f9ca6520448a2a4a23ff06af25af765058e38dfc2f1be1d",
+      "outputSha256": "422e2112f7419bd27f9ca6520448a2a4a23ff06af25af765058e38dfc2f1be1d",
       "dependencies": [],
       "transforms": []
     },

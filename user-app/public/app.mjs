@@ -32,7 +32,7 @@ function restoreText(r){
  return '로그인 복원 · '+code+' · '+text+(again?' · 연속 '+(Number.isSafeInteger(r.count)?r.count:3)+'회 복원하지 못했습니다. 저장된 로그인은 지우지 않았으니 서버 로그인을 다시 하세요.':'');
 }
 function renderRestore(){const n=document.getElementById('md-auth-restore');if(!n)return;let r=null;try{r=globalThis.LIFE_BRICK_AUTH_DIAG?.restore?.()??null;}catch{r=null;}const t=restoreText(r);n.textContent=t;n.hidden=!t;n.dataset.code=t?r.code:'';}
-function renderProductState(){const n=document.getElementById('md-product-state');if(n){n.textContent=productText(mdProduct);n.dataset.state=mdProduct?.freshness||'LOCKED';}renderRestore();}
+function renderProductState(){const n=document.getElementById('md-product-state');if(n){n.textContent=productText(mdProduct);n.dataset.state=mdProduct?.freshness||'LOCKED';}renderRestore();saTrack();}
 function mdApply(s){mdRole=s.localRole??'NONE';mdUnlockState=s.unlockState??null;mdUnlocked=s.state==='UNLOCKED';mdReady=s.writeReady===true&&(!ownerSurface()||mdRole==='OWNER');mdProduct=productOf(s);mdDraftReady=!mdReady&&can('draft-save')&&mdRole==='OWNER'&&mdUnlocked;renderProductState();}
 const $=id=>document.getElementById(id);
 // B1 navigation. Phone: HOME TODAY PLANS CALENDAR + MORE. Wider screens show every destination. No route is
@@ -183,7 +183,7 @@ function status(message,error=false){$('status').textContent=message;$('status')
 function lock(value){busy=value;for(const n of document.querySelectorAll('button,input,textarea,select')){if(value&&!n.disabled){n.disabled=true;n.dataset.busyLock='1';}else if(!value&&n.dataset.busyLock){n.disabled=false;delete n.dataset.busyLock;}if(ended)n.disabled=true;}applyMDLocks();}
 function appError(code){return Object.assign(new Error(code),{code});}
 function errorText(code){return ({UNLOCK_FAILED:'비밀문구가 맞지 않습니다.',STALE_HEADS:'원본이 바뀌었습니다. 편집을 취소하고 최신 내용을 확인하세요.',INVALID_TEXT:'입력 길이와 내용을 확인하세요.',DEFERRED_REASON_REQUIRED:'보류 이유를 입력하세요.',INVALID_DECIMAL_AMOUNT:'금액은 0 이상의 숫자로 입력하세요. 선택한 소수 자릿수를 확인하세요.',HOLD_CAPSULE_PUBLICATION:'저장 결과를 확정할 수 없습니다. 추가 저장을 중단했습니다. 파일을 삭제하거나 되돌리지 마세요.',HOLD_UNKNOWN_SAVE:'저장 결과가 불명확합니다. 새 요청으로 반복하지 마세요.',UNSAVED_ACTION_DRAFT:'이 행동의 오늘 입력을 먼저 저장하세요.',FINANCE_ITEMS_REQUIRED:'항목을 추가하거나 명시적으로 없음(0)을 선택하세요.'})[code]||'작업을 완료하지 못했습니다: '+code;}
-function fail(error){const code=error.code||'HOLD_CONNECTION';renderRestore();problem={code,kind:(code==='HOLD_STORE_FORMAT_NEWER_FAIL_CLOSED'||code.startsWith('UPDATE_REQUIRED'))?'UPDATE':['MD_PENDING_RECONCILE_REQUIRED','HOLD_UNKNOWN_SAVE'].includes(code)?'UNKNOWN':code==='MD_NOT_WRITE_READY'?'NOT_WRITE_READY':'ERROR'};if(mdProfile){if(code!=='MD_ALREADY_UNLOCKED'){mdReady=false;mdDraftReady=can('draft-save')&&mdRole==='OWNER'&&mdUnlocked;}const guidance={HOLD_STORE_FORMAT_NEWER_FAIL_CLOSED:SAVE_TEXT.UPDATE+' · 이 데이터는 더 새로운 LIFE BRICK 형식이라 열지 않았습니다. 기록은 그대로 보존됩니다. 최신 앱으로 여세요.',MD_NOT_WRITE_READY:(autoWriteFail==='WRITER_BUSY'||autoWriteFail==='STALE_HEAD'?'다른 기기나 창이 기록 중입니다 · 입력은 그대로 남아 있습니다 · 최대 약 2분 뒤 같은 입력으로 다시 저장하세요(자동 재시도는 한 번만 했습니다). 방금 닫은 이 기기의 창일 수도 있습니다.':/^AUTH_/.test(autoWriteFail||'')?'로그인이 만료되어 저장하지 못했습니다 · 입력은 그대로 남아 있습니다 · 연결 · 장치에서 서버 로그인 후 다시 저장하세요.':autoWriteFail==='OFFLINE'?'오프라인이라 저장하지 못했습니다 · 입력은 그대로 남아 있습니다 · 연결되면 다시 저장하세요.':'지금은 확정 저장을 할 수 없습니다 · 연결 · 장치에서 동기화하고 기록 권한을 받으세요.'),MD_PENDING_RECONCILE_REQUIRED:SAVE_TEXT.CHECK+' · 이 저장이 서버에 반영됐는지 아직 모릅니다. 새로 저장하지 말고 연결 · 장치에서 "미확정 저장 결과 확인"을 누르세요.',HOLD_MIGRATION_FAILED:'업데이트를 마무리하지 못함 · 기록은 보호됨 · 앱을 다시 열어 저장된 상태를 확인하세요.',UPDATE_REQUIRED_READ_ONLY_HOLD:'앱 업데이트 필요 · 읽기 전용으로 보호됨 · 최신 앱으로 계속하세요.',UPDATE_REQUIRED_SERVER_CONTRACT:'읽기 전용으로 보호됨 · 이 서버와 앱의 업데이트 준비를 확인해야 합니다.',AUTH_AAL2_REQUIRED:'서버 로그인이 이메일 코드 단계까지만 확인된 상태입니다 · 연결 · 장치에서 인증 앱(TOTP) 코드까지 입력하세요. 저장된 로그인이 복원되지 않았다면 "로그인 복원" 줄의 이유를 확인하세요.',AUTH_EXPIRED:'서버 로그인이 만료되었습니다 · 연결 · 장치에서 서버 로그인 후 다시 시도하세요. "로그인 복원" 줄에 복원하지 못한 이유가 표시됩니다.',AUTH_NOT_PROVISIONED:SAVE_TEXT.NOT_PROVISIONED+' · 이 기기에서 읽기와 임시 저장만 가능합니다.',MD_ROUTE:'이 앱 구성에서는 사용할 수 없는 기능입니다.',MD_ALREADY_UNLOCKED:'이 탭의 저장소는 이미 열려 있습니다. 중복 잠금해제 대신 현재 상태를 확인하세요.',MD_NO_LOCAL_PROFILE:'이 브라우저 저장소에 로컬 프로필이 없습니다. 기존 origin과 browser profile을 확인하세요.',MD_PROFILE_SELECTION_REQUIRED:'여러 프로필 중 사용할 항목을 먼저 선택하세요.',MD_LOCAL_RECORD_MISSING_OR_MISMATCH:'선택한 로컬 기록이 없거나 origin/id가 맞지 않습니다. 사이트 데이터를 지우거나 새 등록을 시작하지 마세요.',MD_LOCAL_FOLLOWER_READ_ONLY:'이 탭은 읽기 전용입니다. 소유 탭을 종료한 뒤 이 탭에서 최신 기록을 다시 열어 인계받으세요.',MD_LOCAL_OWNER_BUSY:'다른 탭이 아직 소유 중입니다. 그 탭에서 안전하게 인계한 뒤 다시 시도하세요.',MD_LOCAL_OWNER_LOCK_UNAVAILABLE:'브라우저의 배타적 탭 잠금을 사용할 수 없어 쓰기를 차단했습니다.',MD_LOCAL_OWNER_CLOSING:'소유권 인계 또는 로컬 기록 재개방 중입니다. 새 작업을 시작하지 마세요.'};status(guidance[code]||'저장·연결 보류 · '+code+' · 결과를 모르는 저장은 확인한 뒤 진행하세요.',true);applyMDLocks();refreshSaveCards();return;}if(code.startsWith('HOLD_')||code.startsWith('SECURITY_'))ended=true;status(errorText(code),true);if($('editor').open)$('editor-error').textContent=errorText(code);refreshSaveCards();}
+function fail(error){const code=error.code||'HOLD_CONNECTION';renderRestore();problem={code,kind:(code==='HOLD_STORE_FORMAT_NEWER_FAIL_CLOSED'||code.startsWith('UPDATE_REQUIRED'))?'UPDATE':['MD_PENDING_RECONCILE_REQUIRED','HOLD_UNKNOWN_SAVE'].includes(code)?'UNKNOWN':code==='MD_NOT_WRITE_READY'?'NOT_WRITE_READY':'ERROR'};if(mdProfile){if(code!=='MD_ALREADY_UNLOCKED'){mdReady=false;mdDraftReady=can('draft-save')&&mdRole==='OWNER'&&mdUnlocked;}const guidance={HOLD_STORE_FORMAT_NEWER_FAIL_CLOSED:SAVE_TEXT.UPDATE+' · 이 데이터는 더 새로운 LIFE BRICK 형식이라 열지 않았습니다. 기록은 그대로 보존됩니다. 최신 앱으로 여세요.',MD_NOT_WRITE_READY:(autoWriteFail==='WRITER_BUSY'||autoWriteFail==='STALE_HEAD'?'다른 기기나 창이 기록 중입니다 · 입력은 그대로 남아 있습니다 · 최대 약 2분 뒤 같은 입력으로 다시 저장하세요(자동 재시도는 한 번만 했습니다). 방금 닫은 이 기기의 창일 수도 있습니다.':/^AUTH_/.test(autoWriteFail||'')?'로그인이 만료되어 저장하지 못했습니다 · 입력은 그대로 남아 있습니다 · 연결 · 장치에서 서버 로그인 후 다시 저장하세요.':autoWriteFail==='OFFLINE'?'오프라인이라 저장하지 못했습니다 · 입력은 그대로 남아 있습니다 · 연결되면 다시 저장하세요.':'지금은 확정 저장을 할 수 없습니다 · 연결 · 장치에서 동기화하고 기록 권한을 받으세요.'),MD_PENDING_RECONCILE_REQUIRED:SAVE_TEXT.CHECK+' · 이 저장이 서버에 반영됐는지 아직 모릅니다. 새로 저장하지 말고 연결 · 장치에서 "미확정 저장 결과 확인"을 누르세요.',HOLD_MIGRATION_FAILED:'업데이트를 마무리하지 못함 · 기록은 보호됨 · 앱을 다시 열어 저장된 상태를 확인하세요.',UPDATE_REQUIRED_READ_ONLY_HOLD:'앱 업데이트 필요 · 읽기 전용으로 보호됨 · 최신 앱으로 계속하세요.',UPDATE_REQUIRED_SERVER_CONTRACT:'읽기 전용으로 보호됨 · 이 서버와 앱의 업데이트 준비를 확인해야 합니다.',AUTH_AAL2_REQUIRED:'서버 로그인이 이메일 코드 단계까지만 확인된 상태입니다 · 연결 · 장치에서 인증 앱(TOTP) 코드까지 입력하세요. 저장된 로그인이 복원되지 않았다면 "로그인 복원" 줄의 이유를 확인하세요.',AUTH_EXPIRED:'서버 로그인이 만료되었습니다 · 연결 · 장치에서 서버 로그인 후 다시 시도하세요. "로그인 복원" 줄에 복원하지 못한 이유가 표시됩니다.',AUTH_NOT_PROVISIONED:SAVE_TEXT.NOT_PROVISIONED+' · 이 기기에서 읽기와 임시 저장만 가능합니다.',MD_ROUTE:'이 앱 구성에서는 사용할 수 없는 기능입니다.',MD_ALREADY_UNLOCKED:'이 탭의 저장소는 이미 열려 있습니다. 중복 잠금해제 대신 현재 상태를 확인하세요.',MD_NO_LOCAL_PROFILE:'이 브라우저 저장소에 로컬 프로필이 없습니다. 기존 origin과 browser profile을 확인하세요.',MD_PROFILE_SELECTION_REQUIRED:'여러 프로필 중 사용할 항목을 먼저 선택하세요.',MD_LOCAL_RECORD_MISSING_OR_MISMATCH:'선택한 로컬 기록이 없거나 origin/id가 맞지 않습니다. 사이트 데이터를 지우거나 새 등록을 시작하지 마세요.',MD_LOCAL_FOLLOWER_READ_ONLY:'이 탭은 읽기 전용입니다. 소유 탭을 종료한 뒤 이 탭에서 최신 기록을 다시 열어 인계받으세요.',MD_LOCAL_OWNER_BUSY:'다른 탭이 아직 소유 중입니다. 그 탭에서 안전하게 인계한 뒤 다시 시도하세요.',MD_LOCAL_OWNER_LOCK_UNAVAILABLE:'브라우저의 배타적 탭 잠금을 사용할 수 없어 쓰기를 차단했습니다.',MD_LOCAL_OWNER_CLOSING:'소유권 인계 또는 로컬 기록 재개방 중입니다. 새 작업을 시작하지 마세요.'};const shown=guidance[code]||'저장·연결 보류 · '+code+' · 결과를 모르는 저장은 확인한 뒤 진행하세요.';status(shown,true);saRejected(code,shown);applyMDLocks();refreshSaveCards();return;}if(code.startsWith('HOLD_')||code.startsWith('SECURITY_'))ended=true;status(errorText(code),true);if($('editor').open)$('editor-error').textContent=errorText(code);refreshSaveCards();}
 async function perform(fn){if(busy||ended)return;lock(true);try{await fn();}catch(e){fail(e);}finally{lock(false);}}
 async function api(path,body){if(mdBackend)return mdBackend.request(path,body);const headers={};if(capability)headers.Authorization='Bearer '+capability;if(body!==undefined)headers['Content-Type']='application/json';const response=await fetch(path,{method:body===undefined?'GET':'POST',headers,body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer'});const result=await response.json();if(!response.ok)throw appError(result.code||'HOLD_HTTP_RESPONSE');return result;}
 async function submit(path,body){const result=await submitWrite(path,body);lastSave={status:result.status,at:Date.now()};return result;}
@@ -232,6 +232,97 @@ function setup(state){if(state.profile==='LBOS_SEQUENTIAL_OWNER_APP_1'){mdProfil
 $('setup-form').addEventListener('submit',event=>{event.preventDefault();void perform(async()=>{try{if(setupState==='SETUP'){const inputs=[...$('seed-titles').querySelectorAll('input')],seeds=inputs.map((n,i)=>({actionId:n.dataset.actionId,title:n.value,active:true,displayOrder:i}));const r=await submit('/api/vault/create',{requestId:uid(),commandDigest:await sha({type:'INITIALIZE',seeds}),unlockSecret:$('unlock-secret').value,recoverySecret:$('recovery-secret').value,titles:inputs.map(n=>n.value)});if(r.status!==savedStatus())throw appError('HOLD_UNKNOWN_SAVE');}else await api('/api/vault/unlock',{unlockSecret:$('unlock-secret').value});await refresh();status(savedMessage());}finally{$('unlock-secret').value='';$('recovery-secret').value='';}});});
 function navigate(next,{focus=true}={}){void perform(async()=>{if(ROUTE_ALIAS[next]){if(next==='HOUSE')houseFocus=true;next=ROUTE_ALIAS[next];}view=next;await render();window.scrollTo(0,0);if(houseFocus){houseFocus=false;$('house')?.scrollIntoView({block:'start'});}if(focus)$('page-title').focus({preventScroll:true});});}
 async function render(){if(ROUTE_ALIAS[view])view=ROUTE_ALIAS[view];const [title,sub]=VIEW_META[view];$('page-kicker').textContent=view;$('page-title').textContent=title;$('page-title').tabIndex=-1;$('page-subtitle').textContent=sub;renderNav();const root=$('view-content');root.replaceChildren();if(view==='CALENDAR'){calendarMode??=narrow()?'7_DAY':'MONTH';calendarState=await api('/api/calendar-view',{mode:calendarMode,date:calendarDate});}({HOME:renderHome,TODAY:renderToday,LIFE:renderLife,PLANS:renderPlans,CALENDAR:renderCalendar,FINANCE:renderFinance,PROGRESS:renderProgress,HISTORY:renderHistory,SETTINGS:renderSettings,DEVICES:renderDevices,MORE:renderMore})[view](root);applyMDLocks();}
+// SA_FIXES (2026-10-29): display only. Nothing in this block changes what is saved, when, or how (no sync, lease, crypto or server protocol code).
+// F1: a rejected save also shows its reason and the recovery path inside the open editor window and on the cards that still hold unsaved input (called from fail()).
+// F2: once write-ready is confirmed again (renderProductState), only the red lines of resolvable rejections are cleared. HOLD_*, MD_PENDING_RECONCILE_REQUIRED and
+// UPDATE_* are not in this set and are never cleared. A line is cleared only after the backend was seen not write-ready and later write-ready again.
+const SA_RESOLVABLE=new Set(['STALE_HEADS','STALE_HEAD','MD_NOT_WRITE_READY','WRITER_BUSY']);
+let saState=null,saEditor=null,saRendering=0;
+function saRejectLine(code,shown){
+ if(!SA_RESOLVABLE.has(code))return shown;
+ const why=autoWriteFail||'',login=/^AUTH_/.test(why);
+ const reason=code==='STALE_HEADS'?'다른 기기에서 먼저 바뀐 내용이 있어 저장이 거절되었습니다':login?'서버 로그인이 만료되어 저장하지 못했습니다':why==='OFFLINE'?'오프라인이라 저장하지 못했습니다':code==='WRITER_BUSY'||code==='STALE_HEAD'||why==='WRITER_BUSY'||why==='STALE_HEAD'?'다른 기기나 창이 기록 중이라 저장하지 못했습니다':'기록 권한이 없어 저장하지 못했습니다';
+ return '저장 거절 · '+reason+' · 복구: 연결 · 장치 → '+(login?'서버 로그인 → ':'')+'최신 내용 동기화 → 기록 권한 받기';
+}
+function saRejected(code,shown){
+ const line=saRejectLine(code,shown),open=$('editor').open;
+ saState={code,text:shown,line,lapsed:mdProduct?.freshness!=='SYNCED_WRITE_READY'};
+ saEditor=open?{controls:saIn([$('editor-content')]),lastSave}:null;
+ if(open)$('editor-error').textContent=line;
+ for(const card of document.querySelectorAll('#view-content .action-card')){
+  if(!drafts.has(card.dataset.actionId))continue;
+  let n=card.querySelector('.sa-reject');
+  if(!n){n=el('p',null,'save-state sa-reject');n.dataset.kind='changed';n.setAttribute('role','alert');const r=card.querySelector('.save-row');if(r)r.after(n);else card.append(n);}
+  n.textContent=line;
+ }
+}
+function saTrack(){
+ if(!saState)return;
+ if(mdProduct?.freshness!=='SYNCED_WRITE_READY'){saState.lapsed=true;return;}
+ if(!saState.lapsed||!mdReady||!SA_RESOLVABLE.has(saState.code))return;
+ const s=saState;saState=null;
+ if($('status').dataset.error==='true'&&$('status').textContent===s.text)status('');
+ if($('editor').open&&$('editor-error').textContent===s.line)$('editor-error').textContent='';
+ for(const n of [...document.querySelectorAll('.sa-reject')])n.remove();
+ if(problem&&SA_RESOLVABLE.has(problem.code)){problem=null;refreshSaveCards();}
+}
+// F3: nothing the owner changed may disappear without a notice. Card input lives in `drafts` and survives a redraw; every other control that carries a change
+// (plan milestone toggles, display checkboxes, ...) is compared with the rebuilt screen. What is dropped is listed in a banner that stays until it is closed.
+// The values stay in memory and on the screen only: no file, log, storage or network use.
+const saRaw=n=>n.type==='checkbox'?(n.checked?'1':'0'):String(n.value??'');
+const saShown=n=>n.type==='checkbox'?(n.checked?'켜짐':'꺼짐'):n.tagName==='SELECT'?String(n.selectedOptions?.[0]?.textContent??n.value??''):String(n.value??'');
+const saLabel=n=>n.getAttribute('aria-label')||'';
+function saIn(nodes){
+ const out=[];
+ for(const x of nodes){
+  if(x?.nodeType!==1)continue;
+  for(const n of [...(x.matches('input,textarea,select')?[x]:[]),...x.querySelectorAll('input,textarea,select')]){
+   if(['password','hidden','radio','file'].includes(n.type)||!saLabel(n)||n.closest('.action-card,#md-controls'))continue;
+   out.push(n);
+  }
+ }
+ return out;
+}
+function saStamp(root){for(const n of saIn([root])){n.dataset.editKey=view+'|'+saLabel(n);n.dataset.editInit=saRaw(n);}}
+function saDirty(nodes){return saIn(nodes).filter(n=>n.dataset.editKey!==undefined&&saRaw(n)!==n.dataset.editInit).map(n=>({key:n.dataset.editKey,label:saLabel(n),raw:saRaw(n),shown:saShown(n)}));}
+const saLost=[];
+function saNotify(items,why){
+ for(const i of items)if(!saLost.some(x=>x.label===i.label&&x.value===i.value&&x.now===i.now))saLost.push({...i,why});
+ saBanner();
+}
+function saBanner(){
+ let box=document.getElementById('sa-dropped');
+ if(!saLost.length){box?.remove();return;}
+ if(!box){box=el('section',null,'save-state-card tone-alert');box.id='sa-dropped';box.setAttribute('role','alert');$('status').after(box);}
+ const main=add(el('div',null,'state-main'),el('span','저장하지 않은 입력','state-kicker'),el('strong','입력한 내용이 화면에서 사라졌습니다 · 아래 내용을 확인하세요'),el('p','저장되지 않은 채 화면이 서버에 저장된 값으로 바뀌었거나 창이 닫혔습니다. 이 내용은 화면에만 표시되고 파일·로그·서버로 보내지 않습니다. 닫기를 누를 때까지 남습니다.'));
+ for(const i of saLost)add(main,el('p',i.label+' · '+i.why,'small'),el('pre',i.value===''?'(빈 값)':i.value.length>4000?i.value.slice(0,4000)+'…':i.value,'path'),i.now===null?null:el('p','지금 화면의 값: '+(i.now===''?'(빈 값)':i.now),'muted small'));
+ box.replaceChildren(main,button('닫기',()=>{saLost.length=0;saBanner();},'secondary'));
+}
+function saReconcile(dirty,root){
+ if(!dirty.length)return;
+ const now=new Map(saIn([root]).map(n=>[n.dataset.editKey,n]));
+ const lost=dirty.filter(d=>{const n=now.get(d.key);return !n||saRaw(n)!==d.raw;});
+ if(lost.length)saNotify(lost.map(d=>{const n=now.get(d.key);return {label:d.label,value:d.shown,now:n?saShown(n):null};}),'화면이 다시 그려지며 사라짐');
+}
+const saRenderBase=render;
+render=async function render(){
+ const root=$('view-content'),dirty=saDirty([root]);saRendering++;
+ try{return await saRenderBase();}
+ finally{saRendering--;saStamp(root);saReconcile(dirty,root);}
+};
+// Wipes of #view-content outside render() (owner hand-off) and a closed editor window whose save was rejected.
+if(globalThis.MutationObserver)new MutationObserver(records=>{
+ if(saRendering)return;
+ const dirty=saDirty(records.flatMap(r=>[...r.removedNodes]));
+ if(dirty.length)saNotify(dirty.map(d=>({label:d.label,value:d.shown,now:null})),'화면이 비워지며 사라짐');
+}).observe($('view-content'),{childList:true});
+$('editor').addEventListener('close',()=>{
+ const e=saEditor;saEditor=null;
+ if(!e||lastSave!==e.lastSave)return;
+ const items=e.controls.filter(n=>saRaw(n)!==''&&saRaw(n)!=='0').map(n=>({label:saLabel(n),value:saShown(n),now:null}));
+ if(items.length)saNotify(items,'거절된 저장 창이 닫히며 사라짐');
+});
+// SA_FIXES_END
 function navButton(key,label,icon,active,cls){const n=el('button',null,'nav-item '+cls+(active?' active':'')),mark=el('span',icon,'nav-symbol');n.type='button';n.dataset.navOnly='1';n.dataset.view=key;mark.setAttribute('aria-hidden','true');add(n,mark,el('span',label,'nav-label'));n.setAttribute('aria-label',label);if(active)n.setAttribute('aria-current','page');n.addEventListener('click',()=>navigate(key));return n;}
 function renderNav(){const inMore=view==='MORE'||MORE_VIEWS.includes(view);$('navigation').replaceChildren(...NAV.map(([key,label,,icon])=>navButton(key,label,icon,key===view,PHONE_NAV.includes(key)?'nav-core':'nav-wide')),navButton('MORE','더보기','⋯',inMore,'nav-phone'));updateUnsaved();}
 function updateUnsaved(){for(const n of document.querySelectorAll('#navigation [data-view="TODAY"]')){if(drafts.size){n.dataset.unsaved=String(drafts.size);n.setAttribute('aria-label','오늘 · 저장하지 않은 입력 '+drafts.size+'건');}else{delete n.dataset.unsaved;n.setAttribute('aria-label','오늘');}}}
