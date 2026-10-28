@@ -86,8 +86,8 @@
     },
     {
       "path": "multi-device/auth-session.mjs",
-      "sourceSha256": "9e57a26b3304f82c9bd251b21dedb98c19b2094fc3ced22f8ea42bbbe60df588",
-      "outputSha256": "9e57a26b3304f82c9bd251b21dedb98c19b2094fc3ced22f8ea42bbbe60df588",
+      "sourceSha256": "dcf881a9891236d239e3d3ea892348852b25d613c1ed0f408f4dccb788e557eb",
+      "outputSha256": "dcf881a9891236d239e3d3ea892348852b25d613c1ed0f408f4dccb788e557eb",
       "dependencies": [
         "core/package/src/codec.mjs"
       ],
@@ -119,8 +119,8 @@
     },
     {
       "path": "multi-device/md-backend.mjs",
-      "sourceSha256": "ebf41c557472e77524b0b7ca29a6160d7692f73207ff12db5bf2543721400310",
-      "outputSha256": "ebf41c557472e77524b0b7ca29a6160d7692f73207ff12db5bf2543721400310",
+      "sourceSha256": "52b76bc76f7590e949e4e83d30b05896f0b9653a47250bc616e0a201ebe4152c",
+      "outputSha256": "52b76bc76f7590e949e4e83d30b05896f0b9653a47250bc616e0a201ebe4152c",
       "dependencies": [
         "core/package/src/codec.mjs",
         "multi-device/sequential-service.mjs",
@@ -133,8 +133,8 @@
     },
     {
       "path": "multi-device/browser/entry.mjs",
-      "sourceSha256": "e818b3cb59e4de4dc2d3753da67b3429589f3f301d6160c63632b77acaba13e7",
-      "outputSha256": "e818b3cb59e4de4dc2d3753da67b3429589f3f301d6160c63632b77acaba13e7",
+      "sourceSha256": "d6a5d14f4e23a8bd979165cc13870048b4e0034599b6a0ad7e978e7549fd9f85",
+      "outputSha256": "d6a5d14f4e23a8bd979165cc13870048b4e0034599b6a0ad7e978e7549fd9f85",
       "dependencies": [
         "multi-device/browser/backend.mjs",
         "user-app/public/app.mjs"
@@ -143,14 +143,15 @@
     },
     {
       "path": "multi-device/browser/backend.mjs",
-      "sourceSha256": "2546b9eec45640827a8142c32a6c93b4c0b967041f3cb81a2c1876b87a69caa0",
-      "outputSha256": "2546b9eec45640827a8142c32a6c93b4c0b967041f3cb81a2c1876b87a69caa0",
+      "sourceSha256": "3e03d0cd522594d799ca2bc156b0362120a67427d00db02142a857677a96d58e",
+      "outputSha256": "3e03d0cd522594d799ca2bc156b0362120a67427d00db02142a857677a96d58e",
       "dependencies": [
         "core/package/src/codec.mjs",
         "multi-device/auth-session.mjs",
         "multi-device/owner-transport.mjs",
         "multi-device/browser/indexeddb-store.mjs",
-        "multi-device/md-backend.mjs"
+        "multi-device/md-backend.mjs",
+        "multi-device/browser/auth-persist-idb.mjs"
       ],
       "transforms": []
     },
@@ -165,6 +166,15 @@
         "core/package/src/recovery.mjs",
         "multi-device/contracts.mjs",
         "multi-device/sequential-service.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "multi-device/browser/auth-persist-idb.mjs",
+      "sourceSha256": "91279ccc0b3cef1d6bbc2f0fb709ab5dc8993a806c37e99e05b64fb442aa7341",
+      "outputSha256": "91279ccc0b3cef1d6bbc2f0fb709ab5dc8993a806c37e99e05b64fb442aa7341",
+      "dependencies": [
+        "core/package/src/codec.mjs"
       ],
       "transforms": []
     },
@@ -322,8 +332,8 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "f23054b571ce0e76b53bb117eb68a7953461ef2a4799954752e1c051d15fcc52",
-      "outputSha256": "f23054b571ce0e76b53bb117eb68a7953461ef2a4799954752e1c051d15fcc52",
+      "sourceSha256": "e82bf5c98da70c662d8a9a7ecd6a0336774da1bd8fa55346910d41f0eb12b094",
+      "outputSha256": "e82bf5c98da70c662d8a9a7ecd6a0336774da1bd8fa55346910d41f0eb12b094",
       "dependencies": [],
       "transforms": []
     },
