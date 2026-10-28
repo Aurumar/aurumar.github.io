@@ -143,8 +143,8 @@
     },
     {
       "path": "multi-device/browser/backend.mjs",
-      "sourceSha256": "2d7fdec87467a2a24e23e5079fce13d30c04792ec5843e527df56c3b5a523876",
-      "outputSha256": "2d7fdec87467a2a24e23e5079fce13d30c04792ec5843e527df56c3b5a523876",
+      "sourceSha256": "c9e97acec61e21b02f67b50d96e56cd06feb22a8dec72fb3a23d964ac6c6efc4",
+      "outputSha256": "c9e97acec61e21b02f67b50d96e56cd06feb22a8dec72fb3a23d964ac6c6efc4",
       "dependencies": [
         "core/package/src/codec.mjs",
         "multi-device/auth-session.mjs",
