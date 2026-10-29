@@ -6,7 +6,7 @@ import {defineLifecycleContract} from './lifecycle-contract.mjs';
 const {check,keys,copy,encode,sha,idOK,randomId,fingerprint}=codec;
 export const lifecycleContract=defineLifecycleContract({...codec,verify,Roster});
 export const emptyLifecycle=()=>({format:'LB_B4_LOCAL_LIFECYCLE_1',interpretationVersion:3,archives:{},terminals:{},retirements:{},archivalRosters:[],restoreMode:false,legacyArchive:null});
-export function lifecycleWritable(store){check(store.state.sequentialSync.lifecycle?.restoreMode===false,'B4_RESTORE_READ_ONLY_HOLD');check(store.storeFormat===3&&store.storageKind==='APP_OWNED_ENCRYPTED_RECORD','B4_LEGACY_MIGRATION_REQUIRED');}
+export function lifecycleWritable(store){check(store.state.sequentialSync.lifecycle?.restoreMode===false,'B4_RESTORE_READ_ONLY_HOLD');check(store.storeFormat>=3&&store.storageKind==='APP_OWNED_ENCRYPTED_RECORD','B4_LEGACY_MIGRATION_REQUIRED');}
 export async function validateLifecycleState(state,material){
  const life=state.sequentialSync.lifecycle;if(!life)return;
  keys(life,['format','interpretationVersion','archives','terminals','retirements','archivalRosters','restoreMode','legacyArchive']);

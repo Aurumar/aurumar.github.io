@@ -11,8 +11,8 @@
     },
     {
       "path": "multi-device/lifecycle-client.mjs",
-      "sourceSha256": "248bc7a022324e5f44ec1ecc54b2ba9ab338145805e43e3cacbff9b484e3a916",
-      "outputSha256": "248bc7a022324e5f44ec1ecc54b2ba9ab338145805e43e3cacbff9b484e3a916",
+      "sourceSha256": "92c812e5fa34b0b2d0491ae00f1aa7b935bb7e918c1d018de23384bc0bc4ffa1",
+      "outputSha256": "92c812e5fa34b0b2d0491ae00f1aa7b935bb7e918c1d018de23384bc0bc4ffa1",
       "dependencies": [
         "core/package/src/codec.mjs",
         "core/package/src/crypto.mjs",
@@ -69,8 +69,8 @@
     },
     {
       "path": "multi-device/sequential-service.mjs",
-      "sourceSha256": "ce4be77fa22789dc313a58dbe3ba154d78a487806bfeb9c6c22bc661b60a898a",
-      "outputSha256": "ce4be77fa22789dc313a58dbe3ba154d78a487806bfeb9c6c22bc661b60a898a",
+      "sourceSha256": "5f3f0b484aa06ad4bf93a97b07019e021ca8898bae65ccf01a1b365079213547",
+      "outputSha256": "5f3f0b484aa06ad4bf93a97b07019e021ca8898bae65ccf01a1b365079213547",
       "dependencies": [
         "core/package/src/codec.mjs",
         "core/package/src/crypto.mjs",
@@ -157,8 +157,8 @@
     },
     {
       "path": "multi-device/browser/indexeddb-store.mjs",
-      "sourceSha256": "13d3b8609a39f05dd51a705f62e9a9d1b94f0d20b5e2edf85e1e690904ad23d3",
-      "outputSha256": "13d3b8609a39f05dd51a705f62e9a9d1b94f0d20b5e2edf85e1e690904ad23d3",
+      "sourceSha256": "01089bc02f2baff7620450746081cbdbed3c4aa2f6aeba44c10c158091ad1f45",
+      "outputSha256": "01089bc02f2baff7620450746081cbdbed3c4aa2f6aeba44c10c158091ad1f45",
       "dependencies": [
         "core/package/src/codec.mjs",
         "core/package/src/crypto.mjs",
@@ -335,8 +335,8 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "f009dd8b648ace86c2b7a7f9a14d0a458829875d26d258fef788f9ed529e61c5",
-      "outputSha256": "f009dd8b648ace86c2b7a7f9a14d0a458829875d26d258fef788f9ed529e61c5",
+      "sourceSha256": "2e394502f5d21262378ba6d1f403274ff281800b0ab84ef1e4d5173b21ec8f5c",
+      "outputSha256": "2e394502f5d21262378ba6d1f403274ff281800b0ab84ef1e4d5173b21ec8f5c",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs",
@@ -437,8 +437,8 @@
     },
     {
       "path": "user-app/public/fin-ledger.mjs",
-      "sourceSha256": "726002c0beee051a068c74fd9c17f63bcf302d83f3ac8fd5c1220aa6125c36d0",
-      "outputSha256": "726002c0beee051a068c74fd9c17f63bcf302d83f3ac8fd5c1220aa6125c36d0",
+      "sourceSha256": "027bfb6b9cece729563e789f1a3cc2133d87833ede2df656df14683926a3e430",
+      "outputSha256": "027bfb6b9cece729563e789f1a3cc2133d87833ede2df656df14683926a3e430",
       "dependencies": [],
       "transforms": []
     },
@@ -895,8 +895,8 @@
     {
       "path": "styles.css",
       "sourcePath": "user-app/public/styles.css",
-      "sourceSha256": "65ee95d34bb458de0a91a30d07ae99d3b8a01b25fcf07038ef4fed9bea148449",
-      "outputSha256": "65ee95d34bb458de0a91a30d07ae99d3b8a01b25fcf07038ef4fed9bea148449"
+      "sourceSha256": "74d849904fa4426833d12f5c337e57fb96da8408f4e227353b0c58df7244a3b1",
+      "outputSha256": "74d849904fa4426833d12f5c337e57fb96da8408f4e227353b0c58df7244a3b1"
     },
     {
       "path": "public-config.json",

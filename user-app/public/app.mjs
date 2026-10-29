@@ -1,4 +1,4 @@
-import {PC_ENTITY_REQUEST_LIMIT,buildBudget,monthSpan,finErrorText,finError,formatWon,formatCompact,shiftMonth,shownMerchant,buildAccount,buildTxn,buildRule,monthLines,duplicateGroups,ledgerCsv,rulePreview,checkImportPlan,opBudget,opBudgetNotice,opsAfter} from './fin-ledger.mjs';
+import {PC_ENTITY_REQUEST_LIMIT,buildBudget,monthSpan,finErrorText,finError,formatWon,formatCompact,shiftMonth,shownMerchant,buildAccount,buildTxn,buildRule,monthLines,duplicateGroups,ledgerCsv,rulePreview,checkImportPlan,opBudget,opBudgetNotice,opsAfter,localBudget,capacityNotice,compactionText} from './fin-ledger.mjs';
 import {PERIODS as PLAN_PERIODS,detectRecurring,recurringGridLayout,costSplit,budgetStatus,budgetBarsLayout,lifeTimeline,timelineLayout} from './fin-plan.mjs';
 import {prepare,PERIODS,periodRange,aggregate,roundDiv,dataMonths,overview,monthlySeries,barLayout,sankeyData,sankeyLayout,treemapItems,squarify,dailyTotals,heatmapMonths,completeness} from './fin-charts.mjs';
 const mdBackend=globalThis.LIFE_BRICK_MD_BACKEND??null;
@@ -477,8 +477,13 @@ function finCheck(parent,label,checked,onChange){const wrap=el('label',null,'inl
 function finSelect(parent,label,value,options,onChange){const s=field(parent,label,'select',value,options);s.dataset.navOnly='1';s.addEventListener('change',()=>onChange(s.value));return s;}
 
 // 금고 연산 한도 안내(문구만). 검증한 원격 버전이 없으면 UNKNOWN(확인 불가)이고 막지 않는다.
+// 가리기는 화면과 CSV 내려받기에 함께 적용된다(저장값은 바꾸지 않음). 두 탭이 같은 상태(finMask)를 쓴다.
+const FIN_MASK_LABEL='민감 가맹점 가리기 (화면·CSV)';
 const finOps=()=>opBudget(whole.settings?.remoteCheckpoint,{pending:mdProduct?.drafts??0});
-function opsNotice(b,{always=false}={}){const n=opBudgetNotice(b);if(!always&&(n.stage==='OK'||n.stage==='UNKNOWN'))return null;const p=el('p',n.text,'ops-notice ops-'+n.tone);p.dataset.stage=n.stage;return p;}
+// F9 로컬 용량(state 바이트 / 4.5MB). 서버 남은 연산과 함께 보고, 더 급한 쪽 단계로 안내한다(문구만, 동작은 막지 않음).
+const finLocal=()=>localBudget(whole.settings?.localState,{ops:whole.settings?.remoteCheckpoint?.version??null});
+function opsNotice(b,{always=false}={}){const n=capacityNotice(b,finLocal());if(!always&&(n.stage==='OK'||n.stage==='UNKNOWN'))return null;const p=add(el('p',null,'ops-notice ops-'+n.tone),...n.lines.map(t=>el('span',t)));p.dataset.stage=n.stage;if(n.limitedBy)p.dataset.limitedBy=n.limitedBy;
+ const c=always?compactionText(whole.settings?.localState?.compaction):null;if(c)add(p,el('span',c,'ops-compaction'));return p;}
 function renderLedger(root){
  const fin=whole.fin;
  if(!fin){add(root,empty('이 앱 버전은 가계부 자료를 보내지 않습니다. 모든 기기를 새 빌드로 업데이트하세요.'));return;}
@@ -496,7 +501,7 @@ function renderFinCharts(root,fin){
  const prep=prepare(fin),range=periodRange(finPeriod,whole.localDate,finCustom),bar=el('div',null,'fin-toolbar');
  finSelect(bar,'기간',finPeriod,PERIODS,v=>void perform(async()=>{finPeriod=v;finTree=[];if(v==='CUSTOM'&&!finCustom.from){finCustom={from:shiftMonth(whole.localDate.slice(0,7),-5),to:whole.localDate.slice(0,7)};}await render();}));
  if(finPeriod==='CUSTOM'){const f=field(bar,'시작 달','month',finCustom.from),t=field(bar,'끝 달','month',finCustom.to);for(const n of [f,t]){n.dataset.navOnly='1';n.max=whole.localDate.slice(0,7);n.addEventListener('change',()=>void perform(async()=>{finCustom={from:f.value,to:t.value};finTree=[];await render();}));}}
- finCheck(bar,'민감 가맹점 가리기 (화면 표시만)',finMask,v=>void perform(async()=>{finMask=v;await render();}));
+ finCheck(bar,FIN_MASK_LABEL,finMask,v=>void perform(async()=>{finMask=v;await render();}));
  add(root,bar,el('p',range.label+(range.error?' · 시작 달이 끝 달보다 늦거나 비어 있습니다':''),'muted small fin-range'));
  if(!fin.lines.length&&!fin.residuals.length){add(root,empty('아직 가계부 자료가 없습니다. "거래"에서 직접 입력하거나 "과거 이력 가져오기"로 가져오세요.'));return;}
  const agg=aggregate(prep,range),ov=overview(prep,whole.localDate),t=agg.total;
@@ -631,7 +636,7 @@ function renderFinTxns(root,fin){
  month.parentElement.before(prev);add(monthNav,next);
  finSelect(nav,'계정 필터',finFilter.accountId,[['','모든 계정'],...fin.accounts.map(a=>[a.id,a.data.name+(a.data.active?'':' (비활성)')])],v=>void perform(async()=>{finFilter.accountId=v;await render();}));
  finSelect(nav,'분류 필터',finFilter.category,[['','모든 분류'],['NONE','분류 없음 (이체·선불)'],...Object.entries(fin.labels.expense),...Object.entries(fin.labels.income)],v=>void perform(async()=>{finFilter.category=v;await render();}));
- finCheck(nav,'민감 가맹점 가리기',finMask,v=>void perform(async()=>{finMask=v;await render();}));
+ finCheck(nav,FIN_MASK_LABEL,finMask,v=>void perform(async()=>{finMask=v;await render();}));
  const create=button('거래 입력',()=>editFinTxn(null),'primary');if(!fin.accounts.some(a=>a.data.active))create.disabled=true;
  add(root,add(el('div',null,'section-toolbar'),hint(fin.accounts.length?'직접 입력한 거래와 가져온 원천 행을 함께 보여 줍니다. 원천 행은 바꿀 수 없고, 분류는 "분류 규칙"으로 바꿉니다.':'먼저 "계정"에서 계정을 추가하세요.'),create),nav);
  const list=monthLines(prep.lines,finMonth,finFilter),sum=aggregate({...prep,lines:list,residuals:[]},{from:null,to:null}).total;
@@ -940,7 +945,7 @@ function renderFinImport(root,fin){
  const pick=button(finImport?'다른 계획 파일 고르기':'계획 파일 고르기',()=>input.click(),finImport?'secondary':'primary');pick.dataset.navOnly='1';
  add(p,input,add(el('div',null,'buttons'),pick,finImport&&!finImport.running?button('파일 닫기',()=>void perform(async()=>{finImport=null;await render();})):null));add(root,p);
  if(!finImport)return;
- const st=finImport,draft=mdDraftMode(),ops=finOps(),report=checkImportPlan(st.plan,fin,{byteLimit:mdBackend?null:PC_ENTITY_REQUEST_LIMIT,ops});
+ const st=finImport,draft=mdDraftMode(),ops=finOps(),local=finLocal(),report=checkImportPlan(st.plan,fin,{byteLimit:mdBackend?null:PC_ENTITY_REQUEST_LIMIT,ops,local});
  if(draft&&!report.errors.includes('FIN_IMPORT_DRAFT_MODE'))report.errors.unshift('FIN_IMPORT_DRAFT_MODE');
  const ready=report.ok&&!draft;
  add(root,add(el('div',null,'metric-grid fin-metrics'),metric('계정',finCount(report.counts.accounts)+'개',st.name),metric('월 묶음',finCount(report.counts.batches)+'개','미배분 잔액 묶음 포함'),metric('원천 행',finCount(report.counts.rows)+'행','미배분 잔액 '+finCount(report.counts.residualRows)+'행 별도'),metric('저장할 항목',finCount(report.toSave)+'개','이미 있음 '+report.skipped+' · 충돌 '+report.conflicts+(report.invalid?' · 형식 오류 '+report.invalid:''))));
@@ -951,7 +956,7 @@ function renderFinImport(root,fin){
  add(c,el('p',report.controls.length&&report.controls.every(x=>x.match)&&!report.batchControlMismatch.length?'✓ 통제값 '+report.controls.length+'개 모두 일치':'✗ 통제값이 일치하지 않습니다',report.controls.every(x=>x.match)&&!report.batchControlMismatch.length?'fin-ok':'fin-bad'));
  add(root,c);
  const run=section('가져오기 확정');
- add(run,el('p',ops.known?'연산: 이번에 저장 '+finCount(report.opCheck.need)+'개 · 남은 연산 '+finCount(ops.remaining)+'개'+(report.opCheck.need>ops.remaining?' · 부족':''):'연산: 이번에 저장 '+finCount(report.opCheck.need)+'개 · 남은 연산 확인 불가(한도 사전 검사 없이 진행, 서버가 최종 판정)','small ops-line'+(ops.known&&report.opCheck.need>ops.remaining?' fin-bad':'')),el('p',opsAfter(report.opCheck).text,'small ops-after'));
+ add(run,el('p',ops.known?'연산: 이번에 저장 '+finCount(report.opCheck.need)+'개 · 남은 연산 '+finCount(ops.remaining)+'개'+(report.opCheck.need>ops.remaining?' · 부족':''):'연산: 이번에 저장 '+finCount(report.opCheck.need)+'개 · 남은 연산 확인 불가(한도 사전 검사 없이 진행, 서버가 최종 판정)','small ops-line'+(ops.known&&report.opCheck.need>ops.remaining?' fin-bad':'')),el('p',opsAfter(report.opCheck).text,'small ops-after'),el('p','로컬 용량: 이번 예상 +'+(report.localCheck.need/1e6).toFixed(2)+'MB · '+(local.known?'남은 '+(local.room/1e6).toFixed(2)+'MB'+(report.localCheck.need>local.room?' · 부족':''):'남은 용량 확인 불가(막지 않음)'),'small ops-local'+(local.known&&report.localCheck.need>local.room?' fin-bad':'')));
  for(const code of report.errors)add(run,el('p',finErrorText(code)||code,code==='FIN_IMPORT_NOTHING'?'fin-ok':'fin-bad'));
  if(st.finished)add(run,el('p','가져오기 완료 · 이번에 저장 '+st.saved+'개','fin-ok'));
  if(st.error)add(run,el('p','중단됨 · '+(finErrorText(st.error)||st.error)+' · 저장된 항목은 그대로 두고, 같은 파일로 "이어서 가져오기"를 누르면 남은 항목만 저장합니다.','fin-bad'));
@@ -971,7 +976,7 @@ function runFinImport(){
   if(mdDraftMode())throw finError('FIN_IMPORT_DRAFT_MODE');
   // 다른 기기가 그사이 저장했을 수 있으니 최신 기록으로 다시 그리고 계획을 다시 검사한 뒤 시작한다.
   await refresh();lock(true);
-  const report=checkImportPlan(st.plan,whole.fin,{byteLimit:mdBackend?null:PC_ENTITY_REQUEST_LIMIT,ops:finOps()});
+  const report=checkImportPlan(st.plan,whole.fin,{byteLimit:mdBackend?null:PC_ENTITY_REQUEST_LIMIT,ops:finOps(),local:finLocal()});
   if(!report.ok)throw finError(report.errors[0]||'FIN_IMPORT_CONFLICT');
   const bar=$('fin-import-bar'),line=$('fin-import-line'),stop=$('fin-import-stop');
   st.running=true;st.error=null;st.stop=false;st.stopped=false;st.finished=false;

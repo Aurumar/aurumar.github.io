@@ -254,3 +254,7 @@ button,#page-title{word-break:keep-all}
 .ops-notice.ops-info{background:#f1f6ee;border-color:#c9dbc0;color:#376b57}
 .ops-notice.ops-warn{background:#fff8e8;border-color:#e6cf98;color:#7a5a12}
 .ops-notice.ops-bad{background:#fff4ee;border-color:#e3c4b3;color:#914531;font-weight:700}
+/* F9 로컬 용량·저장소 정리 안내 줄 */
+.ops-notice span{display:block}
+.ops-notice span+span{margin-top:4px}
+.ops-notice .ops-compaction{font-weight:400}
