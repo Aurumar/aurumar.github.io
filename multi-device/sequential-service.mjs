@@ -68,6 +68,12 @@ export async function validateSequentialState(state,material){
  }
  return {graph,roster};
 }
+// Applies a verified remote prefix to a local state (sync only). Same inputs give the same result.
+export function applySyncResult(local,{roster,records,result,state}){
+ local.roster=roster.evidence;local.userApp.operations=result.operations;
+ Object.assign(local.sequentialSync,{records,tips:result.tips,verified:result.verified,access:{rosterEpoch:roster.epoch,rosterHash:roster.head,epoch:state.accessEpoch,status:state.status},activation:{...local.sequentialSync.activation,status:'ACTIVE'}});
+ return local;
+}
 export class SequentialService {
  #nativeGuard;#store;#material;#transport;#auth;#writer;#lease=null;#runtime=randomId();#state='AUTHENTICATED_READ_ONLY';#tail=Promise.resolve();#timer=null;#blocked=false;#closed=false;#clock;#capabilities=null;
  constructor({store,material,transport,auth,nativeGuard=null,clock=()=>Date.now()}){this.#nativeGuard=nativeGuard;check(!store.state.sequentialSync.activation.nativeBootstrap||nativeGuard,'MD_PRIMARY_GUARD_REQUIRED');this.#store=store;this.#material=material;this.#transport=transport;this.#auth=auth;this.#clock=clock;this.#writer=WriterContext.create(material.keyring,material.identity,'op');if(store.state.sequentialSync.pending)this.#state='DISPATCHED_UNKNOWN';}
@@ -95,10 +101,19 @@ export class SequentialService {
   const witness=s.rollbackFloor.version>s.verified.version?s.rollbackFloor:s.verified;
   const result=await verifyPrefix(records,{...this.#material,roster,legacyCount:s.legacyCount,witness});check(result.verified.head===state.head,'MD_REMOTE_HEAD');
   const oldOps=this.#store.state.userApp.operations;check(oldOps.every((op,i)=>samePayload(op,result.operations[i])),'MD_HISTORY_REWRITE');
-  await this.#publish(local=>{local.roster=roster.evidence;local.userApp.operations=result.operations;Object.assign(local.sequentialSync,{records,tips:result.tips,verified:result.verified,access:{rosterEpoch:roster.epoch,rosterHash:roster.head,epoch:state.accessEpoch,status:state.status},activation:{...local.sequentialSync.activation,status:'ACTIVE'}});});
+  // No-op sync writes nothing: if the applied result has the same canonical payload bytes (payloadEncode hash) as the
+  // current local state, no commit is appended. Rollback/prefix/roster/access checks above already ran; any change to
+  // records, verified, tips, roster, access or activation changes the hash and is always published. While a previous
+  // local publication failed (#blocked) the skip is disabled so the store fault surfaces.
+  const apply=local=>applySyncResult(local,{roster,records,result,state}),next=copy(this.#store.state);apply(next);
+  if(this.#blocked||!samePayload(next,this.#store.state))await this.#publish(apply);
   this.#state='VERIFIED_READ_ONLY';this.#blocked=false;return {status:'VERIFIED_READ_ONLY',version:state.version,head:state.head};
  }
- sync(){return this.#serial(async()=>{try{await this.#release();return await this.#sync();}catch(e){if(!this.#blocked)this.#state='READ_ONLY';throw e;}});}
+ sync(){return this.#serial(async()=>{try{await this.#release();const r=await this.#sync();await this.#afterVerifiedSync();return r;}catch(e){if(!this.#blocked)this.#state='READ_ONLY';throw e;}});}
+ // F9: a store with a deferred layout migration (record format 4 compaction) runs it only right after a verified sync.
+ // The store checks its own preconditions and never throws here; a failure after publication requires a reopen (HOLD).
+ // A publication-time failure is reported as a failed sync (COMPACTION_HOLD_REOPEN) so callers do not treat the session as verified.
+ async #afterVerifiedSync(){if(typeof this.#store.compactAfterSync!=='function')return;const m=await this.#store.compactAfterSync({synced:true,blocked:this.#blocked});if(m?.status==='COMPACTION_HOLD_REOPEN'){this.#blocked=true;this.#state='LOCAL_PUBLICATION_HOLD';check(false,'COMPACTION_HOLD_REOPEN');}}
  async #acquire(purpose='WRITE'){
   check(this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');
   check(!this.pending&&!this.#store.state.sequentialSync.enrollment&&!this.#blocked,'MD_PENDING_UNRESOLVED');await this.#authenticated();this.#state='ACQUIRING';
@@ -257,7 +272,7 @@ export class SequentialService {
  command(requestId){if(['LOCAL_PUBLICATION_HOLD','REMOTE_COMMITTED_LOCAL_HOLD'].includes(this.#state))return {status:this.#state,requestId};const p=this.pending;if(p?.intentId===requestId)return {status:this.#state,requestId};const receipt=this.#store.state.sequentialSync.receipts[requestId];if(receipt?.status==='ABORTED')return {status:'ABORTED',requestId};const op=this.#store.state.userApp.operations.find(x=>x.provenance.requestId===requestId);if(receipt?.status==='COMMITTED'&&op)return {...savedResult(op),status:'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED',remoteVersion:receipt.version,remoteHead:receipt.head};return {status:'NOT_ESTABLISHED',requestId};}
  today(){return today(this.#store.graph);}
  history(){return {changes:wholeHistory(this.#store.graph,this.#store.state.userApp.operations)};}
- view(){return {...wholeLifeView(this.#store.graph,undefined,this.#store.state.userApp.operations),settings:{storage:this.#store.storageKind,session:this.#state,profile:PROFILE,writeReady:this.status().writeReady,remoteCheckpoint:this.#store.state.sequentialSync.verified,backup:this.#store.backupLocation??'SYNC_PRIMARY_WINDOWS_THEN_COLD_BACKUP',dataRoot:this.#store.location??'CURRENT_HTTPS_ORIGIN_INDEXEDDB'}};}
+ view(){return {...wholeLifeView(this.#store.graph,undefined,this.#store.state.userApp.operations),settings:{storage:this.#store.storageKind,session:this.#state,profile:PROFILE,writeReady:this.status().writeReady,remoteCheckpoint:this.#store.state.sequentialSync.verified,localState:this.#store.localState??null,backup:this.#store.backupLocation??'SYNC_PRIMARY_WINDOWS_THEN_COLD_BACKUP',dataRoot:this.#store.location??'CURRENT_HTTPS_ORIGIN_INDEXEDDB'}};}
  calendar(body){return calendarProjection(this.#store.graph,body);}
  evidence(){return {state:this.#store.state,checkpoint:this.#store.checkpoint,graphDigest:this.#store.graph?.digest()??null,phase:this.#state};}
  async close(){if(this.#closed)return {status:'CLOSED_ALREADY_CHECK_PRIOR_RESULT'};await this.#tail;clearInterval(this.#timer);let code=['LOCAL_PUBLICATION_HOLD','REMOTE_COMMITTED_LOCAL_HOLD'].includes(this.#state)?this.#state:null;try{if(!this.pending&&!this.#store.state.sequentialSync.enrollment)await this.#release();else code??='MD_PENDING_PRESERVED';}catch{code??='MD_LEASE_RELEASE_UNCONFIRMED';}this.#closed=true;this.#writer.close();await this.#store.close();this.#auth.clear?.();this.#material=null;return {status:code?'HOLD':'CLOSED',code};}

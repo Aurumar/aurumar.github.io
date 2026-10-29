@@ -42,6 +42,7 @@ export const FIN_ERROR_TEXT=Object.freeze({
   INVALID_FIN_BUDGET_AMOUNT:'예산 금액은 0원 이상의 정수로 입력하세요(원 단위, 최대 14자리). 빈칸은 예산 없음입니다.',
   FIN_BUDGET_DUPLICATE_MONTH:'같은 달에 시작하는 예산이 이미 있습니다. 그 예산을 수정하세요.',
   INVALID_ENTITY_ID:'항목 ID가 올바르지 않습니다.',
+  FIN_IMPORT_LOCAL_CAPACITY:'저장할 항목이 이 기기의 로컬 저장 용량(봉인 한 번 4.5MB)을 넘을 것으로 예상되어 시작하지 않습니다. 저장소 정리·분할 저장(docs/FIN01_STORE_COMPACTION_DESIGN.md) 뒤에 가져오세요.',
   FIN_IMPORT_OP_LIMIT:'저장할 항목 수가 이 금고에 남은 연산보다 많아 시작하지 않습니다. 한 항목이 연산 하나를 씁니다. 금고 이월(docs/FIN01_VAULT_MIGRATION.md)을 먼저 준비하세요.',
   APP_ENTITY_LIMIT:'이 종류의 항목 한도에 도달했습니다(계정 60 · 거래 8,000 · 묶음 400 · 규칙 300).',
   FIN_BATCH_IMMUTABLE:'가져온 원천 묶음은 한 번 저장하면 바꿀 수 없습니다.',
@@ -121,7 +122,7 @@ export function monthSpan(from,to,max=600){
 }
 const len=s=>[...s].length;
 
-// ---------- 민감 가맹점 가리기(화면 표시용, 저장값은 바꾸지 않음) ----------
+// ---------- 민감 가맹점 가리기(화면과 CSV 내보내기에 적용, 저장값은 바꾸지 않음) ----------
 export function isSensitive(line){
   return line.category==='MEDICAL'||line.subcategory==='품목 미확인'||line.baseSubcategory==='품목 미확인'||(line.tags||[]).includes('민감');
 }
@@ -236,6 +237,52 @@ export function opBudgetNotice(b){
   if(b.stage==='PREPARE')return {stage:b.stage,tone:'info',text:left+' · 이월 준비 단계입니다. 남은 연산이 줄면 새 금고로 옮겨야 합니다.'};
   return {stage:'OK',tone:'muted',text:left};
 }
+
+// ---------- 로컬 저장 용량(F9): 저장소가 commit 하나로 봉인하는 state 바이트 / 4,500,000 ----------
+// 서버 연산 한도(10,000)보다 이 한도가 먼저 막을 수 있다. 값은 settings.localState({bytes,limit})에서 오며, 없으면 UNKNOWN(막지 않음).
+// 로컬 추정 남은 op = 남은 바이트 ÷ (state 바이트 ÷ 검증한 op 수). 고정분까지 op당으로 나누므로 실제보다 조금 적게(보수적으로) 센다.
+export const LOCAL_STATE_LIMIT=4500000;
+export const LOCAL_STAGES=Object.freeze([['FULL',100],['CRITICAL',95],['WARN',85],['PREPARE',70]]);
+const SEVERITY=['OK','PREPARE','WARN','CRITICAL','FULL'];
+export function localBudget(localState,{ops=null}={}){
+  const bytes=localState&&typeof localState==='object'?localState.bytes:undefined,limit=localState?.limit;
+  if(!Number.isSafeInteger(bytes)||bytes<0||!Number.isSafeInteger(limit)||limit<=0)return {known:false,stage:'UNKNOWN',bytes:null,limit:LOCAL_STATE_LIMIT,room:null,percent:null,perOp:null,remainingOps:null};
+  const room=Math.max(0,limit-bytes),percent=bytes*100/limit,perOp=Number.isSafeInteger(ops)&&ops>0?Math.ceil(bytes/ops):null;
+  return {known:true,stage:LOCAL_STAGES.find(([,p])=>percent>=p)?.[0]??'OK',bytes,limit,room,percent,perOp,remainingOps:perOp?Math.floor(room/perOp):null};
+}
+// 둘 중 더 급한 쪽: 남은 수 = min(서버 남은 연산, 로컬 추정 남은 op), 단계 = 더 심한 단계.
+export function capacityBudget(server,local){
+  const nums=[server?.known?['SERVER',server.remaining]:null,local?.known&&local.remainingOps!==null?['LOCAL',local.remainingOps]:null].filter(Boolean);
+  const min=nums.length?nums.reduce((a,b)=>b[1]<a[1]?b:a):null;
+  const stages=[server?.known?server.stage:null,local?.known?local.stage:null].filter(Boolean);
+  const stage=stages.length?stages.reduce((a,b)=>SEVERITY.indexOf(b)>SEVERITY.indexOf(a)?b:a):'UNKNOWN';
+  return {stage,remaining:min?min[1]:null,limitedBy:min?min[0]:null,server,local};
+}
+const mb=n=>(n/1e6).toFixed(2)+'MB';
+export function localCapacityText(l){
+  if(!l?.known)return '로컬 용량 확인 불가 · 이 기기 저장소가 크기를 알려 주지 않습니다(옛 빌드이거나 서버 금고를 쓰지 않는 모드).';
+  return '로컬 용량 '+mb(l.bytes)+' / '+mb(l.limit).replace('4.50MB','4.5MB')+' ('+(Math.floor(l.percent*10)/10)+'%)'+(l.remainingOps!==null?' · 로컬로 남은 기록 약 '+opCount(l.remainingOps)+'개':'');
+}
+export function capacityNotice(server,local){
+  const c=capacityBudget(server,local),s=opBudgetNotice(server),tone=c.stage==='FULL'||c.stage==='CRITICAL'?'bad':c.stage==='WARN'?'warn':c.stage==='PREPARE'?'info':'muted';
+  const head=c.remaining!==null&&c.limitedBy==='LOCAL'&&server?.known&&server.remaining>c.remaining?'실제로 남은 기록 약 '+opCount(c.remaining)+'개(로컬 용량이 먼저 찹니다) · ':'';
+  const localAdvice=local?.known&&SEVERITY.indexOf(local.stage)>=SEVERITY.indexOf('PREPARE')?' · 로컬 용량이 '+({PREPARE:'70',WARN:'85',CRITICAL:'95',FULL:'100'})[local.stage]+'% 이상입니다. 가져오기 같은 대량 저장을 미루세요.':'';
+  return {stage:c.stage,tone,lines:[head+s.text,localCapacityText(local)+localAdvice],remaining:c.remaining,limitedBy:c.limitedBy};
+}
+const COMPACTION_REASON={STORE_HOLD:'저장소 보류 상태',NOT_OWNER:'이 창이 기록 권한 소유자가 아님',BLOCKED:'앞선 저장 오류',PENDING:'보내지 않은 기록이 있음',ENROLLMENT:'장치 등록 진행 중',NOT_SYNCED:'아직 동기화 전',DISK_UNKNOWN:'디스크 여유를 확인할 수 없음',DISK_SPACE:'디스크 여유 부족(현재 크기의 3배 필요)'};
+// 저장소 정리(record 형식 4) 상태 문구. 필요 없으면 null.
+export function compactionText(c){
+  if(!c||typeof c!=='object')return null;
+  const why=(c.reasons||[]).map(r=>COMPACTION_REASON[r]??(String(r).startsWith('MIGRATION_FAILED')?'정리 시도 실패('+String(r).slice(17)+')':String(r))).join(', ');
+  if(c.status==='COMPACTION_PENDING')return '저장소 정리 대기 · 다음 동기화 뒤 한 번 자동으로 정리합니다(정리 전 사본 1개 보관, 자동 삭제 안 함).';
+  if(c.status==='COMPACTION_DEFERRED')return '저장소 정리 미룸 · '+(why||'조건 미충족')+' · 데이터는 그대로이고 다음 동기화 때 다시 확인합니다.';
+  if(c.status==='COMPACTION_HOLD_REOPEN')return '저장소 정리 중 오류 · 앱을 닫았다가 다시 여세요(데이터는 보존됨). '+why;
+  if(c.status==='MIGRATED'&&c.to>=4)return '저장소 정리 완료 · 정리 전 사본 1개를 보관했습니다(자동 삭제 안 함).';
+  return null;
+}
+// 가져오기 예상 state 증가(AI_INFERENCE 모형, F8 실측 op당 7.2KB와 맞춘 계수): 항목마다 ≈ 25/9 × (요청 바이트 + 500) + 3,400.
+// 25/9 = 봉투 b64(16/9) + 해독본(1). 3,400 = 인증서·row·receipt. 실제보다 크게 잡는 쪽(보수적)이다.
+export function estimateStateGrowth(items){return items.filter(i=>i.action==='SAVE').reduce((n,i)=>n+Math.ceil(25*((i.bytes??0)+500)/9)+3400,0);}
 
 // ---------- CSV 내보내기(이 기기에 파일로 저장할 글자만 만든다. 전송 없음) ----------
 // 금액은 원 단위 정수 문자열(쉼표 없음), 순액 모름은 빈칸이 아니라 "모름". 이체·선불·수입은 "소비 구분" 열로 소비와 나눈다.
@@ -357,8 +404,8 @@ export function entityRequestBytes(entity){
   return new TextEncoder().encode(JSON.stringify(body)).length;
 }
 // existing: 화면의 fin 투영({accounts,batches,limits}). byteLimit: 요청 크기 한도(없으면 null).
-export function checkImportPlan(plan,existing,{byteLimit=null,ops=null}={}){
-  const report={ok:false,errors:[],opCheck:{known:false,remaining:null,need:0},counts:{accounts:0,batches:0,rows:0,residualRows:0},controls:[],batchControlMismatch:[],items:[],toSave:0,skipped:0,conflicts:0,sourceSha256:null};
+export function checkImportPlan(plan,existing,{byteLimit=null,ops=null,local=null}={}){
+  const report={ok:false,errors:[],opCheck:{known:false,remaining:null,need:0},localCheck:{known:false,room:null,need:0},counts:{accounts:0,batches:0,rows:0,residualRows:0},controls:[],batchControlMismatch:[],items:[],toSave:0,skipped:0,conflicts:0,sourceSha256:null};
   if(!plan||typeof plan!=='object'||plan.format!==PLAN_FORMAT||!Array.isArray(plan.entities)){report.errors.push('FIN_IMPORT_FORMAT');return report;}
   report.sourceSha256=typeof plan.sourceSha256==='string'&&/^[a-f0-9]{64}$/.test(plan.sourceSha256)?plan.sourceSha256:null;
   if(!report.sourceSha256)report.errors.push('FIN_IMPORT_FORMAT');
@@ -437,6 +484,9 @@ export function checkImportPlan(plan,existing,{byteLimit=null,ops=null}={}){
   // 연산 한도: 저장할 항목(SAVE) 하나가 연산 하나. 남은 연산을 모르면(UNKNOWN) 거절하지 않고 화면에 "확인 불가"로 보인다.
   report.opCheck={known:!!ops?.known,remaining:ops?.known?ops.remaining:null,need:report.toSave};
   if(ops?.known&&report.toSave>ops.remaining)report.errors.push('FIN_IMPORT_OP_LIMIT');
+  // 로컬 용량: 예상 state 증가가 남은 로컬 바이트보다 크면 거절, 같으면 통과, 모르면(UNKNOWN) 막지 않고 화면에 "확인 불가".
+  report.localCheck={known:!!local?.known,room:local?.known?local.room:null,need:estimateStateGrowth(report.items)};
+  if(local?.known&&report.localCheck.need>local.room)report.errors.push('FIN_IMPORT_LOCAL_CAPACITY');
   if(!report.errors.length&&!report.toSave)report.errors.push('FIN_IMPORT_NOTHING');
   report.ok=report.errors.length===0;
   return report;
