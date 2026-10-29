@@ -1,6 +1,7 @@
 import {requireValue} from '../multi-device/portable/errors.mjs';
 import {sha,encode} from '../core/package/src/codec.mjs';
 import {canonical} from '../core/package/parent/v2_phase2/source/canonical.mjs';
+import {FIN_TYPES,FIN_LIMITS,validateFinData,finTransition,finAfterSet} from './fin-model.mjs';
 
 export const WL_FORMAT='LB_WHOLE_LIFE_1';
 export const DOMAIN_NAMES=Object.freeze({
@@ -11,8 +12,8 @@ export const DOMAIN_NAMES=Object.freeze({
 export const DOMAIN_CODES=Object.freeze(Object.keys(DOMAIN_NAMES));
 export const DOMAIN_STATUSES=Object.freeze(['ACTIVE','MAINTAIN','DEFERRED_WITH_REASON','UNKNOWN','NOT_APPLICABLE']);
 export const PLAN_STATUSES=Object.freeze(['ACTIVE','MAINTAIN','DEFERRED_WITH_REASON','COMPLETE','UNKNOWN']);
-export const ENTITY_TYPES=Object.freeze(['ACTION','DOMAIN','PLAN','EVENT','FINANCE','PREFERENCES']);
-const LIMITS={ACTION:100,DOMAIN:10,PLAN:200,EVENT:1000,FINANCE:500,PREFERENCES:1};
+export const ENTITY_TYPES=Object.freeze(['ACTION','DOMAIN','PLAN','EVENT','FINANCE','PREFERENCES',...FIN_TYPES]);
+const LIMITS={ACTION:100,DOMAIN:10,PLAN:200,EVENT:1000,FINANCE:500,PREFERENCES:1,...FIN_LIMITS};
 export const entityKey=(type,id)=>'sd11:'+type.toLowerCase()+':'+id;
 export function shape(v,keys){
   requireValue(v&&Object.getPrototypeOf(v)===Object.prototype&&Object.keys(v).sort().join('|')===[...keys].sort().join('|'),'INVALID_WHOLE_LIFE_SCHEMA');
@@ -33,6 +34,7 @@ const unique=a=>new Set(a).size===a.length;
 export function shiftDate(date,days){const v=new Date(Date.parse(date+'T12:00:00Z')+days*86400000).toISOString().slice(0,10);requireValue(dateOK(v),'INVALID_DATE_RANGE');return v;}
 export function validateData(type,id,d){
   requireValue(ENTITY_TYPES.includes(type)&&idOK(id),'INVALID_ENTITY_ID');
+  if(FIN_TYPES.includes(type)){validateFinData(type,id,d);return;}
   if(type==='ACTION'){
     shape(d,['title','active','domain','planId','trackStreak']);text(d.title,100,false);
     requireValue(bool(d.active)&&domainOK(d.domain)&&nullableId(d.planId)&&bool(d.trackStreak),'INVALID_ACTION_DEFINITION');
@@ -112,6 +114,7 @@ function context(rows){
 function transition(v,old,ctx,provenance){
   const {entityType:type,entityId:id,data:d}=v;
   requireValue(v.updatedAt===provenance.recordedAt&&v.createdAt===(old?old.createdAt:v.updatedAt),'INVALID_ENTITY_TIMESTAMPS');
+  if(FIN_TYPES.includes(type)){finTransition(v,old,ctx,provenance);return;}
   if(!old)requireValue([...ctx.entities.values()].filter(x=>x.entityType===type).length<LIMITS[type],'APP_ENTITY_LIMIT');
   if(type==='ACTION'){
     if(!ctx.actions.has(id))requireValue(ctx.actions.size<100,'APP_ACTION_LIMIT');
@@ -146,7 +149,7 @@ export function validateWholeSequence(operations){
       if(v.format===WL_FORMAT){
         requireValue(op.provenance.commandType==='ENTITY'&&op.edits.length===1&&typeof op.provenance.confirmed==='boolean','HOLD_APP_PROVENANCE');
         const key=entityKey(v.entityType,v.entityId);
-        transition(v,ctx.entities.get(key),ctx,op.provenance);ctx.entities.set(key,v);
+        const prior=ctx.entities.get(key);transition(v,prior,ctx,op.provenance);ctx.entities.set(key,v);finAfterSet(ctx,v,prior);
         if(v.entityType==='ACTION')ctx.actions.add(v.entityId);
       }else {requireValue(op.provenance.commandType!=='ENTITY','HOLD_APP_PROVENANCE');
         if(v.format==='LB_ACTION_MEASUREMENT_2'){
