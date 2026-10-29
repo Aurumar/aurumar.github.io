@@ -76,3 +76,181 @@ pre.path{white-space:pre-wrap;max-width:100%}pre.path:empty{display:none}
   label:has(>input[type=checkbox]),label:has(>input[type=radio]){min-height:44px;display:flex;align-items:center;gap:10px}
 }
 @media(min-width:701px) and (max-width:1150px){nav button.nav-item{min-height:40px}}
+
+/* FIN01 가계부 (F2·F3): 탭, 그래프(SVG 클래스 색), 표, 거래 목록. 인라인 style 없이 클래스·SVG 속성만 쓴다. */
+.fin-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 16px}
+.fin-tabs button{padding:7px 13px;font-size:13px}
+.fin-tabs button.active{background:var(--green);color:#fff;border-color:var(--green)}
+.fin-toolbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 14px;margin:0 0 10px}
+.fin-toolbar label{margin:0;font-size:12px}
+.fin-toolbar label:not(.inline){display:flex;flex-direction:column;gap:4px}
+.fin-toolbar select,.fin-toolbar input:not([type=checkbox]){width:auto;min-width:0;max-width:100%}
+.fin-toolbar label.inline{margin:0 0 9px;font-weight:400}
+.fin-toolbar button{padding:8px 12px}
+.fin-range{margin:0 0 14px}
+.fin-metrics .metric-value{font-size:24px}
+.fin-chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 18px}
+.fin-chip{display:inline-flex;flex-wrap:wrap;gap:2px 6px;align-items:baseline;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:12px;color:#5f6f63}
+.fin-chip strong{font-size:13px;color:#2f4a37;font-variant-numeric:tabular-nums}
+.fin-chart{margin-bottom:18px}
+.fin-chart-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:4px}
+.fin-chart-head h2{font-size:17px;margin:0}
+.fin-chart-head button{font-size:11px;padding:5px 10px;flex-shrink:0}
+.chart-box{min-width:0;width:100%;margin-top:8px}
+.fin-svg{display:block;max-width:100%;height:auto}
+.fin-svg text{font-size:11px;fill:#55655a}
+.fin-svg .axis-label{font-size:10px;fill:#7b8777}
+.fin-svg .heat-title{font-size:11px;font-weight:700;fill:#44564a}
+.grid-line{stroke:#e6ebe1;stroke-width:1}
+.fin-svg .bar,.fin-svg .sk-node{stroke:none}
+.trend-bar{fill:#9fb99a}
+.trend-bar.current{fill:var(--green)}
+.no-data{fill:#f6f7f3;stroke:#cfd7ca;stroke-dasharray:3 3}
+.ma-line{fill:none;stroke:#26362f;stroke-width:2;stroke-linejoin:round}
+.ma-dot{fill:#26362f}
+.fin-svg .sk-link{fill:none;stroke-opacity:.32}
+.fin-svg .sk-link:hover{stroke-opacity:.62}
+.node-account{fill:#254d3f}
+.fin-svg .sk-label{font-size:11px;fill:#26362f;paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}
+.fin-svg .tm-cell{stroke:#fff;stroke-width:2;cursor:pointer}
+.fin-svg .tm-cell.tm-sub{fill-opacity:.82}
+.fin-svg .tm-cell:focus{outline:none;stroke:#26362f;stroke-width:3}
+.fin-svg .tm-label{font-size:12px;font-weight:700;fill:#fff;pointer-events:none}
+.fin-svg .tm-value{font-size:11px;fill:#f4f7f0;pointer-events:none}
+.heat-months{display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px 16px}
+.heat{stroke:none}
+.heat.l0,.swatch.heat-l0{fill:#eef1ea;background:#eef1ea}
+.heat.l1,.swatch.heat-l1{fill:#cfe2c3;background:#cfe2c3}
+.heat.l2,.swatch.heat-l2{fill:#9fc78e;background:#9fc78e}
+.heat.l3,.swatch.heat-l3{fill:#5f9d55;background:#5f9d55}
+.heat.l4,.swatch.heat-l4{fill:#2f6b36;background:#2f6b36}
+.heat.lneg,.swatch.heat-lneg{fill:#e3d3ec;background:#e3d3ec}
+.heat.nodata,.swatch.heat-nodata{fill:#fafbf8;stroke:#d6ddd1;stroke-dasharray:2 2;background:#fafbf8;border:1px dashed #c5cdbf}
+.heat.future{fill:#fff;stroke:#eef1ea}
+.heat.focus{stroke:#c9953f;stroke-width:2}
+.swatch.heat-focus{background:#fff;border:2px solid #c9953f}
+.heat-unknown{fill:#914531}
+.swatch.heat-unknown-dot{width:6px;height:6px;border-radius:50%;background:#914531}
+.cm-block{margin:0 0 12px}
+.cm-block p{margin:0 0 4px;color:#44564a}
+.cm-have,.swatch.cm-have{fill:#5f9d55;background:#5f9d55}
+.cm-miss,.swatch.cm-miss{fill:#fff;stroke:#d39a83;stroke-dasharray:2 2;background:#fff;border:1px dashed #d39a83}
+.cm-out,.swatch.cm-out{fill:#f1f3ee;background:#f1f3ee}
+.swatch.cm-res{background:#c9953f}
+.fin-legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin:10px 0 0;padding:0;list-style:none;font-size:11px;color:#6b776d}
+.fin-legend li{display:inline-flex;align-items:center;gap:5px}
+.swatch{display:inline-block;width:11px;height:11px;border-radius:2px;background:#ccc;flex-shrink:0}
+.swatch.line{height:3px;background:#26362f}
+.swatch.no-data{background:#f6f7f3;border:1px dashed #c5cdbf}
+.c0{fill:#4e8f6b;stroke:#4e8f6b;background:#4e8f6b}
+.c1{fill:#8a7a5c;stroke:#8a7a5c;background:#8a7a5c}
+.c2{fill:#4f7fa8;stroke:#4f7fa8;background:#4f7fa8}
+.c3{fill:#7b6fb0;stroke:#7b6fb0;background:#7b6fb0}
+.c4{fill:#c0605a;stroke:#c0605a;background:#c0605a}
+.c5{fill:#c98f2e;stroke:#c98f2e;background:#c98f2e}
+.c6{fill:#3e9ba3;stroke:#3e9ba3;background:#3e9ba3}
+.c7{fill:#a15a9a;stroke:#a15a9a;background:#a15a9a}
+.c8{fill:#c97a45;stroke:#c97a45;background:#c97a45}
+.c9{fill:#b56f8c;stroke:#b56f8c;background:#b56f8c}
+.c10{fill:#6b7480;stroke:#6b7480;background:#6b7480}
+.c11{fill:#b19a2c;stroke:#b19a2c;background:#b19a2c}
+.c12{fill:#6f9a4c;stroke:#6f9a4c;background:#6f9a4c}
+.c13{fill:#5d8fcf;stroke:#5d8fcf;background:#5d8fcf}
+.c14{fill:#8f998f;stroke:#8f998f;background:#8f998f}
+.c-rest{fill:#aeb6a9;stroke:#aeb6a9;background:#aeb6a9}
+.c-income{fill:#2f6f4f;stroke:#2f6f4f;background:#2f6f4f}
+.c-none{fill:#c8cec4;stroke:#c8cec4;background:#c8cec4}
+.crumbs{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;margin:0 0 8px;font-size:12px;color:#6b776d}
+.crumbs button{font-size:11px;padding:3px 9px}
+.table-wrap{overflow-x:auto;max-width:100%}
+.fin-table{border-collapse:collapse;width:100%;font-size:12px}
+.fin-table th,.fin-table td{padding:6px 8px;border-bottom:1px solid #eef1ea;text-align:left;white-space:nowrap}
+.fin-table th{font-size:11px;color:#738079;font-weight:600}
+.fin-table .num{text-align:right;font-variant-numeric:tabular-nums}
+.fin-line{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:11px 0;border-bottom:1px solid #eef1ea}
+.fin-line:last-child{border-bottom:0}
+.fin-line .main{min-width:0}
+.fin-line strong{font-size:13px;overflow-wrap:anywhere}
+.fin-line .meta{display:flex;flex-wrap:wrap;gap:3px 7px;margin-top:4px;font-size:11px;color:#7b8777;align-items:center}
+.fin-line .meta .tag{padding:1px 6px;font-size:10px}
+.fin-line .amount{font-weight:700;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;color:#2f4a37}
+.fin-line .amount.neg{color:#914531}
+.fin-line .amount.muted{color:#8f998f;font-weight:600}
+.fin-line .buttons{grid-column:1/-1;display:flex;gap:6px;justify-content:flex-end}
+.fin-line .buttons button{font-size:11px;padding:4px 10px}
+.fin-line.voided{opacity:.6}
+.tag.src-batch{background:#eef0f6;color:#58627d}
+.tag.src-txn{background:#e9f1df;color:#57753d}
+.tag.dup{background:#fbf0df;color:#a27533}
+.tag.unknown{background:#fbe9e3;color:#914531}
+.tag.rule{background:#e9eff4;color:#577788}
+.fin-preview{background:#f6f8f1;border-radius:8px;padding:10px 12px;font-size:12px;margin-top:12px}
+.fin-preview p{margin:4px 0 0}
+.fin-ok{color:#376b57;font-weight:700}
+.fin-bad{color:#914531;font-weight:700}
+.fin-progress{width:100%;height:12px;accent-color:var(--green)}
+@media(max-width:700px){
+  .fin-tabs{gap:5px}.fin-tabs button{flex:1 1 auto;padding:8px 9px;font-size:12px;min-height:40px}
+  .fin-toolbar{gap:8px}.fin-toolbar label:not(.inline){flex:1 1 140px}.fin-toolbar select,.fin-toolbar input:not([type=checkbox]){width:100%}
+  .fin-toolbar button{min-height:44px}
+  .fin-metrics .metric-value{font-size:18px}
+  .fin-chart-head h2{font-size:15px}
+  .fin-chart-head button{min-height:40px}
+  .fin-line .buttons button{min-height:40px}
+}
+.fin-svg .cm-res-mark{fill:#c9953f;font-size:11px}
+.fin-month-nav{display:flex;align-items:flex-end;gap:6px;min-width:0}
+.fin-line .amount.income{color:#2f6f4f}
+@media(max-width:700px){.fin-month-nav{flex:1 1 100%}.fin-month-nav label{flex:1 1 auto}}
+button.nowrap{white-space:nowrap}
+.fin-table td:first-child,.fin-table th:first-child{white-space:normal;min-width:84px}
+@media(max-width:700px){.fin-table th,.fin-table td{padding:6px 5px}}
+@media(min-width:701px){.fin-line{grid-template-columns:minmax(0,1fr) auto auto;align-items:center}.fin-line .buttons{grid-column:auto}}
+.heat.lunk,.swatch.heat-lunk{fill:#f6e3d8;background:#f6e3d8}
+.fin-warn{color:#914531;background:#fff4ee;border:1px solid #e3c4b3;border-radius:8px;padding:10px 12px;margin:0 0 14px;font-size:12px}
+/* FIN01 F5: 반복결제 격자, 고정비/변동비, 예산 막대, 평생 타임라인 */
+.fin-svg .rec-label{font-size:11px;fill:#26362f}
+.fin-svg .rec-label.warn{fill:#914531;font-weight:700}
+.rec-nodata{fill:#f6f7f3}
+.fin-svg .rec-dot{stroke:#fff;stroke-width:1}
+.rec-next{fill:#fff;stroke:#26362f;stroke-width:1.5;stroke-dasharray:2 2}
+.swatch.rec-dot-swatch{border-radius:50%;background:#4e8f6b}
+.swatch.rec-next-swatch{border-radius:50%;background:#fff;border:1.5px dashed #26362f}
+.c-fixed{fill:#3f6e8c;stroke:#3f6e8c;background:#3f6e8c}
+.c-variable{fill:#c9a24a;stroke:#c9a24a;background:#c9a24a}
+.bud-budget,.swatch.bud-budget-swatch{fill:#fff;stroke:#7b8777;stroke-width:1;background:#fff;border:1px solid #7b8777}
+.bud-actual,.swatch.bud-actual-swatch{fill:#5f9d55;background:#5f9d55}
+.bud-actual.fast{fill:#c9953f}
+.bud-over,.swatch.bud-over-swatch{fill:#c0605a;background:#c0605a}
+.bud-expected{stroke:#26362f;stroke-width:2}
+.cum-line{fill:none;stroke:#7b4fa0;stroke-width:2;stroke-linejoin:round}
+.cum-line.gap{stroke-dasharray:4 4}
+.cum-dot{fill:#7b4fa0}
+.fin-svg .cum-axis{fill:#7b4fa0}
+.swatch.trend-bar-swatch{background:#9fb99a}
+.fin-month-nav label{min-width:0}
+.fin-month-nav input{min-width:0}
+@media(max-width:700px){.fin-toolbar .fin-month-nav label:not(.inline){flex:1 1 0}}
+.swatch.cum-swatch{height:3px;background:#7b4fa0}
+/* F6 Fold 화면: 접힘(외부 화면, 700px 이하)과 펼침(터치 화면 pointer:coarse, 폭과 무관)에서 누르는 칸을 44px 이상으로 */
+@media(max-width:700px){.fin-tabs button,.fin-chart-head button,.fin-line .buttons button,.crumbs button{min-height:44px}}
+@media(pointer:coarse){
+  button,select,input:not([type=checkbox]):not([type=radio]){min-height:44px}
+  button{min-width:44px}
+  .calendar-grid .calendar-event{min-height:0!important;min-width:0}
+  #view-content summary,#md-controls summary,.card-details>summary,.form-more>summary{min-height:44px}
+  input[type=checkbox],input[type=radio]{width:20px;height:20px}
+  label:has(>input[type=checkbox]),label:has(>input[type=radio]){min-height:44px;display:flex;align-items:center;gap:10px}
+  nav button.nav-item{min-height:44px}
+}
+.fin-export{align-items:center}
+.fin-export p{margin:0;flex:1 1 220px}
+button,#page-title{word-break:keep-all}
+#page-title{overflow-wrap:normal}
+.topbar>div:first-child{min-width:min-content}
+.section-toolbar>button{flex-shrink:0}
+/* F7 금고 연산 한도 안내(문구만) */
+.ops-notice{border-radius:8px;padding:10px 12px;margin:0 0 14px;font-size:12px;border:1px solid var(--line);background:#fbfcf8;color:#55644e}
+.ops-notice.ops-info{background:#f1f6ee;border-color:#c9dbc0;color:#376b57}
+.ops-notice.ops-warn{background:#fff8e8;border-color:#e6cf98;color:#7a5a12}
+.ops-notice.ops-bad{background:#fff4ee;border-color:#e3c4b3;color:#914531;font-weight:700}

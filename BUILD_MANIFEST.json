@@ -296,12 +296,13 @@
     },
     {
       "path": "user-app/whole-life-model.mjs",
-      "sourceSha256": "d642b2faaccb72094f45ceae41a7fa2781976740d260b51bd936a4c09e87fd73",
-      "outputSha256": "f083c3d6f3c5f0868f2a97083122a719ef0c45a57f272893acaab3e464626220",
+      "sourceSha256": "2d322f6e4de024af95dd4623449eafad1160759115f49df557832a9a4a37b83e",
+      "outputSha256": "461b9d79376bfaa5f413b64f66b446451bf96c073b5a9be1c57e4b6c043bd437",
       "dependencies": [
         "multi-device/portable/errors.mjs",
         "core/package/src/codec.mjs",
-        "core/package/parent/v2_phase2/source/canonical.mjs"
+        "core/package/parent/v2_phase2/source/canonical.mjs",
+        "user-app/fin-model.mjs"
       ],
       "transforms": [
         "PURE_REQUIRE_VALUE_IMPORT"
@@ -309,12 +310,14 @@
     },
     {
       "path": "user-app/whole-life-projection.mjs",
-      "sourceSha256": "718ec92ae7ff17a60665be2dba8895f728a4e7b9c5e3b6626d2b196e0dca7288",
-      "outputSha256": "f39c6f3f96efec463092d37294b454eb348a2c99b5103714243ff6f4a44a605e",
+      "sourceSha256": "d48064d65216e9b27e0e0f5ffdeca809fec05006bdb09346c5e22d0a40b3daf0",
+      "outputSha256": "31f9da4f9ece5e25d460c80755909f5dc4404eb7fbcecf1f4eee390d8a3fdd33",
       "dependencies": [
         "multi-device/portable/errors.mjs",
         "core/package/parent/v2_phase2/source/canonical.mjs",
         "user-app/action-model.mjs",
+        "user-app/fin-model.mjs",
+        "user-app/fin-projection.mjs",
         "user-app/whole-life-model.mjs",
         "user-app/measurement.mjs",
         "product/runtime-contract.mjs"
@@ -332,9 +335,13 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "422e2112f7419bd27f9ca6520448a2a4a23ff06af25af765058e38dfc2f1be1d",
-      "outputSha256": "422e2112f7419bd27f9ca6520448a2a4a23ff06af25af765058e38dfc2f1be1d",
-      "dependencies": [],
+      "sourceSha256": "f009dd8b648ace86c2b7a7f9a14d0a458829875d26d258fef788f9ed529e61c5",
+      "outputSha256": "f009dd8b648ace86c2b7a7f9a14d0a458829875d26d258fef788f9ed529e61c5",
+      "dependencies": [
+        "user-app/public/fin-ledger.mjs",
+        "user-app/public/fin-plan.mjs",
+        "user-app/public/fin-charts.mjs"
+      ],
       "transforms": []
     },
     {
@@ -407,6 +414,52 @@
       "transforms": [
         "PURE_REQUIRE_VALUE_IMPORT"
       ]
+    },
+    {
+      "path": "user-app/fin-model.mjs",
+      "sourceSha256": "158b9fd397453291168befc218683dfe0880135464f83809cba20694e47fd8be",
+      "outputSha256": "b5e391661f3514b30e7ab02347e4cdb231636a865445b277f1ac24d5eb52cef3",
+      "dependencies": [
+        "multi-device/portable/errors.mjs"
+      ],
+      "transforms": [
+        "PURE_REQUIRE_VALUE_IMPORT"
+      ]
+    },
+    {
+      "path": "user-app/fin-projection.mjs",
+      "sourceSha256": "aa64d41a33a6beb3fd46e18290758696c370f458d3cfd799ea06eb05f0768eb0",
+      "outputSha256": "aa64d41a33a6beb3fd46e18290758696c370f458d3cfd799ea06eb05f0768eb0",
+      "dependencies": [
+        "user-app/fin-model.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/fin-ledger.mjs",
+      "sourceSha256": "726002c0beee051a068c74fd9c17f63bcf302d83f3ac8fd5c1220aa6125c36d0",
+      "outputSha256": "726002c0beee051a068c74fd9c17f63bcf302d83f3ac8fd5c1220aa6125c36d0",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/fin-plan.mjs",
+      "sourceSha256": "3a830ef757762ce95e89a45523a9be3f49e844fe6dcd6c6b637f0a6bbe42b8c8",
+      "outputSha256": "3a830ef757762ce95e89a45523a9be3f49e844fe6dcd6c6b637f0a6bbe42b8c8",
+      "dependencies": [
+        "user-app/public/fin-ledger.mjs",
+        "user-app/public/fin-charts.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/fin-charts.mjs",
+      "sourceSha256": "45e92c68a192cdb479ea2c5c1c0edc1a02093246e970e0f489e34a46c18a3cc1",
+      "outputSha256": "45e92c68a192cdb479ea2c5c1c0edc1a02093246e970e0f489e34a46c18a3cc1",
+      "dependencies": [
+        "user-app/public/fin-ledger.mjs"
+      ],
+      "transforms": []
     },
     {
       "path": "core/package/node_modules/@hpke/common/esm/src/hash/md.js",
@@ -842,8 +895,8 @@
     {
       "path": "styles.css",
       "sourcePath": "user-app/public/styles.css",
-      "sourceSha256": "cc8ee706cc55bdd0a2e89ea58a4826c2b89a552a14a540e69bbda1611aa87e41",
-      "outputSha256": "cc8ee706cc55bdd0a2e89ea58a4826c2b89a552a14a540e69bbda1611aa87e41"
+      "sourceSha256": "65ee95d34bb458de0a91a30d07ae99d3b8a01b25fcf07038ef4fed9bea148449",
+      "outputSha256": "65ee95d34bb458de0a91a30d07ae99d3b8a01b25fcf07038ef4fed9bea148449"
     },
     {
       "path": "public-config.json",

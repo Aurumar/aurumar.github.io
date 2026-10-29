@@ -1,6 +1,8 @@
 import {requireValue} from '../multi-device/portable/errors.mjs';
 import {eq} from '../core/package/parent/v2_phase2/source/canonical.mjs';
 import {clock,FORMATS} from './action-model.mjs';
+import {finTitle,FIN_TYPES} from './fin-model.mjs';
+import {finView} from './fin-projection.mjs';
 import {WL_FORMAT,DOMAIN_CODES,DOMAIN_NAMES,effectiveActions,entityKey,emptyDomain,financeTotals,shiftDate,dateOK,shape} from './whole-life-model.mjs';
 
 import {MEASUREMENT_FORMAT,measurementProjection} from './measurement.mjs';
@@ -27,8 +29,8 @@ export function wholeHistory(graph,orderedOperations=null){
       if(v.format===FORMATS.definition){
         context.set(v.actionId,{title:v.title,domain:null});type='ACTION';title=v.title;
       }else if(v.format===WL_FORMAT){
-        type=v.entityType;domain=type==='DOMAIN'?v.entityId:type==='FINANCE'?'E':v.data.domain??null;
-        title=type==='DOMAIN'?DOMAIN_NAMES[v.entityId]:type==='FINANCE'?v.data.snapshotDate+' 재정 스냅샷':type==='PREFERENCES'?'표시 설정':v.data.title;
+        type=v.entityType;domain=type==='DOMAIN'?v.entityId:type==='FINANCE'||type.startsWith('FIN_')?'E':v.data.domain??null;
+        title=type==='DOMAIN'?DOMAIN_NAMES[v.entityId]:type==='FINANCE'?v.data.snapshotDate+' 재정 스냅샷':type==='PREFERENCES'?'표시 설정':type.startsWith('FIN_')?finTitle(v):v.data.title;
         if(type==='ACTION'){context.set(v.entityId,{title:v.data.title,domain:v.data.domain});actionId=v.entityId;}
       }else{
         type=v.format===FORMATS.result?'RESULT':v.format===MEASUREMENT_FORMAT?'MEASUREMENT':'RESTART';const current=context.get(v.actionId);
@@ -106,6 +108,7 @@ export function wholeLifeView(graph,date=clock().localDate,orderedOperations=nul
   const actions=effectiveActions(graph).map(a=>({...a,restartPoint:graph.entity('NOTE','sd1:restart:'+a.actionId).value?.text??''}));
   return {version:APP_VERSION,runtimeContract:CLIENT,localDate:date,domains,plans,events,finances,preferences,actions,
     finance:financeTotals(finances[0]??null,date),progress,
+    fin:finView(FIN_TYPES.flatMap(type=>entities(graph,type))),
     home:{priorityActions:actions.filter(a=>a.active).slice(0,5),restartPoints:actions.filter(a=>a.restartPoint.trim()),
       upcoming:expandCalendar(events,plans,date,shiftDate(date,90)).slice(0,10),
       activePlans:plans.filter(p=>['ACTIVE','MAINTAIN'].includes(p.data.status)),
