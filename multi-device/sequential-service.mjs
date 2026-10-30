@@ -3,12 +3,12 @@ import {WriterContext,openEnvelope,verify} from '../core/package/src/crypto.mjs'
 import {Roster} from '../core/package/src/enrollment.mjs';
 import {normalizeCommand,today,savedResult,replay as replayLegacy} from '../user-app/action-model.mjs';
 import {wholeLifeView,wholeHistory,calendarProjection} from '../user-app/whole-life-projection.mjs';
-import {replayReal,candidateReal} from './real-history.mjs';
+import {replayReal,candidateReal,replayScope} from './real-history.mjs';
 import {PROFILE,SCOPE,LIMITS,initialHead,nextHead,same} from './contracts.mjs';
 import {CLIENT,assertCompatible,operationRequirements,validateCompatibility,assertOperationCompatibility,serverCapabilities} from '../product/runtime-contract.mjs';
 import {emptyLifecycle,validateLifecycleState,lifecycleWritable,validatePublication,publishTerminalState,settlementIntent,validateSettlementAttempt,prepareRetirement,validateRetirementReceipt} from './lifecycle-client.mjs';
 const CERT=['scope','accountId','vaultId','genesisPin','deviceId','deviceKeyId','intentId','opId','wireSha256','expectedVersion','expectedHead','expectedRosterEpoch','expectedRosterHash','accessEpoch','leaseEpoch','runtimeSessionId','leaseTokenHash'];
-export async function verifyPrefix(records,{keyring,roster,legacyCount,witness={version:0,head:initialHead(keyring)},allowPartialActivation=false}){
+export async function verifyPrefix(records,{keyring,roster,legacyCount,witness={version:0,head:initialHead(keyring)},allowPartialActivation=false,replay=replayReal}){
  check(Array.isArray(records)&&records.length<=LIMITS.operations,'MD_PREFIX_LIMIT');
  let head=initialHead(keyring);const operations=[],tips={},nonces=new Set(),intents=new Set();
  check(witness.version<=records.length,'MD_ROLLBACK_VERSION');if(witness.version===0)check(witness.head===head,'MD_ROLLBACK_HEAD');
@@ -31,7 +31,7 @@ export async function verifyPrefix(records,{keyring,roster,legacyCount,witness={
   head=nextHead(head,i+1,row.certificate);check(head===row.head,'MD_CHAIN_HEAD');if(witness.version===i+1)check(witness.head===head,'MD_ROLLBACK_HEAD');
  }
  let graph=null;
- if(operations.length>=legacyCount)graph=replayReal(operations,{vaultId:keyring.vaultId,roster,legacyCount});
+ if(operations.length>=legacyCount)graph=replay(operations,{vaultId:keyring.vaultId,roster,legacyCount});
  else check(allowPartialActivation,'MD_INCOMPLETE_LEGACY_PREFIX');
  return {operations,tips,verified:{version:records.length,head},graph};
 }
@@ -40,7 +40,7 @@ export function sequentialState(material,{legacyOperations=[],sourceCheckpoint=n
  check(idOK(recoveryArtifactSha256),'MD_RECOVERY_ARTIFACT_PIN');
  return {profile:SCOPE,legacyCount:primary?legacyOperations.length:material.legacyCount,verified:{version:0,head:initialHead(material.keyring)},rollbackFloor:rollbackFloor??{version:0,head:initialHead(material.keyring)},records:[],tips:{},pending:null,receipts:{},enrollment:null,recoveryArtifactSha256,activation:{id:randomId(),primary,status:primary?'LOCAL_BARRIER':'ENROLLED_AWAITING_PREFIX',sourceCheckpoint,backup,legacyCommitments:legacyOperations.map(op=>({opId:op.opId,payloadSha256:sha(payloadEncode(op))}))},access:{rosterEpoch:material.roster.epoch,rosterHash:material.roster.head,epoch:material.accessEpoch??1,status:primary?'INITIALIZING':'ACTIVE'}};
 }
-export async function validateSequentialState(state,material){
+export async function validateSequentialState(state,material,{replay=replayReal}={}){
  keys(state,['format','accountId','vaultId','deviceId',...Object.keys(RESERVED),'pairingClaims','roster','userApp','sequentialSync']);
  check(state.format==='LBOS_LOCAL_STATE_1'&&state.accountId===material.keyring.accountId&&state.vaultId===material.keyring.vaultId&&state.deviceId===material.identity.public.deviceId,'MD_LOCAL_OWNER');
  for(const [k,v]of Object.entries(RESERVED))check(same(state[k],v),'MD_RESERVED_STATE');
@@ -49,13 +49,13 @@ export async function validateSequentialState(state,material){
  keys(s,['profile','legacyCount','verified','rollbackFloor','records','tips','pending','receipts','enrollment','recoveryArtifactSha256','activation','access',...(Object.hasOwn(s,'lifecycle')?['lifecycle']:[])]);
  await validateLifecycleState(state,material);
  check(s.profile===SCOPE&&Number.isSafeInteger(s.legacyCount)&&s.legacyCount>=1&&s.legacyCount<=10000,'MD_LOCAL_PROTOCOL');
- const parsed=await verifyPrefix(s.records,{keyring:material.keyring,roster,legacyCount:s.legacyCount,allowPartialActivation:s.activation.status!=='ACTIVE'});
+ const parsed=await verifyPrefix(s.records,{keyring:material.keyring,roster,legacyCount:s.legacyCount,allowPartialActivation:s.activation.status!=='ACTIVE',replay});
  check(same(parsed.verified,s.verified)&&same(parsed.tips,s.tips),'MD_LOCAL_HEAD');
  let graph=null;
  if(s.activation.primary&&s.activation.status!=='ACTIVE'){
   check(state.userApp.operations.length===s.legacyCount,'MD_ACTIVATION_LEGACY_COUNT');replayLegacy(state.userApp.operations,{vaultId:state.vaultId,deviceId:roster.evidence.genesis.body.firstDevice.deviceId});
   check(state.userApp.operations.every((op,i)=>s.activation.legacyCommitments[i]?.opId===op.opId&&s.activation.legacyCommitments[i]?.payloadSha256===sha(payloadEncode(op)))&&parsed.operations.every((op,i)=>samePayload(op,state.userApp.operations[i])),'MD_LEGACY_BYTES');
-  graph=replayReal(state.userApp.operations,{vaultId:state.vaultId,roster,legacyCount:s.legacyCount});
+  graph=replay(state.userApp.operations,{vaultId:state.vaultId,roster,legacyCount:s.legacyCount});
  }else{check(state.userApp.operations.length===parsed.operations.length&&parsed.operations.every((op,i)=>samePayload(op,state.userApp.operations[i])),'MD_ACCEPTED_PREFIX');graph=parsed.graph;}
  if(s.pending){
   const p=s.pending;keys(p,['status','intentId','op','wire','certificate','intentBodyHash','wireSha256']);check(['PREPARED_DURABLE','DISPATCHED_UNKNOWN'].includes(p.status),'MD_PENDING_STATUS');
@@ -64,7 +64,7 @@ export async function validateSequentialState(state,material){
   const member=roster.author(b.expectedRosterEpoch,b.expectedRosterHash,b.deviceId,b.deviceKeyId);check(await verify(member.signingPublic,'LBOS/MD1/append',encode(b),p.certificate.signature),'MD_PENDING_SIGNATURE');
   const o=await openEnvelope(unb64(p.wire),{keyring:material.keyring,roster,purpose:'op',objectId:p.op.opId});check(samePayload(decode(o.plaintext,{payload:true}),p.op),'MD_PENDING_PLAINTEXT');
   assertOperationCompatibility(p.op,b.compatibility);
-  if(s.activation.status==='ACTIVE')replayReal([...state.userApp.operations,p.op],{vaultId:state.vaultId,roster,legacyCount:s.legacyCount});
+  if(s.activation.status==='ACTIVE')replay([...state.userApp.operations,p.op],{vaultId:state.vaultId,roster,legacyCount:s.legacyCount});
  }
  return {graph,roster};
 }
@@ -75,8 +75,8 @@ export function applySyncResult(local,{roster,records,result,state}){
  return local;
 }
 export class SequentialService {
- #nativeGuard;#store;#material;#transport;#auth;#writer;#lease=null;#runtime=randomId();#state='AUTHENTICATED_READ_ONLY';#tail=Promise.resolve();#timer=null;#blocked=false;#closed=false;#clock;#capabilities=null;
- constructor({store,material,transport,auth,nativeGuard=null,clock=()=>Date.now()}){this.#nativeGuard=nativeGuard;check(!store.state.sequentialSync.activation.nativeBootstrap||nativeGuard,'MD_PRIMARY_GUARD_REQUIRED');this.#store=store;this.#material=material;this.#transport=transport;this.#auth=auth;this.#clock=clock;this.#writer=WriterContext.create(material.keyring,material.identity,'op');if(store.state.sequentialSync.pending)this.#state='DISPATCHED_UNKNOWN';}
+ #nativeGuard;#store;#material;#transport;#auth;#writer;#reuseReplay;#lease=null;#runtime=randomId();#state='AUTHENTICATED_READ_ONLY';#tail=Promise.resolve();#timer=null;#blocked=false;#closed=false;#clock;#capabilities=null;
+ constructor({store,material,transport,auth,nativeGuard=null,clock=()=>Date.now(),reuseReplay=true}){this.#reuseReplay=typeof reuseReplay==='function'?reuseReplay:reuseReplay===false?null:replayScope;this.#nativeGuard=nativeGuard;check(!store.state.sequentialSync.activation.nativeBootstrap||nativeGuard,'MD_PRIMARY_GUARD_REQUIRED');this.#store=store;this.#material=material;this.#transport=transport;this.#auth=auth;this.#clock=clock;this.#writer=WriterContext.create(material.keyring,material.identity,'op');if(store.state.sequentialSync.pending)this.#state='DISPATCHED_UNKNOWN';}
  get phase(){return this.#state;}
  get pending(){return this.#store.state.sequentialSync.pending;}
  get material(){return this.#material;}
@@ -87,7 +87,7 @@ export class SequentialService {
  #headArgs(){const s=this.#store.state.sequentialSync;return {expectedVersion:s.verified.version,expectedHead:s.verified.head,expectedRosterEpoch:s.access.rosterEpoch,expectedRosterHash:s.access.rosterHash,accessEpoch:s.access.epoch};}
  #leaseArgs(){check(this.#lease,'MD_NO_LEASE');return {runtimeSessionId:this.#runtime,leaseEpoch:this.#lease.epoch,leaseToken:this.#lease.token};}
  async #authenticated(){await this.#auth.accessToken();}
- async #publish(mutator){try{await this.#store.transaction(mutator);this.#material.roster=this.#store.roster;}catch(error){this.#blocked=true;this.#state='LOCAL_PUBLICATION_HOLD';throw error;}}
+ async #publish(mutator,{replay}={}){try{await this.#store.transaction(mutator,replay?{replay}:undefined);this.#material.roster=this.#store.roster;}catch(error){this.#blocked=true;this.#state='LOCAL_PUBLICATION_HOLD';throw error;}}
  async #sync(){
   await this.#authenticated();check(!this.pending&&!this.#store.state.sequentialSync.enrollment,'MD_PENDING_UNRESOLVED');this.#state='SYNCING';
   const state=await this.#transport.call('readState'),s=this.#store.state.sequentialSync;
@@ -182,7 +182,7 @@ export class SequentialService {
  });}
 
  #ready(){check(this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');check(this.#state==='WRITE_READY'&&!this.#blocked&&!this.pending&&!this.#store.state.sequentialSync.enrollment,'MD_NOT_WRITE_READY');check(this.#lease?.purpose==='WRITE'&&this.#clock()<this.#lease.deadline,'MD_LEASE_EXPIRED');}
- async #prepare(op){
+ async #prepare(op,scope=null){
   const s=this.#store.state.sequentialSync,tip=s.tips[this.#material.identity.public.deviceId];
   const wire=await this.#writer.seal(payloadEncode(op),{objectId:op.opId,sequence:(tip?.sequence??0)+1,previousDigest:tip?.digest??null,roster:this.#material.roster});
   const body={scope:SCOPE,accountId:this.#material.keyring.accountId,vaultId:this.#material.keyring.vaultId,genesisPin:this.#material.keyring.genesisPin,deviceId:this.#material.identity.public.deviceId,deviceKeyId:this.#material.identity.public.keyId,intentId:op.provenance.requestId,opId:op.opId,wireSha256:sha(wire),...this.#headArgs(),leaseEpoch:this.#lease.epoch,runtimeSessionId:this.#runtime,leaseTokenHash:sha(Uint8Array.from(this.#lease.token.match(/../g),x=>parseInt(x,16)))};
@@ -190,33 +190,38 @@ export class SequentialService {
   if(required.domainSchemaVersion===2||this.#capabilities?.minDomainWrite===2)body.compatibility={client:CLIENT,requiredDomainSchemaVersion:required.domainSchemaVersion,operationCapabilities:required.capabilities};
   const certificate={body,signature:await this.#material.identity.sign('LBOS/MD1/append',encode(body))};
   const p={status:'PREPARED_DURABLE',intentId:body.intentId,op,wire:b64(wire),certificate,intentBodyHash:sha(encode(certificate)),wireSha256:sha(wire)};
-  await this.#publish(local=>{check(local.sequentialSync.pending===null,'MD_PENDING_UNRESOLVED');local.sequentialSync.pending=p;});this.#state='PREPARED_DURABLE';return p;
+  await this.#publish(local=>{check(local.sequentialSync.pending===null,'MD_PENDING_UNRESOLVED');local.sequentialSync.pending=p;},{replay:scope?.replay});this.#state='PREPARED_DURABLE';return p;
  }
- async #materialize(p,receipt){
+ async #materialize(p,receipt,scope=null){
   check(receipt.intentId===p.intentId&&receipt.bodyHash===p.intentBodyHash&&receipt.wireSha256===p.wireSha256&&['COMMITTED','ABORTED'].includes(receipt.status),'MD_RECEIPT_BINDING');
   if(receipt.status==='ABORTED'){await this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');local.sequentialSync.receipts[p.intentId]=receipt;local.sequentialSync.pending=null;});this.#state='VERIFIED_READ_ONLY';return {status:'ABORTED',requestId:p.intentId};}
   check(receipt.opId===p.op.opId&&receipt.version===p.certificate.body.expectedVersion+1&&receipt.head===nextHead(p.certificate.body.expectedHead,receipt.version,p.certificate),'MD_RECEIPT_HEAD');this.#state='REMOTE_COMMITTED';
   const row={version:receipt.version,intentId:p.intentId,opId:p.op.opId,deviceId:p.op.device,wire:p.wire,wireSha256:p.wireSha256,certificate:p.certificate,head:receipt.head};
   const records=[...this.#store.state.sequentialSync.records,row];const s=this.#store.state.sequentialSync;
-  try{const result=await verifyPrefix(records,{...this.#material,legacyCount:s.legacyCount,witness:s.verified,allowPartialActivation:s.activation.status!=='ACTIVE'});
-  await this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');Object.assign(local.sequentialSync,{records,tips:result.tips,verified:result.verified,pending:null});local.sequentialSync.receipts[p.intentId]=receipt;if(local.sequentialSync.activation.status==='ACTIVE')local.userApp.operations=result.operations;else check(result.operations.every((op,i)=>samePayload(op,local.userApp.operations[i])),'MD_ACTIVATION_REWRITE');});}
+  try{const result=await verifyPrefix(records,{...this.#material,legacyCount:s.legacyCount,witness:s.verified,allowPartialActivation:s.activation.status!=='ACTIVE',...(scope?{replay:scope.replay}:{})});
+  await this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');Object.assign(local.sequentialSync,{records,tips:result.tips,verified:result.verified,pending:null});local.sequentialSync.receipts[p.intentId]=receipt;if(local.sequentialSync.activation.status==='ACTIVE')local.userApp.operations=result.operations;else check(result.operations.every((op,i)=>samePayload(op,local.userApp.operations[i])),'MD_ACTIVATION_REWRITE');},{replay:scope?.replay});}
   catch(e){this.#state='REMOTE_COMMITTED_LOCAL_HOLD';this.#blocked=true;throw e;}
   if(p.certificate.body.compatibility?.requiredDomainSchemaVersion===2)this.#capabilities=serverCapabilities(2);
   this.#state='LOCAL_CONFIRMED';const resultUI={...savedResult(p.op),status:'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED',remoteVersion:receipt.version,remoteHead:receipt.head};
   this.#state=this.#lease?.purpose==='WRITE'&&!this.#blocked&&this.#clock()<this.#lease.deadline?'WRITE_READY':'VERIFIED_READ_ONLY';return resultUI;
  }
- async #dispatch(p){
+ async #dispatch(p,scope=null){
   await this.#authenticated();check(!this.#blocked&&this.#lease&&this.#clock()<this.#lease.deadline,'MD_DISPATCH_BLOCKED');
-  await this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');local.sequentialSync.pending.status='DISPATCHED_UNKNOWN';});p=this.pending;this.#state='DISPATCHED_UNKNOWN';
+  await this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');local.sequentialSync.pending.status='DISPATCHED_UNKNOWN';},{replay:scope?.replay});p=this.pending;this.#state='DISPATCHED_UNKNOWN';
   let receipt;try{receipt=await this.#transport.call('appendIntent',{intentId:p.intentId,wire:p.wire,certificate:p.certificate,leaseToken:this.#lease.token});}catch(e){this.#state='DISPATCHED_UNKNOWN';throw e;}
-  return this.#materialize(p,receipt);
+  return this.#materialize(p,receipt,scope);
  }
  write(body,type){return this.#serial(async()=>{this.#ready();assertCompatible(this.#capabilities);await this.#authenticated();const normalized=normalizeCommand(body,type),old=this.#store.state.userApp.operations.find(op=>op.provenance.requestId===normalized.requestId);
   if(old){check(old.provenance.commandDigest===normalized.digest,'REQUEST_ID_BODY_COLLISION');const r=this.#store.state.sequentialSync.receipts[normalized.requestId];check(r?.status==='COMMITTED','MD_RECEIPT_REQUIRED');return {...savedResult(old),status:'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED',remoteVersion:r.version,remoteHead:r.head};}
   check(!this.#store.state.sequentialSync.receipts[normalized.requestId],'MD_TERMINAL_INTENT');
-  const op=candidateReal(this.#store.state.userApp.operations,{vaultId:this.#material.keyring.vaultId,deviceId:this.#material.identity.public.deviceId},normalized,{vaultId:this.#material.keyring.vaultId,roster:this.#material.roster,legacyCount:this.#store.state.sequentialSync.legacyCount}).op;
+  // F10 M2-B: one replay scope per save call (memory only), dropped in finally whatever the outcome.
+  // reuseReplay: true (default) / false (always full replay) / a scope factory (tests check close()).
+  const scope=this.#reuseReplay?this.#reuseReplay(this.#store.state.sequentialSync.verified.head):null;
+  try{
+  const op=candidateReal(this.#store.state.userApp.operations,{vaultId:this.#material.keyring.vaultId,deviceId:this.#material.identity.public.deviceId},normalized,{vaultId:this.#material.keyring.vaultId,roster:this.#material.roster,legacyCount:this.#store.state.sequentialSync.legacyCount},scope?{replay:scope.replay}:{}).op;
   const required=operationRequirements(op);check(required.domainSchemaVersion<=this.#capabilities.maxDomainWrite&&required.capabilities.every(c=>this.#capabilities.operationCapabilities.includes(c)),'UPDATE_REQUIRED_UNSUPPORTED_OPERATION');
-  const p=await this.#prepare(op);return this.#dispatch(p);
+  const p=await this.#prepare(op,scope);return await this.#dispatch(p,scope);
+  }finally{scope?.close();}
  });}
  reconcile(){return this.#serial(async()=>{await this.#authenticated();const p=this.pending;check(p,'MD_NO_PENDING');this.#state='DISPATCHED_UNKNOWN';const lookup={intentId:p.intentId,intentBodyHash:p.intentBodyHash,wireSha256:p.wireSha256};let receipt=await this.#transport.call('getIntent',lookup);if(receipt.status==='NOT_FOUND')receipt=await this.#transport.call('settleIntent',lookup);return this.#materialize(p,receipt);});}
  freezeLostDevice({freezeId,lostDeviceId,confirmed}){return this.#serial(async()=>{check(this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');check(confirmed===true&&idOK(freezeId)&&idOK(lostDeviceId),'MD_EXPLICIT_FREEZE');await this.#auth.requireRecentMfa();this.suspend();const receipt=await this.#transport.call('freezeLostDevice',{freezeId,lostDeviceId});check(receipt.status==='FROZEN'&&receipt.freezeId===freezeId&&receipt.lostDeviceId===lostDeviceId,'MD_FREEZE_RECEIPT');await this.#publish(local=>{local.sequentialSync.receipts[freezeId]=receipt;local.sequentialSync.access.epoch=receipt.accessEpoch;local.sequentialSync.access.status='FROZEN';});this.#lease=null;this.#state='READ_ONLY';return receipt;});}

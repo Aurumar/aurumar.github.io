@@ -1,6 +1,6 @@
 import {Graph} from '../core/package/parent/v2_phase2/source/dag.mjs';
 import {canonical} from '../core/package/parent/v2_phase2/source/canonical.mjs';
-import {check,idOK,copy} from '../core/package/src/codec.mjs';
+import {check,idOK,copy,sha,encode,payloadEncode} from '../core/package/src/codec.mjs';
 import {replay as legacyReplay,validateRecord,validateSeeds,FORMATS,buildCandidateOperation} from '../user-app/action-model.mjs';
 import {validateWholeSequence} from '../user-app/whole-life-model.mjs';
 import {PROFILE,LIMITS} from './contracts.mjs';
@@ -37,10 +37,27 @@ export function replayReal(operations,{vaultId,roster,legacyCount}){
  validateWholeSequence(operations);
  return graph;
 }
-export function candidateReal(operations,owner,normalized,options){
- const graph=replayReal(operations,options);
+// F10 M2-B: replay results reused only inside ONE save call, in memory. The key is the ordered list of every input op
+// (opId + sha256 of its exact payload bytes) plus the replay parameters (vaultId, roster epoch/head, legacyCount); any
+// difference means a full replay. The save's starting head is recorded in the key too, but isolation between saves comes
+// from the scope living for one call only. Only successful replays are kept (a failing input always re-runs and fails
+// the same way); an input the key cannot even encode goes straight to replayReal so its own error code surfaces.
+// close() drops everything when the save ends, successfully or not. Never stored in files, IndexedDB or globals.
+export function replayScope(startHead){
+ let memo=new Map();const stats={runs:0,hits:0};
+ const key=(operations,{vaultId,roster,legacyCount})=>sha(encode({startHead,vaultId,rosterEpoch:roster.epoch,rosterHead:roster.head,legacyCount,operations:operations.map(op=>[op.opId,sha(payloadEncode(op))])}));
+ const replay=(operations,options)=>{
+  if(!memo){stats.runs++;return replayReal(operations,options);}
+  let k;try{k=key(operations,options);}catch{stats.runs++;return replayReal(operations,options);}
+  const hit=memo.get(k);if(hit){stats.hits++;return hit;}
+  stats.runs++;const graph=replayReal(operations,options);memo.set(k,graph);return graph;
+ };
+ return {replay,stats,close(){memo?.clear();memo=null;}};
+}
+export function candidateReal(operations,owner,normalized,options,{replay=replayReal}={}){
+ const graph=replay(operations,options);
  check(owner.vaultId===options.vaultId,'MD_VAULT');
  const op=buildCandidateOperation(graph,owner,normalized,{appFormat:PROFILE});
  const next=[...copy(operations),op];
- return {op,operations:next,graph:replayReal(next,options)};
+ return {op,operations:next,graph:replay(next,options)};
 }
