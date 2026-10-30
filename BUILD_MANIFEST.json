@@ -335,8 +335,8 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "b96293b53814638c5d9ef776e649d1f93d14dfed0d131d541bdab5a0a6973999",
-      "outputSha256": "b96293b53814638c5d9ef776e649d1f93d14dfed0d131d541bdab5a0a6973999",
+      "sourceSha256": "607f1e3225ca30688132ed795d43a742494f5ab96059cbbb748782707910abf6",
+      "outputSha256": "607f1e3225ca30688132ed795d43a742494f5ab96059cbbb748782707910abf6",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs",
@@ -444,8 +444,8 @@
     },
     {
       "path": "user-app/public/fin-plan.mjs",
-      "sourceSha256": "3a830ef757762ce95e89a45523a9be3f49e844fe6dcd6c6b637f0a6bbe42b8c8",
-      "outputSha256": "3a830ef757762ce95e89a45523a9be3f49e844fe6dcd6c6b637f0a6bbe42b8c8",
+      "sourceSha256": "02a46d6f87a813d46e5c58fcc719d48e5ebc4a4059c8206ca8ee44d61702231b",
+      "outputSha256": "02a46d6f87a813d46e5c58fcc719d48e5ebc4a4059c8206ca8ee44d61702231b",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-charts.mjs"
@@ -889,14 +889,14 @@
     {
       "path": "index.html",
       "sourcePath": "user-app/public/index.html",
-      "sourceSha256": "628cc04a81db08032e900d3cb4a95fec76e43e3601cb6acc487e222d63d19bd0",
-      "outputSha256": "55f726f05de80334e7f6d2e62e0abd39ed1f32c724525c0d1d3ba4a470006a2e"
+      "sourceSha256": "64be0e13cf28eb8d7289bd539fb941c79f49a47958d881fd155098dabe5128bd",
+      "outputSha256": "54a91851775d7c0a2ce44fec7adc63eace64933351955aca21b6b3311eb2eedd"
     },
     {
       "path": "styles.css",
       "sourcePath": "user-app/public/styles.css",
-      "sourceSha256": "74d849904fa4426833d12f5c337e57fb96da8408f4e227353b0c58df7244a3b1",
-      "outputSha256": "74d849904fa4426833d12f5c337e57fb96da8408f4e227353b0c58df7244a3b1"
+      "sourceSha256": "2a4411d7d03be7bc0e08d9fb87c41542eb91f1a236d8823eba98869854b9cc66",
+      "outputSha256": "2a4411d7d03be7bc0e08d9fb87c41542eb91f1a236d8823eba98869854b9cc66"
     },
     {
       "path": "public-config.json",
