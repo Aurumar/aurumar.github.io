@@ -1,5 +1,5 @@
-import {PC_ENTITY_REQUEST_LIMIT,buildBudget,monthSpan,finErrorText,finError,formatWon,formatCompact,shiftMonth,shownMerchant,buildAccount,buildTxn,buildRule,monthLines,duplicateGroups,ledgerCsv,rulePreview,checkImportPlan,opBudget,opBudgetNotice,opsAfter,localBudget,capacityNotice,compactionText,holdGuidance,importPermission,finFingerprintInput,housekeepingText} from './fin-ledger.mjs';
-import {PERIODS as PLAN_PERIODS,detectRecurring,recurringGridLayout,costSplit,budgetStatus,budgetBarsLayout,lifeTimeline,timelineLayout} from './fin-plan.mjs';
+import {PC_ENTITY_REQUEST_LIMIT,buildBudget,monthSpan,finErrorText,finError,formatWon,formatCompact,shiftMonth,shownMerchant,isSensitive,buildAccount,buildTxn,buildRule,monthLines,duplicateGroups,ledgerCsv,rulePreview,checkImportPlan,opBudget,opBudgetNotice,opsAfter,localBudget,capacityNotice,compactionText,holdGuidance,importPermission,finFingerprintInput,housekeepingText} from './fin-ledger.mjs';
+import {PERIODS as PLAN_PERIODS,detectRecurring,recurringGridLayout,costSplit,budgetStatus,budgetFor,budgetBarsLayout,lifeTimeline,timelineLayout,vaultPlan,vaultBricks,vaultBrickLayout,vaultCashFromSnapshot,vaultOverdraftFromSnapshot,vaultCardUnpaidFromSnapshot,liveNetCash,quickPicks,monthInsight} from './fin-plan.mjs';
 import {prepare,PERIODS,periodRange,aggregate,roundDiv,dataMonths,overview,monthlySeries,barLayout,sankeyData,sankeyLayout,treemapItems,squarify,dailyTotals,heatmapMonths,completeness} from './fin-charts.mjs';
 const mdBackend=globalThis.LIFE_BRICK_MD_BACKEND??null;
 if(mdBackend&&mdBackend.format!=='LB_MD_UI_BACKEND_1')throw new Error('MD_BACKEND_PROFILE');
@@ -17,7 +17,7 @@ const DRAFT_ROUTES={'/api/action-record':'RECORD','/api/entity':'ENTITY','/api/c
 const savedStatus=()=>mdProfile?(mdDraftMode()?'LOCAL_DRAFT':'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED'):'LOCAL_SAVED';
 // B1 plain save/sync language. Each phrase names exactly one existing technical state; the technical code stays
 // visible under "기술 정보". A LOCAL_DRAFT is never called committed and an unknown dispatch is never called saved.
-const SAVE_TEXT={LOCAL_DRAFT:'이 기기에 임시 저장됨',LOCAL_DRAFT_NOTE:'아직 동기화 전 · 확정 기록·진행·나의 집에는 들어가지 않음',VERIFIED:'저장 및 동기화 확인됨',LOCAL_SAVED:'이 PC에 저장됨',CONNECT:'연결되면 마무리할 수 있음',UPDATE:'앱 업데이트가 필요함',CHECK:'이 저장을 확인한 뒤 계속할 수 있음',NOT_PROVISIONED:'서버 동기화가 설정되지 않음',READ_ONLY:'최신 기록 확인됨 · 기록하려면 기록 권한이 필요함',WRITE_READY:'최신 기록 확인됨 · 저장하면 바로 동기화 확인',FOLLOWER:'읽기 전용 창 · 다른 창에서 기록 중',LOCKED:'잠김'};
+const SAVE_TEXT={LOCAL_DRAFT:'이 기기에 임시 저장됨',LOCAL_DRAFT_NOTE:'아직 동기화 전 · 확정 기록·진행·나의 집에는 들어가지 않음',VERIFIED:'저장 및 동기화 확인됨',LOCAL_SAVED:'이 PC에 저장됨',CONNECT:'연결되면 마무리할 수 있음',UPDATE:'앱 업데이트가 필요함',CHECK:'이 저장을 확인한 뒤 계속할 수 있음',NOT_PROVISIONED:'서버 동기화가 설정되지 않음',READ_ONLY:'최신 기록 확인됨 · 기록하려면 기록 권한이 필요함',READ_ONLY_AUTO:'최신 기록 확인됨 · 저장하면 자동으로 기록 권한을 받아 동기화',WRITE_READY:'최신 기록 확인됨 · 저장하면 바로 동기화 확인',FOLLOWER:'읽기 전용 창 · 다른 창에서 기록 중',LOCKED:'잠김'};
 const unprovisioned=()=>mdProduct?.serverSync==='SERVER_SYNC_NOT_PROVISIONED';
 const draftTail=()=>unprovisioned()?'서버 동기화 미설정 · 확정되지 않음':SAVE_TEXT.CONNECT;
 const saveMessageFor=code=>code==='LOCAL_DRAFT'?SAVE_TEXT.LOCAL_DRAFT+' · '+SAVE_TEXT.LOCAL_DRAFT_NOTE:code==='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED'?SAVE_TEXT.VERIFIED:SAVE_TEXT.LOCAL_SAVED;
@@ -185,10 +185,15 @@ function metric(label,value,foot){return add(el('article',null,'metric-card'),el
 function domainName(code){return whole.domains.find(d=>d.code===code)?.name||'미분류';}
 function money(value,currency=whole.finance.currency){return value===null||value===undefined?'UNKNOWN':value.replace(/\B(?=(\d{3})+(?!\d))/g,',')+' '+(currency||'');}
 function status(message,error=false){$('status').textContent=message;$('status').dataset.error=String(error);}
+// whole-life-model.mjs가 저장을 거절할 때 쓰는 코드 중, 입력을 고치면 바로 다시 시도할 수 있는 것들(아무것도 쓰이지 않았고,
+// 다른 기기·동기화 상태와는 무관함). fail()은 이 코드들을 mdProfile의 "저장·연결 보류" 기본 문구로 보내지 않고
+// errorText()의 한국어 문구를 편집 창 안에 바로 보여준다. STALE_HEADS·DELETE_CONFIRMATION_REQUIRED처럼 다른 기록과
+// 얽힌 것, HOLD_*처럼 확정 여부가 불확실한 것은 포함하지 않는다(기존의 신중한 경로를 그대로 탄다).
+const MODEL_VALIDATION_CODES=new Set(['INVALID_TEXT','DEFERRED_REASON_REQUIRED','INVALID_DECIMAL_AMOUNT','FINANCE_ITEMS_REQUIRED','UNSAVED_ACTION_DRAFT']);
 function lock(value){busy=value;for(const n of document.querySelectorAll('button,input,textarea,select')){if(value&&!n.disabled){n.disabled=true;n.dataset.busyLock='1';}else if(!value&&n.dataset.busyLock){n.disabled=false;delete n.dataset.busyLock;}if(ended)n.disabled=true;}applyMDLocks();}
 function appError(code){return Object.assign(new Error(code),{code});}
-function errorText(code){const hold=holdGuidance(code);if(hold)return hold;return ({UNLOCK_FAILED:'비밀문구가 맞지 않습니다.',STALE_HEADS:'원본이 바뀌었습니다. 편집을 취소하고 최신 내용을 확인하세요.',INVALID_TEXT:'입력 길이와 내용을 확인하세요.',DEFERRED_REASON_REQUIRED:'보류 이유를 입력하세요.',INVALID_DECIMAL_AMOUNT:'금액은 0 이상의 숫자로 입력하세요. 선택한 소수 자릿수를 확인하세요.',HOLD_CAPSULE_PUBLICATION:'저장 결과를 확정할 수 없습니다. 추가 저장을 중단했습니다. 파일을 삭제하거나 되돌리지 마세요.',HOLD_UNKNOWN_SAVE:'저장 결과가 불명확합니다. 새 요청으로 반복하지 마세요.',UNSAVED_ACTION_DRAFT:'이 행동의 오늘 입력을 먼저 저장하세요.',FINANCE_ITEMS_REQUIRED:'항목을 추가하거나 명시적으로 없음(0)을 선택하세요.'})[code]||(finErrorText(code)?finErrorText(code)+' ('+code+')':'작업을 완료하지 못했습니다: '+code);}
-function fail(error){const code=error.code||'HOLD_CONNECTION';if(error.finLocal){const text=finErrorText(code)||code;status(text,true);if($('editor').open)$('editor-error').textContent=text;return;}renderRestore();problem={code,kind:(code==='HOLD_STORE_FORMAT_NEWER_FAIL_CLOSED'||code.startsWith('UPDATE_REQUIRED'))?'UPDATE':['MD_PENDING_RECONCILE_REQUIRED','HOLD_UNKNOWN_SAVE'].includes(code)?'UNKNOWN':code==='MD_NOT_WRITE_READY'?'NOT_WRITE_READY':'ERROR'};if(mdProfile){if(code!=='MD_ALREADY_UNLOCKED'){mdReady=false;mdDraftReady=can('draft-save')&&mdRole==='OWNER'&&mdUnlocked;}const guidance={HOLD_STORE_FORMAT_NEWER_FAIL_CLOSED:SAVE_TEXT.UPDATE+' · 이 데이터는 더 새로운 LIFE BRICK 형식이라 열지 않았습니다. 기록은 그대로 보존됩니다. 최신 앱으로 여세요.',MD_NOT_WRITE_READY:(autoWriteFail==='WRITER_BUSY'||autoWriteFail==='STALE_HEAD'?'다른 기기나 창이 기록 중입니다 · 입력은 그대로 남아 있습니다 · 최대 약 2분 뒤 같은 입력으로 다시 저장하세요(자동 재시도는 한 번만 했습니다). 방금 닫은 이 기기의 창일 수도 있습니다.':/^AUTH_/.test(autoWriteFail||'')?'로그인이 만료되어 저장하지 못했습니다 · 입력은 그대로 남아 있습니다 · 연결 · 장치에서 서버 로그인 후 다시 저장하세요.':autoWriteFail==='OFFLINE'?'오프라인이라 저장하지 못했습니다 · 입력은 그대로 남아 있습니다 · 연결되면 다시 저장하세요.':'지금은 확정 저장을 할 수 없습니다 · 연결 · 장치에서 동기화하고 기록 권한을 받으세요.'),MD_PENDING_RECONCILE_REQUIRED:SAVE_TEXT.CHECK+' · 이 저장이 서버에 반영됐는지 아직 모릅니다. 새로 저장하지 말고 연결 · 장치에서 "미확정 저장 결과 확인"을 누르세요.',HOLD_MIGRATION_FAILED:'업데이트를 마무리하지 못함 · 기록은 보호됨 · 앱을 다시 열어 저장된 상태를 확인하세요.',UPDATE_REQUIRED_READ_ONLY_HOLD:'앱 업데이트 필요 · 읽기 전용으로 보호됨 · 최신 앱으로 계속하세요.',UPDATE_REQUIRED_SERVER_CONTRACT:'읽기 전용으로 보호됨 · 이 서버와 앱의 업데이트 준비를 확인해야 합니다.',AUTH_AAL2_REQUIRED:'서버 로그인이 이메일 코드 단계까지만 확인된 상태입니다 · 연결 · 장치에서 인증 앱(TOTP) 코드까지 입력하세요. 저장된 로그인이 복원되지 않았다면 "로그인 복원" 줄의 이유를 확인하세요.',AUTH_EXPIRED:'서버 로그인이 만료되었습니다 · 연결 · 장치에서 서버 로그인 후 다시 시도하세요. "로그인 복원" 줄에 복원하지 못한 이유가 표시됩니다.',AUTH_NOT_PROVISIONED:SAVE_TEXT.NOT_PROVISIONED+' · 이 기기에서 읽기와 임시 저장만 가능합니다.',MD_ROUTE:'이 앱 구성에서는 사용할 수 없는 기능입니다.',MD_ALREADY_UNLOCKED:'이 탭의 저장소는 이미 열려 있습니다. 중복 잠금해제 대신 현재 상태를 확인하세요.',MD_NO_LOCAL_PROFILE:'이 브라우저 저장소에 로컬 프로필이 없습니다. 기존 origin과 browser profile을 확인하세요.',MD_PROFILE_SELECTION_REQUIRED:'여러 프로필 중 사용할 항목을 먼저 선택하세요.',MD_LOCAL_RECORD_MISSING_OR_MISMATCH:'선택한 로컬 기록이 없거나 origin/id가 맞지 않습니다. 사이트 데이터를 지우거나 새 등록을 시작하지 마세요.',MD_LOCAL_FOLLOWER_READ_ONLY:'이 탭은 읽기 전용입니다. 소유 탭을 종료한 뒤 이 탭에서 최신 기록을 다시 열어 인계받으세요.',MD_LOCAL_OWNER_BUSY:'다른 탭이 아직 소유 중입니다. 그 탭에서 안전하게 인계한 뒤 다시 시도하세요.',MD_LOCAL_OWNER_LOCK_UNAVAILABLE:'브라우저의 배타적 탭 잠금을 사용할 수 없어 쓰기를 차단했습니다.',MD_LOCAL_OWNER_CLOSING:'소유권 인계 또는 로컬 기록 재개방 중입니다. 새 작업을 시작하지 마세요.'};const shown=holdGuidance(code)??guidance[code]??(finErrorText(code)?finErrorText(code)+' ('+code+')':'저장·연결 보류 · '+code+' · 결과를 모르는 저장은 확인한 뒤 진행하세요.');status(shown,true);saRejected(code,shown);applyMDLocks();refreshSaveCards();return;}if(code.startsWith('HOLD_')||code.startsWith('SECURITY_'))ended=true;status(errorText(code),true);if($('editor').open)$('editor-error').textContent=errorText(code);refreshSaveCards();}
+function errorText(code){const hold=holdGuidance(code);if(hold)return hold;return ({UNLOCK_FAILED:'비밀문구가 맞지 않습니다.',STALE_HEADS:'원본이 바뀌었습니다. 편집을 취소하고 최신 내용을 확인하세요.',INVALID_TEXT:'입력 길이와 내용을 확인하세요.',DEFERRED_REASON_REQUIRED:'보류 이유를 입력하세요.',INVALID_DECIMAL_AMOUNT:"금액은 숫자만 넣어 주세요 · 쉼표·마이너스·계산식은 쓸 수 없습니다 · 빚은 '부채'에 양수로 넣으세요",HOLD_CAPSULE_PUBLICATION:'저장 결과를 확정할 수 없습니다. 추가 저장을 중단했습니다. 파일을 삭제하거나 되돌리지 마세요.',HOLD_UNKNOWN_SAVE:'저장 결과가 불명확합니다. 새 요청으로 반복하지 마세요.',UNSAVED_ACTION_DRAFT:'이 행동의 오늘 입력을 먼저 저장하세요.',FINANCE_ITEMS_REQUIRED:'항목을 추가하거나 명시적으로 없음(0)을 선택하세요.'})[code]||(finErrorText(code)?finErrorText(code)+' ('+code+')':'작업을 완료하지 못했습니다: '+code);}
+function fail(error){const code=error.code||'HOLD_CONNECTION';if(error.finLocal){const text=finErrorText(code)||code;status(text,true);if($('editor').open)$('editor-error').textContent=text;return;}if(MODEL_VALIDATION_CODES.has(code)){const text=errorText(code);status(text,true);if($('editor').open)$('editor-error').textContent=text;return;}renderRestore();problem={code,kind:(code==='HOLD_STORE_FORMAT_NEWER_FAIL_CLOSED'||code.startsWith('UPDATE_REQUIRED'))?'UPDATE':['MD_PENDING_RECONCILE_REQUIRED','HOLD_UNKNOWN_SAVE'].includes(code)?'UNKNOWN':code==='MD_NOT_WRITE_READY'?'NOT_WRITE_READY':'ERROR'};if(mdProfile){if(code!=='MD_ALREADY_UNLOCKED'){mdReady=false;mdDraftReady=can('draft-save')&&mdRole==='OWNER'&&mdUnlocked;}const guidance={HOLD_STORE_FORMAT_NEWER_FAIL_CLOSED:SAVE_TEXT.UPDATE+' · 이 데이터는 더 새로운 LIFE BRICK 형식이라 열지 않았습니다. 기록은 그대로 보존됩니다. 최신 앱으로 여세요.',MD_NOT_WRITE_READY:(autoWriteFail==='WRITER_BUSY'||autoWriteFail==='STALE_HEAD'?'다른 기기나 창이 기록 중입니다 · 입력은 그대로 남아 있습니다 · 최대 약 2분 뒤 같은 입력으로 다시 저장하세요(자동 재시도는 한 번만 했습니다). 방금 닫은 이 기기의 창일 수도 있습니다.':/^AUTH_/.test(autoWriteFail||'')?'로그인이 만료되어 저장하지 못했습니다 · 입력은 그대로 남아 있습니다 · 연결 · 장치에서 서버 로그인 후 다시 저장하세요.':autoWriteFail==='OFFLINE'?'오프라인이라 저장하지 못했습니다 · 입력은 그대로 남아 있습니다 · 연결되면 다시 저장하세요.':'지금은 확정 저장을 할 수 없습니다 · 연결 · 장치에서 동기화하고 기록 권한을 받으세요.'),MD_PENDING_RECONCILE_REQUIRED:SAVE_TEXT.CHECK+' · 이 저장이 서버에 반영됐는지 아직 모릅니다. 새로 저장하지 말고 연결 · 장치에서 "미확정 저장 결과 확인"을 누르세요.',HOLD_MIGRATION_FAILED:'업데이트를 마무리하지 못함 · 기록은 보호됨 · 앱을 다시 열어 저장된 상태를 확인하세요.',UPDATE_REQUIRED_READ_ONLY_HOLD:'앱 업데이트 필요 · 읽기 전용으로 보호됨 · 최신 앱으로 계속하세요.',UPDATE_REQUIRED_SERVER_CONTRACT:'읽기 전용으로 보호됨 · 이 서버와 앱의 업데이트 준비를 확인해야 합니다.',AUTH_AAL2_REQUIRED:'서버 로그인이 이메일 코드 단계까지만 확인된 상태입니다 · 연결 · 장치에서 인증 앱(TOTP) 코드까지 입력하세요. 저장된 로그인이 복원되지 않았다면 "로그인 복원" 줄의 이유를 확인하세요.',AUTH_EXPIRED:'서버 로그인이 만료되었습니다 · 연결 · 장치에서 서버 로그인 후 다시 시도하세요. "로그인 복원" 줄에 복원하지 못한 이유가 표시됩니다.',AUTH_NOT_PROVISIONED:SAVE_TEXT.NOT_PROVISIONED+' · 이 기기에서 읽기와 임시 저장만 가능합니다.',MD_ROUTE:'이 앱 구성에서는 사용할 수 없는 기능입니다.',MD_ALREADY_UNLOCKED:'이 탭의 저장소는 이미 열려 있습니다. 중복 잠금해제 대신 현재 상태를 확인하세요.',MD_NO_LOCAL_PROFILE:'이 브라우저 저장소에 로컬 프로필이 없습니다. 기존 origin과 browser profile을 확인하세요.',MD_PROFILE_SELECTION_REQUIRED:'여러 프로필 중 사용할 항목을 먼저 선택하세요.',MD_LOCAL_RECORD_MISSING_OR_MISMATCH:'선택한 로컬 기록이 없거나 origin/id가 맞지 않습니다. 사이트 데이터를 지우거나 새 등록을 시작하지 마세요.',MD_LOCAL_FOLLOWER_READ_ONLY:'이 탭은 읽기 전용입니다. 소유 탭을 종료한 뒤 이 탭에서 최신 기록을 다시 열어 인계받으세요.',MD_LOCAL_OWNER_BUSY:'다른 탭이 아직 소유 중입니다. 그 탭에서 안전하게 인계한 뒤 다시 시도하세요.',MD_LOCAL_OWNER_LOCK_UNAVAILABLE:'브라우저의 배타적 탭 잠금을 사용할 수 없어 쓰기를 차단했습니다.',MD_LOCAL_OWNER_CLOSING:'소유권 인계 또는 로컬 기록 재개방 중입니다. 새 작업을 시작하지 마세요.'};const shown=holdGuidance(code)??guidance[code]??(finErrorText(code)?finErrorText(code)+' ('+code+')':'저장·연결 보류 · '+code+' · 결과를 모르는 저장은 확인한 뒤 진행하세요.');status(shown,true);saRejected(code,shown);applyMDLocks();refreshSaveCards();return;}if(code.startsWith('HOLD_')||code.startsWith('SECURITY_'))ended=true;status(errorText(code),true);if($('editor').open)$('editor-error').textContent=errorText(code);refreshSaveCards();}
 async function perform(fn){if(busy||ended)return;lock(true);try{await fn();}catch(e){fail(e);}finally{lock(false);}}
 async function api(path,body){if(mdBackend)return mdBackend.request(path,body);const headers={};if(capability)headers.Authorization='Bearer '+capability;if(body!==undefined)headers['Content-Type']='application/json';const response=await fetch(path,{method:body===undefined?'GET':'POST',headers,body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer'});const result=await response.json();if(!response.ok)throw appError(result.code||'HOLD_HTTP_RESPONSE');return result;}
 async function submit(path,body){const result=await submitWrite(path,body);lastSave={status:result.status,at:Date.now()};return result;}
@@ -343,7 +348,8 @@ function saveState(){
  if(mdRole==='FOLLOWER')return {key:'FOLLOWER',title:SAVE_TEXT.FOLLOWER,detail:'이 창에서는 저장·동기화·임시 저장이 차단됩니다.',tone:'warn',action:'DEVICES',codes};
  if(p.serverSync==='SERVER_SYNC_NOT_PROVISIONED')return {key:'NOT_PROVISIONED',title:drafted?drafted+' · '+SAVE_TEXT.NOT_PROVISIONED:SAVE_TEXT.NOT_PROVISIONED,detail:'이 앱 후보는 서버에 연결하지 않습니다. 새 기록은 이 기기에 임시 저장만 되고 확정 기록이 되지 않습니다.'+failed,tone:problem?'warn':'info',action:n?'DEVICES':null,actionLabel:'임시 저장 목록',codes};
  if(p.freshness==='SYNCED_WRITE_READY'){const v=lastSave?.status==='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED';return {key:v?'VERIFIED':'WRITE_READY',title:(v?SAVE_TEXT.VERIFIED:SAVE_TEXT.WRITE_READY)+(drafted?' · '+drafted:''),detail:(n?'임시 저장은 연결 · 장치에서 하나씩 승인해 확정할 수 있습니다.':'')+failed,tone:problem?'warn':'ok',action:n?'DEVICES':null,actionLabel:'임시 저장 확정하기',codes};}
- if(p.freshness==='SYNCED_VERIFIED_READ_ONLY')return {key:'READ_ONLY',title:SAVE_TEXT.READ_ONLY+(drafted?' · '+drafted:''),detail:(mdDraftReady?'지금 기록하면 이 기기에 임시 저장됩니다.':'')+failed,tone:problem?'warn':'info',action:'DEVICES',actionLabel:'기록 권한 받기',codes};
+ // F11: 자동으로 기록 권한을 받을 수 있는 상태(mdAutoOK)면 권한을 따로 받으라고 하지 않는다. 동작은 그대로다.
+ if(p.freshness==='SYNCED_VERIFIED_READ_ONLY'){const auto=mdAutoOK();return {key:'READ_ONLY',title:(auto?SAVE_TEXT.READ_ONLY_AUTO:SAVE_TEXT.READ_ONLY)+(drafted?' · '+drafted:''),detail:(auto?'저장할 때 이 기기가 기록 권한을 받아 동기화합니다.':mdDraftReady?'지금 기록하면 이 기기에 임시 저장됩니다.':'')+failed,tone:problem?'warn':'info',action:'DEVICES',actionLabel:auto?'연결 · 장치 열기':'기록 권한 받기',codes};}
  return {key:'OFFLINE',title:drafted?drafted+' · '+SAVE_TEXT.CONNECT:SAVE_TEXT.CONNECT,detail:'연결 전에는 마지막으로 확인된 기록을 보여 줍니다(최신이 아닐 수 있음). '+(mdDraftReady?'지금 기록하면 이 기기에 임시 저장됩니다.':'지금은 기록할 수 없습니다.')+failed,tone:problem?'warn':'info',action:'DEVICES',actionLabel:'연결하러 가기',codes};
 }
 function saveStateCard(s=saveState()){const n=add(el('section',null,'save-state-card tone-'+s.tone),add(el('div',null,'state-main'),el('span','저장 상태','state-kicker'),el('strong',s.title),s.detail?el('p',s.detail):null,lastSave?el('p','이번 실행의 마지막 저장: '+saveMessageFor(lastSave.status).split(' · ')[0]+' · '+new Date(lastSave.at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),'last-save'):null));n.setAttribute('role','status');n.dataset.state=s.key;if(s.action)add(n,button(s.actionLabel||'연결 · 장치 열기',()=>navigate(s.action),'secondary nav-link'));add(n,add(el('details',null,'tech-details'),el('summary','기술 정보'),el('code',s.codes.filter(Boolean).join(' · ')||'-')));n.querySelector('.nav-link')?.setAttribute('data-nav-only','1');return n;}
@@ -368,7 +374,9 @@ function renderHome(root){
  const u=urgentDate(),urgent=add(el('section',null,'panel urgent-panel'),el('h2','가까운 날짜','panel-title'));urgent.id='urgent-date';
  if(u)add(urgent,row(u.title,dayLabel(u.date)+(u.time?' '+u.time:'')+' · '+u.from,badge(u.kind)));else add(urgent,hint('앞으로 7일 안에 직접 입력한 일정·계획·납부 날짜가 없습니다.'));add(root,urgent);
  if(!alert)add(root,saveStateCard(state));
- add(root,houseStrip(p.house),el('h2','오늘과 삶의 요약','home-divider'));
+ add(root,houseStrip(p.house));
+ if(whole.fin)vaultCard(root,whole.fin,{compact:true});
+ add(root,el('h2','오늘과 삶의 요약','home-divider'));
  add(root,add(el('div',null,'metric-grid'),metric('오늘 결과 기록',today.actions.filter(a=>a.outcome!==null).length+' / '+today.actions.length,'활성 행동 중 기록한 수'),metric('진행 · 유지 계획',h.activePlans.length,'직접 지정한 상태'),metric('유동 현금',money(whole.finance.totalLiquidCash),whole.finance.snapshotDate||'스냅샷을 추가하세요'),metric('쌓인 블록',p.house.totalBlocks,'유효 행동일 + 완료 마일스톤')));
  const grid=el('div',null,'overview-grid'),left=el('div',null,'stack'),right=el('div',null,'stack');add(grid,left,right);add(root,grid);
  const priorities=section('오늘의 우선 행동','설정한 순서의 활성 행동 최대 5개');for(const a of h.priorityActions)add(priorities,row(a.title,domainName(a.domain),badge(today.actions.find(t=>t.actionId===a.actionId)?.outcome||'UNRECORDED')));if(!h.priorityActions.length)add(priorities,empty('설정에서 행동을 추가하세요.'));add(left,priorities);
@@ -422,7 +430,7 @@ async function saveDraft(actionId){const d=drafts.get(actionId);if(!d)return;con
 async function saveDrafts(){for(const actionId of [...drafts.keys()])await saveDraft(actionId);}
 function renderLife(root){add(root,button(showHidden?'표시 영역만 보기':'숨긴 영역도 보기',()=>{showHidden=!showHidden;void render();}));const grid=el('div',null,'grid two');for(const d of whole.domains.filter(d=>showHidden||!d.hidden)){const p=section(d.code+' · '+d.name);p.classList.add('domain-card');add(p,badge(d.data.status),add(el('div',null,'state-line next-line'),el('strong','다음 행동'),el('span',d.data.nextAction||'아직 입력하지 않음')));const more=add(el('details',null,'card-details'),el('summary','자세히 · 현재 · 바라는 상태 · 계획 · 막힌 점 · 다시 볼 조건'));more.open=!narrow();for(const [key,label] of [['currentState','현재'],['desiredState','바라는 상태'],['currentPlan','현재 계획'],['blocker','막힌 점'],['reviewTrigger','다시 볼 조건']])add(more,add(el('div',null,'state-line'),el('strong',label),el('span',d.data[key]||'아직 입력하지 않음')));if(d.data.deferredReason)add(more,hint('보류 이유: '+d.data.deferredReason));add(p,more,button('영역 편집 · '+d.code,()=>editDomain(d)));add(grid,p);}add(root,grid);}
 function field(parent,label,type='text',value='',options=null){const wrap=el('label',label),input=el(type==='textarea'?'textarea':type==='select'?'select':'input');if(type!=='textarea'&&type!=='select')input.type=type;input.setAttribute('aria-label',label);input.autocomplete='off';if(type==='select')for(const option of options||[]){const [v,t]=Array.isArray(option)?option:[option,LABEL[option]||option];const n=el('option',t);n.value=v;input.append(n);}if(type==='checkbox')input.checked=Boolean(value);else input.value=value??'';if(type==='textarea')input.rows=3;wrap.append(input);parent.append(wrap);return input;}
-function modal(title,builder,saveLabel='저장'){if(busy||ended)return;$('editor-title').textContent=title;$('editor-kicker').textContent=view;$('editor-error').textContent='';$('editor-content').replaceChildren();$('editor-save').textContent=saveLabel;editorSave=builder($('editor-content'));$('editor').showModal();}
+function modal(title,builder,saveLabel='저장'){if(busy||ended)return;$('editor-title').textContent=title;$('editor-kicker').textContent=view;$('editor-error').textContent='';$('editor-content').replaceChildren();$('editor-save').textContent=saveLabel;$('editor-save').disabled=false;editorSave=builder($('editor-content'));$('editor').showModal();}
 function cancelEditor(){if(busy)return;$('editor').close();$('editor-content').replaceChildren();editorSave=null;}
 for(const id of ['editor-cancel','editor-cancel-top'])$(id).addEventListener('click',cancelEditor);
 $('editor').addEventListener('cancel',e=>{if(busy)e.preventDefault();});
@@ -439,7 +447,7 @@ function editEvent(event){const d=event?.data||{title:'',domain:null,date:calend
 function deleteEvent(event){modal('일정 삭제 확인',root=>{add(root,el('p',event.data.title+'의 모든 반복을 일정에서 숨깁니다. 원본과 삭제 이력은 보존됩니다.'));const reason=field(root,'삭제 이유','text','');reason.required=true;reason.maxLength=300;const confirm=field(root,'이 일정의 삭제를 확인합니다','checkbox',false);confirm.required=true;return ()=>entity('EVENT',event.entityId,{...event.data,deleted:true},event.heads,reason.value,confirm.checked);},'삭제 이력 저장');}
 const FINANCE_FIELDS=[['cashAccounts','유동 현금'],['debts','부채'],['restrictedAssets','제한 자산'],['monthlyFixedCosts','월 고정비'],['upcomingPayments','예정 납부'],['incomeItems','수입 항목']];
 function renderFinance(root){const f=whole.finance;add(root,add(el('div',null,'section-toolbar'),hint('최근 스냅샷 기준 · '+(f.snapshotDate||'아직 없음')),button('재정 스냅샷 추가',()=>editFinance(null),'primary')),add(el('div',null,'metric-grid'),metric('유동 현금',money(f.totalLiquidCash)),metric('총 부채',money(f.totalDebt)),metric('순자산 포지션',money(f.netPosition),'유동 현금 + 제한 자산 − 부채'),metric('이번 달 고정비',money(f.currentMonthFixedCost),'이번 달 스냅샷이 있어야 표시')));const next=section('다음 납부');add(next,f.nextPayment?row(f.nextPayment.label,f.nextPayment.date,money(f.nextPayment.amount)):empty(f.upcomingPaymentsKnown?'입력된 예정 납부 중 날짜가 확인된 다음 항목 없음':'UNKNOWN · 예정 납부 정보 미입력'));add(root,next,hint('UNKNOWN은 0이 아닙니다. 제한 자산은 바로 쓸 수 있는 현금과 구분됩니다. 서로 다른 스냅샷이나 통화를 합산하지 않습니다.'));for(const snapshot of whole.finances){const d=snapshot.data,p=section(d.snapshotDate+' · '+d.currency),grid=el('div',null,'money-grid');for(const [key,label]of FINANCE_FIELDS){const category=section(label);if(d[key]===null)add(category,empty('UNKNOWN · 아직 모름'));else if(!d[key].length)add(category,hint('명시적으로 없음 · 0'));else for(const item of d[key])add(category,row(item.label,item.date??'',money(item.amount,d.currency)));add(grid,category);}add(p,grid,hint(d.notes),button('스냅샷 편집 · '+d.snapshotDate,()=>editFinance(snapshot)));add(root,p);}if(!whole.finances.length)add(root,empty('실제로 확인한 금액만 입력하세요. 모르는 항목은 UNKNOWN으로 남길 수 있습니다.'));}
-function editFinance(snapshot){const d=snapshot?.data||{snapshotDate:whole.localDate,currency:'KRW',minorUnitDigits:0,notes:'',...Object.fromEntries(FINANCE_FIELDS.map(([k])=>[k,null]))};modal(snapshot?'재정 스냅샷 편집':'새 재정 스냅샷',root=>{const grid=el('div',null,'field-grid');add(root,grid);const date=field(grid,'스냅샷 기준일','date',d.snapshotDate);date.required=true;date.max=whole.localDate;const currency=field(grid,'통화 코드','text',d.currency);currency.required=true;currency.pattern='[A-Z]{3}';currency.maxLength=3;const precision=field(grid,'금액 소수 자릿수','select',String(d.minorUnitDigits),[['0','정수 (KRW 등)'],['2','소수 둘째 자리 (USD 등)']]);const categories=[];for(const [key,label]of FINANCE_FIELDS){const p=section(label),dated=['upcomingPayments','incomeItems'].includes(key),mode=field(p,label+' 입력 상태','select',d[key]===null?'UNKNOWN':d[key].length?'ITEMS':'NONE',[['UNKNOWN','아직 모름 (UNKNOWN)'],['NONE','명시적으로 없음 (0)'],['ITEMS','항목 직접 입력']]),list=el('div',null,'editable-list'),items=[];const addRow=item=>{const row=el('div',null,'edit-row'),label=field(row,'항목 이름','text',item.label),amount=field(row,'금액 (빈칸은 UNKNOWN)','text',item.amount??'');label.maxLength=100;amount.inputMode='decimal';const when=dated?field(row,'납부 / 수입 날짜 (선택)','date',item.date):null;const record={id:item.itemId,label,amount,when};items.push(record);add(row,button('항목 제거',()=>{items.splice(items.indexOf(record),1);row.remove();}));add(list,row);};for(const item of d[key]||[])addRow(item);const plus=button(label+' 항목 추가',()=>{mode.value='ITEMS';sync();if(items.length<50)addRow({itemId:entityId(),label:'',amount:null,date:null});});const sync=()=>{list.hidden=mode.value!=='ITEMS';};mode.addEventListener('change',sync);sync();add(p,list,plus);add(root,p);categories.push({key,mode,items,dated});}const notes=field(root,'재정 메모','textarea',d.notes);return ()=>{const data={snapshotDate:date.value,currency:currency.value,minorUnitDigits:Number(precision.value),notes:notes.value};for(const c of categories){if(c.mode.value==='UNKNOWN')data[c.key]=null;else if(c.mode.value==='NONE')data[c.key]=[];else{if(!c.items.length)throw appError('FINANCE_ITEMS_REQUIRED');data[c.key]=c.items.map(i=>({itemId:i.id,label:i.label.value,amount:i.amount.value===''?null:i.amount.value,...(c.dated?{date:i.when.value||null}:{})}));}}return entity('FINANCE',snapshot?.entityId||entityId(),data,snapshot?.heads||[]);};});}
+function editFinance(snapshot){const d=snapshot?.data||{snapshotDate:whole.localDate,currency:'KRW',minorUnitDigits:0,notes:'',...Object.fromEntries(FINANCE_FIELDS.map(([k])=>[k,null]))};modal(snapshot?'재정 스냅샷 편집':'새 재정 스냅샷',root=>{const grid=el('div',null,'field-grid');add(root,grid);const date=field(grid,'스냅샷 기준일','date',d.snapshotDate);date.required=true;date.max=whole.localDate;const currency=field(grid,'통화 코드','text',d.currency);currency.required=true;currency.pattern='[A-Z]{3}';currency.maxLength=3;const precision=field(grid,'금액 소수 자릿수','select',String(d.minorUnitDigits),[['0','정수 (KRW 등)'],['2','소수 둘째 자리 (USD 등)']]);const categories=[];for(const [key,label]of FINANCE_FIELDS){const p=section(label),dated=['upcomingPayments','incomeItems'].includes(key),mode=field(p,label+' 입력 상태','select',d[key]===null?'UNKNOWN':d[key].length?'ITEMS':'NONE',[['UNKNOWN','아직 모름 (UNKNOWN)'],['NONE','명시적으로 없음 (0)'],['ITEMS','항목 직접 입력']]),list=el('div',null,'editable-list'),items=[];const addRow=item=>{const row=el('div',null,'edit-row'),label=field(row,'항목 이름','text',item.label),amount=field(row,'금액 (빈칸은 UNKNOWN)','text',item.amount??'');label.maxLength=100;amount.inputMode='decimal';const when=dated?field(row,'납부 / 수입 날짜 (선택)','date',item.date):null;const record={id:item.itemId,label,amount,when};items.push(record);add(row,button('항목 제거',()=>{items.splice(items.indexOf(record),1);row.remove();}));add(list,row);};for(const item of d[key]||[])addRow(item);const plus=button(label+' 항목 추가',()=>{mode.value='ITEMS';sync();if(items.length<50)addRow({itemId:entityId(),label:'',amount:null,date:null});});const sync=()=>{list.hidden=mode.value!=='ITEMS';};mode.addEventListener('change',sync);sync();add(p,list,plus);add(root,p);categories.push({key,mode,items,dated});}const notes=field(root,'재정 메모','textarea',d.notes);return ()=>{const data={snapshotDate:date.value,currency:currency.value,minorUnitDigits:Number(precision.value),notes:notes.value};for(const c of categories){if(c.mode.value==='UNKNOWN')data[c.key]=null;else if(c.mode.value==='NONE')data[c.key]=[];else{if(!c.items.length)throw appError('FINANCE_ITEMS_REQUIRED');data[c.key]=c.items.map(i=>{const raw=i.amount.value.replace(/[,\s]/g,'');return {itemId:i.id,label:i.label.value,amount:raw===''?null:raw,...(c.dated?{date:i.when.value||null}:{})};});}}return entity('FINANCE',snapshot?.entityId||entityId(),data,snapshot?.heads||[]);};});}
 // FIN01 가계부 화면(F2 입력·목록·가져오기·규칙, F3 시각화). 저장은 기존 entity() 경로 하나만 쓴다(엔티티 1개 = 연산 1개).
 // 계산은 fin-charts.mjs·fin-ledger.mjs(순수 함수), 그리기는 SVG createElementNS + styles.css 클래스. 금액은 BigInt, null(모름)은 0이 아니다.
 const FIN_TABS=[['CHARTS','한눈에 · 그래프'],['TXNS','거래'],['PLAN','반복 · 고정비'],['BUDGET','예산'],['ACCOUNTS','계정'],['RULES','규칙'],['IMPORT','과거 이력 가져오기']];
@@ -499,11 +507,14 @@ addEventListener('resize',()=>{if(view!=='LEDGER'||finTab!=='CHARTS'||Math.abs(i
 function renderFinCharts(root,fin){
  finLastWidth=innerWidth;
  const prep=prepare(fin),range=periodRange(finPeriod,whole.localDate,finCustom),bar=el('div',null,'fin-toolbar');
+ vaultCard(root,fin);   // F11: 금고가 맨 위
+ if(fin.lines.length||fin.residuals.length)renderMonthInsight(root,prep,budgetStatus(prep,fin.budgets,whole.localDate.slice(0,7),whole.localDate));
  finSelect(bar,'기간',finPeriod,PERIODS,v=>void perform(async()=>{finPeriod=v;finTree=[];if(v==='CUSTOM'&&!finCustom.from){finCustom={from:shiftMonth(whole.localDate.slice(0,7),-5),to:whole.localDate.slice(0,7)};}await render();}));
  if(finPeriod==='CUSTOM'){const f=field(bar,'시작 달','month',finCustom.from),t=field(bar,'끝 달','month',finCustom.to);for(const n of [f,t]){n.dataset.navOnly='1';n.max=whole.localDate.slice(0,7);n.addEventListener('change',()=>void perform(async()=>{finCustom={from:f.value,to:t.value};finTree=[];await render();}));}}
  finCheck(bar,FIN_MASK_LABEL,finMask,v=>void perform(async()=>{finMask=v;await render();}));
  add(root,bar,el('p',range.label+(range.error?' · 시작 달이 끝 달보다 늦거나 비어 있습니다':''),'muted small fin-range'));
  if(!fin.lines.length&&!fin.residuals.length){add(root,empty('아직 가계부 자료가 없습니다. "거래"에서 직접 입력하거나 "과거 이력 가져오기"로 가져오세요.'));return;}
+
  const agg=aggregate(prep,range),ov=overview(prep,whole.localDate),t=agg.total;
  const diff=ov.diff===null?'이번 달이나 지난달 소비를 알 수 없어(자료 없음·순액 모름) 비교하지 않음':ov.diff===0n?'지난달과 같음':(ov.diff>0n?'지난달보다 '+formatWon(ov.diff)+' 많음':'지난달보다 '+formatWon(-ov.diff)+' 적음');
  add(root,add(el('div',null,'metric-grid fin-metrics'),
@@ -515,6 +526,7 @@ function renderFinCharts(root,fin){
   add(el('span',null,'fin-chip'),el('span','순액 모름'),el('strong',finCount(t.unknownRows)+'행'),el('span','합계에서 제외')),
   add(el('span',null,'fin-chip'),el('span','이체'),el('strong',formatWon(t.transfer)),el('span','소비 아님')),
   add(el('span',null,'fin-chip'),el('span','수입'),el('strong',formatWon(t.income)))));
+ renderFinTreemap(root,prep,range);   // F11: 어디에 썼나
  finChart(root,'trend','최근 12개월 추세','달마다 소비(지출 − 환불). 점선 칸은 자료가 없는 달(0원이 아님).',(box,w)=>{
   const h=120,n=ov.trend.length,slot=w/n,bw=Math.max(4,Math.min(28,slot*0.62)),max=ov.trend.reduce((m,r)=>r.consumption!==null&&r.consumption>m?r.consumption:m,0n)||1n,s=svgRoot(w,h,'최근 12개월 소비 추세');
   ov.trend.forEach((r,i)=>{const x=slot*i+(slot-bw)/2;
@@ -523,7 +535,10 @@ function renderFinCharts(root,fin){
    if(i%Math.max(1,Math.ceil(n*34/w))===0||i===n-1)s.append(svgText((slot*i+slot/2).toFixed(1),h-5,r.month.slice(5)+'월','axis-label','middle'));});
   box.append(s);
  },()=>finTable(['달','소비'],ov.trend.map(r=>[r.month,r.consumption!==null?formatWon(r.consumption):r.unknownOnly?'모름':'자료 없음']),[1]));
- renderFinSankey(root,prep,range);renderFinMonthly(root,prep,range);renderFinTimeline(root,prep);renderFinTreemap(root,prep,range);renderFinHeatmap(root,prep,range);renderFinCompleteness(root,prep,range);
+ // F11: 나머지 그림은 "자세히"로 접는다. 닫혀 있으면 그리지 않는다.
+ lazyDetails(root,'more','자세히 · 돈의 흐름 · 월별 분류 · 평생 타임라인 · 달력 히트맵 · 자료 완정성',d=>{
+  renderFinSankey(d,prep,range);renderFinMonthly(d,prep,range);renderFinTimeline(d,prep);renderFinHeatmap(d,prep,range);renderFinCompleteness(d,prep,range);
+ });
 }
 function renderFinSankey(root,prep,range){
  const small=narrow(),data=sankeyData(prep,range,{withSubs:!small,maxCategories:small?6:8});
@@ -854,6 +869,310 @@ function renderFinPlan(root,fin){
  },()=>finTable(['달','고정비','변동비','고정 비중','순액 모름'],split.months.map(m=>!m.hasData?[m.month,'자료 없음','자료 없음','-','-']:m.unknownOnly?[m.month,'모름','모름','-',m.unknownRows+'행']:[m.month,formatWon(m.fixed),formatWon(m.variable),share(m.fixed,m.variable),m.unknownRows+'행']),[1,2,3]));
 }
 
+
+// ---------- F11 이번 달 금고 ----------
+// 설계: docs/FIN01_F11_DESIGN.md. 새 엔티티·새 스키마 없음 — 결과는 기존 FIN_BUDGET.total에만 저장한다.
+// 계산기 입력값(현금·비상금·개월·고정비 선택)은 저장하지 않는다(저장 1번 = 서버 연산 1개).
+let vaultFlash=null;                       // 저장 직후 피드백 {won,fromSpent,at}
+const VAULT_FLASH_MS=60000;
+const finDetailsOpen=new Set();
+function vaultState(fin){
+ const prep=prepare(fin),month=whole.localDate.slice(0,7);
+ const s=budgetStatus(prep,fin.budgets,month,whole.localDate);
+ return {prep,month,s,v:vaultBricks(s)};
+}
+// 금괴 더미 SVG: createElementNS + styles.css 클래스만 쓴다(인라인 style·이미지 없음).
+function vaultBrickSvg(v,w,flash){
+ const L=vaultBrickLayout(v,{width:w}),s=svgRoot(w,Math.max(10,L.height),'이번 달 금괴 '+v.days+'개 · 쓴 칸 '+(v.spentCount===null?'모름':v.spentCount)+'개');
+ const phaseText={PAST:'지난 날',TODAY:'오늘',FUTURE:'남은 날'};
+ for(const b of L.bricks){
+  const cls=['vault-brick','ph-'+b.phase.toLowerCase(),b.spent?'spent':'',flash&&b.day>flash.from&&b.day<=flash.to?'flash':''].filter(Boolean).join(' ');
+  // 쓴 몫은 색만 바꾸지 않고 칸을 낮춰 "깎인" 모양으로 그린다(바닥을 맞춘다).
+  const h=b.spent?Math.max(2,+(b.h*0.42).toFixed(1)):b.h,y=b.spent?+(b.y+b.h-h).toFixed(1):b.y;
+  s.append(svgTip(svgEl('rect',{x:b.x,y,width:b.w,height:h,rx:1.5},cls),b.day+'일 · '+phaseText[b.phase]+' · '+(v.spentCount===null?'쓴 몫 모름':b.spent?'쓴 몫':'남은 몫')));
+ }
+ for(const o of L.overflow){
+  s.append(svgTip(svgEl('rect',{x:o.x,y:o.y,width:o.w,height:o.h,rx:1.5},'vault-brick over'),'월 예산 초과 '+o.index+'칸'));
+  s.append(svgEl('line',{x1:(o.x+o.w*0.34).toFixed(1),y1:o.y,x2:(o.x+o.w*0.58).toFixed(1),y2:(o.y+o.h).toFixed(1)},'vault-crack'));
+ }
+ return s;
+}
+function vaultChip(label,value,foot){
+ return add(el('span',null,'fin-chip'),el('span',label),el('strong',value),foot?el('span',foot):null);
+}
+// 저장 직후 한 줄: 금고 −X원 · 이번 달 남은 Y원 · 오늘 남은 Z원.
+function vaultFeedbackLine(s,v){
+ if(!vaultFlash||Date.now()-vaultFlash.at>VAULT_FLASH_MS)return null;
+ const T=s.total,known=v.state==='OK';
+ const tone=!known||T===null?'':T.remaining<0n?' over':T.perDayLeft!==null&&vaultFlash.won>T.perDayLeft?' fast':'';
+ const parts=['금고 −'+formatWon(vaultFlash.won)];
+ parts.push(known&&T?(T.remaining<0n?'이번 달 초과 '+formatWon(-T.remaining):'이번 달 남은 '+formatWon(T.remaining)):'이번 달 남은 금액 모름');
+ parts.push(known&&T&&T.perDayLeft!==null?'오늘 남은 '+formatWon(T.perDayLeft):'오늘 남은 금액 없음');
+ const n=el('p',parts.join(' · '),'vault-feedback'+tone);n.setAttribute('role','status');return n;
+}
+// 가계부 "한눈에" 맨 위와 홈(compact)에서 같이 쓴다. 집계는 기존 budgetStatus() 값만 읽는다.
+// F11E1: "지금 내 돈(추정)" — 재정 스냅샷 순현금(유동 현금 − 마통 쓴 금액 − 아직 안 나간 카드값)에
+// 스냅샷 뒤 소비·수입을 그대로 반영한다. budgetStatus()·금고 예산과는 별개 값이라 금고 카드에 한 줄만 보탠다.
+const LIVE_CASH_REASON={CURRENCY:'재정 스냅샷 통화가 KRW 아님',CASH_UNKNOWN:'유동 현금을 모름',DEBTS_UNKNOWN:'부채를 모름',UPCOMING_UNKNOWN:'예정 납부를 모름',UNKNOWN_LINES:'스냅샷 뒤 순액 모름 거래가 있음'};
+function liveNetCashLine(prep){
+ const live=liveNetCash(prep,whole.finances,whole.localDate);
+ if(live.status==='NO_SNAPSHOT')return hint('지금 내 돈(추정) · 재정 스냅샷이 없습니다.');
+ if(live.status==='MISSING')return hint('지금 내 돈 · 모름 · '+live.reasons.map(r=>LIVE_CASH_REASON[r]??r).join(' · '));
+ return el('p','지금 내 돈(추정) '+formatWon(live.value)+' · 스냅샷 '+live.since+' 당일 기록부터 반영','small muted vault-live-cash');
+}
+function vaultCard(root,fin,{compact=false}={}){
+ const {s,v,prep}=vaultState(fin),T=s.total;
+ const p=el('section',null,'panel vault-card'+(compact?' vault-compact':''));
+ const head=add(el('div',null,'vault-head'),el('h2','이번 달 금고','panel-title'),el('span',s.month,'eyebrow'));
+ add(p,head);add(root,p);
+ add(p,liveNetCashLine(prep),hint('카드 대금 이체는 계산에 영향 없음 · 마통 이자는 금융비용 지출, 파킹 이자는 이자·배당 수입으로 기록'),
+  hint('스냅샷은 그날 지출을 기록하기 전에 만드세요 · 먼저 기록한 같은 날 지출은 한 번 더 빠질 수 있음'));
+ if(v.state==='NO_BUDGET'){
+  add(p,hint('한 달 쓸 돈을 정하면 금괴 더미로 보여 줍니다. 금괴 한 개 = 월 예산 ÷ 그 달 날수 = 하루 몫.'),
+   add(el('div',null,'button-row'),button('금고 계산기로 한 달 쓸 돈 정하기',()=>openVaultCalculator(fin),'primary')));
+  return p;
+ }
+ const known=v.state==='OK';
+ p.dataset.tone=!known?'none':T.remaining<0n?'over':T.status==='FAST'?'fast':'ok';
+ const big=!known?(v.state==='NO_DATA'?'자료 없음':'모름'):formatWon(T.remaining<0n?-T.remaining:T.remaining);
+ add(p,add(el('div',null,'vault-big'),
+  el('span',known&&T.remaining<0n?'이번 달 초과':'이번 달 남은 돈','vault-big-label'),
+  el('strong',big,'vault-amount'),
+  el('span',known?'예산 '+formatWon(T.budget)+' · 쓴 돈 '+formatWon(T.actual)
+   :v.state==='NO_DATA'?'이 달 소비 자료가 없습니다(0원 아님). 예산 '+formatWon(T.budget)
+   :'순액 모름 줄만 있어 쓴 돈을 알 수 없습니다. 예산 '+formatWon(T.budget),'vault-sub')));
+ const chips=add(el('div',null,'fin-chips vault-chips'),
+  vaultChip('오늘 쓸 수 있는 돈',known&&T.perDayLeft!==null?formatWon(T.perDayLeft):'-',
+   known&&T.perDayLeft!==null?'남은 '+(s.days-s.elapsed+1)+'일로 나눔':!s.current?'이번 달이 아님':known?'남은 돈 없음':'쓴 돈을 모름'),
+  vaultChip('오늘까지 기대치 대비',known&&s.current?(T.paceDelta>0n?formatWon(T.paceDelta)+' 더 씀':T.paceDelta<0n?formatWon(-T.paceDelta)+' 덜 씀':'같음'):'-',
+   known&&s.current?'기대치 '+formatWon(T.expectedToDate):'이번 달만 비교'));
+ if(!compact)add(chips,vaultChip('금괴 한 개',v.perBrick===null?'-':formatWon(v.perBrick),s.days+'일 × 한 개 = 하루 몫'));
+ add(p,chips);
+ const box=el('div',null,'chart-box vault-bricks');add(p,box);
+ const flash=vaultFlash&&Date.now()-vaultFlash.at<=VAULT_FLASH_MS&&vaultFlash.fromSpent!==null&&v.spentCount!==null
+  ?{from:vaultFlash.fromSpent,to:v.spentCount}:null;
+ box.append(vaultBrickSvg(v,Math.max(180,Math.floor(box.clientWidth||300)),flash));
+ add(p,finLegend([['vault-sw-left','남은 날'],['vault-sw-today','오늘'],['vault-sw-past','지난 날'],['vault-sw-spent','쓴 몫'],...(v.overCount?[['vault-sw-over','예산 초과']]:[])]));
+ add(p,vaultFeedbackLine(s,v));
+ const quick=button('빠른 지출 입력',()=>openQuickExpense(fin),'primary');
+ const row=add(el('div',null,'button-row'),quick);
+ if(compact){const go=button('가계부 열기',()=>navigate('LEDGER'),'secondary nav-link');go.dataset.navOnly='1';add(row,go);}
+ else add(row,button('금고 계산기',()=>openVaultCalculator(fin),'secondary'));
+ add(p,row);
+ if(!known)add(p,hint(v.state==='NO_DATA'?'소비 줄이 없는 달은 0원이 아니라 자료 없음입니다.':'순액 모름 줄 '+finCount(s.unknownRows)+'행은 합계에 넣지 않습니다.'));
+ return p;
+}
+
+// ---- 금고 계산기 ----
+// 월 사용 가능액 = (현금 − 비상금 − 기간 고정비 합 + 기간 안 확정 수입) ÷ 개월 수. BigInt, 보수적 내림.
+const VAULT_MODES=[['MONTHS','개월 수로 정하기'],['NEXT_INCOME','다음 수입 날짜까지']];
+function vaultFixedCandidates(prep){
+ const rec=detectRecurring(prep,whole.localDate);
+ return rec.items.filter(i=>i.period!==null&&i.annual!==null).map(i=>({
+  key:i.key,label:i.merchant+' · '+i.periodLabel,monthly:i.annual/12n,status:i.status,
+  on:i.status==='ACTIVE'||i.status==='LATE'}));
+}
+function openVaultCalculator(fin){
+ const prep=prepare(fin),month=whole.localDate.slice(0,7);
+ const own=fin.budgets.find(b=>b.data.effectiveFrom===month)??null,applied=budgetFor(fin.budgets,month);
+ const items=vaultFixedCandidates(prep);
+ modal('금고 계산기 · '+month,root=>{
+  add(root,hint('한 달 쓸 돈을 계산합니다. 입력값은 저장하지 않고, 결과만 '+month+' 예산(전체)으로 저장합니다.'));
+  const grid=el('div',null,'field-grid');add(root,grid);
+  const cash=field(grid,'지금 쓸 수 있는 현금 (원)','text','');cash.inputMode='numeric';
+  const reserve=field(grid,'비상금 · 손대지 않을 금액 (원)','text','0');reserve.inputMode='numeric';
+  const snapshot=vaultCashFromSnapshot(whole.finance);
+  const load=button(snapshot===null?'재정 스냅샷에서 불러올 수 없음':'재정 스냅샷 유동 현금 불러오기 · '+formatWon(snapshot),()=>{cash.value=snapshot;recalc();},'secondary');
+  load.dataset.navOnly='1';if(snapshot===null)load.disabled=true;
+  add(root,add(el('div',null,'button-row'),load),
+   hint(snapshot===null?'원화(KRW) 재정 스냅샷이 있어야 불러옵니다. 직접 입력해도 됩니다.':'불러온 뒤 직접 고쳐도 됩니다. 원 아래 금액은 버립니다.'));
+  const grid2=el('div',null,'field-grid');add(root,grid2);
+  const mode=field(grid2,'기간 정하는 방법','select','MONTHS',VAULT_MODES);
+  const months=field(grid2,'기간 (개월)','text','1');months.inputMode='numeric';
+  const until=field(grid2,'다음 수입 날짜','date','');until.min=whole.localDate;
+  const incomeAmount=field(grid2,'다음 수입 금액 (원, 모르면 비움)','text','');incomeAmount.inputMode='numeric';
+  const noIncome=el('label',null,'inline'),noInput=el('input');noInput.type='checkbox';noInput.checked=true;
+  add(noIncome,noInput,el('span','다음 수입 없음 (수입을 넣지 않고 계산)'));add(root,noIncome);
+  const fixedBox=section('기간 고정비','반복·고정비 탭에서 찾은 항목입니다. 끄면 그만큼 쓸 돈이 늘어납니다.');
+  const boxes=[];
+  for(const it of items){
+   const l=el('label',null,'inline vault-fixed'),cb=el('input');cb.type='checkbox';cb.checked=it.on;
+   add(l,cb,el('span',it.label+' · 월 '+formatWon(it.monthly)+(it.status==='CANCEL_CANDIDATE'?' · 해지된 듯':'')));
+   add(fixedBox,l);boxes.push([it,cb]);
+  }
+  if(!items.length)add(fixedBox,empty('반복결제로 찾은 항목이 없습니다. 고정비 없이 계산합니다.'));
+  add(root,fixedBox);
+  // F11C: 마이너스통장 — 체크 안 하면 한도·쓴 금액 모두 0(모름 아님). 숫자 자체는 저장하지 않는다.
+  const odBox=section('마이너스통장 (선택)','가진 마이너스통장이 있으면 남은 한도만큼 쓸 돈이 늘어납니다. 한도·쓴 금액은 저장하지 않습니다.');
+  const odEnableRow=el('label',null,'inline'),odEnable=el('input');odEnable.type='checkbox';
+  add(odEnableRow,odEnable,el('span','마이너스통장 있음'));add(odBox,odEnableRow);
+  const odGrid=el('div',null,'field-grid vault-overdraft-fields');add(odBox,odGrid);
+  const odLimit=field(odGrid,'총 한도 (원)','text','');odLimit.inputMode='numeric';
+  const odDrawn=field(odGrid,'지금 쓴 금액 (원)','text','');odDrawn.inputMode='numeric';
+  const odCand=vaultOverdraftFromSnapshot(whole.finances);
+  const odLoad=button(odCand?'재정 스냅샷 "'+odCand.label+'" 쓴 금액 불러오기 · '+formatWon(odCand.amount):'재정 스냅샷에서 불러올 수 없음',
+   ()=>{odDrawn.value=odCand.amount;recalc();},'secondary');
+  odLoad.dataset.navOnly='1';if(!odCand)odLoad.disabled=true;
+  const odLoadRow=add(el('div',null,'vault-overdraft-load'),add(el('div',null,'button-row'),odLoad),
+   hint(odCand?'불러온 뒤 직접 고쳐도 됩니다.':'부채 항목 중 이름에 "마이너스"가 들어간 항목이 정확히 하나여야 불러옵니다. 직접 입력해도 됩니다.'));
+  add(odBox,odLoadRow);
+  const odSync=()=>{odGrid.hidden=!odEnable.checked;odLoadRow.hidden=!odEnable.checked;};
+  odEnable.addEventListener('change',()=>{odSync();recalc();});odSync();
+  add(root,odBox);
+  // F11E1: 아직 안 나간 카드값 — 필수 입력(체크박스 없음). 카드 EXPENSE는 거래일에 이미 소비로 잡히므로, 여기서는
+  // "앞으로 통장에서 빠져나갈 카드 결제 예정 금액"만 뺀다(결제일 이체 자체는 금고·지금 내 돈을 바꾸지 않는다).
+  const cardBox=section('아직 안 나간 카드값','카드 결제 예정 금액 합계. 없으면 0.');
+  const cardUnpaid=field(cardBox,'아직 안 나간 카드값 (원)','text','');cardUnpaid.inputMode='numeric';
+  const cardCand=vaultCardUnpaidFromSnapshot(whole.finances);
+  const cardLoad=button(cardCand!==null?'재정 스냅샷 예정 납부(카드)에서 불러오기 · '+formatWon(cardCand):'재정 스냅샷에서 불러올 수 없음',
+   ()=>{cardUnpaid.value=cardCand;recalc();},'secondary');
+  cardLoad.dataset.navOnly='1';if(cardCand===null)cardLoad.disabled=true;
+  add(cardBox,add(el('div',null,'button-row'),cardLoad),
+   hint(cardCand!==null?'불러온 뒤 직접 고쳐도 됩니다.':'원화(KRW) 재정 스냅샷의 예정 납부 중 이름에 "카드"가 들어간 항목이 모두 앎이어야 불러옵니다. 직접 입력해도 됩니다.'));
+  add(root,cardBox);
+  const out=el('div',null,'vault-result');add(root,out,hint('금융 조언이 아닌 계산 도구입니다. 값은 입력한 내용으로만 계산합니다.'));
+  let plan=null;
+  const recalc=()=>{
+   const m=mode.value;
+   months.parentElement.hidden=m!=='MONTHS';
+   until.parentElement.hidden=m!=='NEXT_INCOME';
+   incomeAmount.parentElement.hidden=noInput.checked;
+   plan=vaultPlan({cash:cash.value,reserve:reserve.value,mode:m,months:months.value,untilDate:until.value,today:whole.localDate,
+    fixedItems:boxes.filter(([,cb])=>cb.checked).map(([it])=>({key:it.key,label:it.label,monthly:it.monthly})),
+    incomes:noInput.checked||(!until.value&&!incomeAmount.value)?[]:[{date:m==='NEXT_INCOME'?until.value:until.value,amount:incomeAmount.value}],
+    overdraft:{enabled:odEnable.checked,limit:odLimit.value,drawn:odDrawn.value},cardUnpaid:cardUnpaid.value});
+   out.replaceChildren();
+   out.dataset.status=plan.status;
+   if(plan.status==='MISSING'){
+    add(out,el('p','아직 계산할 수 없습니다 · 빈칸은 0이 아니라 모름입니다.','fin-bad'),
+     add(el('ul',null,'vault-missing'),...plan.missing.map(code=>el('li',VAULT_MISSING[code]??(code.startsWith('FIXED:')?'고정비 항목의 월 금액을 모름':code)))));
+    $('editor-save').disabled=true;return;
+   }
+   // 한도 자체가 맞지 않는 경우(쓴 금액 > 한도)는 다른 단계를 계산하지 않고 바로 거절한다 → steps가 비어 있다.
+   if(plan.reason==='OVERDRAFT_EXCEEDED'){
+    add(out,el('p','마이너스통장 쓴 금액이 한도보다 많습니다 · 초과 '+formatWon(plan.shortfall),'fin-bad'));
+    $('editor-save').disabled=true;return;
+   }
+   const table=el('ul',null,'vault-steps');
+   for(const st of plan.steps){
+    const extra=st.key==='FIXED'?' '+st.note.count+'개 · 월 '+formatWon(st.note.monthly)+' × '+st.note.months+'개월'
+     :st.key==='INCOME'?' '+st.note.count+'건':'';
+    add(table,add(el('li'),el('span',st.sign,'vault-sign'),el('span',st.label+extra,'vault-step-label'),el('strong',formatWon(st.value<0n?-st.value:st.value)+(st.value<0n?' (음수)':''),'vault-step-value')));
+   }
+   add(out,el('p','기간 '+plan.months+'개월 · '+whole.localDate+' ~ '+plan.horizon,'small muted'),table);
+   if(plan.status==='NEGATIVE'){
+    add(out,el('p','이 조건으로는 쓸 돈이 없습니다 · 부족액 '+formatWon(plan.shortfall),'fin-bad'));
+    $('editor-save').disabled=true;return;
+   }
+   add(out,add(el('p',null,'vault-monthly'),el('span','한 달 쓸 돈'),el('strong',formatWon(plan.monthly))),
+    el('p','하루 몫 약 '+formatWon(plan.monthly/BigInt(daysInMonth(month)))+' · '+month+' '+daysInMonth(month)+'일 기준','small muted'));
+   // F11E1: 마통 남은 한도는 계산에 넣지 않았다 — 정보로만 보여준다(빌린 돈은 내 돈이 아니다).
+   if(plan.overdraft.enabled)add(out,el('p','급할 때 쓸 수 있는 마통 남은 한도 '+formatWon(plan.overdraft.remaining)+' · 계산에 안 넣음 · 빌리면 이자','small muted vault-overdraft-note'));
+   $('editor-save').disabled=false;
+  };
+  for(const n of [cash,reserve,months,until,incomeAmount,odLimit,odDrawn,cardUnpaid])n.addEventListener('input',recalc);
+  for(const n of [mode,noInput,...boxes.map(([,cb])=>cb)])n.addEventListener('change',recalc);
+  recalc();
+  return ()=>{
+   if(!plan||plan.status!=='OK')throw finError('FIN_VAULT_NOT_CALCULATED');
+   const base=own?.data??applied?.data??null;
+   const data=buildBudget({effectiveFrom:month,total:String(plan.monthly),categories:Object.fromEntries(Object.entries(base?.categories??{})),note:base?.note??''},{labels:fin.labels});
+   vaultFlash=null;   // 예산을 바꾸면 지난 지출의 차감 피드백은 더 이상 맞지 않는다
+   return entity('FIN_BUDGET',own?.id??'budget-'+month,data,own?.heads??[],'금고 계산기로 한 달 쓸 돈 저장');
+  };
+ },'이 금액으로 예산 저장');
+}
+const VAULT_MISSING={CASH:'지금 쓸 수 있는 현금을 모름',RESERVE:'비상금을 모름',MONTHS:'기간(개월)을 모름',NEXT_INCOME_DATE:'다음 수입 날짜가 오늘보다 뒤가 아님',OVERDRAFT_LIMIT:'마이너스통장 총 한도를 모름',OVERDRAFT_DRAWN:'마이너스통장 지금 쓴 금액을 모름',CARD_UNPAID:'아직 안 나간 카드값을 모름'};
+const daysInMonth=m=>new Date(Date.UTC(Number(m.slice(0,4)),Number(m.slice(5,7)),0)).getUTCDate();
+
+// ---- 빠른 지출 입력 ----
+// 저장은 기존 buildTxn() + entity('FIN_TXN', …) 경로 그대로. 저장 1번 = 연산 1개.
+function openQuickExpense(fin){
+ const prep=prepare(fin),q=quickPicks(prep,whole.localDate);
+ const usable=fin.accounts.filter(a=>a.data.active);
+ modal('빠른 지출 입력 · '+whole.localDate,root=>{
+  if(!usable.length){add(root,empty('활성 계정이 없습니다. "계정"에서 먼저 계정을 추가하세요.'));return ()=>{throw finError('INVALID_FIN_ACCOUNT_REF');};}
+  let amount='',category=q.lastCategory&&Object.hasOwn(fin.labels.expense,q.lastCategory)?q.lastCategory:'FOOD',merchant='';
+  const display=el('div',null,'keypad-amount');display.setAttribute('role','status');display.setAttribute('aria-live','polite');
+  const show=()=>{display.textContent=amount===''?'0원':formatWon(amount);display.dataset.empty=String(amount==='');};
+  add(root,display);
+  const pad=el('div',null,'keypad');
+  const press=k=>()=>{
+   if(k==='C')amount='';
+   else if(k==='←')amount=amount.slice(0,-1);
+   else{const next=(amount+k).replace(/^0+(?=\d)/,'');if(next.length<=13)amount=next;}
+   show();
+  };
+  for(const k of ['1','2','3','4','5','6','7','8','9','00','0','←']){const b=button(k,press(k),'secondary keypad-key');b.dataset.navOnly='1';b.setAttribute('aria-label',k==='←'?'한 자리 지우기':k+' 입력');add(pad,b);}
+  const clear=button('지우기',press('C'),'secondary keypad-clear');clear.dataset.navOnly='1';
+  add(root,pad,add(el('div',null,'button-row'),clear));show();
+  const catBox=el('div',null,'quick-row');catBox.setAttribute('role','toolbar');catBox.setAttribute('aria-label','분류');
+  const catButtons=[];
+  const picks=q.categories.map(c=>c.category).filter(c=>Object.hasOwn(fin.labels.expense,c));
+  for(const c of [...new Set([...picks,category])].slice(0,6)){
+   const b=button(fin.labels.expense[c],()=>{category=c;paint();},'secondary quick-pick');b.dataset.navOnly='1';b.dataset.category=c;catButtons.push(b);add(catBox,b);
+  }
+  const catBlock=add(el('div',null,'quick-block'),el('h3','최근 30일 많이 쓴 분류','subheading'),catBox);
+  add(root,catBlock);
+  const other=field(catBlock,'분류 (위에 없으면 여기서)','select',category,Object.entries(fin.labels.expense));
+  const paint=()=>{for(const b of catButtons){const on=b.dataset.category===category;b.classList.toggle('active',on);b.setAttribute('aria-pressed',String(on));}other.value=category;};
+  other.addEventListener('change',()=>{category=other.value;paint();});
+  const mBlock=add(el('div',null,'quick-block'),el('h3','가맹점 (선택)','subheading'));add(root,mBlock);
+  const merchantInput=field(mBlock,'가맹점 이름','text','');merchantInput.maxLength=120;
+  const pickable=q.merchants.filter(m=>!(finMask&&isSensitive(m)));   // 가린 가맹점은 후보로 내놓지 않는다
+  if(pickable.length){
+   const mb=el('div',null,'quick-row');
+   for(const m of pickable)
+    {const b=button(shownMerchant(m,finMask),()=>{merchantInput.value=m.merchant;merchant=m.merchant;},'secondary quick-pick');b.dataset.navOnly='1';add(mb,b);}
+   add(mBlock,el('p','최근 가맹점','small muted'),mb);
+  }
+  const accounts=usable.map(a=>[a.id,a.data.name+' · '+FIN_ACCOUNT_TEXT[a.data.type]]);
+  const fallback=q.lastAccountId&&usable.some(a=>a.id===q.lastAccountId)?q.lastAccountId:usable[0].id;
+  const account=field(root,'계정','select',fallback,accounts);
+  add(root,hint('날짜는 오늘('+whole.localDate+'), 종류는 지출로 저장합니다. 할부·외화·메모가 필요하면 "거래" 화면의 거래 입력을 쓰세요.'));
+  paint();
+  return async()=>{
+   const data=buildTxn({date:whole.localDate,kind:'EXPENSE',amount,accountId:account.value,toAccountId:'',category,subcategory:'',
+    merchant:merchantInput.value,memo:'',tags:'',installments:'',currency:'',originalAmount:''},
+    {labels:fin.labels,accounts:fin.accounts,localDate:whole.localDate,old:null});
+   const before=vaultState(fin).v;
+   const r=await entity('FIN_TXN',entityId(),data,[],'가계부 빠른 지출 입력');
+   vaultFlash={won:BigInt(data.amount),fromSpent:before.spentCount,at:Date.now()};
+   return r;
+  };
+ },'저장');
+}
+
+// ---- 이번 달 해석(규칙 기반) ----
+function renderMonthInsight(root,prep,s){
+ const ins=monthInsight(prep,s,detectRecurring(prep,whole.localDate));
+ // F11B: 이번 달은 "같은 날짜까지" 누적끼리 비교한다(월 합계끼리 비교하면 매달 같은 날 나가는 고정비가 달 초에 급증으로 보인다).
+ const toDate=ins.comparison==='TO_DATE',upto=toDate?' 같은 날짜까지':'';
+ const p=section('이번 달 해석 · '+ins.month,'최근 3개월'+upto+' 비교한 값만 보여 줍니다. 무엇을 해야 하는지는 정하지 않습니다.');
+ if(!ins.known){add(p,empty(s.dataState==='NO_DATA'?'이 달 소비 자료가 없습니다(0원 아님).':'순액 모름 줄만 있어 이번 달 소비를 알 수 없습니다.'));add(root,p);return;}
+ if(ins.risingCategories.length){
+  add(p,el('h3','최근 '+ins.comparedMonths.length+'개월'+upto+' 평균보다 큰 분류','subheading'));
+  if(toDate)add(p,hint('이번 달 1일~'+ins.comparedThroughDay+'일 소비를, 지난 각 달 1일~같은 일자(그 달 날수보다 크면 말일까지) 소비의 평균과 견줍니다.'));
+  for(const c of ins.risingCategories)
+   add(p,row(finCatLabel(c.category),'최근 평균 '+formatWon(c.average)+' → '+(toDate?'이번 달 '+ins.comparedThroughDay+'일까지 ':'이 달 ')+formatWon(c.pace)+' (+'+formatWon(c.delta)+' · +'+(Number(c.permille)/10).toFixed(1)+'%)'));
+ }else add(p,hint(ins.comparedMonths.length?'최근 '+ins.comparedMonths.length+'개월'+upto+' 평균보다 큰 분류가 없습니다.':'비교할 수 있는 지난달 자료가 없습니다.'));
+ const bits=[];
+ if(ins.fixedPermille!==null)bits.push(['고정비 비중',(Number(ins.fixedPermille)/10).toFixed(1)+'%','고정 '+formatWon(ins.fixed)+' · 변동 '+formatWon(ins.variable)]);
+ if(ins.perDay!==null)bits.push(['하루 평균',formatWon(ins.perDay),s.elapsed+'일 동안 쓴 돈 ÷ '+s.elapsed+'일']);
+ if(ins.projected!==null)bits.push(['이대로면 월말',formatWon(ins.projected),ins.budget!==null?'예산 '+formatWon(ins.budget):'예산 없음']);
+ if(bits.length){const g=el('div',null,'fin-chips');for(const [l,v,f] of bits)add(g,vaultChip(l,v,f));add(p,g);}
+ add(root,p);
+}
+
+// 접히는 "자세히": 닫혀 있으면 그리지 않고, 열 때 한 번만 그린다(닫힌 폭 0으로 그려지는 것을 막는다).
+function lazyDetails(root,key,summary,fill){
+ const d=el('details',null,'fin-more');d.append(el('summary',summary));add(root,d);
+ const once=()=>{if(d.dataset.filled)return;d.dataset.filled='1';fill(d);};
+ if(finDetailsOpen.has(key)){d.open=true;once();}
+ d.addEventListener('toggle',()=>{if(d.open){finDetailsOpen.add(key);once();}else finDetailsOpen.delete(key);});
+ return d;
+}
+
 // ---------- F5 예산 대비 실적 ----------
 let finBudgetMonth=null;
 const FIN_BUDGET_STATUS={OK:'예산 안',FAST:'속도 빠름',OVER:'예산 초과'};
@@ -866,7 +1185,7 @@ function renderFinBudget(root,fin){
  month.parentElement.before(prev);add(monthNav,next);for(const [b,l] of [[prev,'이전 달'],[next,'다음 달']]){b.dataset.navOnly='1';b.setAttribute('aria-label',l);}
  const s=budgetStatus(prep,fin.budgets,finBudgetMonth,whole.localDate),applied=fin.budgets.find(b=>b.id===s.budgetId)??null;
  const own=applied&&applied.data.effectiveFrom===finBudgetMonth?applied:null;
- add(root,add(el('div',null,'section-toolbar'),hint('예산은 시작 달부터 다음 예산이 시작하기 전까지 적용됩니다. 실적 = 지출 − 환불(이체·선불 제외). 순액 모름 줄은 실적에 넣지 않고 따로 셉니다.'),button(own?'이 달 예산 수정':applied?'이 달부터 새 예산':'예산 정하기',()=>editFinBudget(own,applied,finBudgetMonth),'primary')),nav);
+ add(root,add(el('div',null,'section-toolbar'),hint('예산은 시작 달부터 다음 예산이 시작하기 전까지 적용됩니다. 실적 = 지출 − 환불(이체·선불 제외). 순액 모름 줄은 실적에 넣지 않고 따로 셉니다.'),add(el('div',null,'button-row'),button('금고 계산기',()=>openVaultCalculator(fin),'secondary'),button(own?'이 달 예산 수정':applied?'이 달부터 새 예산':'예산 정하기',()=>editFinBudget(own,applied,finBudgetMonth),'primary'))),nav);
  if(!applied){add(root,empty(finBudgetMonth+'에 적용되는 예산이 없습니다. "예산 정하기"로 전체 또는 분류별 월 예산을 입력하세요.'));renderFinBudgetList(root,fin);return;}
  const dayText=s.future?'아직 시작하지 않은 달':s.current?'오늘 '+s.elapsed+'일 / '+s.days+'일':'끝난 달 · '+s.days+'일';
  const known=s.dataState==='KNOWN',stateText={NO_DATA:'자료 없음',UNKNOWN_ONLY:'모름',FUTURE:'-'}[s.dataState];   // 자료 없음·순액 모름을 0원으로 보이지 않는다

@@ -218,3 +218,260 @@ export function timelineLayout(tl,{width,height,padL=56,padR=56,padT=12,padB=28}
   return {width,height,padL,padR,padT,plotW,plotH,bars,gaps,solid,dashed,years,residuals,
     barTicks:barTicks.map(v=>({value:v,y:r1(yb(v))})),cumTicks:cumTicks.map(v=>({value:v,y:r1(yc(v))}))};
 }
+
+// ---------- F11 이번 달 금고 ----------
+// 설계: docs/FIN01_F11_DESIGN.md. 새 엔티티·새 스키마 없음. 결과는 기존 FIN_BUDGET.total에만 저장한다.
+// 금액은 모두 원 단위 정수 문자열이나 BigInt. null(모름)은 0이 아니다 — 빈칸이 하나라도 있으면 계산하지 않는다.
+
+// 원 단위 정수 문자열 → BigInt. 빈칸·형식 오류는 null(모름). 0은 유효한 값이다.
+export function vaultWon(text){
+  const s=String(text??'').replace(/[\s,]/g,'');
+  if(s==='')return null;
+  return /^(0|[1-9]\d{0,13})$/.test(s)?BigInt(s):null;
+}
+// 소수 단위가 있는 재정 스냅샷 금액 → 원 단위 정수 문자열(원 아래는 버림 = 보수적). 음수·모름은 null.
+export function vaultCashFromSnapshot(finance){
+  if(!finance||finance.currency!=='KRW'||finance.totalLiquidCash===null||finance.totalLiquidCash===undefined)return null;
+  const [whole]=String(finance.totalLiquidCash).split('.');
+  return /^\d{1,14}$/.test(whole)?whole:null;
+}
+// 오늘 + n개월. 그 달에 없는 날짜(1/31 + 1개월)는 그 달 마지막 날로 당긴다.
+export function vaultHorizon(today,months){
+  const y=Number(today.slice(0,4)),m=Number(today.slice(5,7)),d=Number(today.slice(8,10));
+  const total=(y*12+(m-1))+months,ny=Math.floor(total/12),nm=total%12+1;
+  const last=new Date(Date.UTC(ny,nm,0)).getUTCDate();
+  return ny+'-'+pad(nm)+'-'+pad(Math.min(d,last));
+}
+export const VAULT_MAX_MONTHS=120;
+// months를 직접 받거나(MONTHS), 다음 수입 날짜까지로 잡는다.
+// NEXT_INCOME은 그 날짜를 덮는 가장 작은 달력 개월 수다(올릴수록 월 사용액이 작아져 보수적).
+export function vaultMonths({mode,months,untilDate,today}){
+  if(mode==='NEXT_INCOME'){
+    if(!untilDate||untilDate<=today)return null;
+    for(let n=1;n<=VAULT_MAX_MONTHS;n++)if(vaultHorizon(today,n)>=untilDate)return n;
+    return null;
+  }
+  const n=Number(months);
+  return Number.isInteger(n)&&n>=1&&n<=VAULT_MAX_MONTHS?n:null;
+}
+// 금고 계산기. 빈칸은 모름 → 계산하지 않고 이유만 돌려준다(0으로 가정하지 않는다).
+// cash·reserve: 원 단위 문자열 또는 null. fixedItems: [{key,label,monthly}] (monthly가 null이면 모름).
+// incomes: [{date,amount}] — 오늘 ≤ 날짜 < 기간끝 인 것만 더한다.
+// 재정 스냅샷의 부채 항목 중 이름에 "마이너스"가 들어간 항목이 정확히 하나일 때만 돌려준다(0개·여러 개는 null).
+// 원화(KRW)만, 원 아래는 버린다(vaultCashFromSnapshot과 같은 규칙).
+export function vaultOverdraftFromSnapshot(finances){
+  const snap=finances?.[0]?.data;
+  if(!snap||snap.currency!=='KRW'||!Array.isArray(snap.debts))return null;
+  const hits=snap.debts.filter(d=>typeof d.label==='string'&&d.label.includes('마이너스'));
+  if(hits.length!==1||hits[0].amount===null)return null;
+  const [wholePart]=String(hits[0].amount).split('.');
+  return /^\d{1,14}$/.test(wholePart)?{label:hits[0].label,amount:wholePart}:null;
+}
+// overdraft: {enabled,limit,drawn} — 마이너스통장. 체크 안 하면(enabled=false) 한도·쓴 금액 모두 0(모름 아님).
+// 체크했는데 한도·쓴 금액 중 하나라도 빈칸이면 MISSING. 쓴 금액이 한도보다 크면(데이터가 맞지 않음) 다른 입력과 무관하게 NEGATIVE.
+// cardUnpaid: 아직 안 나간 카드값(필수, 원 단위 문자열. "0" 허용). 빈칸이면 MISSING.
+// F11E1: 순현금 = 유동 현금 − 마통 쓴 금액(체크 시) − 아직 안 나간 카드값. 마통 남은 한도(한도 − 쓴 금액)는 "빌릴 수 있는 돈"일
+// 뿐 내 돈이 아니므로 합계에 더하지 않는다(overdraft.remaining에 정보로만 남긴다). 순현금이 0 이하여도 계산은 계속한다.
+// 쓸 수 있는 돈 = 순현금 − 비상금 − 기간 고정비 + 확정 수입. 한 달 쓸 돈 = floor(쓸 수 있는 돈 ÷ 개월).
+// 한도·쓴 금액·카드값은 저장하지 않는다(FIN_BUDGET.total만 저장).
+export function vaultPlan({cash,reserve,mode='MONTHS',months=null,untilDate=null,fixedItems=[],incomes=[],overdraft=null,cardUnpaid,today}){
+  const missing=[],c=vaultWon(cash),r=vaultWon(reserve),n=vaultMonths({mode,months,untilDate,today});
+  if(c===null)missing.push('CASH');
+  if(r===null)missing.push('RESERVE');
+  if(n===null)missing.push(mode==='NEXT_INCOME'?'NEXT_INCOME_DATE':'MONTHS');
+  const cu=vaultWon(cardUnpaid);
+  if(cu===null)missing.push('CARD_UNPAID');
+  let fixedMonthly=0n;
+  for(const it of fixedItems){const v=typeof it.monthly==='bigint'?it.monthly:vaultWon(it.monthly);if(v===null)missing.push('FIXED:'+it.key);else fixedMonthly+=v;}
+  let incomeTotal=0n;const counted=[],skipped=[];
+  const horizon=n===null?null:mode==='NEXT_INCOME'?untilDate:vaultHorizon(today,n);
+  for(const inc of incomes){
+    const v=vaultWon(inc.amount);
+    if(v===null||!inc.date){missing.push('INCOME:'+(inc.date??'?'));continue;}
+    if(horizon!==null&&inc.date>=today&&inc.date<horizon){incomeTotal+=v;counted.push({...inc,won:v});}
+    else if(horizon!==null)skipped.push({...inc,won:v});
+  }
+  const odOn=Boolean(overdraft?.enabled);
+  let odLimit=0n,odDrawn=0n;
+  if(odOn){
+    const lim=vaultWon(overdraft.limit),drawn=vaultWon(overdraft.drawn);
+    if(lim===null)missing.push('OVERDRAFT_LIMIT');else odLimit=lim;
+    if(drawn===null)missing.push('OVERDRAFT_DRAWN');else odDrawn=drawn;
+  }
+  const base={mode,months:n,horizon,fixedMonthly,fixedTotal:n===null?null:fixedMonthly*BigInt(n),incomeTotal,countedIncomes:counted,skippedIncomes:skipped,
+    cardUnpaid:cu??0n,overdraft:{enabled:odOn,limit:odLimit,drawn:odDrawn,remaining:odOn?odLimit-odDrawn:0n},missing:[...new Set(missing)]};
+  if(base.missing.length)return {...base,status:'MISSING',reason:null,net:null,available:null,monthly:null,shortfall:null,steps:[]};
+  // 쓴 금액 > 한도는 다른 숫자가 아무리 넉넉해도 입력이 맞지 않는 것이라, 순현금을 계산하기 전에 바로 거절한다.
+  if(odOn&&odDrawn>odLimit)return {...base,status:'NEGATIVE',reason:'OVERDRAFT_EXCEEDED',net:null,available:null,monthly:null,shortfall:odDrawn-odLimit,steps:[]};
+  const net=c-odDrawn-cu;   // 마통 남은 한도는 더하지 않는다 — 빌린 돈은 내 돈이 아니다.
+  const available=net-r-base.fixedTotal+incomeTotal;
+  const steps=[
+    {key:'CASH',label:'지금 쓸 수 있는 현금',sign:'+',value:c},
+    ...(odOn?[{key:'OVERDRAFT_DRAWN',label:'마이너스통장에서 쓴 금액',sign:'−',value:odDrawn}]:[]),
+    {key:'CARD_UNPAID',label:'아직 안 나간 카드값',sign:'−',value:cu},
+    {key:'NET',label:'순현금',sign:'=',value:net},
+    {key:'RESERVE',label:'비상금 (손대지 않음)',sign:'−',value:r},
+    // 금액 표시는 화면(app.mjs formatWon)이 한다. 여기서는 숫자만 담는다.
+    {key:'FIXED',label:'기간 고정비',sign:'−',value:base.fixedTotal,note:{count:fixedItems.length,monthly:fixedMonthly,months:n}},
+    {key:'INCOME',label:'기간 안 확정 수입',sign:'+',value:incomeTotal,note:{count:counted.length}},
+    {key:'AVAILABLE',label:'기간 '+n+'개월 동안 쓸 수 있는 돈',sign:'=',value:available},
+  ];
+  if(available<=0n)return {...base,status:'NEGATIVE',reason:'AVAILABLE_NEGATIVE',net,available,monthly:null,shortfall:-available,steps};
+  const monthly=available/BigInt(n);   // BigInt 나눗셈은 0 쪽으로 버림 = 양수에서 내림(보수적)
+  return {...base,status:'OK',reason:null,net,available,monthly,shortfall:null,steps:[...steps,{key:'MONTHLY',label:'한 달 쓸 돈 = 위 금액 ÷ '+n+'개월 (원 아래 버림)',sign:'÷',value:monthly}]};
+}
+
+// F11E1: 재정 스냅샷의 원시 금액(소수 자릿수 0 또는 2)을 더해 원 아래를 버린 정수(BigInt)로 돌려준다.
+// whole-life-model.mjs의 decimalUnits/decimalText와 같은 규칙이지만, fin-plan.mjs는 브라우저로 그대로 보내는 파일이라
+// (storage-paths.mjs를 끌어오는) whole-life-model.mjs를 import하지 않고 이 안에서 따로 계산한다.
+function sumDecimalWhole(amounts,digits){
+  const scale=10n**BigInt(digits);
+  let units=0n;
+  for(const a of amounts){
+    const [w,f='']=String(a).split('.');
+    const frac=digits>0?BigInt((f+'0'.repeat(digits)).slice(0,digits)):0n;
+    units+=BigInt(w)*scale+frac;
+  }
+  return units/scale;   // 모든 금액은 0 이상이므로 정수 나눗셈이 그대로 버림이다.
+}
+// arr이 null(모름)이면 null. filterFn이 있으면 그 항목만 추리고, 추린 항목 중 금액이 null인 것이 하나라도 있으면 null(모름).
+function amountsOf(arr,filterFn){
+  if(!Array.isArray(arr))return null;
+  const hits=filterFn?arr.filter(filterFn):arr;
+  if(hits.some(x=>x.amount===null))return null;
+  return hits.map(x=>x.amount);
+}
+// 재정 스냅샷 예정 납부 중 이름에 "카드"가 들어간 항목의 합(아직 안 나간 카드값). 0개면 "0". 원화·앎일 때만, 원 아래는 버린다.
+export function vaultCardUnpaidFromSnapshot(finances){
+  const snap=finances?.[0]?.data;
+  if(!snap||snap.currency!=='KRW')return null;
+  const amts=amountsOf(snap.upcomingPayments,p=>typeof p.label==='string'&&p.label.includes('카드'));
+  if(amts===null)return null;
+  if(!amts.length)return '0';
+  return String(sumDecimalWhole(amts,snap.minorUnitDigits??0));
+}
+// "지금 내 돈(추정)" — 홈·한눈에 금고 카드용. 재정 스냅샷의 순현금(유동 현금 − 마이너스통장 쓴 금액 − 아직 안 나간 카드값)에서
+// 스냅샷 날짜 뒤 ~ 오늘까지의 소비·수입을 그대로 반영한다(이체·선불 전환은 소비·수입이 아니므로 무시). 결제일 이체(통장→카드)는
+// 소비가 아니라서 여기도 건드리지 않는다 — 카드값은 "아직 안 나간" 상태로 스냅샷에 이미 반영돼 있고, 이체 자체는 지금 내 돈을 깎지 않는다.
+export function liveNetCash(prep,finances,today){
+  const snap=finances?.[0]?.data;
+  if(!snap)return {status:'NO_SNAPSHOT',value:null,base:null,spentAfter:null,incomeAfter:null,since:null,reasons:[]};
+  const reasons=[];
+  if(snap.currency!=='KRW')reasons.push('CURRENCY');
+  const cashAmts=amountsOf(snap.cashAccounts,null);
+  if(cashAmts===null)reasons.push('CASH_UNKNOWN');
+  const minusAmts=amountsOf(snap.debts,d=>typeof d.label==='string'&&d.label.includes('마이너스'));
+  if(minusAmts===null)reasons.push('DEBTS_UNKNOWN');
+  const cardAmts=amountsOf(snap.upcomingPayments,p=>typeof p.label==='string'&&p.label.includes('카드'));
+  if(cardAmts===null)reasons.push('UPCOMING_UNKNOWN');
+  const since=snap.snapshotDate;
+  // F11E1B: 스냅샷 날짜 당일도 포함한다(since <= date, since < date가 아니다). 거래 기록에는 시각이 없어서
+  // "스냅샷 뒤에 쓴 돈을 스냅샷 날짜로 적으면" date<since 기준으로는 영원히 반영되지 않는다 — 지금 내 돈이
+  // 실제보다 많아 보이는 위험한 방향이었다. 당일을 포함하는 보수적인 방향으로 바꾼다. 대가: 스냅샷을 만들기
+  // 전에 이미 그날 지출을 기록해 뒀다면 그 지출이 한 번 더 빠질 수 있다(적어 보이는 방향 — 허용).
+  let spentAfter=0n,incomeAfter=0n,unknownLines=false;
+  for(const l of prep.lines){
+    if(l.date<since||l.date>today)continue;
+    if(l.kind==='EXPENSE'||l.kind==='REFUND'){
+      if(l.net===null){unknownLines=true;continue;}
+      spentAfter+=l.net;   // REFUND는 net이 이미 음수라 더하면 그대로 차감된다(aggregate()의 consumption과 같은 규칙).
+    }else if(l.kind==='INCOME'){
+      if(l.net===null){unknownLines=true;continue;}
+      incomeAfter+=l.net;
+    }
+    // TRANSFER·PREPAID_LOAD는 소비·수입이 아니므로 무시한다(카드 결제일 이체 포함).
+  }
+  if(unknownLines)reasons.push('UNKNOWN_LINES');
+  if(reasons.length)return {status:'MISSING',value:null,base:null,spentAfter:null,incomeAfter:null,since,reasons};
+  const digits=snap.minorUnitDigits??0;
+  const base=sumDecimalWhole(cashAmts,digits)-sumDecimalWhole(minusAmts,digits)-sumDecimalWhole(cardAmts,digits);
+  return {status:'OK',value:base-spentAfter+incomeAfter,base,spentAfter,incomeAfter,since,reasons:[]};
+}
+
+// 금괴 더미 배치. s = budgetStatus() 결과를 그대로 받는다(다시 집계하지 않는다).
+// 한 개 = floor(예산 ÷ 그 달 날수). 자료 없음·순액 모름이면 spentCount는 null(0 아님).
+export function vaultBricks(s){
+  const days=s.days,T=s.total;
+  if(!T||T.budget===null)return {state:'NO_BUDGET',days,perBrick:null,spentCount:null,overCount:0,bricks:[],overflow:[]};
+  const perBrick=T.budget>0n?T.budget/BigInt(days):0n;
+  const phase=day=>!s.current?(s.future?'FUTURE':'PAST'):day<s.elapsed?'PAST':day===s.elapsed?'TODAY':'FUTURE';
+  const known=s.dataState==='KNOWN';
+  const ceilDiv=(a,b)=>b<=0n?0:Number((a+b-1n)/b);
+  const spentCount=!known?null:perBrick<=0n?(T.actual>0n?days:0):Math.min(days,Math.max(0,ceilDiv(T.actual,perBrick)));
+  const overCount=!known||T.actual<=T.budget?0:perBrick<=0n?days:Math.min(days,ceilDiv(T.actual-T.budget,perBrick));
+  const bricks=[];
+  for(let day=1;day<=days;day++)bricks.push({day,phase:phase(day),spent:spentCount!==null&&day<=spentCount});
+  return {state:!known?s.dataState:'OK',days,perBrick,spentCount,overCount,bricks,
+    overflow:Array.from({length:overCount},(_,i)=>({index:i+1}))};
+}
+// 금괴 더미 좌표(SVG). 한 줄에 cols개씩.
+export function vaultBrickLayout(v,{width,cols=null,gap=3,ratio=0.62}={}){
+  const n=v.days+v.overCount;
+  const c=cols??Math.min(n,Math.max(7,Math.floor((width+gap)/16)));
+  const w=Math.max(6,(width-gap*(c-1))/c),h=Math.max(5,w*ratio),rows=Math.ceil(n/c);
+  const place=i=>({x:r1((i%c)*(w+gap)),y:r1(Math.floor(i/c)*(h+gap)),w:r1(w),h:r1(h)});
+  return {width,height:r1(rows*(h+gap)-gap),cols:c,bw:r1(w),bh:r1(h),
+    bricks:v.bricks.map((b,i)=>({...b,...place(i)})),
+    overflow:v.overflow.map((o,i)=>({...o,...place(v.days+i)}))};
+}
+
+// 빠른 지출 입력 후보: 최근 days일 안에서 빈도순 분류, 최근 가맹점, 마지막 사용 계정.
+export function quickPicks(prep,today,{days=30,categories=6,merchants=10}={}){
+  const from=new Date(Date.parse(today+'T12:00:00Z')-(days-1)*86400000).toISOString().slice(0,10);
+  const recent=prep.lines.filter(l=>l.kind==='EXPENSE'&&l.date>=from&&l.date<=today);
+  const catCount=new Map();
+  for(const l of recent)if(l.category)catCount.set(l.category,(catCount.get(l.category)??0)+1);
+  const top=[...catCount.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,categories).map(([category,count])=>({category,count}));
+  const seen=new Map();
+  // shownMerchant()/isSensitive()가 읽는 항목을 그대로 담는다(가리기 판단에 필요).
+  for(const l of [...prep.lines].reverse())if(l.kind==='EXPENSE'&&l.merchant&&!seen.has(l.merchant)&&seen.size<merchants)
+    seen.set(l.merchant,{merchant:l.merchant,date:l.date,kind:l.kind,category:l.category,subcategory:l.subcategory,baseSubcategory:l.baseSubcategory,tags:l.tags??[]});
+  const own=[...prep.lines].reverse().find(l=>l.source==='TXN'&&l.kind==='EXPENSE');
+  return {from,to:today,categories:top,merchants:[...seen.values()],
+    lastAccountId:own?.accountId??null,lastCategory:own?.category??null,sampled:recent.length};
+}
+
+// 이번 달 해석(규칙 기반). 값과 비교만 보인다 — 단정·추천 문장을 만들지 않는다.
+// 분류별 소비를 달 1일부터 maxDay까지만 더한다. maxDay가 null이면 그 달 전체.
+// aggregate()의 byCategory와 같은 기준(소비 = 지출 − 환불, 순액 모름 줄은 뺀다).
+function catTotalsUpTo(prep,month,maxDay){
+  const out=new Map();
+  for(const l of prep.lines){
+    if(l.month!==month||!CONSUMPTION.has(l.kind)||l.net===null)continue;
+    if(maxDay!==null&&Number(l.date.slice(8,10))>maxDay)continue;
+    out.set(l.category,(out.get(l.category)??0n)+l.net);
+  }
+  return out;
+}
+export function monthInsight(prep,s,recurring,{months=3}={}){
+  const month=s.month,prior=[];
+  for(let k=1;k<=months;k++)prior.push(shiftMonth(month,-k));
+  const known=s.dataState==='KNOWN';
+  const withData=prior.filter(m=>prep.lines.some(l=>l.month===m&&CONSUMPTION.has(l.kind)&&l.net!==null));
+  // 이번 달은 "같은 날짜까지" 비교한다: 이번 달 1일~오늘 vs 지난 각 달 1일~같은 일자(그 달 날수보다 크면 말일까지).
+  // 월 합계끼리 비교하면 매달 같은 날 나가는 고정비가 달 초에 급증으로 보인다. 끝난 달·미래 달은 월 합계 그대로.
+  const toDate=s.current&&s.elapsed>0;
+  const cutoff=m=>toDate?Math.min(s.elapsed,daysIn(m)):null;
+  const cats=[];
+  if(known&&withData.length){
+    const cur=catTotalsUpTo(prep,month,toDate?s.elapsed:null);
+    const past=withData.map(m=>catTotalsUpTo(prep,m,cutoff(m)));
+    for(const [c,pace] of cur){
+      const avg=past.reduce((a,t)=>a+(t.get(c)??0n),0n)/BigInt(past.length);
+      if(avg<=0n||pace<=avg)continue;
+      cats.push({category:c,average:avg,pace,delta:pace-avg,permille:roundDiv((pace-avg)*1000n,avg)});
+    }
+    cats.sort((a,b)=>bigSort(b.delta,a.delta));
+  }
+  const split=recurring?costSplit(prep,{from:month,to:month},recurring,s.month+'-01'):null;
+  const row=split?.months.find(m=>m.month===month)??null;
+  const fixed=row&&row.fixed!==null?row.fixed:null,variable=row&&row.variable!==null?row.variable:null;
+  const spendTotal=fixed===null||variable===null?null:fixed+variable;
+  return {month,known,comparedMonths:[...withData],
+    comparison:toDate?'TO_DATE':'MONTH_TOTAL',comparedThroughDay:toDate?s.elapsed:null,
+    risingCategories:cats.slice(0,3),
+    fixed,variable,fixedPermille:spendTotal!==null&&spendTotal>0n?roundDiv(fixed*1000n,spendTotal):null,
+    perDay:known&&s.elapsed>0?s.actualTotal/BigInt(s.elapsed):null,
+    projected:s.total?.projected??null,   // 월말 예상은 기존 budgetStatus 값 그대로
+    budget:s.total?.budget??null};
+}
