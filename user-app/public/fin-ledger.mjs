@@ -42,7 +42,9 @@ export const FIN_ERROR_TEXT=Object.freeze({
   INVALID_FIN_BUDGET_AMOUNT:'예산 금액은 0원 이상의 정수로 입력하세요(원 단위, 최대 14자리). 빈칸은 예산 없음입니다.',
   FIN_BUDGET_DUPLICATE_MONTH:'같은 달에 시작하는 예산이 이미 있습니다. 그 예산을 수정하세요.',
   INVALID_ENTITY_ID:'항목 ID가 올바르지 않습니다.',
-  FIN_IMPORT_LOCAL_CAPACITY:'저장할 항목이 이 기기의 로컬 저장 용량(봉인 한 번 4.5MB)을 넘을 것으로 예상되어 시작하지 않습니다. 저장소 정리·분할 저장(docs/FIN01_STORE_COMPACTION_DESIGN.md) 뒤에 가져오세요.',
+  FIN_IMPORT_LOCAL_CAPACITY:'저장할 항목이 이 기기의 로컬 저장 용량(봉인 한 번 약 3.7MB)을 넘을 것으로 예상되어 시작하지 않습니다. 분할 저장(형식 5) 앱으로 업데이트한 뒤 가져오세요.',
+  FIN_IMPORT_SESSION_BUDGET:'저장할 항목 수가 이번 실행에서 안전하게 저장할 수 있는 양을 넘을 것으로 예상되어 시작하지 않습니다. 앱을 닫았다가 다시 연 뒤 가져오세요.',
+  FIN_IMPORT_WRITE_PERMISSION:'기록 권한을 받지 못해 가져오기를 시작하지 않았습니다. 연결 · 장치에서 서버 로그인과 동기화 상태를 확인한 뒤 다시 누르세요. 저장된 항목은 그대로입니다.',
   FIN_IMPORT_OP_LIMIT:'저장할 항목 수가 이 금고에 남은 연산보다 많아 시작하지 않습니다. 한 항목이 연산 하나를 씁니다. 금고 이월(docs/FIN01_VAULT_MIGRATION.md)을 먼저 준비하세요.',
   APP_ENTITY_LIMIT:'이 종류의 항목 한도에 도달했습니다(계정 60 · 거래 8,000 · 묶음 400 · 규칙 300).',
   FIN_BATCH_IMMUTABLE:'가져온 원천 묶음은 한 번 저장하면 바꿀 수 없습니다.',
@@ -238,21 +240,33 @@ export function opBudgetNotice(b){
   return {stage:'OK',tone:'muted',text:left};
 }
 
-// ---------- 로컬 저장 용량(F9): 저장소가 commit 하나로 봉인하는 state 바이트 / 4,500,000 ----------
-// 서버 연산 한도(10,000)보다 이 한도가 먼저 막을 수 있다. 값은 settings.localState({bytes,limit})에서 오며, 없으면 UNKNOWN(막지 않음).
-// 로컬 추정 남은 op = 남은 바이트 ÷ (state 바이트 ÷ 검증한 op 수). 고정분까지 op당으로 나누므로 실제보다 조금 적게(보수적으로) 센다.
-export const LOCAL_STATE_LIMIT=4500000;
+// ---------- 로컬 저장 용량(F9, F10-5에서 형식별로 고침) ----------
+// 값은 settings.localState({bytes,limit,recordFormat,seal})에서 오며, 없으면 UNKNOWN(막지 않음).
+// 봉인 commit 하나는 코덱의 5,000,000B 읽기 상한을 넘을 수 없어서 평문 약 3.7MB가 실제 상한이다(설계 §15.7). 4.5MB는 쓰지 않는다.
+// - 형식 4 이하(STATE): commit 하나 = state 전체. 남은 op = 남은 바이트 ÷ (state ÷ 검증한 op 수)(고정분까지 나눠 보수적).
+// - 형식 5(HEAD): 전체 state 상한 없음. 머리 commit 크기 / 상한만 보이고, 남은 저장은 이번 실행의 로컬 봉인 예산
+//   (core WriterContext 1GiB, CONTEXT_RETIRED) ÷ 저장 1번 봉인량으로 센다. 봉인량은 보수적으로(적게 세도록) 잡는다:
+//   머리 3번 × (머리 + 꼬리가 더 자랄 수 있는 512KB, 상한 이내) + 조각·임시 입력 여유 512KB. 앱을 다시 열면 초기화된다.
+export const LOCAL_STATE_LIMIT=3700000;
+export const SEAL_BUDGET=1073741824;
+export const TAIL_BYTES=512000;
 export const LOCAL_STAGES=Object.freeze([['FULL',100],['CRITICAL',95],['WARN',85],['PREPARE',70]]);
 const SEVERITY=['OK','PREPARE','WARN','CRITICAL','FULL'];
 export function localBudget(localState,{ops=null}={}){
-  const bytes=localState&&typeof localState==='object'?localState.bytes:undefined,limit=localState?.limit;
-  if(!Number.isSafeInteger(bytes)||bytes<0||!Number.isSafeInteger(limit)||limit<=0)return {known:false,stage:'UNKNOWN',bytes:null,limit:LOCAL_STATE_LIMIT,room:null,percent:null,perOp:null,remainingOps:null};
-  const room=Math.max(0,limit-bytes),percent=bytes*100/limit,perOp=Number.isSafeInteger(ops)&&ops>0?Math.ceil(bytes/ops):null;
-  return {known:true,stage:LOCAL_STAGES.find(([,p])=>percent>=p)?.[0]??'OK',bytes,limit,room,percent,perOp,remainingOps:perOp?Math.floor(room/perOp):null};
+  const bytes=localState&&typeof localState==='object'?localState.bytes:undefined,raw=localState?.limit,format=Number.isSafeInteger(localState?.recordFormat)?localState.recordFormat:null;
+  if(!Number.isSafeInteger(bytes)||bytes<0||!Number.isSafeInteger(raw)||raw<=0)return {known:false,mode:null,format,stage:'UNKNOWN',bytes:null,limit:LOCAL_STATE_LIMIT,room:null,percent:null,perOp:null,remainingOps:null};
+  const limit=Math.min(raw,LOCAL_STATE_LIMIT),room=Math.max(0,limit-bytes),percent=bytes*100/limit,stage=LOCAL_STAGES.find(([,p])=>percent>=p)?.[0]??'OK';
+  if(format!==null&&format>=5){
+    const used=localState.seal?.used,sl=Number.isSafeInteger(localState.seal?.limit)&&localState.seal.limit>0?localState.seal.limit:SEAL_BUDGET,perSave=3*Math.min(limit,bytes+TAIL_BYTES)+TAIL_BYTES;
+    const sessionSaves=Number.isSafeInteger(used)&&used>=0&&perSave>0?Math.floor(Math.max(0,sl-used)/perSave):null;
+    return {known:true,mode:'HEAD',format,stage,bytes,limit,room,percent,perOp:null,remainingOps:sessionSaves};
+  }
+  const perOp=Number.isSafeInteger(ops)&&ops>0?Math.ceil(bytes/ops):null;
+  return {known:true,mode:'STATE',format,stage,bytes,limit,room,percent,perOp,remainingOps:perOp?Math.floor(room/perOp):null};
 }
-// 둘 중 더 급한 쪽: 남은 수 = min(서버 남은 연산, 로컬 추정 남은 op), 단계 = 더 심한 단계.
+// 둘 중 더 급한 쪽: 남은 수 = min(서버 남은 연산, 로컬 추정), 단계 = 더 심한 단계. 로컬 쪽 이름은 형식 4 이하 LOCAL, 형식 5 SESSION.
 export function capacityBudget(server,local){
-  const nums=[server?.known?['SERVER',server.remaining]:null,local?.known&&local.remainingOps!==null?['LOCAL',local.remainingOps]:null].filter(Boolean);
+  const nums=[server?.known?['SERVER',server.remaining]:null,local?.known&&local.remainingOps!==null?[local.mode==='HEAD'?'SESSION':'LOCAL',local.remainingOps]:null].filter(Boolean);
   const min=nums.length?nums.reduce((a,b)=>b[1]<a[1]?b:a):null;
   const stages=[server?.known?server.stage:null,local?.known?local.stage:null].filter(Boolean);
   const stage=stages.length?stages.reduce((a,b)=>SEVERITY.indexOf(b)>SEVERITY.indexOf(a)?b:a):'UNKNOWN';
@@ -261,24 +275,66 @@ export function capacityBudget(server,local){
 const mb=n=>(n/1e6).toFixed(2)+'MB';
 export function localCapacityText(l){
   if(!l?.known)return '로컬 용량 확인 불가 · 이 기기 저장소가 크기를 알려 주지 않습니다(옛 빌드이거나 서버 금고를 쓰지 않는 모드).';
-  return '로컬 용량 '+mb(l.bytes)+' / '+mb(l.limit).replace('4.50MB','4.5MB')+' ('+(Math.floor(l.percent*10)/10)+'%)'+(l.remainingOps!==null?' · 로컬로 남은 기록 약 '+opCount(l.remainingOps)+'개':'');
+  const pct=' ('+(Math.floor(l.percent*10)/10)+'%)';
+  if(l.mode==='HEAD')return '로컬 머리 '+mb(l.bytes)+' / '+mb(l.limit)+pct+' · 분할 저장이라 전체 기록 용량 상한 없음'+(l.remainingOps!==null?' · 이번 실행에서 저장 가능 약 '+opCount(l.remainingOps)+'번(앱을 다시 열면 초기화)':'');
+  return '로컬 용량 '+mb(l.bytes)+' / '+mb(l.limit)+pct+(l.remainingOps!==null?' · 로컬로 남은 기록 약 '+opCount(l.remainingOps)+'개':'');
 }
 export function capacityNotice(server,local){
   const c=capacityBudget(server,local),s=opBudgetNotice(server),tone=c.stage==='FULL'||c.stage==='CRITICAL'?'bad':c.stage==='WARN'?'warn':c.stage==='PREPARE'?'info':'muted';
-  const head=c.remaining!==null&&c.limitedBy==='LOCAL'&&server?.known&&server.remaining>c.remaining?'실제로 남은 기록 약 '+opCount(c.remaining)+'개(로컬 용량이 먼저 찹니다) · ':'';
-  const localAdvice=local?.known&&SEVERITY.indexOf(local.stage)>=SEVERITY.indexOf('PREPARE')?' · 로컬 용량이 '+({PREPARE:'70',WARN:'85',CRITICAL:'95',FULL:'100'})[local.stage]+'% 이상입니다. 가져오기 같은 대량 저장을 미루세요.':'';
+  const fewer=c.remaining!==null&&server?.known&&server.remaining>c.remaining;
+  const head=fewer&&c.limitedBy==='LOCAL'?'실제로 남은 기록 약 '+opCount(c.remaining)+'개(로컬 용량이 먼저 찹니다) · ':fewer&&c.limitedBy==='SESSION'?'이번 실행에서 남은 저장 약 '+opCount(c.remaining)+'번(앱을 다시 열면 초기화) · ':'';
+  const pctOf=({PREPARE:'70',WARN:'85',CRITICAL:'95',FULL:'100'})[local?.stage];
+  const localAdvice=local?.known&&SEVERITY.indexOf(local.stage)>=SEVERITY.indexOf('PREPARE')?(local.mode==='HEAD'?' · 로컬 머리가 상한의 '+pctOf+'% 이상입니다(보통은 1MB 아래). 앱을 다시 열어 보고, 계속되면 기술 정보를 확인하세요.':' · 로컬 용량이 '+pctOf+'% 이상입니다. 가져오기 같은 대량 저장을 미루세요.'):'';
   return {stage:c.stage,tone,lines:[head+s.text,localCapacityText(local)+localAdvice],remaining:c.remaining,limitedBy:c.limitedBy};
 }
-const COMPACTION_REASON={STORE_HOLD:'저장소 보류 상태',NOT_OWNER:'이 창이 기록 권한 소유자가 아님',BLOCKED:'앞선 저장 오류',PENDING:'보내지 않은 기록이 있음',ENROLLMENT:'장치 등록 진행 중',NOT_SYNCED:'아직 동기화 전',DISK_UNKNOWN:'디스크 여유를 확인할 수 없음',DISK_SPACE:'디스크 여유 부족(현재 크기의 3배 필요)'};
+const COMPACTION_REASON={STORE_HOLD:'저장소 보류 상태',NOT_OWNER:'이 창이 기록 권한 소유자가 아님',BLOCKED:'앞선 저장 오류',PENDING:'보내지 않은 기록이 있음',ENROLLMENT:'장치 등록 진행 중',NOT_SYNCED:'아직 동기화 전',DISK_UNKNOWN:'디스크 여유를 확인할 수 없음',DISK_SPACE:'디스크 여유 부족(현재 크기의 3배 필요)',BACKUP_CONFLICT:'이전 전 사본 자리에 다른 값이 있어 덮어쓰지 않음(기술 정보 확인 필요)',BACKUP_UNREADABLE:'이전 전 사본 자리를 읽을 수 없음'};
 // 저장소 정리(record 형식 4) 상태 문구. 필요 없으면 null.
 export function compactionText(c){
   if(!c||typeof c!=='object')return null;
   const why=(c.reasons||[]).map(r=>COMPACTION_REASON[r]??(String(r).startsWith('MIGRATION_FAILED')?'정리 시도 실패('+String(r).slice(17)+')':String(r))).join(', ');
   if(c.status==='COMPACTION_PENDING')return '저장소 정리 대기 · 다음 동기화 뒤 한 번 자동으로 정리합니다(정리 전 사본 1개 보관, 자동 삭제 안 함).';
   if(c.status==='COMPACTION_DEFERRED')return '저장소 정리 미룸 · '+(why||'조건 미충족')+' · 데이터는 그대로이고 다음 동기화 때 다시 확인합니다.';
+  // F10-4 review M1: a failed post-publication readback means the published layout may not match; do not just reopen.
+  if(c.status==='COMPACTION_HOLD_REOPEN'&&c.storage==='INDEXEDDB')return '저장소 이전 확인 실패 · 이 기기의 기록은 보호를 위해 멈췄습니다. 기록은 서버에 있습니다. 이 기기 데이터를 지우지 말고, 다른 기기에서 이 기기를 다시 연결(장치 추가)하세요.';
+  if(c.status==='COMPACTION_HOLD_REOPEN'&&(c.reasons||[]).includes('MIGRATION_FAILED:HOLD_MIGRATION_READBACK'))return '저장소 이전 확인 실패 · 계속 쓰지 말고 앱을 닫은 뒤 backups의 이전 전 사본으로 record.lbr을 되돌리세요(PC 절차 §8). 파일은 지우지 마세요.';
   if(c.status==='COMPACTION_HOLD_REOPEN')return '저장소 정리 중 오류 · 앱을 닫았다가 다시 여세요(데이터는 보존됨). '+why;
   if(c.status==='MIGRATED'&&c.to>=4)return '저장소 정리 완료 · 정리 전 사본 1개를 보관했습니다(자동 삭제 안 함).';
   return null;
+}
+// F10: HOLD caused by the local seal budget (CONTEXT_RETIRED, the per-session AES-GCM key limit). Guidance only;
+// the limit and its check stay in core. Reopening the app opens a fresh context.
+export const HOLD_GUIDANCE=Object.freeze({CONTEXT_RETIRED:'기록 보호를 위해 잠시 멈췄어. 앱을 닫았다가 다시 열어 줘.'});
+export function holdGuidance(code){return typeof code==='string'&&Object.hasOwn(HOLD_GUIDANCE,code)?HOLD_GUIDANCE[code]:null;}
+// 상태 지문의 가계부 요약(F10-5): 값만 모은다. 기기끼리 같아야 하므로 수정 이력 id(heads)·화면 표시용 라벨·한도는 빼고,
+// 계정·직접 거래·분류 규칙·예산의 [id, 값], 묶음의 [id, 원천, 달, 조각, 행 수, 통제값, 행 id], 계산된 줄·미배분 잔액·원천 대조 합계를 넣는다.
+// 금액은 이미 정수 문자열이다. 해시 계산은 화면(app.mjs sha, canonical JSON)이 한다. 가계부 자료가 없으면 null.
+export function finFingerprintInput(fin){
+  if(!fin||typeof fin!=='object')return null;
+  const pick=xs=>(Array.isArray(xs)?xs:[]).map(x=>[x.id,x.data??null]);
+  return {format:'LB_FIN_FINGERPRINT_1',accounts:pick(fin.accounts),txns:pick(fin.txns),rules:pick(fin.rules),budgets:pick(fin.budgets),
+    batches:(Array.isArray(fin.batches)?fin.batches:[]).map(b=>[b.id,b.sourceSha256??null,b.chunk??null,b.part??null,b.rowCount??null,b.control??null,b.rowIds??[]]),
+    lines:Array.isArray(fin.lines)?fin.lines:[],residuals:Array.isArray(fin.residuals)?fin.residuals:[],sourceControl:fin.sourceControl??null};
+}
+// 가져오기 화면의 기록 권한 상태(F10-5). READY: 바로 가져오기. ACQUIRE: 이 창이 소유자라 버튼 하나로 동기화·권한을 받고
+// 시작(창을 숨겨 권한이 끊긴 뒤 "이어서 가져오기"도 같은 버튼). BLOCKED: 이 화면에서 풀 수 없음 → 이유와 연결 · 장치 안내.
+export function importPermission({mdProfile=false,mdReady=false,autoOK=false,role='NONE',unlocked=false}={}){
+  if(!mdProfile||mdReady)return {state:'READY',text:null};
+  if(autoOK)return {state:'ACQUIRE',text:'아직 기록 권한이 없습니다(창을 숨기거나 오프라인이 되면 권한이 끊깁니다). 아래 버튼을 누르면 최신 내용을 동기화하고 기록 권한을 받은 뒤 바로 가져옵니다.'};
+  if(role==='FOLLOWER')return {state:'BLOCKED',text:'이 창은 읽기 전용입니다(다른 LIFE BRICK 창이 기록 소유 중). 기록 소유 창에서 가져오세요.'};
+  if(!unlocked)return {state:'BLOCKED',text:'로컬 잠금해제가 필요합니다 · 연결 · 장치에서 잠금해제한 뒤 가져오세요.'};
+  return {state:'BLOCKED',text:'기록 권한을 받을 수 없는 상태입니다 · 연결 · 장치에서 서버 로그인 → 최신 내용 동기화 → 기록 권한 받기 순서로 확인하세요.'};
+}
+// 소유자 잠금 직후 정리한 임시 파일(stage-*.tmp) 개수. 0·모름이면 null.
+export function housekeepingText(h){
+  if(!h||typeof h!=='object')return null;const parts=[];
+  if(Number.isSafeInteger(h.stagesRemoved)&&h.stagesRemoved>0)parts.push('중단된 저장의 임시 파일 '+h.stagesRemoved+'개를 정리했습니다(데이터 파일·사본은 건드리지 않음).');
+  if(Number.isSafeInteger(h.orphanSegmentsRemoved)&&h.orphanSegmentsRemoved>0)parts.push('쓰이지 않는 조각 파일 '+h.orphanSegmentsRemoved+'개를 정리했습니다.');
+  if(Number.isSafeInteger(h.orphanSegmentsKept)&&h.orphanSegmentsKept>0)parts.push('현재 기록보다 새 조각 파일 '+h.orphanSegmentsKept+'개는 보존했습니다(예전 기록으로 되돌린 상태일 수 있음).');
+  if(Number.isSafeInteger(h.orphanSegmentsFailed)&&h.orphanSegmentsFailed>0)parts.push('조각 파일 '+h.orphanSegmentsFailed+'개는 지우지 못했습니다('+(h.orphanCode??'UNKNOWN')+').');
+  else if(h.orphanSegmentsRemoved===null&&h.orphanCode)parts.push('조각 파일 정리를 하지 못했습니다('+h.orphanCode+') · 데이터는 그대로입니다.');
+  if(Number.isSafeInteger(h.stagesFailed)&&h.stagesFailed>0)parts.push('임시 파일 '+h.stagesFailed+'개는 지우지 못했습니다('+(h.code??'UNKNOWN')+') · 다음에 다시 시도합니다.');
+  else if(h.code&&h.code!=='SKIPPED_FIRST_PRIMARY'&&h.stagesRemoved===null)parts.push('임시 파일 정리를 하지 못했습니다('+h.code+') · 데이터는 그대로입니다.');
+  return parts.length?parts.join(' '):null;
 }
 // 가져오기 예상 state 증가(AI_INFERENCE 모형, F8 실측 op당 7.2KB와 맞춘 계수): 항목마다 ≈ 25/9 × (요청 바이트 + 500) + 3,400.
 // 25/9 = 봉투 b64(16/9) + 해독본(1). 3,400 = 인증서·row·receipt. 실제보다 크게 잡는 쪽(보수적)이다.
@@ -484,9 +540,14 @@ export function checkImportPlan(plan,existing,{byteLimit=null,ops=null,local=nul
   // 연산 한도: 저장할 항목(SAVE) 하나가 연산 하나. 남은 연산을 모르면(UNKNOWN) 거절하지 않고 화면에 "확인 불가"로 보인다.
   report.opCheck={known:!!ops?.known,remaining:ops?.known?ops.remaining:null,need:report.toSave};
   if(ops?.known&&report.toSave>ops.remaining)report.errors.push('FIN_IMPORT_OP_LIMIT');
-  // 로컬 용량: 예상 state 증가가 남은 로컬 바이트보다 크면 거절, 같으면 통과, 모르면(UNKNOWN) 막지 않고 화면에 "확인 불가".
-  report.localCheck={known:!!local?.known,room:local?.known?local.room:null,need:estimateStateGrowth(report.items)};
+  // 로컬 용량: 예상 증가가 남은 로컬 바이트보다 크면 거절, 같으면 통과, 모르면(UNKNOWN) 막지 않고 화면에 "확인 불가".
+  // 형식 5(HEAD)는 머리 증가만 본다: 꼬리가 512KB에 닿으면 조각으로 넘어가므로 머리는 512KB + 가장 큰 항목 하나보다 더 늘지 않는다.
+  const growth=estimateStateGrowth(report.items),largest=Math.max(0,...report.items.filter(i=>i.action==='SAVE').map(i=>estimateStateGrowth([i])));
+  report.localCheck={known:!!local?.known,room:local?.known?local.room:null,need:local?.mode==='HEAD'?Math.min(growth,TAIL_BYTES+largest):growth};
   if(local?.known&&report.localCheck.need>local.room)report.errors.push('FIN_IMPORT_LOCAL_CAPACITY');
+  // 형식 5: 이번 실행의 봉인 예산으로 저장할 수 있는 수(보수적 추정)보다 많으면 거절. 모르면 막지 않는다.
+  report.sessionCheck={known:local?.mode==='HEAD'&&local.remainingOps!==null,remaining:local?.mode==='HEAD'?local.remainingOps:null,need:report.toSave};
+  if(report.sessionCheck.known&&report.toSave>report.sessionCheck.remaining)report.errors.push('FIN_IMPORT_SESSION_BUDGET');
   if(!report.errors.length&&!report.toSave)report.errors.push('FIN_IMPORT_NOTHING');
   report.ok=report.errors.length===0;
   return report;

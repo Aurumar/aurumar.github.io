@@ -1,4 +1,4 @@
-import {PC_ENTITY_REQUEST_LIMIT,buildBudget,monthSpan,finErrorText,finError,formatWon,formatCompact,shiftMonth,shownMerchant,buildAccount,buildTxn,buildRule,monthLines,duplicateGroups,ledgerCsv,rulePreview,checkImportPlan,opBudget,opBudgetNotice,opsAfter,localBudget,capacityNotice,compactionText} from './fin-ledger.mjs';
+import {PC_ENTITY_REQUEST_LIMIT,buildBudget,monthSpan,finErrorText,finError,formatWon,formatCompact,shiftMonth,shownMerchant,buildAccount,buildTxn,buildRule,monthLines,duplicateGroups,ledgerCsv,rulePreview,checkImportPlan,opBudget,opBudgetNotice,opsAfter,localBudget,capacityNotice,compactionText,holdGuidance,importPermission,finFingerprintInput,housekeepingText} from './fin-ledger.mjs';
 import {PERIODS as PLAN_PERIODS,detectRecurring,recurringGridLayout,costSplit,budgetStatus,budgetBarsLayout,lifeTimeline,timelineLayout} from './fin-plan.mjs';
 import {prepare,PERIODS,periodRange,aggregate,roundDiv,dataMonths,overview,monthlySeries,barLayout,sankeyData,sankeyLayout,treemapItems,squarify,dailyTotals,heatmapMonths,completeness} from './fin-charts.mjs';
 const mdBackend=globalThis.LIFE_BRICK_MD_BACKEND??null;
@@ -187,8 +187,8 @@ function money(value,currency=whole.finance.currency){return value===null||value
 function status(message,error=false){$('status').textContent=message;$('status').dataset.error=String(error);}
 function lock(value){busy=value;for(const n of document.querySelectorAll('button,input,textarea,select')){if(value&&!n.disabled){n.disabled=true;n.dataset.busyLock='1';}else if(!value&&n.dataset.busyLock){n.disabled=false;delete n.dataset.busyLock;}if(ended)n.disabled=true;}applyMDLocks();}
 function appError(code){return Object.assign(new Error(code),{code});}
-function errorText(code){return ({UNLOCK_FAILED:'비밀문구가 맞지 않습니다.',STALE_HEADS:'원본이 바뀌었습니다. 편집을 취소하고 최신 내용을 확인하세요.',INVALID_TEXT:'입력 길이와 내용을 확인하세요.',DEFERRED_REASON_REQUIRED:'보류 이유를 입력하세요.',INVALID_DECIMAL_AMOUNT:'금액은 0 이상의 숫자로 입력하세요. 선택한 소수 자릿수를 확인하세요.',HOLD_CAPSULE_PUBLICATION:'저장 결과를 확정할 수 없습니다. 추가 저장을 중단했습니다. 파일을 삭제하거나 되돌리지 마세요.',HOLD_UNKNOWN_SAVE:'저장 결과가 불명확합니다. 새 요청으로 반복하지 마세요.',UNSAVED_ACTION_DRAFT:'이 행동의 오늘 입력을 먼저 저장하세요.',FINANCE_ITEMS_REQUIRED:'항목을 추가하거나 명시적으로 없음(0)을 선택하세요.'})[code]||(finErrorText(code)?finErrorText(code)+' ('+code+')':'작업을 완료하지 못했습니다: '+code);}
-function fail(error){const code=error.code||'HOLD_CONNECTION';if(error.finLocal){const text=finErrorText(code)||code;status(text,true);if($('editor').open)$('editor-error').textContent=text;return;}renderRestore();problem={code,kind:(code==='HOLD_STORE_FORMAT_NEWER_FAIL_CLOSED'||code.startsWith('UPDATE_REQUIRED'))?'UPDATE':['MD_PENDING_RECONCILE_REQUIRED','HOLD_UNKNOWN_SAVE'].includes(code)?'UNKNOWN':code==='MD_NOT_WRITE_READY'?'NOT_WRITE_READY':'ERROR'};if(mdProfile){if(code!=='MD_ALREADY_UNLOCKED'){mdReady=false;mdDraftReady=can('draft-save')&&mdRole==='OWNER'&&mdUnlocked;}const guidance={HOLD_STORE_FORMAT_NEWER_FAIL_CLOSED:SAVE_TEXT.UPDATE+' · 이 데이터는 더 새로운 LIFE BRICK 형식이라 열지 않았습니다. 기록은 그대로 보존됩니다. 최신 앱으로 여세요.',MD_NOT_WRITE_READY:(autoWriteFail==='WRITER_BUSY'||autoWriteFail==='STALE_HEAD'?'다른 기기나 창이 기록 중입니다 · 입력은 그대로 남아 있습니다 · 최대 약 2분 뒤 같은 입력으로 다시 저장하세요(자동 재시도는 한 번만 했습니다). 방금 닫은 이 기기의 창일 수도 있습니다.':/^AUTH_/.test(autoWriteFail||'')?'로그인이 만료되어 저장하지 못했습니다 · 입력은 그대로 남아 있습니다 · 연결 · 장치에서 서버 로그인 후 다시 저장하세요.':autoWriteFail==='OFFLINE'?'오프라인이라 저장하지 못했습니다 · 입력은 그대로 남아 있습니다 · 연결되면 다시 저장하세요.':'지금은 확정 저장을 할 수 없습니다 · 연결 · 장치에서 동기화하고 기록 권한을 받으세요.'),MD_PENDING_RECONCILE_REQUIRED:SAVE_TEXT.CHECK+' · 이 저장이 서버에 반영됐는지 아직 모릅니다. 새로 저장하지 말고 연결 · 장치에서 "미확정 저장 결과 확인"을 누르세요.',HOLD_MIGRATION_FAILED:'업데이트를 마무리하지 못함 · 기록은 보호됨 · 앱을 다시 열어 저장된 상태를 확인하세요.',UPDATE_REQUIRED_READ_ONLY_HOLD:'앱 업데이트 필요 · 읽기 전용으로 보호됨 · 최신 앱으로 계속하세요.',UPDATE_REQUIRED_SERVER_CONTRACT:'읽기 전용으로 보호됨 · 이 서버와 앱의 업데이트 준비를 확인해야 합니다.',AUTH_AAL2_REQUIRED:'서버 로그인이 이메일 코드 단계까지만 확인된 상태입니다 · 연결 · 장치에서 인증 앱(TOTP) 코드까지 입력하세요. 저장된 로그인이 복원되지 않았다면 "로그인 복원" 줄의 이유를 확인하세요.',AUTH_EXPIRED:'서버 로그인이 만료되었습니다 · 연결 · 장치에서 서버 로그인 후 다시 시도하세요. "로그인 복원" 줄에 복원하지 못한 이유가 표시됩니다.',AUTH_NOT_PROVISIONED:SAVE_TEXT.NOT_PROVISIONED+' · 이 기기에서 읽기와 임시 저장만 가능합니다.',MD_ROUTE:'이 앱 구성에서는 사용할 수 없는 기능입니다.',MD_ALREADY_UNLOCKED:'이 탭의 저장소는 이미 열려 있습니다. 중복 잠금해제 대신 현재 상태를 확인하세요.',MD_NO_LOCAL_PROFILE:'이 브라우저 저장소에 로컬 프로필이 없습니다. 기존 origin과 browser profile을 확인하세요.',MD_PROFILE_SELECTION_REQUIRED:'여러 프로필 중 사용할 항목을 먼저 선택하세요.',MD_LOCAL_RECORD_MISSING_OR_MISMATCH:'선택한 로컬 기록이 없거나 origin/id가 맞지 않습니다. 사이트 데이터를 지우거나 새 등록을 시작하지 마세요.',MD_LOCAL_FOLLOWER_READ_ONLY:'이 탭은 읽기 전용입니다. 소유 탭을 종료한 뒤 이 탭에서 최신 기록을 다시 열어 인계받으세요.',MD_LOCAL_OWNER_BUSY:'다른 탭이 아직 소유 중입니다. 그 탭에서 안전하게 인계한 뒤 다시 시도하세요.',MD_LOCAL_OWNER_LOCK_UNAVAILABLE:'브라우저의 배타적 탭 잠금을 사용할 수 없어 쓰기를 차단했습니다.',MD_LOCAL_OWNER_CLOSING:'소유권 인계 또는 로컬 기록 재개방 중입니다. 새 작업을 시작하지 마세요.'};const shown=guidance[code]||(finErrorText(code)?finErrorText(code)+' ('+code+')':'저장·연결 보류 · '+code+' · 결과를 모르는 저장은 확인한 뒤 진행하세요.');status(shown,true);saRejected(code,shown);applyMDLocks();refreshSaveCards();return;}if(code.startsWith('HOLD_')||code.startsWith('SECURITY_'))ended=true;status(errorText(code),true);if($('editor').open)$('editor-error').textContent=errorText(code);refreshSaveCards();}
+function errorText(code){const hold=holdGuidance(code);if(hold)return hold;return ({UNLOCK_FAILED:'비밀문구가 맞지 않습니다.',STALE_HEADS:'원본이 바뀌었습니다. 편집을 취소하고 최신 내용을 확인하세요.',INVALID_TEXT:'입력 길이와 내용을 확인하세요.',DEFERRED_REASON_REQUIRED:'보류 이유를 입력하세요.',INVALID_DECIMAL_AMOUNT:'금액은 0 이상의 숫자로 입력하세요. 선택한 소수 자릿수를 확인하세요.',HOLD_CAPSULE_PUBLICATION:'저장 결과를 확정할 수 없습니다. 추가 저장을 중단했습니다. 파일을 삭제하거나 되돌리지 마세요.',HOLD_UNKNOWN_SAVE:'저장 결과가 불명확합니다. 새 요청으로 반복하지 마세요.',UNSAVED_ACTION_DRAFT:'이 행동의 오늘 입력을 먼저 저장하세요.',FINANCE_ITEMS_REQUIRED:'항목을 추가하거나 명시적으로 없음(0)을 선택하세요.'})[code]||(finErrorText(code)?finErrorText(code)+' ('+code+')':'작업을 완료하지 못했습니다: '+code);}
+function fail(error){const code=error.code||'HOLD_CONNECTION';if(error.finLocal){const text=finErrorText(code)||code;status(text,true);if($('editor').open)$('editor-error').textContent=text;return;}renderRestore();problem={code,kind:(code==='HOLD_STORE_FORMAT_NEWER_FAIL_CLOSED'||code.startsWith('UPDATE_REQUIRED'))?'UPDATE':['MD_PENDING_RECONCILE_REQUIRED','HOLD_UNKNOWN_SAVE'].includes(code)?'UNKNOWN':code==='MD_NOT_WRITE_READY'?'NOT_WRITE_READY':'ERROR'};if(mdProfile){if(code!=='MD_ALREADY_UNLOCKED'){mdReady=false;mdDraftReady=can('draft-save')&&mdRole==='OWNER'&&mdUnlocked;}const guidance={HOLD_STORE_FORMAT_NEWER_FAIL_CLOSED:SAVE_TEXT.UPDATE+' · 이 데이터는 더 새로운 LIFE BRICK 형식이라 열지 않았습니다. 기록은 그대로 보존됩니다. 최신 앱으로 여세요.',MD_NOT_WRITE_READY:(autoWriteFail==='WRITER_BUSY'||autoWriteFail==='STALE_HEAD'?'다른 기기나 창이 기록 중입니다 · 입력은 그대로 남아 있습니다 · 최대 약 2분 뒤 같은 입력으로 다시 저장하세요(자동 재시도는 한 번만 했습니다). 방금 닫은 이 기기의 창일 수도 있습니다.':/^AUTH_/.test(autoWriteFail||'')?'로그인이 만료되어 저장하지 못했습니다 · 입력은 그대로 남아 있습니다 · 연결 · 장치에서 서버 로그인 후 다시 저장하세요.':autoWriteFail==='OFFLINE'?'오프라인이라 저장하지 못했습니다 · 입력은 그대로 남아 있습니다 · 연결되면 다시 저장하세요.':'지금은 확정 저장을 할 수 없습니다 · 연결 · 장치에서 동기화하고 기록 권한을 받으세요.'),MD_PENDING_RECONCILE_REQUIRED:SAVE_TEXT.CHECK+' · 이 저장이 서버에 반영됐는지 아직 모릅니다. 새로 저장하지 말고 연결 · 장치에서 "미확정 저장 결과 확인"을 누르세요.',HOLD_MIGRATION_FAILED:'업데이트를 마무리하지 못함 · 기록은 보호됨 · 앱을 다시 열어 저장된 상태를 확인하세요.',UPDATE_REQUIRED_READ_ONLY_HOLD:'앱 업데이트 필요 · 읽기 전용으로 보호됨 · 최신 앱으로 계속하세요.',UPDATE_REQUIRED_SERVER_CONTRACT:'읽기 전용으로 보호됨 · 이 서버와 앱의 업데이트 준비를 확인해야 합니다.',AUTH_AAL2_REQUIRED:'서버 로그인이 이메일 코드 단계까지만 확인된 상태입니다 · 연결 · 장치에서 인증 앱(TOTP) 코드까지 입력하세요. 저장된 로그인이 복원되지 않았다면 "로그인 복원" 줄의 이유를 확인하세요.',AUTH_EXPIRED:'서버 로그인이 만료되었습니다 · 연결 · 장치에서 서버 로그인 후 다시 시도하세요. "로그인 복원" 줄에 복원하지 못한 이유가 표시됩니다.',AUTH_NOT_PROVISIONED:SAVE_TEXT.NOT_PROVISIONED+' · 이 기기에서 읽기와 임시 저장만 가능합니다.',MD_ROUTE:'이 앱 구성에서는 사용할 수 없는 기능입니다.',MD_ALREADY_UNLOCKED:'이 탭의 저장소는 이미 열려 있습니다. 중복 잠금해제 대신 현재 상태를 확인하세요.',MD_NO_LOCAL_PROFILE:'이 브라우저 저장소에 로컬 프로필이 없습니다. 기존 origin과 browser profile을 확인하세요.',MD_PROFILE_SELECTION_REQUIRED:'여러 프로필 중 사용할 항목을 먼저 선택하세요.',MD_LOCAL_RECORD_MISSING_OR_MISMATCH:'선택한 로컬 기록이 없거나 origin/id가 맞지 않습니다. 사이트 데이터를 지우거나 새 등록을 시작하지 마세요.',MD_LOCAL_FOLLOWER_READ_ONLY:'이 탭은 읽기 전용입니다. 소유 탭을 종료한 뒤 이 탭에서 최신 기록을 다시 열어 인계받으세요.',MD_LOCAL_OWNER_BUSY:'다른 탭이 아직 소유 중입니다. 그 탭에서 안전하게 인계한 뒤 다시 시도하세요.',MD_LOCAL_OWNER_LOCK_UNAVAILABLE:'브라우저의 배타적 탭 잠금을 사용할 수 없어 쓰기를 차단했습니다.',MD_LOCAL_OWNER_CLOSING:'소유권 인계 또는 로컬 기록 재개방 중입니다. 새 작업을 시작하지 마세요.'};const shown=holdGuidance(code)??guidance[code]??(finErrorText(code)?finErrorText(code)+' ('+code+')':'저장·연결 보류 · '+code+' · 결과를 모르는 저장은 확인한 뒤 진행하세요.');status(shown,true);saRejected(code,shown);applyMDLocks();refreshSaveCards();return;}if(code.startsWith('HOLD_')||code.startsWith('SECURITY_'))ended=true;status(errorText(code),true);if($('editor').open)$('editor-error').textContent=errorText(code);refreshSaveCards();}
 async function perform(fn){if(busy||ended)return;lock(true);try{await fn();}catch(e){fail(e);}finally{lock(false);}}
 async function api(path,body){if(mdBackend)return mdBackend.request(path,body);const headers={};if(capability)headers.Authorization='Bearer '+capability;if(body!==undefined)headers['Content-Type']='application/json';const response=await fetch(path,{method:body===undefined?'GET':'POST',headers,body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer'});const result=await response.json();if(!response.ok)throw appError(result.code||'HOLD_HTTP_RESPONSE');return result;}
 async function submit(path,body){const result=await submitWrite(path,body);lastSave={status:result.status,at:Date.now()};return result;}
@@ -333,8 +333,8 @@ function renderNav(){const inMore=view==='MORE'||MORE_VIEWS.includes(view);$('na
 function updateUnsaved(){for(const n of document.querySelectorAll('#navigation [data-view="TODAY"]')){if(drafts.size){n.dataset.unsaved=String(drafts.size);n.setAttribute('aria-label','오늘 · 저장하지 않은 입력 '+drafts.size+'건');}else{delete n.dataset.unsaved;n.setAttribute('aria-label','오늘');}}}
 // Truthful save/sync state: one plain sentence per existing technical state; codes stay under "기술 정보".
 function saveState(){
- if(!mdProfile)return {key:'LOCAL_SAVED',title:SAVE_TEXT.LOCAL_SAVED,detail:'이 PC의 암호화 저장소에 저장합니다 · 다른 기기와 동기화하지 않습니다.'+(problem?' · 마지막 작업 실패: '+problem.code:''),tone:problem?'warn':'ok',codes:['LOCAL_SAVED',problem?.code]};
- const p=mdProduct||{},n=p.drafts||0,drafted=n?SAVE_TEXT.LOCAL_DRAFT+' '+n+'건':null,failed=problem?' · 마지막 작업 실패: '+problem.code:'';
+ if(!mdProfile)return {key:'LOCAL_SAVED',title:SAVE_TEXT.LOCAL_SAVED,detail:'이 PC의 암호화 저장소에 저장합니다 · 다른 기기와 동기화하지 않습니다.'+(problem?' · 마지막 작업 실패: '+(holdGuidance(problem.code)?holdGuidance(problem.code)+' ('+problem.code+')':problem.code):''),tone:problem?'warn':'ok',codes:['LOCAL_SAVED',problem?.code]};
+ const p=mdProduct||{},n=p.drafts||0,drafted=n?SAVE_TEXT.LOCAL_DRAFT+' '+n+'건':null,failed=problem?' · 마지막 작업 실패: '+(holdGuidance(problem.code)?holdGuidance(problem.code)+' ('+problem.code+')':problem.code):'';
  const codes=[p.localCopy,p.serverSync,p.freshness,p.pendingStatus,p.lastOnlineFailure?'lastOnlineFailure='+p.lastOnlineFailure:null,n?'LOCAL_DRAFT×'+n:null,problem?.code,lastSave?'lastSave='+lastSave.status:null];
  if(problem?.kind==='UPDATE')return {key:'UPDATE_REQUIRED',title:SAVE_TEXT.UPDATE,detail:'이 데이터는 더 새로운 LIFE BRICK 형식입니다. 열거나 바꾸지 않았고 기록은 보존됩니다.',tone:'alert',codes};
  if(p.freshness==='HOLD')return {key:'HOLD',title:SAVE_TEXT.CHECK,detail:'서버 결과와 이 기기 반영이 맞는지 확인하기 전까지 새 기록을 멈춥니다. 파일을 지우거나 되돌리지 마세요.',tone:'alert',action:'DEVICES',actionLabel:'저장 확인하러 가기',codes};
@@ -480,10 +480,10 @@ function finSelect(parent,label,value,options,onChange){const s=field(parent,lab
 // 가리기는 화면과 CSV 내려받기에 함께 적용된다(저장값은 바꾸지 않음). 두 탭이 같은 상태(finMask)를 쓴다.
 const FIN_MASK_LABEL='민감 가맹점 가리기 (화면·CSV)';
 const finOps=()=>opBudget(whole.settings?.remoteCheckpoint,{pending:mdProduct?.drafts??0});
-// F9 로컬 용량(state 바이트 / 4.5MB). 서버 남은 연산과 함께 보고, 더 급한 쪽 단계로 안내한다(문구만, 동작은 막지 않음).
+// 로컬 용량(F10-5 형식별): 형식 4 이하는 state 바이트 / 약 3.7MB(실효 상한), 형식 5는 머리 바이트 / 상한 + 이번 실행 봉인 예산. 서버 남은 연산과 함께 보고, 더 급한 쪽 단계로 안내한다(문구만, 동작은 막지 않음).
 const finLocal=()=>localBudget(whole.settings?.localState,{ops:whole.settings?.remoteCheckpoint?.version??null});
 function opsNotice(b,{always=false}={}){const n=capacityNotice(b,finLocal());if(!always&&(n.stage==='OK'||n.stage==='UNKNOWN'))return null;const p=add(el('p',null,'ops-notice ops-'+n.tone),...n.lines.map(t=>el('span',t)));p.dataset.stage=n.stage;if(n.limitedBy)p.dataset.limitedBy=n.limitedBy;
- const c=always?compactionText(whole.settings?.localState?.compaction):null;if(c)add(p,el('span',c,'ops-compaction'));return p;}
+ const c=always?compactionText(whole.settings?.localState?.compaction):null;if(c)add(p,el('span',c,'ops-compaction'));const h=always?housekeepingText(whole.settings?.localState?.housekeeping):null;if(h)add(p,el('span',h,'ops-compaction'));return p;}
 function renderLedger(root){
  const fin=whole.fin;
  if(!fin){add(root,empty('이 앱 버전은 가계부 자료를 보내지 않습니다. 모든 기기를 새 빌드로 업데이트하세요.'));return;}
@@ -946,8 +946,10 @@ function renderFinImport(root,fin){
  add(p,input,add(el('div',null,'buttons'),pick,finImport&&!finImport.running?button('파일 닫기',()=>void perform(async()=>{finImport=null;await render();})):null));add(root,p);
  if(!finImport)return;
  const st=finImport,draft=mdDraftMode(),ops=finOps(),local=finLocal(),report=checkImportPlan(st.plan,fin,{byteLimit:mdBackend?null:PC_ENTITY_REQUEST_LIMIT,ops,local});
- if(draft&&!report.errors.includes('FIN_IMPORT_DRAFT_MODE'))report.errors.unshift('FIN_IMPORT_DRAFT_MODE');
- const ready=report.ok&&!draft;
+ // 기록 권한: 이 창이 소유자면(ACQUIRE) 버튼 하나로 권한을 받고 시작하므로 임시 저장 모드여도 막지 않는다. 풀 수 없으면(BLOCKED) 이유를 보인다.
+ const perm=importPermission({mdProfile,mdReady,autoOK:mdAutoOK(),role:mdRole,unlocked:mdUnlocked});
+ if(draft&&perm.state==='BLOCKED'&&!report.errors.includes('FIN_IMPORT_DRAFT_MODE'))report.errors.unshift('FIN_IMPORT_DRAFT_MODE');
+ const ready=report.ok&&perm.state!=='BLOCKED';
  add(root,add(el('div',null,'metric-grid fin-metrics'),metric('계정',finCount(report.counts.accounts)+'개',st.name),metric('월 묶음',finCount(report.counts.batches)+'개','미배분 잔액 묶음 포함'),metric('원천 행',finCount(report.counts.rows)+'행','미배분 잔액 '+finCount(report.counts.residualRows)+'행 별도'),metric('저장할 항목',finCount(report.toSave)+'개','이미 있음 '+report.skipped+' · 충돌 '+report.conflicts+(report.invalid?' · 형식 오류 '+report.invalid:''))));
  const money=k=>['rows','unknownRows'].includes(k)?v=>v===null?'없음':finCount(v)+'행':v=>v===null?'없음':formatWon(v);
  const c=section('통제값 대조','기대값은 원본 Spending Lab 요약(순액 모름 행 수만 변환기가 센 값), 계산값은 이 앱이 계획 파일의 행을 다시 더한 값입니다. 1원이라도 다르면 확정할 수 없습니다.');
@@ -957,13 +959,15 @@ function renderFinImport(root,fin){
  add(root,c);
  const run=section('가져오기 확정');
  add(run,el('p',ops.known?'연산: 이번에 저장 '+finCount(report.opCheck.need)+'개 · 남은 연산 '+finCount(ops.remaining)+'개'+(report.opCheck.need>ops.remaining?' · 부족':''):'연산: 이번에 저장 '+finCount(report.opCheck.need)+'개 · 남은 연산 확인 불가(한도 사전 검사 없이 진행, 서버가 최종 판정)','small ops-line'+(ops.known&&report.opCheck.need>ops.remaining?' fin-bad':'')),el('p',opsAfter(report.opCheck).text,'small ops-after'),el('p','로컬 용량: 이번 예상 +'+(report.localCheck.need/1e6).toFixed(2)+'MB · '+(local.known?'남은 '+(local.room/1e6).toFixed(2)+'MB'+(report.localCheck.need>local.room?' · 부족':''):'남은 용량 확인 불가(막지 않음)'),'small ops-local'+(local.known&&report.localCheck.need>local.room?' fin-bad':'')));
+ if(perm.text){const why=el('p',perm.text,perm.state==='BLOCKED'?'fin-bad':'small');why.id='fin-import-permission';why.dataset.state=perm.state;add(run,why);}
  for(const code of report.errors)add(run,el('p',finErrorText(code)||code,code==='FIN_IMPORT_NOTHING'?'fin-ok':'fin-bad'));
  if(st.finished)add(run,el('p','가져오기 완료 · 이번에 저장 '+st.saved+'개','fin-ok'));
  if(st.error)add(run,el('p','중단됨 · '+(finErrorText(st.error)||st.error)+' · 저장된 항목은 그대로 두고, 같은 파일로 "이어서 가져오기"를 누르면 남은 항목만 저장합니다.','fin-bad'));
  if(st.stopped&&!st.error)add(run,el('p','사용자가 중단함 · "이어서 가져오기"로 남은 항목을 저장할 수 있습니다.','muted'));
  const bar=el('progress',null,'fin-progress');bar.id='fin-import-bar';bar.max=Math.max(1,report.items.length);bar.value=report.skipped;const line=el('p',report.items.length?'진행: 저장됨·이미 있음 '+report.skipped+' / '+report.items.length:'','small');line.id='fin-import-line';
  const stop=button('중단',()=>{st.stop=true;stop.disabled=true;$('fin-import-line').textContent+=' · 지금 저장 중인 항목까지 마치고 멈춥니다';},'danger');stop.id='fin-import-stop';stop.hidden=true;
- const go=button((st.saved||st.error||st.stopped)&&report.toSave?'이어서 가져오기 ('+report.toSave+'개 남음)':'가져오기 확정 ('+report.toSave+'개 저장)',()=>runFinImport(),'primary');go.disabled=!ready;
+ const resume=(st.saved||st.error||st.stopped)&&report.toSave,label=resume?'이어서 가져오기 ('+report.toSave+'개 남음)':'가져오기 확정 ('+report.toSave+'개 저장)';
+ const go=button(perm.state==='ACQUIRE'?'기록 권한 받고 '+label:label,()=>runFinImport(),'primary');go.disabled=!ready;go.dataset.permission=perm.state;
  add(run,bar,line,add(el('div',null,'buttons'),go,stop),hint('저장 순서: 계정 → 월 묶음. 묶음 하나가 연산 하나입니다. 같은 계정·같은 달을 두 번 넣지 않도록 서버 규칙이 다시 검사합니다.'));
  add(root,run);
  const items=add(el('details',null,'panel'),el('summary','항목 '+report.items.length+'개 자세히'));
@@ -972,7 +976,9 @@ function renderFinImport(root,fin){
 }
 function runFinImport(){
  const st=finImport;if(!st||st.running)return;
- void perform(async()=>{
+ void perform(async()=>{try{
+  // 이 창이 소유자인데 권한이 없으면(처음이거나 창을 숨겨 끊긴 뒤 "이어서") 여기서 동기화·기록 권한을 받는다. 못 받으면 시작하지 않는다.
+  if(mdProfile&&!mdReady&&mdAutoOK()){if(!(await mdAutoWrite()))throw finError('FIN_IMPORT_WRITE_PERMISSION');autoLeaseHeld=true;clearTimeout(autoLeaseTimer);}   // released 20 s after the last save, like other saves
   if(mdDraftMode())throw finError('FIN_IMPORT_DRAFT_MODE');
   // 다른 기기가 그사이 저장했을 수 있으니 최신 기록으로 다시 그리고 계획을 다시 검사한 뒤 시작한다.
   await refresh();lock(true);
@@ -990,6 +996,8 @@ function runFinImport(){
     const key=item.entityType+':'+item.entityId;if(st.done.has(key)){n++;continue;}
     if(mdDraftMode())throw finError('FIN_IMPORT_DRAFT_MODE');
     line.textContent='저장 중: '+item.label+' · '+(n+1)+' / '+report.items.length;
+    // 앞 저장이 켠 20초 해제 타이머가 오래 걸리는 이 저장 도중에 권한을 놓지 않게 끈다(자동 권한일 때만 켜져 있다).
+    if(autoLeaseHeld)clearTimeout(autoLeaseTimer);
     const e=byKey.get(key),r=await entity(e.entityType,e.entityId,e.data,[],reason);
     if(r.status==='LOCAL_DRAFT')throw finError('FIN_IMPORT_DRAFT_MODE');
     st.done.add(key);st.saved++;n++;bar.value=n;line.textContent='진행: '+n+' / '+report.items.length;
@@ -998,7 +1006,10 @@ function runFinImport(){
   }catch(e){st.error=e.code||'HOLD_CONNECTION';throw e;}
   finally{st.running=false;stop.hidden=true;try{await refresh();}catch{}}
   status(st.finished?savedMessage()+' · 과거 이력 가져오기 완료 · 저장 '+st.saved+'개':'가져오기를 중단했습니다 · 저장 '+st.saved+'개 · 이어서 가져올 수 있습니다.');
- });
+ }finally{
+  // 자동으로 받은 권한은 어떻게 끝나든(첫 저장 전 실패·중단·빈 큐 포함) 마지막 뒤 20초에 놓는다. 수동 권한(autoLeaseHeld 아님)은 그대로.
+  if(autoLeaseHeld){clearTimeout(autoLeaseTimer);autoLeaseTimer=setTimeout(()=>{void mdReleaseNow();},20000);}
+ }});
 }
 function renderProgress(root){const p=whole.progress;
  const m=p.measurement,measured=section('실제로 한 양','확인된 원본의 현재 해석입니다. 시간으로 결과나 목표 완료를 추정하지 않습니다. 임시·미확정 저장은 제외됩니다.');
@@ -1019,17 +1030,19 @@ const hexOf=buf=>Array.from(new Uint8Array(buf),b=>b.toString(16).padStart(2,'0'
 const headOf=v=>typeof v==='string'&&v.length>0?v.replace(/^[A-Za-z0-9-]{1,16}:/,'').slice(0,12):'UNKNOWN';
 const numOf=v=>Number.isSafeInteger(v)?String(v):'UNKNOWN';
 async function stateFingerprint(){
- const U='UNKNOWN',f={build:U,localGeneration:U,localHead:U,remoteVersion:U,remoteHead:U,history:U,projection:U};
+ const U='UNKNOWN',f={build:U,localGeneration:U,localHead:U,remoteVersion:U,remoteHead:U,history:U,projection:U,fin:U};
  try{const r=await fetch(import.meta.url,{cache:'force-cache'});if(r.ok)f.build=hexOf(await crypto.subtle.digest('SHA-256',await r.arrayBuffer())).slice(0,8);}catch{}
  try{if(can('pair-diagnostic')){const d=await api('/api/md/pair-diagnostic',{});f.localGeneration=numOf(d?.localCheckpoint?.generation);f.localHead=headOf(d?.localCheckpoint?.head);f.remoteVersion=numOf(d?.verified?.version);f.remoteHead=headOf(d?.verified?.head);}}catch{}
  try{if(Array.isArray(changes))f.history=String(changes.length);}catch{}
  try{if(whole)f.projection=(await sha({actions:whole.actions,domains:whole.domains,preferences:whole.preferences?.data??null})).slice(0,12);}catch{}
+ // F10-5: the ledger has its own summary hash (the screen summary above does not cover ledger values); the old hash is unchanged.
+ try{const v=finFingerprintInput(whole?.fin);if(v)f.fin=(await sha(v)).slice(0,12);}catch{}
  return f;
 }
 function renderFingerprint(root){
- const box=section('상태 지문','이 기기의 상태를 짧은 값으로만 보여 줍니다(앱 코드 해시 앞 8자, 세대·버전·머리 값, 이력 개수, 화면 요약 해시 앞 12자). 읽을 수 있는 내용이나 비밀값은 들어 있지 않습니다. 기기끼리 값을 비교하세요. 읽지 못한 값은 UNKNOWN입니다.');
+ const box=section('상태 지문','이 기기의 상태를 짧은 값으로만 보여 줍니다(앱 코드 해시 앞 8자, 세대·버전·머리 값, 이력 개수, 화면 요약 해시 앞 12자, 가계부 요약 해시 앞 12자). 읽을 수 있는 내용이나 비밀값은 들어 있지 않습니다. 기기끼리 값을 비교하세요. 읽지 못한 값은 UNKNOWN입니다.');
  const out=el('div',null,'fingerprint');out.id='state-fingerprint';
- const show=async()=>{const f=await stateFingerprint();out.replaceChildren(row('앱 코드 SHA (앞 8자)',f.build),row('로컬 세대 / 머리',f.localGeneration+' / '+f.localHead),row('원격 버전 / 머리',f.remoteVersion+' / '+f.remoteHead),row('이력 개수',f.history),row('화면 요약 해시 (앞 12자)',f.projection));out.dataset.ready='1';};
+ const show=async()=>{const f=await stateFingerprint();out.replaceChildren(row('앱 코드 SHA (앞 8자)',f.build),row('로컬 세대 / 머리',f.localGeneration+' / '+f.localHead),row('원격 버전 / 머리',f.remoteVersion+' / '+f.remoteHead),row('이력 개수',f.history),row('화면 요약 해시 (앞 12자)',f.projection),row('가계부 요약 해시 (앞 12자)',f.fin));out.dataset.ready='1';};
  add(box,button('상태 지문 확인',()=>{show().catch(()=>{out.textContent='UNKNOWN';});}),out);add(root,box);
 }
 function renderSettings(root){add(root,opsNotice(finOps(),{always:true}));const info=section('앱 정보');add(info,row('앱 버전',whole.version));const ax=whole.runtimeContract,tech=add(el('details'),el('summary','업데이트 기술 정보'));if(ax)add(tech,el('p','STORE '+ax.storeFormatVersion+' · DOMAIN '+ax.domainSchemaVersion+' · SYNC '+ax.syncProtocolVersion,'path'));add(info,tech);add(root,info);renderFingerprint(root);const p=section('오늘의 행동 관리','순서는 홈과 오늘 화면에 함께 반영됩니다. 비활성화해도 기록은 남습니다.');add(p,button('행동 추가',()=>editAction(null),'primary'));whole.actions.forEach((a,index)=>{const r=row(a.title,(a.active?'활성':'비활성')+' · '+domainName(a.domain)+(a.trackStreak?' · 연속 완료 표시':''));r.classList.add('settings-action');if(!a.active)r.classList.add('inactive');const up=button('위로 · '+a.title,()=>reorderAction(index,-1)),down=button('아래로 · '+a.title,()=>reorderAction(index,1));up.disabled=index===0;down.disabled=index===whole.actions.length-1;add(r,add(el('div',null,'buttons'),up,down,button('행동 편집 · '+a.title,()=>editAction(a))));add(p,r);});add(root,p);const display=section('영역 표시','숨겨도 기록은 보존되며 삶의 영역 화면에서 다시 볼 수 있습니다.'),grid=el('div',null,'check-grid'),checks=[];for(const d of whole.domains){const cb=field(grid,d.code+' · '+d.name,'checkbox',!d.hidden);checks.push([d.code,cb]);}add(display,grid,button('영역 표시 저장',()=>perform(async()=>{await savePreferences({...whole.preferences.data,hiddenDomains:checks.filter(([,cb])=>!cb.checked).map(([code])=>code)});await refresh();status('표시 설정을 저장했습니다.');})));add(root,display);const go=button('연결 · 장치 열기',()=>navigate('DEVICES'),'secondary nav-link');go.dataset.navOnly='1';add(root,add(section('저장 위치 · 백업 · 장치','저장 위치, 동기화, 장치 추가와 분실·복구는 연결 · 장치 화면에 모았습니다.'),go));}

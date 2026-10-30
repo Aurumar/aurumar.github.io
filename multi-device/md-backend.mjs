@@ -49,17 +49,19 @@ export async function createMDBackend({surface,auth,transport,storage,ownership,
   const freshness=hold?'HOLD':service.pending?'UNKNOWN':verified?(active?.writeReady?'SYNCED_WRITE_READY':'SYNCED_VERIFIED_READ_ONLY'):'OFFLINE_STALE';
   return {localCopy:'LOCAL_ENCRYPTED_COPY',serverSync:policy.serverSync??'SERVER_ENCRYPTED_SYNC',freshness,pendingStatus:service.pending?.status??null,drafts:drafts()?.count??0,lastOnlineFailure,storeFormat:service.store.storeFormat??null};
  }
- const status=()=>{const active=service?.status();return {state:'LOCKED',profile:PROFILE,surface,auth:auth.status,profiles,selected,localRole,unlockState:unlockState(),...active,writeReady:!opening&&!closing&&localRole==='OWNER'&&active?.writeReady===true,capabilities:[...routes],...(firstPrimary?{firstPrimary:firstPrimary.status()}:{}),product:productState(active)};};
+ // F10-1: the owner handle's housekeeping result (stage files removed/failed) stays visible even if the open fails.
+ let lastHousekeeping=null;
+ const status=()=>{const active=service?.status();return {state:'LOCKED',profile:PROFILE,surface,auth:auth.status,profiles,selected,localRole,unlockState:unlockState(),...active,writeReady:!opening&&!closing&&localRole==='OWNER'&&active?.writeReady===true,capabilities:[...routes],...(firstPrimary?{firstPrimary:firstPrimary.status()}:{}),product:productState(active),...(lastHousekeeping?{housekeeping:lastHousekeeping}:{})};};
  const need=()=>{check(service,'MD_UNLOCK_REQUIRED');check(!service.store.state.sequentialSync.activation.nativeBootstrap||service.store.state.sequentialSync.activation.status==='ACTIVE','MD_PRIMARY_INCOMPLETE_HOLD');return service;};
  const needOwner=()=>{const active=need();check(!opening&&!closing&&localRole==='OWNER'&&owner,'MD_LOCAL_FOLLOWER_READ_ONLY');return active;};
  async function claimOwner(id,opts){
   const handle=await ownership.claim(id,opts);
   if(!handle)return false;
-  localRole='OWNER';owner=handle;
+  localRole='OWNER';owner=handle;lastHousekeeping=handle.housekeeping??null;
   void handle.lost.then(()=>{if(owner===handle){owner=null;localRole='FOLLOWER';service?.suspend();}});
   return true;
  }
- async function dropOwner(){if(!owner)return;const handle=owner;owner=null;localRole='NONE';await handle.release();}
+ async function dropOwner(){if(!owner)return;const handle=owner;owner=null;localRole='NONE';lastHousekeeping=null;await handle.release();}
  async function unlockSelected(unlockSecret){
   check(!opening&&!closing,'MD_LOCAL_OWNER_CLOSING');opening=true;
   try{
