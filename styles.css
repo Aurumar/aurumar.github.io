@@ -407,3 +407,22 @@ button.danger{background:#fdf1ea}
   .vault-steps li{grid-template-columns:16px minmax(0,1fr);row-gap:2px}
   .vault-step-value{grid-column:2;text-align:right}
 }
+
+/* F12-3: 앱이 직접 그리는 월요일 시작 날짜 선택 화면 (기기 기본 <input type=date> 대체) */
+.date-label{position:relative}
+.date-field{display:flex;gap:8px;align-items:center}
+.date-field input{flex:1 1 auto;min-width:0}
+.date-field button{flex-shrink:0}
+.date-popup{position:absolute;top:100%;left:0;z-index:50;margin-top:4px;background:#fff;border:1px solid #e0d6bb;border-radius:10px;box-shadow:0 10px 40px #3b2a1024;padding:10px;width:min(300px,90vw)}
+.date-popup-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.date-popup-head strong{font-size:13px;color:#3b2a10}
+.date-popup-head button{font-size:13px;padding:5px 11px}
+.date-popup-grid{border:1px solid #eee7d4}
+.date-popup-grid .calendar-day-name{padding:5px;font-size:10px}
+.date-popup-grid button.calendar-cell{min-height:36px;padding:5px 0;text-align:center;background:none;border:none;border-radius:6px;color:#3b2a10;font-weight:400}
+.date-popup-grid button.calendar-cell:hover{background:#fbf3df}
+.date-popup-grid button.calendar-cell.today{font-weight:700;color:#806126}
+.date-popup-grid button.calendar-cell.selected{background:#f3e7c8;font-weight:700}
+.date-popup-grid .calendar-cell.dim{min-height:36px;visibility:hidden}
+.date-popup-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.date-popup-actions button{font-size:12px;padding:6px 10px}

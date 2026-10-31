@@ -74,12 +74,23 @@ export function applySyncResult(local,{roster,records,result,state}){
  Object.assign(local.sequentialSync,{records,tips:result.tips,verified:result.verified,access:{rosterEpoch:roster.epoch,rosterHash:roster.head,epoch:state.accessEpoch,status:state.status},activation:{...local.sequentialSync.activation,status:'ACTIVE'}});
  return local;
 }
+// F12-3 진단용: sync가 publish를 하기로 결정했을 때 어느 최상위/하위 조각이 달라서인지 "필드 이름 문자열만" 모은다
+// (값·내용·계정·금액은 절대 담지 않음). applySyncResult가 덮어쓰는 조각만 보면 되고, 그 밖의 state 필드는 copy()
+// 이후 그대로라 다를 수 없다.
+function syncPublishReasons(next,cur){
+ const paths=[['roster',s=>s.roster],['userApp.operations',s=>s.userApp.operations],['sequentialSync.records',s=>s.sequentialSync.records],['sequentialSync.tips',s=>s.sequentialSync.tips],['sequentialSync.verified',s=>s.sequentialSync.verified],['sequentialSync.access',s=>s.sequentialSync.access],['sequentialSync.activation',s=>s.sequentialSync.activation]];
+ return paths.filter(([,get])=>!samePayload(get(next),get(cur))).map(([name])=>name);
+}
 export class SequentialService {
  #nativeGuard;#store;#material;#transport;#auth;#writer;#reuseReplay;#session;#lease=null;#runtime=randomId();#state='AUTHENTICATED_READ_ONLY';#tail=Promise.resolve();#timer=null;#blocked=false;#closed=false;#clock;#capabilities=null;
  // F12-2 진단용 단계 시간(ms): 열기(#sync)·저장(write) 각각 최근 3회. 동작·검사·오류·호출 순서는 바꾸지 않는다(try/finally로만 측정).
  #openTimings=[];#saveTimings=[];
+ // F12-3 진단용: 마지막 sync가 publish를 한 이유(필드 이름 문자열만, 값 없음). timings()는 숫자만 담는 규칙을 지키므로 별도 필드.
+ #lastSyncPublishReason=[];
  // 하나의 record(이름→ms)에 기록. 같은 이름이 여러 번 쓰이면(예: write 안에서 #publish가 여러 번) 더해서 합산한다. record가 없으면(다른 호출 경로) 버리는 임시 객체를 쓴다.
  async #timeStage(record,name,fn){const slot=record??{},t0=performance.now();try{return await fn();}finally{slot[name]=(slot[name]??0)+(performance.now()-t0);}}
+ // F12-3 진단용: 기존 합산 'publish' 이름은 그대로 두고, 저장 안 publish 한 번마다를 이름 있는 단계로도 더한다(숫자만, 한 번만 실행).
+ async #timeStage2(record,name1,name2,fn){const slot=record??{},t0=performance.now();try{return await fn();}finally{const dt=performance.now()-t0;slot[name1]=(slot[name1]??0)+dt;slot[name2]=(slot[name2]??0)+dt;}}
  #pushTiming(list,record){list.push(record);if(list.length>3)list.shift();}
  constructor({store,material,transport,auth,nativeGuard=null,clock=()=>Date.now(),reuseReplay=true}){this.#reuseReplay=typeof reuseReplay==='function'?reuseReplay:reuseReplay===false?null:true;this.#session=replaySession();this.#nativeGuard=nativeGuard;check(!store.state.sequentialSync.activation.nativeBootstrap||nativeGuard,'MD_PRIMARY_GUARD_REQUIRED');this.#store=store;this.#material=material;this.#transport=transport;this.#auth=auth;this.#clock=clock;this.#writer=WriterContext.create(material.keyring,material.identity,'op');if(store.state.sequentialSync.pending)this.#state='DISPATCHED_UNKNOWN';}
  get phase(){return this.#state;}
@@ -130,7 +141,9 @@ export class SequentialService {
   // records, verified, tips, roster, access or activation changes the hash and is always published. While a previous
   // local publication failed (#blocked) the skip is disabled so the store fault surfaces.
   const apply=local=>applySyncResult(local,{roster,records,result,state}),next=copy(this.#store.state);apply(next);
-  if(this.#blocked||!samePayload(next,this.#store.state))await this.#timeStage(record,'publish',()=>this.#publish(apply));
+  const changed=!samePayload(next,this.#store.state);
+  this.#lastSyncPublishReason=this.#blocked?['LOCAL_PUBLICATION_HOLD']:changed?syncPublishReasons(next,this.#store.state):[];
+  if(this.#blocked||changed)await this.#timeStage(record,'publish',()=>this.#publish(apply));
   this.#session.clear();this.#state='VERIFIED_READ_ONLY';this.#blocked=false;return {status:'VERIFIED_READ_ONLY',version:state.version,head:state.head};
  }
  sync(){return this.#serial(async()=>{try{await this.#release();const r=await this.#sync();await this.#afterVerifiedSync();return r;}catch(e){if(!this.#blocked)this.#state='READ_ONLY';throw e;}});}
@@ -217,7 +230,7 @@ export class SequentialService {
   if(required.domainSchemaVersion===2||this.#capabilities?.minDomainWrite===2)body.compatibility={client:CLIENT,requiredDomainSchemaVersion:required.domainSchemaVersion,operationCapabilities:required.capabilities};
   const certificate={body,signature:await this.#material.identity.sign('LBOS/MD1/append',encode(body))};
   const p={status:'PREPARED_DURABLE',intentId:body.intentId,op,wire:b64(wire),certificate,intentBodyHash:sha(encode(certificate)),wireSha256:sha(wire)};
-  await this.#timeStage(record,'publish',()=>this.#publish(local=>{check(local.sequentialSync.pending===null,'MD_PENDING_UNRESOLVED');local.sequentialSync.pending=p;},{replay:scope?.replay}));this.#state='PREPARED_DURABLE';return p;
+  await this.#timeStage2(record,'publish','publishPrepared',()=>this.#publish(local=>{check(local.sequentialSync.pending===null,'MD_PENDING_UNRESOLVED');local.sequentialSync.pending=p;},{replay:scope?.replay}));this.#state='PREPARED_DURABLE';return p;
  }
  async #materialize(p,receipt,scope=null,record=null){
   check(receipt.intentId===p.intentId&&receipt.bodyHash===p.intentBodyHash&&receipt.wireSha256===p.wireSha256&&['COMMITTED','ABORTED'].includes(receipt.status),'MD_RECEIPT_BINDING');
@@ -226,7 +239,7 @@ export class SequentialService {
   const row={version:receipt.version,intentId:p.intentId,opId:p.op.opId,deviceId:p.op.device,wire:p.wire,wireSha256:p.wireSha256,certificate:p.certificate,head:receipt.head};
   const records=[...this.#store.state.sequentialSync.records,row];const s=this.#store.state.sequentialSync;
   try{const result=await this.#timeStage(record,'verifyPrefix',()=>verifyPrefix(records,{...this.#material,legacyCount:s.legacyCount,witness:s.verified,allowPartialActivation:s.activation.status!=='ACTIVE',...(scope?{replay:scope.replay}:{})}));
-  await this.#timeStage(record,'publish',()=>this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');Object.assign(local.sequentialSync,{records,tips:result.tips,verified:result.verified,pending:null});local.sequentialSync.receipts[p.intentId]=receipt;if(local.sequentialSync.activation.status==='ACTIVE')local.userApp.operations=result.operations;else check(result.operations.every((op,i)=>samePayload(op,local.userApp.operations[i])),'MD_ACTIVATION_REWRITE');},{replay:scope?.replay}));}
+  await this.#timeStage2(record,'publish','publishMaterialize',()=>this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');Object.assign(local.sequentialSync,{records,tips:result.tips,verified:result.verified,pending:null});local.sequentialSync.receipts[p.intentId]=receipt;if(local.sequentialSync.activation.status==='ACTIVE')local.userApp.operations=result.operations;else check(result.operations.every((op,i)=>samePayload(op,local.userApp.operations[i])),'MD_ACTIVATION_REWRITE');},{replay:scope?.replay}));}
   catch(e){this.#state='REMOTE_COMMITTED_LOCAL_HOLD';this.#blocked=true;this.#session.clear();throw e;}
   if(p.certificate.body.compatibility?.requiredDomainSchemaVersion===2)this.#capabilities=serverCapabilities(2);
   this.#state='LOCAL_CONFIRMED';const resultUI={...savedResult(p.op),status:'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED',remoteVersion:receipt.version,remoteHead:receipt.head};
@@ -234,7 +247,7 @@ export class SequentialService {
  }
  async #dispatch(p,scope=null,record=null){
   await this.#authenticated();check(!this.#blocked&&this.#lease&&this.#clock()<this.#lease.deadline,'MD_DISPATCH_BLOCKED');
-  await this.#timeStage(record,'publish',()=>this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');local.sequentialSync.pending.status='DISPATCHED_UNKNOWN';},{replay:scope?.replay}));p=this.pending;this.#state='DISPATCHED_UNKNOWN';
+  await this.#timeStage2(record,'publish','publishDispatched',()=>this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');local.sequentialSync.pending.status='DISPATCHED_UNKNOWN';},{replay:scope?.replay}));p=this.pending;this.#state='DISPATCHED_UNKNOWN';
   let receipt;try{receipt=await this.#transport.call('appendIntent',{intentId:p.intentId,wire:p.wire,certificate:p.certificate,leaseToken:this.#lease.token});}catch(e){this.#state='DISPATCHED_UNKNOWN';throw e;}
   return this.#materialize(p,receipt,scope,record);
  }
@@ -311,7 +324,7 @@ export class SequentialService {
  command(requestId){if(['LOCAL_PUBLICATION_HOLD','REMOTE_COMMITTED_LOCAL_HOLD'].includes(this.#state))return {status:this.#state,requestId};const p=this.pending;if(p?.intentId===requestId)return {status:this.#state,requestId};const receipt=this.#store.state.sequentialSync.receipts[requestId];if(receipt?.status==='ABORTED')return {status:'ABORTED',requestId};const op=this.#store.state.userApp.operations.find(x=>x.provenance.requestId===requestId);if(receipt?.status==='COMMITTED'&&op)return {...savedResult(op),status:'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED',remoteVersion:receipt.version,remoteHead:receipt.head};return {status:'NOT_ESTABLISHED',requestId};}
  today(){return today(this.#store.graph);}
  history(){return {changes:wholeHistory(this.#store.graph,this.#store.state.userApp.operations)};}
- view(){return {...wholeLifeView(this.#store.graph,undefined,this.#store.state.userApp.operations),settings:{storage:this.#store.storageKind,session:this.#state,profile:PROFILE,writeReady:this.status().writeReady,remoteCheckpoint:this.#store.state.sequentialSync.verified,localState:this.#store.localState??null,backup:this.#store.backupLocation??'SYNC_PRIMARY_WINDOWS_THEN_COLD_BACKUP',dataRoot:this.#store.location??'CURRENT_HTTPS_ORIGIN_INDEXEDDB',timings:this.timings()}};}
+ view(){return {...wholeLifeView(this.#store.graph,undefined,this.#store.state.userApp.operations),settings:{storage:this.#store.storageKind,session:this.#state,profile:PROFILE,writeReady:this.status().writeReady,remoteCheckpoint:this.#store.state.sequentialSync.verified,localState:this.#store.localState??null,backup:this.#store.backupLocation??'SYNC_PRIMARY_WINDOWS_THEN_COLD_BACKUP',dataRoot:this.#store.location??'CURRENT_HTTPS_ORIGIN_INDEXEDDB',timings:this.timings(),lastSyncPublishReason:this.#lastSyncPublishReason}};}
  // F12-2 진단용: 단계 이름→ms 숫자만(시간 숫자와 이름 외에는 아무것도 담지 않음). 내부 배열을 그대로 내보내지 않고 얕은 복제.
  timings(){return {open:this.#openTimings.map(r=>({...r})),save:this.#saveTimings.map(r=>({...r}))};}
  calendar(body){return calendarProjection(this.#store.graph,body);}
