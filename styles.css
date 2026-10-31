@@ -426,3 +426,35 @@ button.danger{background:#fdf1ea}
 .date-popup-grid .calendar-cell.dim{min-height:36px;visibility:hidden}
 .date-popup-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .date-popup-actions button{font-size:12px;padding:6px 10px}
+/* F13 달력 디자인 */
+:root{--cal-chip-bg:#f6ecd2;--cal-chip-bar:#b8912f;--cal-chip-text:#4a3414;--cal-chip-deadline-bg:#f0dba3;--cal-chip-deadline-bar:#a9720c;--cal-chip-deadline-text:#4a2f08;--cal-sun:#a4604a;--cal-sat:#8a6516;--cal-today-ring:#8a6516;--cal-today-tint:#f6ecce;--cal-serif:"Palatino Linotype","Book Antiqua",Palatino,Georgia,"Noto Serif KR","Noto Serif CJK KR","AppleMyungjo",Batang,serif}
+.calendar-grid,.date-popup-grid{font-family:var(--cal-serif)}
+.calendar-day-name{font-family:"Segoe UI","Malgun Gothic",sans-serif;background:transparent;border-right:none;border-bottom:1px solid var(--gold-line-soft);color:var(--muted);font-size:10px;letter-spacing:.04em;font-weight:500;padding:8px 4px}
+.calendar-day-name:nth-child(6){color:var(--cal-sat)}
+.calendar-day-name:nth-child(7){color:var(--cal-sun)}
+.calendar-grid{border-left:1px solid var(--gold-line-soft);border-top:1px solid var(--gold-line-soft)}
+.calendar-cell{background:var(--cream);border-right:1px solid var(--gold-line-soft);border-bottom:1px solid var(--gold-line-soft)}
+.calendar-cell.dim{background:var(--cream-2)}
+.calendar-cell.today{background:var(--cream)}
+.calendar-number{font-family:var(--cal-serif);font-weight:400;font-variant-numeric:lining-nums tabular-nums;color:var(--muted);font-size:12px;margin-bottom:8px;display:inline-flex;align-items:center;justify-content:center;min-width:24px}
+.calendar-cell.today .calendar-number{width:26px;height:26px;border-radius:50%;border:1px solid var(--cal-today-ring);background:var(--cal-today-tint);color:var(--gold-deep);font-weight:400}
+.calendar-event{font-family:"Segoe UI","Malgun Gothic",sans-serif;background:var(--cal-chip-bg);color:var(--cal-chip-text);border-left:2px solid var(--cal-chip-bar);border-radius:4px;font-weight:400;font-size:11px;padding:4px 6px 4px 5px}
+.calendar-event:hover{background:#efe3bd}
+.calendar-event.DEADLINE{background:var(--cal-chip-deadline-bg);color:var(--cal-chip-deadline-text);border-left-color:var(--cal-chip-deadline-bar)}
+.calendar-event.REVIEW,.calendar-event.APPOINTMENT{background:var(--cal-chip-bg);color:var(--cal-chip-text);border-left-color:var(--cal-chip-bar)}
+.calendar-toolbar button{font-weight:500;border-radius:7px;letter-spacing:.02em}
+@media(min-width:701px){.calendar-cell{padding:13px 11px}}
+.date-popup{background:var(--cream);border:1px solid var(--gold-line);border-radius:16px;box-shadow:0 18px 50px rgba(59,42,16,.16)}
+.date-popup-head strong{font-family:var(--cal-serif);font-size:18px;letter-spacing:.01em;font-weight:400;color:var(--gold-deep)}
+.date-popup-head button{border:1px solid var(--gold-line);background:var(--cream);color:var(--gold-mid);border-radius:999px;width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:15px}
+.date-popup-head button:hover{background:var(--cal-today-tint)}
+.date-popup-grid{border:none}
+.date-popup-grid button.calendar-cell{width:36px;height:36px;margin:2px auto;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;font-weight:400;font-variant-numeric:lining-nums tabular-nums}
+.date-popup-grid button.calendar-cell:hover{background:var(--cal-today-tint)}
+.date-popup-grid button.calendar-cell.today{border:1px solid var(--cal-today-ring);background:var(--cal-today-tint);font-weight:400;color:var(--gold-deep)}
+.date-popup-grid button.calendar-cell.selected{background:var(--gold-mid);color:var(--cream);font-weight:400;border-color:var(--gold-mid)}
+.date-popup-grid .calendar-cell.dim{background:none}
+.date-popup-actions{border-top:1px solid var(--gold-line-soft);padding-top:8px;margin-top:10px}
+.date-popup-actions button{background:none;border:none;color:var(--gold-mid);font-weight:500;letter-spacing:.02em;padding:6px 8px}
+.date-popup-actions button:hover{background:var(--cal-today-tint);border-radius:6px}
+@media(max-width:700px){.date-popup-grid button.calendar-cell{width:40px;height:40px}}

@@ -896,8 +896,8 @@
     {
       "path": "styles.css",
       "sourcePath": "user-app/public/styles.css",
-      "sourceSha256": "19464b1680ad1b67b3809402fbd0a33213d71a24cf4dff43f2326a7f5f43341c",
-      "outputSha256": "19464b1680ad1b67b3809402fbd0a33213d71a24cf4dff43f2326a7f5f43341c"
+      "sourceSha256": "646060da90dfd721d2411d3e0b31e036f01efbd58f4856b4b43f45e1e0565da0",
+      "outputSha256": "646060da90dfd721d2411d3e0b31e036f01efbd58f4856b4b43f45e1e0565da0"
     },
     {
       "path": "public-config.json",
