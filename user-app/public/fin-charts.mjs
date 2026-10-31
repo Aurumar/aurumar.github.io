@@ -294,7 +294,7 @@ export function heatmapMonths(prep,range,localDate,{maxMonths=12,focusCount=3}={
   const th=heatThresholds([...days.values()].map(d=>d.net));
   const focus=new Set([...days.entries()].filter(([,d])=>d.net>0n).sort((a,b)=>b[1].net>a[1].net?1:b[1].net<a[1].net?-1:a[0].localeCompare(b[0])).slice(0,focusCount).map(([k])=>k));
   const out=months.map(m=>{
-    const first=new Date(m+'-01T12:00:00Z'),offset=first.getUTCDay(),n=new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,0)).getUTCDate();
+    const first=new Date(m+'-01T12:00:00Z'),offset=(first.getUTCDay()+6)%7,n=new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,0)).getUTCDate();
     const cells=[];
     for(let d=1;d<=n;d++){
       const date=m+'-'+String(d).padStart(2,'0'),t=days.get(date);

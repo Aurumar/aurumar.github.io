@@ -76,6 +76,11 @@ export function applySyncResult(local,{roster,records,result,state}){
 }
 export class SequentialService {
  #nativeGuard;#store;#material;#transport;#auth;#writer;#reuseReplay;#session;#lease=null;#runtime=randomId();#state='AUTHENTICATED_READ_ONLY';#tail=Promise.resolve();#timer=null;#blocked=false;#closed=false;#clock;#capabilities=null;
+ // F12-2 진단용 단계 시간(ms): 열기(#sync)·저장(write) 각각 최근 3회. 동작·검사·오류·호출 순서는 바꾸지 않는다(try/finally로만 측정).
+ #openTimings=[];#saveTimings=[];
+ // 하나의 record(이름→ms)에 기록. 같은 이름이 여러 번 쓰이면(예: write 안에서 #publish가 여러 번) 더해서 합산한다. record가 없으면(다른 호출 경로) 버리는 임시 객체를 쓴다.
+ async #timeStage(record,name,fn){const slot=record??{},t0=performance.now();try{return await fn();}finally{slot[name]=(slot[name]??0)+(performance.now()-t0);}}
+ #pushTiming(list,record){list.push(record);if(list.length>3)list.shift();}
  constructor({store,material,transport,auth,nativeGuard=null,clock=()=>Date.now(),reuseReplay=true}){this.#reuseReplay=typeof reuseReplay==='function'?reuseReplay:reuseReplay===false?null:true;this.#session=replaySession();this.#nativeGuard=nativeGuard;check(!store.state.sequentialSync.activation.nativeBootstrap||nativeGuard,'MD_PRIMARY_GUARD_REQUIRED');this.#store=store;this.#material=material;this.#transport=transport;this.#auth=auth;this.#clock=clock;this.#writer=WriterContext.create(material.keyring,material.identity,'op');if(store.state.sequentialSync.pending)this.#state='DISPATCHED_UNKNOWN';}
  get phase(){return this.#state;}
  get pending(){return this.#store.state.sequentialSync.pending;}
@@ -101,6 +106,11 @@ export class SequentialService {
   }
  }
  async #sync(){
+  const record={};
+  try{return await this.#timeStage(record,'sync',()=>this.#syncCore(record));}
+  finally{this.#pushTiming(this.#openTimings,record);}
+ }
+ async #syncCore(record){
   await this.#authenticated();check(!this.pending&&!this.#store.state.sequentialSync.enrollment,'MD_PENDING_UNRESOLVED');this.#state='SYNCING';
   const state=await this.#transport.call('readState'),s=this.#store.state.sequentialSync;
   check(state.accountId===this.#material.keyring.accountId&&state.vaultId===this.#material.keyring.vaultId&&state.genesisPin===this.#material.keyring.genesisPin,'MD_REMOTE_NAMESPACE');
@@ -113,14 +123,14 @@ export class SequentialService {
   // 전체(과거+새 꼬리)는 아래 verifyPrefix가 항상 처음부터 다시 검증한다 — 검증 범위는 줄지 않는다.
   const records=[...s.records];while(records.length<state.version){const page=await this.#pullPage(records.length,state);records.push(...page.items);check(records.length<=state.version,'MD_PREFIX_OVERRUN');}
   const witness=s.rollbackFloor.version>s.verified.version?s.rollbackFloor:s.verified;
-  const result=await verifyPrefix(records,{...this.#material,roster,legacyCount:s.legacyCount,witness});check(result.verified.head===state.head,'MD_REMOTE_HEAD');
+  const result=await this.#timeStage(record,'verifyPrefix',()=>verifyPrefix(records,{...this.#material,roster,legacyCount:s.legacyCount,witness}));check(result.verified.head===state.head,'MD_REMOTE_HEAD');
   const oldOps=this.#store.state.userApp.operations;check(oldOps.every((op,i)=>samePayload(op,result.operations[i])),'MD_HISTORY_REWRITE');
   // No-op sync writes nothing: if the applied result has the same canonical payload bytes (payloadEncode hash) as the
   // current local state, no commit is appended. Rollback/prefix/roster/access checks above already ran; any change to
   // records, verified, tips, roster, access or activation changes the hash and is always published. While a previous
   // local publication failed (#blocked) the skip is disabled so the store fault surfaces.
   const apply=local=>applySyncResult(local,{roster,records,result,state}),next=copy(this.#store.state);apply(next);
-  if(this.#blocked||!samePayload(next,this.#store.state))await this.#publish(apply);
+  if(this.#blocked||!samePayload(next,this.#store.state))await this.#timeStage(record,'publish',()=>this.#publish(apply));
   this.#session.clear();this.#state='VERIFIED_READ_ONLY';this.#blocked=false;return {status:'VERIFIED_READ_ONLY',version:state.version,head:state.head};
  }
  sync(){return this.#serial(async()=>{try{await this.#release();const r=await this.#sync();await this.#afterVerifiedSync();return r;}catch(e){if(!this.#blocked)this.#state='READ_ONLY';throw e;}});}
@@ -136,7 +146,10 @@ export class SequentialService {
   this.#lease={token,epoch:state.leaseEpoch,deadline:this.#clock()+(state.leaseExpires-state.serverTime-LIMITS.safetySeconds)*1000,purpose};
   this.#state=purpose==='WRITE'?'WRITE_READY':'VERIFIED_READ_ONLY';clearInterval(this.#timer);this.#timer=setInterval(()=>{this.#serial(()=>this.#renew()).catch(()=>this.suspend());},LIMITS.renewSeconds*1000);this.#timer.unref?.();return this.status();
  }
- acquire(){return this.#serial(async()=>{check(this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');try{await this.#release();await this.#sync();return await this.#acquire();}catch(e){if(!this.#blocked)this.#state='READ_ONLY';throw e;}});}
+ acquire(){return this.#serial(async()=>{check(this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');const record={};
+  try{return await this.#timeStage(record,'acquire',async()=>{try{await this.#release();await this.#sync();return await this.#acquire();}catch(e){if(!this.#blocked)this.#state='READ_ONLY';throw e;}});}
+  finally{this.#pushTiming(this.#saveTimings,record);}
+ });}
  async #renew(){if(!this.#lease||this.#blocked)return;try{const s=await this.#transport.call('renewWriter',this.#leaseArgs());check(s.leaseEpoch===this.#lease.epoch&&s.leaseRuntime===this.#runtime,'MD_RENEW_FENCE');this.#lease.deadline=this.#clock()+(s.leaseExpires-s.serverTime-LIMITS.safetySeconds)*1000;}catch(e){this.suspend();throw e;}}
  suspend(){this.#blocked=true;clearInterval(this.#timer);if(!this.pending)this.#state='READ_ONLY';this.#session.clear();}
  async #release(){clearInterval(this.#timer);check(!this.pending&&!this.#store.state.sequentialSync.enrollment,'MD_PENDING_UNRESOLVED');if(this.#lease){const lease=this.#leaseArgs();this.#lease=null;this.#state='VERIFIED_READ_ONLY';await this.#transport.call('releaseWriter',lease);}this.#session.clear();return this.status();}
@@ -196,7 +209,7 @@ export class SequentialService {
  });}
 
  #ready(){check(this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');check(this.#state==='WRITE_READY'&&!this.#blocked&&!this.pending&&!this.#store.state.sequentialSync.enrollment,'MD_NOT_WRITE_READY');check(this.#lease?.purpose==='WRITE'&&this.#clock()<this.#lease.deadline,'MD_LEASE_EXPIRED');}
- async #prepare(op,scope=null){
+ async #prepare(op,scope=null,record=null){
   const s=this.#store.state.sequentialSync,tip=s.tips[this.#material.identity.public.deviceId];
   const wire=await this.#writer.seal(payloadEncode(op),{objectId:op.opId,sequence:(tip?.sequence??0)+1,previousDigest:tip?.digest??null,roster:this.#material.roster});
   const body={scope:SCOPE,accountId:this.#material.keyring.accountId,vaultId:this.#material.keyring.vaultId,genesisPin:this.#material.keyring.genesisPin,deviceId:this.#material.identity.public.deviceId,deviceKeyId:this.#material.identity.public.keyId,intentId:op.provenance.requestId,opId:op.opId,wireSha256:sha(wire),...this.#headArgs(),leaseEpoch:this.#lease.epoch,runtimeSessionId:this.#runtime,leaseTokenHash:sha(Uint8Array.from(this.#lease.token.match(/../g),x=>parseInt(x,16)))};
@@ -204,26 +217,26 @@ export class SequentialService {
   if(required.domainSchemaVersion===2||this.#capabilities?.minDomainWrite===2)body.compatibility={client:CLIENT,requiredDomainSchemaVersion:required.domainSchemaVersion,operationCapabilities:required.capabilities};
   const certificate={body,signature:await this.#material.identity.sign('LBOS/MD1/append',encode(body))};
   const p={status:'PREPARED_DURABLE',intentId:body.intentId,op,wire:b64(wire),certificate,intentBodyHash:sha(encode(certificate)),wireSha256:sha(wire)};
-  await this.#publish(local=>{check(local.sequentialSync.pending===null,'MD_PENDING_UNRESOLVED');local.sequentialSync.pending=p;},{replay:scope?.replay});this.#state='PREPARED_DURABLE';return p;
+  await this.#timeStage(record,'publish',()=>this.#publish(local=>{check(local.sequentialSync.pending===null,'MD_PENDING_UNRESOLVED');local.sequentialSync.pending=p;},{replay:scope?.replay}));this.#state='PREPARED_DURABLE';return p;
  }
- async #materialize(p,receipt,scope=null){
+ async #materialize(p,receipt,scope=null,record=null){
   check(receipt.intentId===p.intentId&&receipt.bodyHash===p.intentBodyHash&&receipt.wireSha256===p.wireSha256&&['COMMITTED','ABORTED'].includes(receipt.status),'MD_RECEIPT_BINDING');
-  if(receipt.status==='ABORTED'){await this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');local.sequentialSync.receipts[p.intentId]=receipt;local.sequentialSync.pending=null;});this.#state='VERIFIED_READ_ONLY';return {status:'ABORTED',requestId:p.intentId};}
+  if(receipt.status==='ABORTED'){await this.#timeStage(record,'publish',()=>this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');local.sequentialSync.receipts[p.intentId]=receipt;local.sequentialSync.pending=null;}));this.#state='VERIFIED_READ_ONLY';return {status:'ABORTED',requestId:p.intentId};}
   check(receipt.opId===p.op.opId&&receipt.version===p.certificate.body.expectedVersion+1&&receipt.head===nextHead(p.certificate.body.expectedHead,receipt.version,p.certificate),'MD_RECEIPT_HEAD');this.#state='REMOTE_COMMITTED';
   const row={version:receipt.version,intentId:p.intentId,opId:p.op.opId,deviceId:p.op.device,wire:p.wire,wireSha256:p.wireSha256,certificate:p.certificate,head:receipt.head};
   const records=[...this.#store.state.sequentialSync.records,row];const s=this.#store.state.sequentialSync;
-  try{const result=await verifyPrefix(records,{...this.#material,legacyCount:s.legacyCount,witness:s.verified,allowPartialActivation:s.activation.status!=='ACTIVE',...(scope?{replay:scope.replay}:{})});
-  await this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');Object.assign(local.sequentialSync,{records,tips:result.tips,verified:result.verified,pending:null});local.sequentialSync.receipts[p.intentId]=receipt;if(local.sequentialSync.activation.status==='ACTIVE')local.userApp.operations=result.operations;else check(result.operations.every((op,i)=>samePayload(op,local.userApp.operations[i])),'MD_ACTIVATION_REWRITE');},{replay:scope?.replay});}
+  try{const result=await this.#timeStage(record,'verifyPrefix',()=>verifyPrefix(records,{...this.#material,legacyCount:s.legacyCount,witness:s.verified,allowPartialActivation:s.activation.status!=='ACTIVE',...(scope?{replay:scope.replay}:{})}));
+  await this.#timeStage(record,'publish',()=>this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');Object.assign(local.sequentialSync,{records,tips:result.tips,verified:result.verified,pending:null});local.sequentialSync.receipts[p.intentId]=receipt;if(local.sequentialSync.activation.status==='ACTIVE')local.userApp.operations=result.operations;else check(result.operations.every((op,i)=>samePayload(op,local.userApp.operations[i])),'MD_ACTIVATION_REWRITE');},{replay:scope?.replay}));}
   catch(e){this.#state='REMOTE_COMMITTED_LOCAL_HOLD';this.#blocked=true;this.#session.clear();throw e;}
   if(p.certificate.body.compatibility?.requiredDomainSchemaVersion===2)this.#capabilities=serverCapabilities(2);
   this.#state='LOCAL_CONFIRMED';const resultUI={...savedResult(p.op),status:'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED',remoteVersion:receipt.version,remoteHead:receipt.head};
   this.#state=this.#lease?.purpose==='WRITE'&&!this.#blocked&&this.#clock()<this.#lease.deadline?'WRITE_READY':'VERIFIED_READ_ONLY';return resultUI;
  }
- async #dispatch(p,scope=null){
+ async #dispatch(p,scope=null,record=null){
   await this.#authenticated();check(!this.#blocked&&this.#lease&&this.#clock()<this.#lease.deadline,'MD_DISPATCH_BLOCKED');
-  await this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');local.sequentialSync.pending.status='DISPATCHED_UNKNOWN';},{replay:scope?.replay});p=this.pending;this.#state='DISPATCHED_UNKNOWN';
+  await this.#timeStage(record,'publish',()=>this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');local.sequentialSync.pending.status='DISPATCHED_UNKNOWN';},{replay:scope?.replay}));p=this.pending;this.#state='DISPATCHED_UNKNOWN';
   let receipt;try{receipt=await this.#transport.call('appendIntent',{intentId:p.intentId,wire:p.wire,certificate:p.certificate,leaseToken:this.#lease.token});}catch(e){this.#state='DISPATCHED_UNKNOWN';throw e;}
-  return this.#materialize(p,receipt,scope);
+  return this.#materialize(p,receipt,scope,record);
  }
  write(body,type){return this.#serial(async()=>{this.#ready();assertCompatible(this.#capabilities);await this.#authenticated();const normalized=normalizeCommand(body,type),old=this.#store.state.userApp.operations.find(op=>op.provenance.requestId===normalized.requestId);
   if(old){check(old.provenance.commandDigest===normalized.digest,'REQUEST_ID_BODY_COLLISION');const r=this.#store.state.sequentialSync.receipts[normalized.requestId];check(r?.status==='COMMITTED','MD_RECEIPT_REQUIRED');return {...savedResult(old),status:'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED',remoteVersion:r.version,remoteHead:r.head};}
@@ -235,13 +248,14 @@ export class SequentialService {
   const scope=typeof this.#reuseReplay==='function'?this.#reuseReplay(this.#store.state.sequentialSync.verified.head):null;
   const replay=scope?scope.replay:this.#reuseReplay===true?this.#session.replay:undefined;
   const carrier=replay?{replay}:null;
+  const record={};
   try{
   this.#session.pin(this.#store.graph);
   const op=candidateReal(this.#store.state.userApp.operations,{vaultId:this.#material.keyring.vaultId,deviceId:this.#material.identity.public.deviceId},normalized,{vaultId:this.#material.keyring.vaultId,roster:this.#material.roster,legacyCount:this.#store.state.sequentialSync.legacyCount},carrier??{}).op;
   const required=operationRequirements(op);check(required.domainSchemaVersion<=this.#capabilities.maxDomainWrite&&required.capabilities.every(c=>this.#capabilities.operationCapabilities.includes(c)),'UPDATE_REQUIRED_UNSUPPORTED_OPERATION');
-  const p=await this.#prepare(op,carrier);return await this.#dispatch(p,carrier);
+  const p=await this.#timeStage(record,'prepare',()=>this.#prepare(op,carrier,record));return await this.#timeStage(record,'dispatch',()=>this.#dispatch(p,carrier,record));
   }catch(e){this.#session.clear();throw e;}
-  finally{scope?.close();}
+  finally{scope?.close();this.#pushTiming(this.#saveTimings,record);}
  });}
  reconcile(){return this.#serial(async()=>{await this.#authenticated();const p=this.pending;check(p,'MD_NO_PENDING');this.#state='DISPATCHED_UNKNOWN';const lookup={intentId:p.intentId,intentBodyHash:p.intentBodyHash,wireSha256:p.wireSha256};let receipt=await this.#transport.call('getIntent',lookup);if(receipt.status==='NOT_FOUND')receipt=await this.#transport.call('settleIntent',lookup);return this.#materialize(p,receipt);});}
  freezeLostDevice({freezeId,lostDeviceId,confirmed}){return this.#serial(async()=>{check(this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');check(confirmed===true&&idOK(freezeId)&&idOK(lostDeviceId),'MD_EXPLICIT_FREEZE');await this.#auth.requireRecentMfa();this.suspend();const receipt=await this.#transport.call('freezeLostDevice',{freezeId,lostDeviceId});check(receipt.status==='FROZEN'&&receipt.freezeId===freezeId&&receipt.lostDeviceId===lostDeviceId,'MD_FREEZE_RECEIPT');await this.#publish(local=>{local.sequentialSync.receipts[freezeId]=receipt;local.sequentialSync.access.epoch=receipt.accessEpoch;local.sequentialSync.access.status='FROZEN';});this.#lease=null;this.#state='READ_ONLY';return receipt;});}
@@ -297,7 +311,9 @@ export class SequentialService {
  command(requestId){if(['LOCAL_PUBLICATION_HOLD','REMOTE_COMMITTED_LOCAL_HOLD'].includes(this.#state))return {status:this.#state,requestId};const p=this.pending;if(p?.intentId===requestId)return {status:this.#state,requestId};const receipt=this.#store.state.sequentialSync.receipts[requestId];if(receipt?.status==='ABORTED')return {status:'ABORTED',requestId};const op=this.#store.state.userApp.operations.find(x=>x.provenance.requestId===requestId);if(receipt?.status==='COMMITTED'&&op)return {...savedResult(op),status:'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED',remoteVersion:receipt.version,remoteHead:receipt.head};return {status:'NOT_ESTABLISHED',requestId};}
  today(){return today(this.#store.graph);}
  history(){return {changes:wholeHistory(this.#store.graph,this.#store.state.userApp.operations)};}
- view(){return {...wholeLifeView(this.#store.graph,undefined,this.#store.state.userApp.operations),settings:{storage:this.#store.storageKind,session:this.#state,profile:PROFILE,writeReady:this.status().writeReady,remoteCheckpoint:this.#store.state.sequentialSync.verified,localState:this.#store.localState??null,backup:this.#store.backupLocation??'SYNC_PRIMARY_WINDOWS_THEN_COLD_BACKUP',dataRoot:this.#store.location??'CURRENT_HTTPS_ORIGIN_INDEXEDDB'}};}
+ view(){return {...wholeLifeView(this.#store.graph,undefined,this.#store.state.userApp.operations),settings:{storage:this.#store.storageKind,session:this.#state,profile:PROFILE,writeReady:this.status().writeReady,remoteCheckpoint:this.#store.state.sequentialSync.verified,localState:this.#store.localState??null,backup:this.#store.backupLocation??'SYNC_PRIMARY_WINDOWS_THEN_COLD_BACKUP',dataRoot:this.#store.location??'CURRENT_HTTPS_ORIGIN_INDEXEDDB',timings:this.timings()}};}
+ // F12-2 진단용: 단계 이름→ms 숫자만(시간 숫자와 이름 외에는 아무것도 담지 않음). 내부 배열을 그대로 내보내지 않고 얕은 복제.
+ timings(){return {open:this.#openTimings.map(r=>({...r})),save:this.#saveTimings.map(r=>({...r}))};}
  calendar(body){return calendarProjection(this.#store.graph,body);}
  evidence(){return {state:this.#store.state,checkpoint:this.#store.checkpoint,graphDigest:this.#store.graph?.digest()??null,phase:this.#state};}
  async close(){if(this.#closed)return {status:'CLOSED_ALREADY_CHECK_PRIOR_RESULT'};await this.#tail;clearInterval(this.#timer);let code=['LOCAL_PUBLICATION_HOLD','REMOTE_COMMITTED_LOCAL_HOLD'].includes(this.#state)?this.#state:null;try{if(!this.pending&&!this.#store.state.sequentialSync.enrollment)await this.#release();else code??='MD_PENDING_PRESERVED';}catch{code??='MD_LEASE_RELEASE_UNCONFIRMED';}this.#session.clear();this.#closed=true;this.#writer.close();await this.#store.close();this.#auth.clear?.();this.#material=null;return {status:code?'HOLD':'CLOSED',code};}
