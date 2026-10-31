@@ -69,8 +69,8 @@
     },
     {
       "path": "multi-device/sequential-service.mjs",
-      "sourceSha256": "ba8572d9206c1d1430fe8bee7111a6eeaf4ec47742c3d7a85ef3ae2457262c9b",
-      "outputSha256": "ba8572d9206c1d1430fe8bee7111a6eeaf4ec47742c3d7a85ef3ae2457262c9b",
+      "sourceSha256": "4e062f12adece84e1e9b6f221901234c564c06b25038a74071b4dd2a5357a42a",
+      "outputSha256": "4e062f12adece84e1e9b6f221901234c564c06b25038a74071b4dd2a5357a42a",
       "dependencies": [
         "core/package/src/codec.mjs",
         "core/package/src/crypto.mjs",
@@ -335,8 +335,8 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "a187826c7df24f85f445dc7b40345b101ff6e68840bc67bcca56cf44d49152bd",
-      "outputSha256": "a187826c7df24f85f445dc7b40345b101ff6e68840bc67bcca56cf44d49152bd",
+      "sourceSha256": "2e58b2a6163aa9d0c12e5de9e92363a48c1bce7b71f59d6ce700bd74aaea8fcd",
+      "outputSha256": "2e58b2a6163aa9d0c12e5de9e92363a48c1bce7b71f59d6ce700bd74aaea8fcd",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs",

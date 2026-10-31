@@ -144,9 +144,13 @@ export class SequentialService {
   const changed=!samePayload(next,this.#store.state);
   this.#lastSyncPublishReason=this.#blocked?['LOCAL_PUBLICATION_HOLD']:changed?syncPublishReasons(next,this.#store.state):[];
   if(this.#blocked||changed)await this.#timeStage(record,'publish',()=>this.#publish(apply));
-  this.#session.clear();this.#state='VERIFIED_READ_ONLY';this.#blocked=false;return {status:'VERIFIED_READ_ONLY',version:state.version,head:state.head};
+  // F12-4: 원격 변화가 없었고(blocked도 아니면) 세션 재생기 캐시를 비우지 않는다 -- 지문(opId+payload해시)+매개변수가
+  // 정확히 일치할 때만 재사용하므로 캐시를 남겨도 다음 candidateReal의 결과는 전체 재생과 바이트까지 같다(안전성은
+  // 지문 비교가 보장). 원격이 바뀌었거나(changed) 이전에 blocked였으면 지금처럼 비운다.
+  if(this.#blocked||changed)this.#session.clear();
+  this.#state='VERIFIED_READ_ONLY';this.#blocked=false;return {status:'VERIFIED_READ_ONLY',version:state.version,head:state.head};
  }
- sync(){return this.#serial(async()=>{try{await this.#release();const r=await this.#sync();await this.#afterVerifiedSync();return r;}catch(e){if(!this.#blocked)this.#state='READ_ONLY';throw e;}});}
+ sync(){return this.#serial(async()=>{try{await this.#release(true);const r=await this.#sync();await this.#afterVerifiedSync();return r;}catch(e){if(!this.#blocked)this.#state='READ_ONLY';throw e;}});}
  // F9: a store with a deferred layout migration (record format 4 compaction) runs it only right after a verified sync.
  // The store checks its own preconditions and never throws here; a failure after publication requires a reopen (HOLD).
  // A publication-time failure is reported as a failed sync (COMPACTION_HOLD_REOPEN) so callers do not treat the session as verified.
@@ -160,14 +164,19 @@ export class SequentialService {
   this.#state=purpose==='WRITE'?'WRITE_READY':'VERIFIED_READ_ONLY';clearInterval(this.#timer);this.#timer=setInterval(()=>{this.#serial(()=>this.#renew()).catch(()=>this.suspend());},LIMITS.renewSeconds*1000);this.#timer.unref?.();return this.status();
  }
  acquire(){return this.#serial(async()=>{check(this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');const record={};
-  try{return await this.#timeStage(record,'acquire',async()=>{try{await this.#release();await this.#sync();return await this.#acquire();}catch(e){if(!this.#blocked)this.#state='READ_ONLY';throw e;}});}
+  try{return await this.#timeStage(record,'acquire',async()=>{try{await this.#release(true);await this.#sync();return await this.#acquire();}catch(e){if(!this.#blocked)this.#state='READ_ONLY';throw e;}});}
   finally{this.#pushTiming(this.#saveTimings,record);}
  });}
  async #renew(){if(!this.#lease||this.#blocked)return;try{const s=await this.#transport.call('renewWriter',this.#leaseArgs());check(s.leaseEpoch===this.#lease.epoch&&s.leaseRuntime===this.#runtime,'MD_RENEW_FENCE');this.#lease.deadline=this.#clock()+(s.leaseExpires-s.serverTime-LIMITS.safetySeconds)*1000;}catch(e){this.suspend();throw e;}}
  suspend(){this.#blocked=true;clearInterval(this.#timer);if(!this.pending)this.#state='READ_ONLY';this.#session.clear();}
- async #release(){clearInterval(this.#timer);check(!this.pending&&!this.#store.state.sequentialSync.enrollment,'MD_PENDING_UNRESOLVED');if(this.#lease){const lease=this.#leaseArgs();this.#lease=null;this.#state='VERIFIED_READ_ONLY';await this.#transport.call('releaseWriter',lease);}this.#session.clear();return this.status();}
+ // F12-4: keepSession=true는 acquire()/sync() 등이 release 바로 뒤에 항상 #sync()를 돌리는 내부 호출에서만 쓴다
+ // (호출 순서는 1단계 evidence\01_app_call_order.txt로 확인: #release 뒤에는 어느 경로든 반드시 #sync가 바로 돈다) --
+ // 그 #sync/#syncCore가 원격 변화(changed)·blocked 여부로 세션을 비울지 그대로 판단하므로 여기서 먼저 비울 필요가
+ // 없다(비워도/안 비워도 다음 write의 candidateReal 결과는 지문 비교로 항상 같다 -- 안전성 불변). 사용자가 직접 쓰기
+ // 권한을 놓는 공개 release()·close()는 지금처럼(keepSession 없이) 비운다.
+ async #release(keepSession=false){clearInterval(this.#timer);check(!this.pending&&!this.#store.state.sequentialSync.enrollment,'MD_PENDING_UNRESOLVED');if(this.#lease){const lease=this.#leaseArgs();this.#lease=null;this.#state='VERIFIED_READ_ONLY';await this.#transport.call('releaseWriter',lease);}if(!keepSession)this.#session.clear();return this.status();}
  release(){return this.#serial(()=>this.#release());}
- beginEnrollment(){return this.#serial(async()=>{lifecycleWritable(this.#store);await this.#auth.requireRecentMfa();const cap=await this.#transport.call('lifecycleCapabilities');check(cap.format==='LB_B4_CAPABILITIES_1'&&cap.version===1&&cap.storeFormat===3,'UPDATE_REQUIRED_LIFECYCLE');await this.#release();await this.#sync();return this.#acquire('ENROLL');});}
+ beginEnrollment(){return this.#serial(async()=>{lifecycleWritable(this.#store);await this.#auth.requireRecentMfa();const cap=await this.#transport.call('lifecycleCapabilities');check(cap.format==='LB_B4_CAPABILITIES_1'&&cap.version===1&&cap.storeFormat===3,'UPDATE_REQUIRED_LIFECYCLE');await this.#release(true);await this.#sync();return this.#acquire('ENROLL');});}
  async lifecycleCall(action,args={},mfa=false){check(action==='getEnrollmentSession'||action==='getLifecycleIntent'||action==='getLifecycleState'||action==='lifecycleCapabilities'||this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');await this.#authenticated();if(mfa)await this.#auth.requireRecentMfa();return this.#transport.call(action,args);}
  publishEnrollmentTerminal(response){return this.#serial(()=>this.#acceptEnrollmentTerminal(response));}
  async #acceptEnrollmentTerminal(response){
@@ -198,7 +207,7 @@ export class SequentialService {
   return response;
  });}
  retireDevice(selection){return this.#serial(async()=>{
-  lifecycleWritable(this.#store);check(!this.pending&&!this.#store.state.sequentialSync.enrollment,'MD_PENDING_UNRESOLVED');await this.#auth.requireRecentMfa();await this.#release();
+  lifecycleWritable(this.#store);check(!this.pending&&!this.#store.state.sequentialSync.enrollment,'MD_PENDING_UNRESOLVED');await this.#auth.requireRecentMfa();await this.#release(true);
   await this.#sync();const remote=await this.#transport.call('getLifecycleState'),intent=await prepareRetirement(this.#material,remote,selection);
   await this.#publish(local=>{local.sequentialSync.lifecycle.retirements[intent.body.intentId]={intent,receipt:null};});this.suspend();
   const receipt=await this.#transport.call('retireDevice',{intent});return this.#publishRetirement(intent,receipt);
@@ -263,8 +272,12 @@ export class SequentialService {
   const carrier=replay?{replay}:null;
   const record={};
   try{
-  this.#session.pin(this.#store.graph);
-  const op=candidateReal(this.#store.state.userApp.operations,{vaultId:this.#material.keyring.vaultId,deviceId:this.#material.identity.public.deviceId},normalized,{vaultId:this.#material.keyring.vaultId,roster:this.#material.roster,legacyCount:this.#store.state.sequentialSync.legacyCount},carrier??{}).op;
+  // F12-4 진단: 저장 직전 재생(candidateReal, F12-3가 진단 시간 구간 밖이라고 밝힌 부분)을 이름 있는 단계로도 잰다.
+  // 숫자(ms)만 timings()에 더하고 그 밖의 동작·검사·호출 순서는 바꾸지 않는다.
+  const op=await this.#timeStage(record,'candidate',()=>{
+   this.#session.pin(this.#store.graph);
+   return candidateReal(this.#store.state.userApp.operations,{vaultId:this.#material.keyring.vaultId,deviceId:this.#material.identity.public.deviceId},normalized,{vaultId:this.#material.keyring.vaultId,roster:this.#material.roster,legacyCount:this.#store.state.sequentialSync.legacyCount},carrier??{}).op;
+  });
   const required=operationRequirements(op);check(required.domainSchemaVersion<=this.#capabilities.maxDomainWrite&&required.capabilities.every(c=>this.#capabilities.operationCapabilities.includes(c)),'UPDATE_REQUIRED_UNSUPPORTED_OPERATION');
   const p=await this.#timeStage(record,'prepare',()=>this.#prepare(op,carrier,record));return await this.#timeStage(record,'dispatch',()=>this.#dispatch(p,carrier,record));
   }catch(e){this.#session.clear();throw e;}
