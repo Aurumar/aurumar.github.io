@@ -1376,6 +1376,7 @@ function renderSettings(root){add(root,opsNotice(finOps(),{always:true}));const 
  const diag=add(el('details'),el('summary','진단 · 마지막 열기·저장 단계 시간(ms)'));
  add(diag,el('p','서버 열기(sync) · '+timingText(t?.open?.at(-1)),'path'),el('p','서버 저장(acquire+write) · '+timingText(saveMerged),'path'),
   el('p','저장 직전 계산(candidate) · '+(saveMerged?.candidate!==undefined?Math.round(saveMerged.candidate)+'ms':'아직 없음'),'path'),
+  el('p','저장 직전 재생 캐시 상태 · '+(t?.lastSaveFullReplays!=null?(Math.round(t.lastSaveFullReplays*100)/100)+'회':'아직 없음'),'path'),
   el('p','폰 새로고침(refresh) · '+timingText(refreshTimings.at(-1)),'path'),el('p','폰 화면 그리기(render) · '+timingText(renderTimings.at(-1)),'path'),
   el('p','마지막 동기화 publish 이유 · '+(whole.settings?.lastSyncPublishReason?.length?whole.settings.lastSyncPublishReason.join(', '):'변경 없음'),'path'),
   hint('진단용 시간 숫자만입니다. 서버로 보내지 않습니다.'));

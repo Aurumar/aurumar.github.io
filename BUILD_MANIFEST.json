@@ -69,8 +69,8 @@
     },
     {
       "path": "multi-device/sequential-service.mjs",
-      "sourceSha256": "4e062f12adece84e1e9b6f221901234c564c06b25038a74071b4dd2a5357a42a",
-      "outputSha256": "4e062f12adece84e1e9b6f221901234c564c06b25038a74071b4dd2a5357a42a",
+      "sourceSha256": "8ce18f7a5cf03e5337221fd08659ae3079ce483e868f25374cb94a8cc0e73001",
+      "outputSha256": "8ce18f7a5cf03e5337221fd08659ae3079ce483e868f25374cb94a8cc0e73001",
       "dependencies": [
         "core/package/src/codec.mjs",
         "core/package/src/crypto.mjs",
@@ -78,6 +78,7 @@
         "user-app/action-model.mjs",
         "user-app/whole-life-projection.mjs",
         "multi-device/real-history.mjs",
+        "core/package/parent/v2_phase2/source/dag.mjs",
         "multi-device/contracts.mjs",
         "product/runtime-contract.mjs",
         "multi-device/lifecycle-client.mjs"
@@ -335,8 +336,8 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "2e58b2a6163aa9d0c12e5de9e92363a48c1bce7b71f59d6ce700bd74aaea8fcd",
-      "outputSha256": "2e58b2a6163aa9d0c12e5de9e92363a48c1bce7b71f59d6ce700bd74aaea8fcd",
+      "sourceSha256": "e81fbcd9030e7898510348276d48c3e3327e0de6ef77ef9b69cf237711c30371",
+      "outputSha256": "e81fbcd9030e7898510348276d48c3e3327e0de6ef77ef9b69cf237711c30371",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs",

@@ -4,6 +4,8 @@ import {Roster} from '../core/package/src/enrollment.mjs';
 import {normalizeCommand,today,savedResult,replay as replayLegacy} from '../user-app/action-model.mjs';
 import {wholeLifeView,wholeHistory,calendarProjection} from '../user-app/whole-life-projection.mjs';
 import {replayReal,candidateReal,replaySession} from './real-history.mjs';
+// F12-5 5단계 진단 전용(동작·검사에는 쓰지 않음): write() 동안만 Graph.ingest를 세기 위해 읽기만 한다(core/package 수정 없음).
+import {Graph} from '../core/package/parent/v2_phase2/source/dag.mjs';
 import {PROFILE,SCOPE,LIMITS,initialHead,nextHead,same} from './contracts.mjs';
 import {CLIENT,assertCompatible,operationRequirements,validateCompatibility,assertOperationCompatibility,serverCapabilities} from '../product/runtime-contract.mjs';
 import {emptyLifecycle,validateLifecycleState,lifecycleWritable,validatePublication,publishTerminalState,settlementIntent,validateSettlementAttempt,prepareRetirement,validateRetirementReceipt} from './lifecycle-client.mjs';
@@ -87,6 +89,9 @@ export class SequentialService {
  #openTimings=[];#saveTimings=[];
  // F12-3 진단용: 마지막 sync가 publish를 한 이유(필드 이름 문자열만, 값 없음). timings()는 숫자만 담는 규칙을 지키므로 별도 필드.
  #lastSyncPublishReason=[];
+ // F12-5 5단계 진단용: 마지막 write()에서 Graph.ingest가 (저장 후 operations 개수) 대비 몇 배 불렸는지(=전체 재생이
+ // 몇 번 일어났는지 근사). 숫자만(timings() 규칙과 동일). 아직 저장이 없었으면 null("아직 없음").
+ #lastSaveFullReplays=null;
  // 하나의 record(이름→ms)에 기록. 같은 이름이 여러 번 쓰이면(예: write 안에서 #publish가 여러 번) 더해서 합산한다. record가 없으면(다른 호출 경로) 버리는 임시 객체를 쓴다.
  async #timeStage(record,name,fn){const slot=record??{},t0=performance.now();try{return await fn();}finally{slot[name]=(slot[name]??0)+(performance.now()-t0);}}
  // F12-3 진단용: 기존 합산 'publish' 이름은 그대로 두고, 저장 안 publish 한 번마다를 이름 있는 단계로도 더한다(숫자만, 한 번만 실행).
@@ -134,7 +139,13 @@ export class SequentialService {
   // 전체(과거+새 꼬리)는 아래 verifyPrefix가 항상 처음부터 다시 검증한다 — 검증 범위는 줄지 않는다.
   const records=[...s.records];while(records.length<state.version){const page=await this.#pullPage(records.length,state);records.push(...page.items);check(records.length<=state.version,'MD_PREFIX_OVERRUN');}
   const witness=s.rollbackFloor.version>s.verified.version?s.rollbackFloor:s.verified;
-  const result=await this.#timeStage(record,'verifyPrefix',()=>verifyPrefix(records,{...this.#material,roster,legacyCount:s.legacyCount,witness}));check(result.verified.head===state.head,'MD_REMOTE_HEAD');
+  // F12-5: verifyPrefix의 암호 검증(서명·봉투 복호화·체인)은 매번 한 줄도 건너뛰지 않고 돈다(위 for 루프, 안 바뀜) --
+  // 세션 재생기와 공유하는 것은 그 뒤의 "operations를 Graph에 재생" 단계(replay(operations,...))뿐이다. 이 호출의
+  // graph는 아래에서 전혀 쓰지 않고 버려진다(operations/tips/verified만 사용) -- 그래서 재사용(지문 일치) 결과를
+  // store.graph로 들고 가는 경로가 없고, "저장소가 쥔 Graph는 이어붙여 바뀌지 않는다" 불변식은 그대로 유지된다.
+  // 원격 변화가 없으면(changed 아님) records는 세션이 이미 아는 ops와 지문이 정확히 같아 캐시 적중(돈을 다시
+  // 들이지 않음)이고, 바뀌었으면 이 호출 바로 뒤 this.#session.clear()가 돌아 어떤 중간 상태도 남지 않는다.
+  const result=await this.#timeStage(record,'verifyPrefix',()=>verifyPrefix(records,{...this.#material,roster,legacyCount:s.legacyCount,witness,replay:this.#session.replay}));check(result.verified.head===state.head,'MD_REMOTE_HEAD');
   const oldOps=this.#store.state.userApp.operations;check(oldOps.every((op,i)=>samePayload(op,result.operations[i])),'MD_HISTORY_REWRITE');
   // No-op sync writes nothing: if the applied result has the same canonical payload bytes (payloadEncode hash) as the
   // current local state, no commit is appended. Rollback/prefix/roster/access checks above already ran; any change to
@@ -172,10 +183,17 @@ export class SequentialService {
  // F12-4: keepSession=true는 acquire()/sync() 등이 release 바로 뒤에 항상 #sync()를 돌리는 내부 호출에서만 쓴다
  // (호출 순서는 1단계 evidence\01_app_call_order.txt로 확인: #release 뒤에는 어느 경로든 반드시 #sync가 바로 돈다) --
  // 그 #sync/#syncCore가 원격 변화(changed)·blocked 여부로 세션을 비울지 그대로 판단하므로 여기서 먼저 비울 필요가
- // 없다(비워도/안 비워도 다음 write의 candidateReal 결과는 지문 비교로 항상 같다 -- 안전성 불변). 사용자가 직접 쓰기
- // 권한을 놓는 공개 release()·close()는 지금처럼(keepSession 없이) 비운다.
+ // 없다(비워도/안 비워도 다음 write의 candidateReal 결과는 지문 비교로 항상 같다 -- 안전성 불변). close()·suspend()·
+ // 오류 경로(#publish catch)는 지금처럼(keepSession 없이) 비운다.
  async #release(keepSession=false){clearInterval(this.#timer);check(!this.pending&&!this.#store.state.sequentialSync.enrollment,'MD_PENDING_UNRESOLVED');if(this.#lease){const lease=this.#leaseArgs();this.#lease=null;this.#state='VERIFIED_READ_ONLY';await this.#transport.call('releaseWriter',lease);}if(!keepSession)this.#session.clear();return this.status();}
- release(){return this.#serial(()=>this.#release());}
+ // F12-5: 공개 release()(사용자가 쓰기 권한을 놓음 -- 저장 20초 뒤 자동 또는 화면 종료)도 세션을 비우지 않는다.
+ // 세션 재생기(real-history.mjs replaySession)는 [opId+payload해시]지문과 매개변수(vaultId/rosterEpoch/rosterHash/
+ // legacyCount)가 정확히 같을 때만 캐시를 재사용하는 순수 계산 캐시이고, 쓰기 lease와는 무관하다(권한을 놓아도
+ // 이미 서버가 검증·커밋한 연산들의 재생 결과는 바뀌지 않는다 -- F12-4 S05가 캐시 켬/끔 결과 동일을 이미 확인).
+ // release() 다음에는 항상 acquire()가 먼저 돌든(다음 저장) #syncCore가 changed/blocked면 지금처럼 비운다 -- 이
+ // 변경은 "원격 변화 없음" 구간만 따뜻하게 만든다. close()(fin01_pwa_bundle 핸드오프·세션 종료)·suspend()(렌탈
+ // 만료·충돌)·오류 경로(#publish catch, write()의 catch)는 그대로 비운다(메모리 상한 2슬롯도 그대로).
+ release(){return this.#serial(()=>this.#release(true));}
  beginEnrollment(){return this.#serial(async()=>{lifecycleWritable(this.#store);await this.#auth.requireRecentMfa();const cap=await this.#transport.call('lifecycleCapabilities');check(cap.format==='LB_B4_CAPABILITIES_1'&&cap.version===1&&cap.storeFormat===3,'UPDATE_REQUIRED_LIFECYCLE');await this.#release(true);await this.#sync();return this.#acquire('ENROLL');});}
  async lifecycleCall(action,args={},mfa=false){check(action==='getEnrollmentSession'||action==='getLifecycleIntent'||action==='getLifecycleState'||action==='lifecycleCapabilities'||this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');await this.#authenticated();if(mfa)await this.#auth.requireRecentMfa();return this.#transport.call(action,args);}
  publishEnrollmentTerminal(response){return this.#serial(()=>this.#acceptEnrollmentTerminal(response));}
@@ -271,6 +289,12 @@ export class SequentialService {
   const replay=scope?scope.replay:this.#reuseReplay===true?this.#session.replay:undefined;
   const carrier=replay?{replay}:null;
   const record={};
+  // F12-5 5단계 진단: 이번 write() 동안만 Graph.ingest 호출 수를 센다(테스트 spyIngests()와 같은 기법을 서비스
+  // 안으로 들여온 것, memory-only, try/finally로 항상 원래 메서드로 되돌림 -- 동작·검사는 바꾸지 않는다). 이 앱은
+  // 프로세스당 활성 SequentialService가 하나뿐이라(md-backend.mjs/windows-app.mjs가 한 번에 프로필 하나만 연다)
+  // 다른 인스턴스와 계수가 섞이지 않는다(REPORT.md UNKNOWN 참고 -- 여러 인스턴스가 동시에 쓰면 섞일 수 있음).
+  let ingestCount=0;const originalIngest=Graph.prototype.ingest;
+  Graph.prototype.ingest=function(...a){ingestCount++;return originalIngest.apply(this,a);};
   try{
   // F12-4 진단: 저장 직전 재생(candidateReal, F12-3가 진단 시간 구간 밖이라고 밝힌 부분)을 이름 있는 단계로도 잰다.
   // 숫자(ms)만 timings()에 더하고 그 밖의 동작·검사·호출 순서는 바꾸지 않는다.
@@ -281,7 +305,12 @@ export class SequentialService {
   const required=operationRequirements(op);check(required.domainSchemaVersion<=this.#capabilities.maxDomainWrite&&required.capabilities.every(c=>this.#capabilities.operationCapabilities.includes(c)),'UPDATE_REQUIRED_UNSUPPORTED_OPERATION');
   const p=await this.#timeStage(record,'prepare',()=>this.#prepare(op,carrier,record));return await this.#timeStage(record,'dispatch',()=>this.#dispatch(p,carrier,record));
   }catch(e){this.#session.clear();throw e;}
-  finally{scope?.close();this.#pushTiming(this.#saveTimings,record);}
+  finally{
+   Graph.prototype.ingest=originalIngest;
+   const n=this.#store.state.userApp.operations.length;
+   this.#lastSaveFullReplays=n>0?ingestCount/n:0;
+   scope?.close();this.#pushTiming(this.#saveTimings,record);
+  }
  });}
  reconcile(){return this.#serial(async()=>{await this.#authenticated();const p=this.pending;check(p,'MD_NO_PENDING');this.#state='DISPATCHED_UNKNOWN';const lookup={intentId:p.intentId,intentBodyHash:p.intentBodyHash,wireSha256:p.wireSha256};let receipt=await this.#transport.call('getIntent',lookup);if(receipt.status==='NOT_FOUND')receipt=await this.#transport.call('settleIntent',lookup);return this.#materialize(p,receipt);});}
  freezeLostDevice({freezeId,lostDeviceId,confirmed}){return this.#serial(async()=>{check(this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');check(confirmed===true&&idOK(freezeId)&&idOK(lostDeviceId),'MD_EXPLICIT_FREEZE');await this.#auth.requireRecentMfa();this.suspend();const receipt=await this.#transport.call('freezeLostDevice',{freezeId,lostDeviceId});check(receipt.status==='FROZEN'&&receipt.freezeId===freezeId&&receipt.lostDeviceId===lostDeviceId,'MD_FREEZE_RECEIPT');await this.#publish(local=>{local.sequentialSync.receipts[freezeId]=receipt;local.sequentialSync.access.epoch=receipt.accessEpoch;local.sequentialSync.access.status='FROZEN';});this.#lease=null;this.#state='READ_ONLY';return receipt;});}
@@ -339,7 +368,7 @@ export class SequentialService {
  history(){return {changes:wholeHistory(this.#store.graph,this.#store.state.userApp.operations)};}
  view(){return {...wholeLifeView(this.#store.graph,undefined,this.#store.state.userApp.operations),settings:{storage:this.#store.storageKind,session:this.#state,profile:PROFILE,writeReady:this.status().writeReady,remoteCheckpoint:this.#store.state.sequentialSync.verified,localState:this.#store.localState??null,backup:this.#store.backupLocation??'SYNC_PRIMARY_WINDOWS_THEN_COLD_BACKUP',dataRoot:this.#store.location??'CURRENT_HTTPS_ORIGIN_INDEXEDDB',timings:this.timings(),lastSyncPublishReason:this.#lastSyncPublishReason}};}
  // F12-2 진단용: 단계 이름→ms 숫자만(시간 숫자와 이름 외에는 아무것도 담지 않음). 내부 배열을 그대로 내보내지 않고 얕은 복제.
- timings(){return {open:this.#openTimings.map(r=>({...r})),save:this.#saveTimings.map(r=>({...r}))};}
+ timings(){return {open:this.#openTimings.map(r=>({...r})),save:this.#saveTimings.map(r=>({...r})),lastSaveFullReplays:this.#lastSaveFullReplays};}
  calendar(body){return calendarProjection(this.#store.graph,body);}
  evidence(){return {state:this.#store.state,checkpoint:this.#store.checkpoint,graphDigest:this.#store.graph?.digest()??null,phase:this.#state};}
  async close(){if(this.#closed)return {status:'CLOSED_ALREADY_CHECK_PRIOR_RESULT'};await this.#tail;clearInterval(this.#timer);let code=['LOCAL_PUBLICATION_HOLD','REMOTE_COMMITTED_LOCAL_HOLD'].includes(this.#state)?this.#state:null;try{if(!this.pending&&!this.#store.state.sequentialSync.enrollment)await this.#release();else code??='MD_PENDING_PRESERVED';}catch{code??='MD_LEASE_RELEASE_UNCONFIRMED';}this.#session.clear();this.#closed=true;this.#writer.close();await this.#store.close();this.#auth.clear?.();this.#material=null;return {status:code?'HOLD':'CLOSED',code};}
