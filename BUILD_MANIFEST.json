@@ -55,8 +55,8 @@
     },
     {
       "path": "multi-device/real-history.mjs",
-      "sourceSha256": "a5c4939536963423c4061bf151a3e6f04ea66dac8d809b3c5c97742854f7e81e",
-      "outputSha256": "a5c4939536963423c4061bf151a3e6f04ea66dac8d809b3c5c97742854f7e81e",
+      "sourceSha256": "5f07eaa6e84d1bb4e2a7550b8af85a0a554f9f332c2a3e89b4795d5a5bfe6f27",
+      "outputSha256": "5f07eaa6e84d1bb4e2a7550b8af85a0a554f9f332c2a3e89b4795d5a5bfe6f27",
       "dependencies": [
         "core/package/parent/v2_phase2/source/dag.mjs",
         "core/package/parent/v2_phase2/source/canonical.mjs",
@@ -69,8 +69,8 @@
     },
     {
       "path": "multi-device/sequential-service.mjs",
-      "sourceSha256": "bcf28f12ae1802fb12033699c358db6dffb32f386589e66772bb2247787ef27e",
-      "outputSha256": "bcf28f12ae1802fb12033699c358db6dffb32f386589e66772bb2247787ef27e",
+      "sourceSha256": "d4d12b8499ea2666a488028ce43dec5f36c92c6fa9d2e9e35d364c440b5092b8",
+      "outputSha256": "d4d12b8499ea2666a488028ce43dec5f36c92c6fa9d2e9e35d364c440b5092b8",
       "dependencies": [
         "core/package/src/codec.mjs",
         "core/package/src/crypto.mjs",

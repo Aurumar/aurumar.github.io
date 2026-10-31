@@ -3,7 +3,7 @@ import {WriterContext,openEnvelope,verify} from '../core/package/src/crypto.mjs'
 import {Roster} from '../core/package/src/enrollment.mjs';
 import {normalizeCommand,today,savedResult,replay as replayLegacy} from '../user-app/action-model.mjs';
 import {wholeLifeView,wholeHistory,calendarProjection} from '../user-app/whole-life-projection.mjs';
-import {replayReal,candidateReal,replayScope} from './real-history.mjs';
+import {replayReal,candidateReal,replaySession} from './real-history.mjs';
 import {PROFILE,SCOPE,LIMITS,initialHead,nextHead,same} from './contracts.mjs';
 import {CLIENT,assertCompatible,operationRequirements,validateCompatibility,assertOperationCompatibility,serverCapabilities} from '../product/runtime-contract.mjs';
 import {emptyLifecycle,validateLifecycleState,lifecycleWritable,validatePublication,publishTerminalState,settlementIntent,validateSettlementAttempt,prepareRetirement,validateRetirementReceipt} from './lifecycle-client.mjs';
@@ -75,8 +75,8 @@ export function applySyncResult(local,{roster,records,result,state}){
  return local;
 }
 export class SequentialService {
- #nativeGuard;#store;#material;#transport;#auth;#writer;#reuseReplay;#lease=null;#runtime=randomId();#state='AUTHENTICATED_READ_ONLY';#tail=Promise.resolve();#timer=null;#blocked=false;#closed=false;#clock;#capabilities=null;
- constructor({store,material,transport,auth,nativeGuard=null,clock=()=>Date.now(),reuseReplay=true}){this.#reuseReplay=typeof reuseReplay==='function'?reuseReplay:reuseReplay===false?null:replayScope;this.#nativeGuard=nativeGuard;check(!store.state.sequentialSync.activation.nativeBootstrap||nativeGuard,'MD_PRIMARY_GUARD_REQUIRED');this.#store=store;this.#material=material;this.#transport=transport;this.#auth=auth;this.#clock=clock;this.#writer=WriterContext.create(material.keyring,material.identity,'op');if(store.state.sequentialSync.pending)this.#state='DISPATCHED_UNKNOWN';}
+ #nativeGuard;#store;#material;#transport;#auth;#writer;#reuseReplay;#session;#lease=null;#runtime=randomId();#state='AUTHENTICATED_READ_ONLY';#tail=Promise.resolve();#timer=null;#blocked=false;#closed=false;#clock;#capabilities=null;
+ constructor({store,material,transport,auth,nativeGuard=null,clock=()=>Date.now(),reuseReplay=true}){this.#reuseReplay=typeof reuseReplay==='function'?reuseReplay:reuseReplay===false?null:true;this.#session=replaySession();this.#nativeGuard=nativeGuard;check(!store.state.sequentialSync.activation.nativeBootstrap||nativeGuard,'MD_PRIMARY_GUARD_REQUIRED');this.#store=store;this.#material=material;this.#transport=transport;this.#auth=auth;this.#clock=clock;this.#writer=WriterContext.create(material.keyring,material.identity,'op');if(store.state.sequentialSync.pending)this.#state='DISPATCHED_UNKNOWN';}
  get phase(){return this.#state;}
  get pending(){return this.#store.state.sequentialSync.pending;}
  get material(){return this.#material;}
@@ -87,7 +87,19 @@ export class SequentialService {
  #headArgs(){const s=this.#store.state.sequentialSync;return {expectedVersion:s.verified.version,expectedHead:s.verified.head,expectedRosterEpoch:s.access.rosterEpoch,expectedRosterHash:s.access.rosterHash,accessEpoch:s.access.epoch};}
  #leaseArgs(){check(this.#lease,'MD_NO_LEASE');return {runtimeSessionId:this.#runtime,leaseEpoch:this.#lease.epoch,leaseToken:this.#lease.token};}
  async #authenticated(){await this.#auth.accessToken();}
- async #publish(mutator,{replay}={}){try{await this.#store.transaction(mutator,replay?{replay}:undefined);this.#material.roster=this.#store.roster;}catch(error){this.#blocked=true;this.#state='LOCAL_PUBLICATION_HOLD';throw error;}}
+ async #publish(mutator,{replay}={}){try{await this.#store.transaction(mutator,replay?{replay}:undefined);this.#material.roster=this.#store.roster;}catch(error){this.#blocked=true;this.#state='LOCAL_PUBLICATION_HOLD';this.#session.clear();throw error;}}
+ // PAGE_BYTES(한 페이지가 pageBytes 한도를 넘음)면 limit을 반으로 줄여 재시도한다. limit=1에서도 실패하면 멈춘다(무한루프 금지).
+ async #pullPage(afterVersion,state){
+  let limit=LIMITS.pageItems;
+  for(;;){
+   try{
+    const page=await this.#transport.call('pullPrefix',{afterVersion,limit});
+    check(page.state.version===state.version&&page.state.head===state.head&&page.state.rosterHash===state.rosterHash&&page.state.accessEpoch===state.accessEpoch,'MD_PREFIX_CHANGED');
+    check(Array.isArray(page.items)&&page.items.length>0&&page.items.length<=limit,'MD_TRUNCATED_PREFIX');
+    return page;
+   }catch(e){if(e.code!=='PAGE_BYTES'||limit<=1)throw e;limit=Math.max(1,Math.floor(limit/2));}
+  }
+ }
  async #sync(){
   await this.#authenticated();check(!this.pending&&!this.#store.state.sequentialSync.enrollment,'MD_PENDING_UNRESOLVED');this.#state='SYNCING';
   const state=await this.#transport.call('readState'),s=this.#store.state.sequentialSync;
@@ -96,8 +108,10 @@ export class SequentialService {
   const roster=await Roster.load(state.roster,this.#material.keyring.genesisPin);
   check(this.#material.roster.evidence.events.every((e,i)=>same(e,roster.evidence.events[i])),'MD_ROSTER_ROLLBACK');
   check(state.rosterEpoch===roster.epoch&&state.rosterHash===roster.head&&state.accessEpoch>=s.access.epoch,'MD_REMOTE_ACCESS');
-  check(state.status==='ACTIVE'||state.status==='FROZEN','MD_INITIALIZING');
-  const records=[];while(records.length<state.version){const page=await this.#transport.call('pullPrefix',{afterVersion:records.length,limit:LIMITS.pageItems});check(page.state.version===state.version&&page.state.head===state.head&&page.state.rosterHash===state.rosterHash&&page.state.accessEpoch===state.accessEpoch,'MD_PREFIX_CHANGED');check(Array.isArray(page.items)&&page.items.length>0&&page.items.length<=LIMITS.pageItems,'MD_TRUNCATED_PREFIX');records.push(...page.items);check(records.length<=state.version,'MD_PREFIX_OVERRUN');}
+  check(state.status==='ACTIVE'||state.status==='FROZEN','MD_INITIALIZING');check(s.verified.version<=state.version,'MD_ROLLBACK_VERSION');
+  // F12 증분 수신: records=[]로 매번 처음부터 받지 않고 로컬에서 이미 검증한 접두사(s.records)에 새 꼬리만 이어 붙인다.
+  // 전체(과거+새 꼬리)는 아래 verifyPrefix가 항상 처음부터 다시 검증한다 — 검증 범위는 줄지 않는다.
+  const records=[...s.records];while(records.length<state.version){const page=await this.#pullPage(records.length,state);records.push(...page.items);check(records.length<=state.version,'MD_PREFIX_OVERRUN');}
   const witness=s.rollbackFloor.version>s.verified.version?s.rollbackFloor:s.verified;
   const result=await verifyPrefix(records,{...this.#material,roster,legacyCount:s.legacyCount,witness});check(result.verified.head===state.head,'MD_REMOTE_HEAD');
   const oldOps=this.#store.state.userApp.operations;check(oldOps.every((op,i)=>samePayload(op,result.operations[i])),'MD_HISTORY_REWRITE');
@@ -107,7 +121,7 @@ export class SequentialService {
   // local publication failed (#blocked) the skip is disabled so the store fault surfaces.
   const apply=local=>applySyncResult(local,{roster,records,result,state}),next=copy(this.#store.state);apply(next);
   if(this.#blocked||!samePayload(next,this.#store.state))await this.#publish(apply);
-  this.#state='VERIFIED_READ_ONLY';this.#blocked=false;return {status:'VERIFIED_READ_ONLY',version:state.version,head:state.head};
+  this.#session.clear();this.#state='VERIFIED_READ_ONLY';this.#blocked=false;return {status:'VERIFIED_READ_ONLY',version:state.version,head:state.head};
  }
  sync(){return this.#serial(async()=>{try{await this.#release();const r=await this.#sync();await this.#afterVerifiedSync();return r;}catch(e){if(!this.#blocked)this.#state='READ_ONLY';throw e;}});}
  // F9: a store with a deferred layout migration (record format 4 compaction) runs it only right after a verified sync.
@@ -124,8 +138,8 @@ export class SequentialService {
  }
  acquire(){return this.#serial(async()=>{check(this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');try{await this.#release();await this.#sync();return await this.#acquire();}catch(e){if(!this.#blocked)this.#state='READ_ONLY';throw e;}});}
  async #renew(){if(!this.#lease||this.#blocked)return;try{const s=await this.#transport.call('renewWriter',this.#leaseArgs());check(s.leaseEpoch===this.#lease.epoch&&s.leaseRuntime===this.#runtime,'MD_RENEW_FENCE');this.#lease.deadline=this.#clock()+(s.leaseExpires-s.serverTime-LIMITS.safetySeconds)*1000;}catch(e){this.suspend();throw e;}}
- suspend(){this.#blocked=true;clearInterval(this.#timer);if(!this.pending)this.#state='READ_ONLY';}
- async #release(){clearInterval(this.#timer);check(!this.pending&&!this.#store.state.sequentialSync.enrollment,'MD_PENDING_UNRESOLVED');if(this.#lease){const lease=this.#leaseArgs();this.#lease=null;this.#state='VERIFIED_READ_ONLY';await this.#transport.call('releaseWriter',lease);}return this.status();}
+ suspend(){this.#blocked=true;clearInterval(this.#timer);if(!this.pending)this.#state='READ_ONLY';this.#session.clear();}
+ async #release(){clearInterval(this.#timer);check(!this.pending&&!this.#store.state.sequentialSync.enrollment,'MD_PENDING_UNRESOLVED');if(this.#lease){const lease=this.#leaseArgs();this.#lease=null;this.#state='VERIFIED_READ_ONLY';await this.#transport.call('releaseWriter',lease);}this.#session.clear();return this.status();}
  release(){return this.#serial(()=>this.#release());}
  beginEnrollment(){return this.#serial(async()=>{lifecycleWritable(this.#store);await this.#auth.requireRecentMfa();const cap=await this.#transport.call('lifecycleCapabilities');check(cap.format==='LB_B4_CAPABILITIES_1'&&cap.version===1&&cap.storeFormat===3,'UPDATE_REQUIRED_LIFECYCLE');await this.#release();await this.#sync();return this.#acquire('ENROLL');});}
  async lifecycleCall(action,args={},mfa=false){check(action==='getEnrollmentSession'||action==='getLifecycleIntent'||action==='getLifecycleState'||action==='lifecycleCapabilities'||this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');await this.#authenticated();if(mfa)await this.#auth.requireRecentMfa();return this.#transport.call(action,args);}
@@ -200,7 +214,7 @@ export class SequentialService {
   const records=[...this.#store.state.sequentialSync.records,row];const s=this.#store.state.sequentialSync;
   try{const result=await verifyPrefix(records,{...this.#material,legacyCount:s.legacyCount,witness:s.verified,allowPartialActivation:s.activation.status!=='ACTIVE',...(scope?{replay:scope.replay}:{})});
   await this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');Object.assign(local.sequentialSync,{records,tips:result.tips,verified:result.verified,pending:null});local.sequentialSync.receipts[p.intentId]=receipt;if(local.sequentialSync.activation.status==='ACTIVE')local.userApp.operations=result.operations;else check(result.operations.every((op,i)=>samePayload(op,local.userApp.operations[i])),'MD_ACTIVATION_REWRITE');},{replay:scope?.replay});}
-  catch(e){this.#state='REMOTE_COMMITTED_LOCAL_HOLD';this.#blocked=true;throw e;}
+  catch(e){this.#state='REMOTE_COMMITTED_LOCAL_HOLD';this.#blocked=true;this.#session.clear();throw e;}
   if(p.certificate.body.compatibility?.requiredDomainSchemaVersion===2)this.#capabilities=serverCapabilities(2);
   this.#state='LOCAL_CONFIRMED';const resultUI={...savedResult(p.op),status:'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED',remoteVersion:receipt.version,remoteHead:receipt.head};
   this.#state=this.#lease?.purpose==='WRITE'&&!this.#blocked&&this.#clock()<this.#lease.deadline?'WRITE_READY':'VERIFIED_READ_ONLY';return resultUI;
@@ -214,14 +228,20 @@ export class SequentialService {
  write(body,type){return this.#serial(async()=>{this.#ready();assertCompatible(this.#capabilities);await this.#authenticated();const normalized=normalizeCommand(body,type),old=this.#store.state.userApp.operations.find(op=>op.provenance.requestId===normalized.requestId);
   if(old){check(old.provenance.commandDigest===normalized.digest,'REQUEST_ID_BODY_COLLISION');const r=this.#store.state.sequentialSync.receipts[normalized.requestId];check(r?.status==='COMMITTED','MD_RECEIPT_REQUIRED');return {...savedResult(old),status:'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED',remoteVersion:r.version,remoteHead:r.head};}
   check(!this.#store.state.sequentialSync.receipts[normalized.requestId],'MD_TERMINAL_INTENT');
-  // F10 M2-B: one replay scope per save call (memory only), dropped in finally whatever the outcome.
-  // reuseReplay: true (default) / false (always full replay) / a scope factory (tests check close()).
-  const scope=this.#reuseReplay?this.#reuseReplay(this.#store.state.sequentialSync.verified.head):null;
+  // F10 M2-B/M2-D: reuseReplay true (default) uses the one session kept for this service instance's whole lifetime
+  // (replay() calls across many saves share its cached replayers); a function keeps the old one-scope-per-save
+  // behavior (tests check close()); false always does a full replay. Either way the session itself is cleared on
+  // sync/release/suspend/a blocked transition/close/a write error -- never on an ordinary successful write.
+  const scope=typeof this.#reuseReplay==='function'?this.#reuseReplay(this.#store.state.sequentialSync.verified.head):null;
+  const replay=scope?scope.replay:this.#reuseReplay===true?this.#session.replay:undefined;
+  const carrier=replay?{replay}:null;
   try{
-  const op=candidateReal(this.#store.state.userApp.operations,{vaultId:this.#material.keyring.vaultId,deviceId:this.#material.identity.public.deviceId},normalized,{vaultId:this.#material.keyring.vaultId,roster:this.#material.roster,legacyCount:this.#store.state.sequentialSync.legacyCount},scope?{replay:scope.replay}:{}).op;
+  this.#session.pin(this.#store.graph);
+  const op=candidateReal(this.#store.state.userApp.operations,{vaultId:this.#material.keyring.vaultId,deviceId:this.#material.identity.public.deviceId},normalized,{vaultId:this.#material.keyring.vaultId,roster:this.#material.roster,legacyCount:this.#store.state.sequentialSync.legacyCount},carrier??{}).op;
   const required=operationRequirements(op);check(required.domainSchemaVersion<=this.#capabilities.maxDomainWrite&&required.capabilities.every(c=>this.#capabilities.operationCapabilities.includes(c)),'UPDATE_REQUIRED_UNSUPPORTED_OPERATION');
-  const p=await this.#prepare(op,scope);return await this.#dispatch(p,scope);
-  }finally{scope?.close();}
+  const p=await this.#prepare(op,carrier);return await this.#dispatch(p,carrier);
+  }catch(e){this.#session.clear();throw e;}
+  finally{scope?.close();}
  });}
  reconcile(){return this.#serial(async()=>{await this.#authenticated();const p=this.pending;check(p,'MD_NO_PENDING');this.#state='DISPATCHED_UNKNOWN';const lookup={intentId:p.intentId,intentBodyHash:p.intentBodyHash,wireSha256:p.wireSha256};let receipt=await this.#transport.call('getIntent',lookup);if(receipt.status==='NOT_FOUND')receipt=await this.#transport.call('settleIntent',lookup);return this.#materialize(p,receipt);});}
  freezeLostDevice({freezeId,lostDeviceId,confirmed}){return this.#serial(async()=>{check(this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');check(confirmed===true&&idOK(freezeId)&&idOK(lostDeviceId),'MD_EXPLICIT_FREEZE');await this.#auth.requireRecentMfa();this.suspend();const receipt=await this.#transport.call('freezeLostDevice',{freezeId,lostDeviceId});check(receipt.status==='FROZEN'&&receipt.freezeId===freezeId&&receipt.lostDeviceId===lostDeviceId,'MD_FREEZE_RECEIPT');await this.#publish(local=>{local.sequentialSync.receipts[freezeId]=receipt;local.sequentialSync.access.epoch=receipt.accessEpoch;local.sequentialSync.access.status='FROZEN';});this.#lease=null;this.#state='READ_ONLY';return receipt;});}
@@ -280,6 +300,6 @@ export class SequentialService {
  view(){return {...wholeLifeView(this.#store.graph,undefined,this.#store.state.userApp.operations),settings:{storage:this.#store.storageKind,session:this.#state,profile:PROFILE,writeReady:this.status().writeReady,remoteCheckpoint:this.#store.state.sequentialSync.verified,localState:this.#store.localState??null,backup:this.#store.backupLocation??'SYNC_PRIMARY_WINDOWS_THEN_COLD_BACKUP',dataRoot:this.#store.location??'CURRENT_HTTPS_ORIGIN_INDEXEDDB'}};}
  calendar(body){return calendarProjection(this.#store.graph,body);}
  evidence(){return {state:this.#store.state,checkpoint:this.#store.checkpoint,graphDigest:this.#store.graph?.digest()??null,phase:this.#state};}
- async close(){if(this.#closed)return {status:'CLOSED_ALREADY_CHECK_PRIOR_RESULT'};await this.#tail;clearInterval(this.#timer);let code=['LOCAL_PUBLICATION_HOLD','REMOTE_COMMITTED_LOCAL_HOLD'].includes(this.#state)?this.#state:null;try{if(!this.pending&&!this.#store.state.sequentialSync.enrollment)await this.#release();else code??='MD_PENDING_PRESERVED';}catch{code??='MD_LEASE_RELEASE_UNCONFIRMED';}this.#closed=true;this.#writer.close();await this.#store.close();this.#auth.clear?.();this.#material=null;return {status:code?'HOLD':'CLOSED',code};}
+ async close(){if(this.#closed)return {status:'CLOSED_ALREADY_CHECK_PRIOR_RESULT'};await this.#tail;clearInterval(this.#timer);let code=['LOCAL_PUBLICATION_HOLD','REMOTE_COMMITTED_LOCAL_HOLD'].includes(this.#state)?this.#state:null;try{if(!this.pending&&!this.#store.state.sequentialSync.enrollment)await this.#release();else code??='MD_PENDING_PRESERVED';}catch{code??='MD_LEASE_RELEASE_UNCONFIRMED';}this.#session.clear();this.#closed=true;this.#writer.close();await this.#store.close();this.#auth.clear?.();this.#material=null;return {status:code?'HOLD':'CLOSED',code};}
 }
 export function samePayload(a,b){return a!==undefined&&b!==undefined&&sha(payloadEncode(a))===sha(payloadEncode(b));}
