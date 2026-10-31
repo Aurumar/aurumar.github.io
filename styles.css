@@ -436,8 +436,8 @@ button.danger{background:#fdf1ea}
 .calendar-cell{background:var(--cream);border-right:1px solid var(--gold-line-soft);border-bottom:1px solid var(--gold-line-soft)}
 .calendar-cell.dim{background:var(--cream-2)}
 .calendar-cell.today{background:var(--cream)}
-.calendar-number{font-family:var(--cal-serif);font-weight:400;font-variant-numeric:lining-nums tabular-nums;color:var(--muted);font-size:12px;margin-bottom:8px;display:inline-flex;align-items:center;justify-content:center;min-width:24px}
-.calendar-cell.today .calendar-number{width:26px;height:26px;border-radius:50%;border:1px solid var(--cal-today-ring);background:var(--cal-today-tint);color:var(--gold-deep);font-weight:400}
+.calendar-number{font-family:var(--cal-serif);font-weight:400;font-variant-numeric:lining-nums tabular-nums;color:var(--muted);font-size:12px;margin:0 0 8px;display:flex;align-items:center;justify-content:center;width:100%;min-width:24px}
+.calendar-cell.today .calendar-number{width:26px;height:26px;min-width:26px;margin:0 auto 8px;border-radius:50%;border:1px solid var(--cal-today-ring);background:var(--cal-today-tint);color:var(--gold-deep);font-weight:400}
 .calendar-event{font-family:"Segoe UI","Malgun Gothic",sans-serif;background:var(--cal-chip-bg);color:var(--cal-chip-text);border-left:2px solid var(--cal-chip-bar);border-radius:4px;font-weight:400;font-size:11px;padding:4px 6px 4px 5px}
 .calendar-event:hover{background:#efe3bd}
 .calendar-event.DEADLINE{background:var(--cal-chip-deadline-bg);color:var(--cal-chip-deadline-text);border-left-color:var(--cal-chip-deadline-bar)}
@@ -445,11 +445,13 @@ button.danger{background:#fdf1ea}
 .calendar-toolbar button{font-weight:500;border-radius:7px;letter-spacing:.02em}
 @media(min-width:701px){.calendar-cell{padding:13px 11px}}
 .date-popup{background:var(--cream);border:1px solid var(--gold-line);border-radius:16px;box-shadow:0 18px 50px rgba(59,42,16,.16)}
-.date-popup-head strong{font-family:var(--cal-serif);font-size:18px;letter-spacing:.01em;font-weight:400;color:var(--gold-deep)}
+.date-popup-head strong{display:inline-flex;align-items:baseline;gap:1px;color:var(--gold-deep)}
+.date-popup-head strong .y,.date-popup-head strong .m{font-family:var(--cal-serif);font-size:18px;font-weight:400;font-variant-numeric:lining-nums tabular-nums}
+.date-popup-head strong .u{font-family:"Segoe UI","Malgun Gothic",sans-serif;font-size:12px;font-weight:500;color:var(--muted);letter-spacing:.01em;margin-right:2px}
 .date-popup-head button{border:1px solid var(--gold-line);background:var(--cream);color:var(--gold-mid);border-radius:999px;width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:15px}
 .date-popup-head button:hover{background:var(--cal-today-tint)}
 .date-popup-grid{border:none}
-.date-popup-grid button.calendar-cell{width:36px;height:36px;margin:2px auto;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;font-weight:400;font-variant-numeric:lining-nums tabular-nums}
+.date-popup-grid button.calendar-cell{width:36px;height:36px;min-width:36px;min-height:36px;max-width:36px;max-height:36px;aspect-ratio:1/1;box-sizing:border-box;flex:none;justify-self:center;margin:2px auto;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;font-weight:400;font-variant-numeric:lining-nums tabular-nums}
 .date-popup-grid button.calendar-cell:hover{background:var(--cal-today-tint)}
 .date-popup-grid button.calendar-cell.today{border:1px solid var(--cal-today-ring);background:var(--cal-today-tint);font-weight:400;color:var(--gold-deep)}
 .date-popup-grid button.calendar-cell.selected{background:var(--gold-mid);color:var(--cream);font-weight:400;border-color:var(--gold-mid)}
@@ -457,4 +459,8 @@ button.danger{background:#fdf1ea}
 .date-popup-actions{border-top:1px solid var(--gold-line-soft);padding-top:8px;margin-top:10px}
 .date-popup-actions button{background:none;border:none;color:var(--gold-mid);font-weight:500;letter-spacing:.02em;padding:6px 8px}
 .date-popup-actions button:hover{background:var(--cal-today-tint);border-radius:6px}
-@media(max-width:700px){.date-popup-grid button.calendar-cell{width:40px;height:40px}}
+@media(max-width:700px){.date-popup-grid button.calendar-cell{width:40px;height:40px;min-width:40px;min-height:40px;max-width:40px;max-height:40px}}
+.calendar-title{text-align:center;margin:2px 0 10px;display:flex;align-items:baseline;justify-content:center;flex-wrap:wrap;gap:1px}
+.calendar-title .cal-title-num{font-family:var(--cal-serif);font-weight:400;font-size:24px;font-variant-numeric:lining-nums tabular-nums;color:var(--gold-deep)}
+.calendar-title .cal-title-unit{font-family:"Segoe UI","Malgun Gothic",sans-serif;font-size:12px;font-weight:500;color:var(--muted);letter-spacing:.01em;margin-right:2px}
+@media(max-width:700px){.calendar-title .cal-title-num{font-size:20px}}
