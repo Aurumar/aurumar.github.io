@@ -387,7 +387,8 @@ export class SequentialService {
  command(requestId){if(['LOCAL_PUBLICATION_HOLD','REMOTE_COMMITTED_LOCAL_HOLD'].includes(this.#state))return {status:this.#state,requestId};const p=this.pending;if(p?.intentId===requestId)return {status:this.#state,requestId};const receipt=this.#store.state.sequentialSync.receipts[requestId];if(receipt?.status==='ABORTED')return {status:'ABORTED',requestId};const op=this.#store.state.userApp.operations.find(x=>x.provenance.requestId===requestId);if(receipt?.status==='COMMITTED'&&op)return {...savedResult(op),status:'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED',remoteVersion:receipt.version,remoteHead:receipt.head};return {status:'NOT_ESTABLISHED',requestId};}
  today(){return today(this.#store.graph);}
  history(){return {changes:wholeHistory(this.#store.graph,this.#store.state.userApp.operations)};}
- view(){return {...wholeLifeView(this.#store.graph,undefined,this.#store.state.userApp.operations),settings:{storage:this.#store.storageKind,session:this.#state,profile:PROFILE,writeReady:this.status().writeReady,remoteCheckpoint:this.#store.state.sequentialSync.verified,localState:this.#store.localState??null,backup:this.#store.backupLocation??'SYNC_PRIMARY_WINDOWS_THEN_COLD_BACKUP',dataRoot:this.#store.location??'CURRENT_HTTPS_ORIGIN_INDEXEDDB',timings:this.timings(),lastSyncPublishReason:this.#lastSyncPublishReason}};}
+ view(){return {...wholeLifeView(this.#store.graph,undefined,this.#store.state.userApp.operations),settings:{storage:this.#store.storageKind,session:this.#state,profile:PROFILE,writeReady:this.status().writeReady,remoteCheckpoint:this.#store.state.sequentialSync.verified,localState:this.#store.localState??null,backup:this.#store.backupLocation??'SYNC_PRIMARY_WINDOWS_THEN_COLD_BACKUP',dataRoot:this.#store.location??'CURRENT_HTTPS_ORIGIN_INDEXEDDB',timings:this.timings(),lastSyncPublishReason:this.#lastSyncPublishReason,devices:this.#deviceRoster()}};}
+ #deviceRoster(){const s=this.#store.state;return deviceRosterView({rosterEvidence:this.#store.roster.evidence,operations:s.userApp.operations,retirements:s.sequentialSync.lifecycle?.retirements,selfDeviceId:this.#material.identity.public.deviceId,writeReady:this.status().writeReady});}
  // F12-2 진단용: 단계 이름→ms 숫자만(시간 숫자와 이름 외에는 아무것도 담지 않음). 내부 배열을 그대로 내보내지 않고 얕은 복제.
  timings(){return {open:this.#openTimings.map(r=>({...r})),save:this.#saveTimings.map(r=>({...r})),lastSaveFullReplays:this.#lastSaveFullReplays};}
  calendar(body){return calendarProjection(this.#store.graph,body);}
@@ -395,3 +396,15 @@ export class SequentialService {
  async close(){if(this.#closed)return {status:'CLOSED_ALREADY_CHECK_PRIOR_RESULT'};await this.#tail;clearInterval(this.#timer);let code=['LOCAL_PUBLICATION_HOLD','REMOTE_COMMITTED_LOCAL_HOLD'].includes(this.#state)?this.#state:null;try{if(!this.pending&&!this.#store.state.sequentialSync.enrollment)await this.#release();else code??='MD_PENDING_PRESERVED';}catch{code??='MD_LEASE_RELEASE_UNCONFIRMED';}this.#session.clear();this.#closed=true;this.#writer.close();await this.#store.close();this.#auth.clear?.();this.#material=null;return {status:code?'HOLD':'CLOSED',code};}
 }
 export function samePayload(a,b){return a!==undefined&&b!==undefined&&sha(payloadEncode(a))===sha(payloadEncode(b));}
+// B22: 읽기 전용 기기 목록. 이미 검증된 로컬 로스터 증거 + 로컬에 있는 확정 기록 + 로컬 은퇴 영수증만 읽는다(서버 호출·쓰기·연산 0).
+// 지문은 앞 8자리만 내보낸다(공개키 전체 금지). keyId8은 서버 기록의 deviceKeyId, deviceId8은 deviceId와 같은 기준이다.
+// 로스터에는 해제(은퇴) 이벤트가 없으므로 서버에서 다른 기기가 해제한 것은 여기서 알 수 없다(retired는 이 기기가 영수증을 받은 것만).
+// 쓰기 자격(writeRole)은 로스터 역할이고, 지금 기록 권한(lease)을 쥐었는지(writeReady)는 이 기기만 안다(다른 기기는 null=모름).
+export function deviceRosterView({rosterEvidence,operations,retirements,selfDeviceId,writeReady}){
+ const members=[{member:rosterEvidence.genesis.body.firstDevice,role:'ADMIN'},...rosterEvidence.events.map(e=>({member:e.body.member,role:e.body.role}))];
+ const retired=new Set(Object.values(retirements??{}).filter(r=>r?.receipt&&typeof r.intent?.body?.target?.deviceId==='string').map(r=>r.intent.body.target.deviceId));
+ const stats=Array.isArray(operations)?new Map():null;
+ if(stats)for(const op of operations){const s=stats.get(op.device)??{count:0,last:null},at=op.provenance?.recordedAt;s.count++;if(typeof at==='string'&&(s.last===null||at>s.last))s.last=at;stats.set(op.device,s);}
+ return members.map(({member,role})=>{const self=member.deviceId===selfDeviceId,gone=retired.has(member.deviceId),s=stats?(stats.get(member.deviceId)??{count:0,last:null}):null;
+  return {keyId8:member.keyId.slice(0,8),deviceId8:member.deviceId.slice(0,8),self,retired:gone,writeRole:gone?null:role,writeReady:self?writeReady===true:null,recordCount:s?s.count:null,lastRecordDate:s?.last?s.last.slice(0,10):null};});
+}

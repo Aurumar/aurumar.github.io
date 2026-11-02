@@ -128,7 +128,9 @@ export class StudyFlow{
   // B17 (H12-N01): hlt-flow의 #settleSent와 같다. 이미 반영됐을 수 있는 requestId의 초안은 rebase하지 않고 같은 초안으로 다시 확정해 그 영수증에 수렴한다(연산 0).
   async #settleSent(draft,ended){
     const rid=draft.body.requestId;
-    if(this.#aborted.has(rid)||draft.status==='ABORTED_NOT_COMMITTED')return null;
+    // B21: 저널이 이 초안을 ABORTED_NOT_COMMITTED로 알려 주면(앱을 다시 연 뒤) 이번 실행에서 ABORTED를 본 것과 같게 기억해 새 requestId로 다시 서명한다(같은 requestId 재사용 금지).
+    if(draft.status==='ABORTED_NOT_COMMITTED'){this.#sent.delete(rid);this.#aborted.add(rid);}
+    if(this.#aborted.has(rid))return null;
     if(!(draft.status==='SERVER_COMMITTED'||this.#sent.has(rid)||ended))return null;
     let result;
     try{result=await this.#p.drafts.commit(draft.draftId);}
