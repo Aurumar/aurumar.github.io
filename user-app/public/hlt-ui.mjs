@@ -23,6 +23,7 @@ export const HLT_ERROR_TEXT=Object.freeze({
   HLT_PROFILE_IMMUTABLE:'프로필의 키·종류·방식은 바꿀 수 없습니다. 새로 만드세요.',HLT_PROFILE_REMOVED:'삭제한 프로필을 가리키는 항목이 있습니다. "삭제한 항목 보기"에서 복원하거나 그 항목을 지우세요 · 초안은 그대로 있습니다.',HLT_PROFILE_DISABLED:'사용을 중단한 프로필을 가리키는 항목이 있습니다. 다시 사용으로 바꾸거나 그 항목을 지우세요 · 초안은 그대로 있습니다.',
   APP_ENTITY_LIMIT:'개수 한도에 닿았습니다.',STALE_HEADS:'다른 기기에서 먼저 바뀌었습니다. 다시 받아 합친 뒤 확정하세요.',BROKEN_HLT_WAKE_REFERENCE:'맑아짐 기록은 같은 카드의 기상 기록을 가리켜야 합니다.',
   MD_NOT_WRITE_READY:'지금은 서버에 확정할 수 없습니다. 초안은 이 기기에 남아 있습니다.',VERSION_CONFLICT:'다른 기기가 먼저 확정했습니다. 다시 확정을 누르면 받아서 합칩니다.',
+  ABORTED:'서버가 이 확정을 받지 않았습니다(기록되지 않음) · 초안은 그대로 있습니다. 다시 확정할 수 있습니다.',
 });
 export const hltErrorText=code=>HLT_ERROR_TEXT[code]??(code?'확정하지 못했습니다 ('+code+') · 초안은 그대로 있습니다.':'확정하지 못했습니다.');
 export const NOTICE_TEXT=Object.freeze({
@@ -78,8 +79,11 @@ export function createPorts(ctx,pendingStore){
     latest(date){const d=hlt().days.find(x=>x.date===date);return {card:d?structuredClone(d.data):null,heads:d?[...d.heads]:[]};},
     revision(date,ref){const v=revisionMap().get(ref);return v?structuredClone(v):null;},
     sync:()=>ctx.syncForWrite(),
+    session:()=>ctx.session?.()??null,   // B18 (H13-C05): 로그아웃 세대(앱의 mdSignedOutSeq). 흐름의 재적용 회차가 바뀌었는지 본다
     hasPending:()=>Boolean(ctx.hasPending?.()),reconcile:()=>ctx.reconcile?.(),
-    terminal:()=>false,
+    // B19: 상자·메모리 경로는 저널의 SERVER_COMMITTED가 없다. ctx.receipt(requestId)(앱: 읽기 전용 /api/command/<requestId>, 이 기기 금고의 영수증)가 있으면
+    // NOT_ESTABLISHED가 아닌 결말(COMMITTED·ABORTED·HOLD)을 '이미 결말 남'으로 알려 앱을 다시 연 뒤의 재확정도 원래 영수증에 수렴하게 한다. 서버 호출·쓰기 없음.
+    terminal:!journal&&ctx.receipt?async rid=>(await ctx.receipt(rid))?.status!=='NOT_ESTABLISHED':()=>false,
     makeBody:async({requestId,date,data,heads,reason})=>{const fields={entityType:'HLT_DAY',entityId:date,expectedHeads:[...heads],data:structuredClone(data),reason,confirmed:false};return {requestId,commandDigest:await ctx.digest({type:'ENTITY',...fields}),...fields};},
     now:()=>ctx.now(),newId:()=>'i'+Date.now().toString(36)+(++seq).toString(36)+ctx.uid().slice(0,6),newRequestId:()=>ctx.uid(),
     pendingSleep:pendingStore,
@@ -94,7 +98,8 @@ export function createPorts(ctx,pendingStore){
       list:async()=>[...memoryDrafts.values()],
       save:async({type,body})=>{const id='local'+(++seq);memoryDrafts.set(id,{draftId:id,type,body:structuredClone(body),createdAt:new Date().toISOString()+String(seq).padStart(6,'0')});return {draftId:id,status:'LOCAL_DRAFT'};},
       discard:async id=>{memoryDrafts.delete(id);},
-      commit:async id=>{const d=memoryDrafts.get(id);const r=await write(d.body);memoryDrafts.delete(id);return {...r,status:r?.status==='LOCAL_SAVED'||r?.status==='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED'?'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED':r?.status};},
+      // B17 (A8-D01): 확정(COMMITTED)이 확인된 경우에만 초안을 지운다. ABORTED·그 밖의 상태는 초안을 그대로 둔다.
+      commit:async id=>{const d=memoryDrafts.get(id);const r=await write(d.body);const status=r?.status==='LOCAL_SAVED'||r?.status==='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED'?'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED':r?.status;if(status==='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED')memoryDrafts.delete(id);return {...r,status};},
     },
   };
 }
@@ -103,17 +108,21 @@ export function createPorts(ctx,pendingStore){
 export function createHealthState(){return {date:null,showPrivate:false,showRemoved:false,notices:[],message:null,error:false,form:null,flowState:null,flow:null,ports:null,pendingSleep:null};}
 const profileMapAll=raw=>new Map(raw.profiles.map(p=>[p.key,p]));
 // 프로필 저장: 다른 기기가 먼저 같은 프로필을 고쳤으면(STALE_HEADS) 최신을 받아 그 위에 방금 저장하려던 값을 그대로 쓴다(B3d: 비공개·삭제는 양방향 자유라 합치는 규칙이 없다).
-export async function saveProfile(ctx,key,mine,heads,reason){
+// B17 (A8-D03, 통제탑 결정): field를 주면(지금은 '사용 중단/다시 사용' 버튼만) 재시도 때 최신 프로필을 다시 읽어 그 필드 하나만 바꿔 저장한다(버튼의 의도는 한 필드뿐).
+// field 없는 저장(프로필 편집·비공개·삭제·복원)은 기존 "전체 값 마지막 쓰기" 그대로(hlt-profile-rules P07, hlt-ui H10).
+export async function saveProfile(ctx,key,mine,heads,reason,{field=null}={}){
   try{await ctx.entity('HLT_PROFILE',key,mine,heads,reason);}
   catch(e){
     if(e?.code!=='STALE_HEADS'||!ctx.reload)throw e;
     await ctx.reload();const latest=ctx.getWhole().hlt.profiles.find(p=>p.key===key);
     if(!latest)throw e;
-    await ctx.entity('HLT_PROFILE',key,mine,latest.heads,reason);
+    if(field&&latest.data[field]===mine[field])return;   // 최신이 이미 그 값이다: 다시 쓰지 않는다
+    await ctx.entity('HLT_PROFILE',key,field?{...latest.data,[field]:mine[field]}:mine,latest.heads,reason);
   }
 }
 
-export async function prepareHealth(ctx,st){
+// B16 (K1-03): gone() = 이 준비를 시작한 뒤 로그아웃 세대가 바뀌었다(앱 render의 gone). 참이면 늦게 끝난 상태를 공유 st에 넣지 않는다(새 세션 상태 보존).
+export async function prepareHealth(ctx,st,gone=()=>false){
   const whole=ctx.getWhole();
   st.today=kstDate(ctx.now());
   st.date??=st.today;
@@ -123,7 +132,9 @@ export async function prepareHealth(ctx,st){
     st.flow=new HltFlow(st.ports);
   }
   st.raw=whole.hlt;
-  st.flowState=await st.flow.state(st.date);
+  const flowState=await st.flow.state(st.date);
+  if(gone())return st;
+  st.flowState=flowState;
   return st;
 }
 
@@ -228,12 +239,15 @@ export function renderHealth(root,ctx,st){
 
   // 2) 빠른 입력(연산 0)
   const q=section('빠른 입력','누르면 지금 시각으로 초안에 들어갑니다(연산 0).'),pend=st.pendingSleep.v;
+  // B17 (H12-N03): 빠른 입력은 언제나 오늘(지금 시각의 KST 날짜) 카드 초안에 들어간다. 다른 날짜를 보고 있었으면 화면을 그 초안의 날짜로 옮기고 한 줄 알린다
+  // (확정 버튼은 늘 화면에 보이는 카드의 초안을 확정하므로, 빠른 입력 바로 뒤의 확정이 그 입력을 확정한다).
+  const follow=(s,text=null)=>{const d=s?.card?.date,moved=Boolean(d)&&d!==date;if(moved){st.date=d;st.form=null;st.notices=[];}st.message=[text,moved?'빠른 입력은 오늘('+d+') 카드에 들어갑니다 · 화면을 그 날짜로 옮겼습니다.':null].filter(Boolean).join(' · ')||null;};
   const quick=add(el('div',null,'buttons hlt-quick'),
-    button('지금 기상',act(async()=>{const w=await st.flow.quickWake();st.message=w.withSleep?'기상과 수면을 초안에 넣었습니다.':'기상을 초안에 넣었습니다(수면은 직접 입력하세요).';}),'primary'),
+    button('지금 기상',act(async()=>{const w=await st.flow.quickWake();follow(w,w.withSleep?'기상과 수면을 초안에 넣었습니다.':'기상을 초안에 넣었습니다(수면은 직접 입력하세요).');}),'primary'),
     button('지금 취침',act(async()=>{st.flow.quickSleep();st.message='취침 시각을 이 기기에 적어 두었습니다. 기상 때 수면으로 합쳐집니다(연산 0).';})));
-  for(const k of MEAL_KINDS)add(quick,button(MEAL_TEXT[k],act(async()=>{await st.flow.quickMeal(k);})));
+  for(const k of MEAL_KINDS)add(quick,button(MEAL_TEXT[k],act(async()=>{follow(await st.flow.quickMeal(k));})));
   const habitProfiles=view.profiles.filter(p=>p.data.kind==='HABIT'&&p.data.enabled);
-  for(const p of habitProfiles)add(quick,button(p.data.label,act(async()=>{await st.flow.quickHabit(p.key,p.data);})));
+  for(const p of habitProfiles)add(quick,button(p.data.label,act(async()=>{follow(await st.flow.quickHabit(p.key,p.data));})));
   add(q,quick);if(pend)add(q,hint('취침 기록 중 · '+hhmmKst(pend)+' (KST) — 기상을 누르면 수면으로 합쳐집니다.'));
   add(out,q);
 
@@ -260,7 +274,8 @@ export function renderHealth(root,ctx,st){
   if(box){
     // 상자 모드: 메모는 입력 후 600ms 쉬면 초안에 저장하고(연산 0), 칸을 떠나면 바로 저장한다. 화면을 다시 그리지 않아 입력이 끊기지 않는다.
     const key='HLT_DAY|'+date+'|note';
-    note.addEventListener('input',()=>{box.defer(key,async()=>{try{await st.flow.setNote(date,note.value);seen();}catch(e){st.message=hltErrorText(e?.code);st.error=true;}chipEl.textContent=chipText();});chipEl.textContent=T.typing;});
+    // B16: 콜백은 상자가 준 입력 토큰을 흐름에 넘긴다(그 저장의 주인·세대가 이 입력으로 정해짐).
+    note.addEventListener('input',()=>{box.defer(key,async input=>{try{await st.flow.setNote(date,note.value,{input});seen();}catch(e){st.message=hltErrorText(e?.code);st.error=true;}chipEl.textContent=chipText();},{owned:true});chipEl.textContent=T.typing;});
     note.addEventListener('blur',()=>{void box.flush().catch(()=>{}).then(()=>{chipEl.textContent=chipText();});});
   }
   const fin=section('메모와 확정');
@@ -287,7 +302,7 @@ export function renderHealth(root,ctx,st){
   for(const p of view.profiles){
     const d=p.data;
     add(prof,row(d.label,profileDetail(d),add(el('div',null,'buttons'),
-      button(d.enabled?'사용 중단':'다시 사용',act(async()=>{await saveProfile(ctx,p.key,{...d,enabled:!d.enabled},p.heads,'건강 프로필 사용 여부');})),
+      button(d.enabled?'사용 중단':'다시 사용',act(async()=>{await saveProfile(ctx,p.key,{...d,enabled:!d.enabled},p.heads,'건강 프로필 사용 여부',{field:'enabled'});})),
       button(d.private?'공개로 바꾸기':'비공개로 바꾸기',act(async()=>{await saveProfile(ctx,p.key,{...d,private:!d.private},p.heads,'건강 프로필 비공개 여부');})),
       button('프로필 삭제',()=>{if(ctx.confirmDialog?.('이 항목을 삭제할까요? 지운 항목은 목록에서 사라지고 지난 기록에는 이름이 남아요. 나중에 복원할 수 있어요.')??true)void act(async()=>{await saveProfile(ctx,p.key,{...d,removed:true},p.heads,'건강 프로필 삭제');})();}))));
   }

@@ -171,31 +171,38 @@ export function budgetBarsLayout(rows,{width,rowH=34,labelW=96}={}){
 
 // ---------- 평생 타임라인 + 누적 소비 ----------
 // 달마다 소비, 자료 없는 달은 null(0원 아님). 누적은 자료 있는 달만 더하고, 사이에 자료 없는 달이 있으면 gap으로 표시.
+// 그림·월 목록에는 최근 TIMELINE_MAX_MONTHS개월만 둔다. 그보다 오래된 달은 잘라 버리지 않고 earlier(그 이전 합계)로 묶는다 → total·years·gapMonths는 전체 기간이다.
+export const TIMELINE_MAX_MONTHS=600;
 export function lifeTimeline(prep,localDate){
   const present=new Set(dataMonths(prep,{from:null,to:null})),all=[...new Set(prep.lines.map(l=>l.month))].sort();
-  if(!all.length)return {months:[],years:[],total:0n,residualTotal:0n,unknownRows:0,gapMonths:0};
-  const to=localDate.slice(0,7)>all.at(-1)?localDate.slice(0,7):all.at(-1),months=monthSpan(all[0],to);
-  const agg=aggregate({...prep,residuals:[]},{from:all[0],to});
-  let cum=0n,gap=false,gapMonths=0;
-  const unknownBy=new Map(),knownBy=new Set();
-  for(const l of prep.lines)if(CONSUMPTION.has(l.kind)){if(l.net===null)unknownBy.set(l.month,(unknownBy.get(l.month)??0)+1);else knownBy.add(l.month);}
-  const rows=months.map(m=>{
-    const b=agg.months.get(m),has=present.has(m),unknownRows=unknownBy.get(m)??0;
-    if(!has){gap=true;gapMonths++;return {month:m,hasData:false,consumption:null,cumulative:cum,unknownRows};}
-    // 순액 모름 줄만 있는 달: 금액을 모르므로 누적에 더하지 않고 점선으로 잇는다(0원으로 그리지 않음).
-    if(!knownBy.has(m)){gap=true;return {month:m,hasData:true,unknownOnly:true,consumption:null,cumulative:cum,unknownRows};}
-    cum+=b.consumption;const r={month:m,hasData:true,consumption:b.consumption,cumulative:cum,afterGap:gap,unknownRows};gap=false;return r;
-  });
-  // 미배분 잔액만 있는 해(줄이 있는 기간 밖)도 해마다 표에 넣는다.
-  const yearsSet=[...new Set([...months.map(m=>m.slice(0,4)),...prep.residuals.map(r=>r.chunk.slice(9))])].sort();
+  const residualTotal=prep.residuals.reduce((s,r)=>s+r.net,0n);
+  let rows=[],cum=0n,gapMonths=0;
+  if(all.length){
+    const to=localDate.slice(0,7)>all.at(-1)?localDate.slice(0,7):all.at(-1),months=monthSpan(all[0],to,Infinity);
+    const agg=aggregate({...prep,residuals:[]},{from:all[0],to});
+    let gap=false;
+    const unknownBy=new Map(),knownBy=new Set();
+    for(const l of prep.lines)if(CONSUMPTION.has(l.kind)){if(l.net===null)unknownBy.set(l.month,(unknownBy.get(l.month)??0)+1);else knownBy.add(l.month);}
+    rows=months.map(m=>{
+      const b=agg.months.get(m),has=present.has(m),unknownRows=unknownBy.get(m)??0;
+      if(!has){gap=true;gapMonths++;return {month:m,hasData:false,consumption:null,cumulative:cum,unknownRows};}
+      // 순액 모름 줄만 있는 달: 금액을 모르므로 누적에 더하지 않고 점선으로 잇는다(0원으로 그리지 않음).
+      if(!knownBy.has(m)){gap=true;return {month:m,hasData:true,unknownOnly:true,consumption:null,cumulative:cum,unknownRows};}
+      cum+=b.consumption;const r={month:m,hasData:true,consumption:b.consumption,cumulative:cum,afterGap:gap,unknownRows};gap=false;return r;
+    });
+  }
+  // 미배분 잔액만 있는 해(줄이 있는 기간 밖, 월별 줄이 하나도 없는 자료 포함)도 해마다 표에 넣는다.
+  const yearsSet=[...new Set([...rows.map(r=>r.month.slice(0,4)),...prep.residuals.map(r=>r.chunk.slice(9))])].sort();
   const years=yearsSet.map(y=>{
     const ms=rows.filter(r=>r.month.startsWith(y)),res=prep.residuals.filter(r=>r.chunk.slice(9)===y);
-    const yb=aggregate({...prep,residuals:[]},{from:y+'-01',to:y+'-12'});
+    const yb=rows.length?aggregate({...prep,residuals:[]},{from:y+'-01',to:y+'-12'}):null;
     const known=ms.filter(r=>r.consumption!==null);
     return {year:y,consumption:known.length?known.reduce((s,r)=>s+r.consumption,0n):null,monthsWithData:ms.filter(r=>r.hasData).length,monthsNoData:ms.filter(r=>!r.hasData).length,
-      prepaid:yb.total.prepaid,unknownRows:ms.reduce((s,r)=>s+r.unknownRows,0),residual:res.length?res.reduce((s,r)=>s+r.net,0n):null};
+      prepaid:yb?yb.total.prepaid:0n,unknownRows:ms.reduce((s,r)=>s+r.unknownRows,0),residual:res.length?res.reduce((s,r)=>s+r.net,0n):null};
   });
-  return {months:rows,years,total:cum,residualTotal:prep.residuals.reduce((s,r)=>s+r.net,0n),unknownRows:rows.reduce((s,r)=>s+r.unknownRows,0),gapMonths};
+  const cut=Math.max(0,rows.length-TIMELINE_MAX_MONTHS),old=rows.slice(0,cut);
+  const earlier=cut?{months:cut,through:old.at(-1).month,consumption:old.at(-1).cumulative,monthsWithData:old.filter(r=>r.hasData).length,unknownRows:old.reduce((s,r)=>s+r.unknownRows,0)}:null;
+  return {months:rows.slice(cut),earlier,years,total:cum,residualTotal,unknownRows:rows.reduce((s,r)=>s+r.unknownRows,0),gapMonths};
 }
 export function timelineLayout(tl,{width,height,padL=56,padR=56,padT=12,padB=28}={}){
   const plotW=Math.max(10,width-padL-padR),plotH=Math.max(10,height-padT-padB),n=Math.max(1,tl.months.length),slot=plotW/n,barW=Math.max(1,Math.min(14,slot*0.7));

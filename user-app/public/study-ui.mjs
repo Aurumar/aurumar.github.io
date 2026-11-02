@@ -23,6 +23,7 @@ export const STUDY_ERROR_TEXT=Object.freeze({
   INVALID_STUDY_SESSION:'세션 값을 확인하세요(분은 0~1440 정수).',NO_STARTED_SESSION:'시작한 세션이 없습니다. 먼저 "공부 시작"을 누르세요.',
   APP_ENTITY_LIMIT:'개수 한도에 닿았습니다.',STALE_HEADS:'다른 기기에서 먼저 바뀌었습니다. 다시 받아 합친 뒤 확정하세요.',
   MD_NOT_WRITE_READY:'지금은 서버에 확정할 수 없습니다. 초안은 이 기기에 남아 있습니다.',VERSION_CONFLICT:'다른 기기가 먼저 확정했습니다. 다시 확정을 누르면 받아서 합칩니다.',
+  ABORTED:'서버가 이 확정을 받지 않았습니다(기록되지 않음) · 초안은 그대로 있습니다. 다시 확정할 수 있습니다.',
 });
 export const studyErrorText=code=>STUDY_ERROR_TEXT[code]??(code?'처리하지 못했습니다 ('+code+') · 초안은 그대로 있습니다.':'처리하지 못했습니다.');
 export const NOTICE_TEXT=Object.freeze({
@@ -58,7 +59,9 @@ export function createStudyPorts(ctx){
     revision(date,ref){const v=revisionMap().get(ref);return v?structuredClone(v):null;},
     sync:()=>ctx.syncForWrite(),
     hasPending:()=>Boolean(ctx.hasPending?.()),reconcile:()=>ctx.reconcile?.(),
-    terminal:()=>false,
+    // B19: 상자·메모리 경로는 저널의 SERVER_COMMITTED가 없다. ctx.receipt(requestId)(앱: 읽기 전용 /api/command/<requestId>, 이 기기 금고의 영수증)가 있으면
+    // NOT_ESTABLISHED가 아닌 결말(COMMITTED·ABORTED·HOLD)을 '이미 결말 남'으로 알려 앱을 다시 연 뒤의 재확정도 원래 영수증에 수렴하게 한다. 서버 호출·쓰기 없음.
+    terminal:!journal&&ctx.receipt?async rid=>(await ctx.receipt(rid))?.status!=='NOT_ESTABLISHED':()=>false,
     makeBody:async({requestId,date,data,heads,reason})=>{const fields={entityType:'STUDY_DAY',entityId:date,expectedHeads:[...heads],data:structuredClone(data),reason,confirmed:false};return {requestId,commandDigest:await ctx.digest({type:'ENTITY',...fields}),...fields};},
     now:()=>ctx.now(),newId:()=>'i'+Date.now().toString(36)+(++seq).toString(36)+ctx.uid().slice(0,6),newRequestId:()=>ctx.uid(),
     drafts:journal?{
@@ -72,19 +75,23 @@ export function createStudyPorts(ctx){
       list:async()=>[...memoryDrafts.values()],
       save:async({type,body})=>{const id='local'+(++seq);memoryDrafts.set(id,{draftId:id,type,body:structuredClone(body),createdAt:new Date().toISOString()+String(seq).padStart(6,'0')});return {draftId:id,status:'LOCAL_DRAFT'};},
       discard:async id=>{memoryDrafts.delete(id);},
-      commit:async id=>{const d=memoryDrafts.get(id);const r=await write(d.body);memoryDrafts.delete(id);return {...r,status:r?.status==='LOCAL_SAVED'||r?.status==='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED'?'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED':r?.status};},
+      // B17 (A8-D01): 확정(COMMITTED)이 확인된 경우에만 초안을 지운다. ABORTED·그 밖의 상태는 초안을 그대로 둔다.
+      commit:async id=>{const d=memoryDrafts.get(id);const r=await write(d.body);const status=r?.status==='LOCAL_SAVED'||r?.status==='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED'?'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED':r?.status;if(status==='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED')memoryDrafts.delete(id);return {...r,status};},
     },
   };
 }
 
 export function createStudyState(){return {date:null,today:null,notices:[],message:null,error:false,form:null,reviewForm:null,flowState:null,flow:null,ports:null,raw:null};}
-export async function prepareStudy(ctx,st){
+// B16 (K1-03): gone()이 참이면(준비 도중 로그아웃 세대가 바뀜) 늦게 끝난 상태를 공유 st에 넣지 않는다(prepareHealth와 같음).
+export async function prepareStudy(ctx,st,gone=()=>false){
   const whole=ctx.getWhole();
   st.today=kstDate(ctx.now());
   st.date??=st.today;
   if(!st.flow){st.ports=createStudyPorts(ctx);st.flow=new StudyFlow(st.ports);}
   st.raw=whole.study;
-  st.flowState=await st.flow.state(st.date);
+  const flowState=await st.flow.state(st.date);
+  if(gone())return st;
+  st.flowState=flowState;
   return st;
 }
 // 복습 목록의 투영 입력: 금고에 확정된 카드들 + 지금 보는 날짜의 초안(있으면 확정본 대신).
@@ -117,6 +124,16 @@ export function renderStudy(root,ctx,st){
   const box=st.ports?.box??null,T=box?.TEXT;   // B3c: 이 기기 상자(브라우저)일 때만 있다
   const seen=()=>(st.resumed??=new Set()).add(date);   // 이 날짜에서 한 번이라도 입력했으면 "저장된 초안이 있어요" 안내를 다시 띄우지 않는다
   const act=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;seen();try{await fn();}catch(e){st.message=box?.ERROR_TEXT[e?.code]??studyErrorText(e?.code);st.error=true;}await prepareStudy(ctx,st);await ctx.rerender();});
+  // B17 (H12-N02): 복습은 오늘 카드에 기록한다고 약속한다. 클릭 시점에 오늘 날짜를 다시 확인해, 화면을 그린 뒤 날짜가 바뀌었으면 기록하지 않고
+  // "날짜가 바뀌었습니다"를 알린 뒤 오늘 화면으로 새로 그린다(옛 날짜 기준으로 계산한 다음 복습일 제안을 그대로 쓰지 않게, 결과를 다시 고르게 한다).
+  const dayMoved=()=>{
+    const now=kstDate(ctx.now());if(now===st.today)return false;
+    if(date===st.today)st.date=now;
+    st.reviewForm=null;st.form=null;st.notices=[];st.message='날짜가 바뀌었습니다('+now+') · 화면을 새로 고칩니다. 아무것도 기록하지 않았습니다 · 복습 결과를 다시 골라 주세요.';
+    return true;
+  };
+  // B17 (H12-N03): 빠른 입력(공부 시작·끝)이 바꾼 카드가 화면 날짜와 다르면 화면을 그 카드의 날짜로 옮기고 한 줄 알린다(확정 버튼은 늘 화면에 보이는 카드를 확정).
+  const follow=(s,text)=>{const d=s?.card?.date,moved=Boolean(d)&&d!==date;if(moved){st.date=d;st.form=null;st.reviewForm=null;st.notices=[];}st.message=[text,moved?(d===kstDate(ctx.now())?'빠른 입력은 오늘('+d+') 카드에 들어갑니다':'시작한 세션이 있는 '+d+' 카드에 기록했습니다')+' · 화면을 그 날짜로 옮겼습니다.':null].filter(Boolean).join(' · ');};
   const out=el('div',null,'study-view');
 
   // 0) 복습 목록(맨 위): 오늘 도래·밀린 건수 + 목록 + 결과 기록
@@ -131,6 +148,7 @@ export function renderStudy(root,ctx,st){
     for(const r of sum.items){
       const open=st.reviewForm?.mistakeId===r.mistakeId;
       add(rev,row('['+r.subject+'] '+r.itemRef,dueText(r),isToday?add(el('div',null,'buttons'),...RESULTS.map(res=>button(RESULT_TEXT[res],act(async()=>{
+        if(dayMoved())return;
         const sug=await st.flow.suggestReview(st.today,r.mistakeId,res);
         st.reviewForm={mistakeId:r.mistakeId,result:res,nextDue:sug.nextDue,graduated:sug.graduated,intervalDays:sug.intervalDays,itemRef:r.itemRef};
       })))):null));
@@ -142,6 +160,7 @@ export function renderStudy(root,ctx,st){
           f.graduated?null:hint('비워 두면: '+CLOSE_WARNING),
           add(el('div',null,'buttons'),
             button('복습 기록 넣기',act(async()=>{
+              if(dayMoved())return;
               const v=nd.value.trim();
               if(v!==''&&!dateKeyOK(v)){const e=new Error('INVALID_STUDY_DATE');e.code='INVALID_STUDY_DATE';throw e;}
               if(v===''&&!f.graduated&&!(ctx.confirmDialog?.(CLOSE_WARNING+' 그래도 비워 둘까요?')??true))return;
@@ -182,10 +201,10 @@ export function renderStudy(root,ctx,st){
   // 2) 세션
   const ses=section('그날 세션','공부 시간은 내가 입력·확인한 분만 셉니다(자동 측정 없음). 세션 '+fs.card.sessions.length+'개');
   const sSel=select(subjectOptions(),SUBJECTS[0]),endMin=input('',{inputmode:'numeric',placeholder:'확인한 분'}),endLoc=input('',{maxlength:String(MAX_LOCATOR),placeholder:'이어하기 위치(선택)'});
-  add(ses,add(el('div',null,'buttons study-quick'),field('과목',sSel),button('공부 시작',act(async()=>{await st.flow.quickStart(sSel.value);st.message='세션을 시작으로 초안에 넣었습니다(연산 0).';}),'primary')),
+  add(ses,add(el('div',null,'buttons study-quick'),field('과목',sSel),button('공부 시작',act(async()=>{follow(await st.flow.quickStart(sSel.value),'세션을 시작으로 초안에 넣었습니다(연산 0).');}),'primary')),
     add(el('div',null,'buttons study-quick'),field('확인한 분',endMin),field('이어하기 위치',endLoc),button('공부 끝',act(async()=>{
       const m=int(endMin.value);if(Number.isNaN(m)||m>1440){const e=new Error('INVALID_STUDY_SESSION');e.code='INVALID_STUDY_SESSION';throw e;}
-      await st.flow.quickEnd(m,endLoc.value.trim()===''?{}:{restartLocator:endLoc.value.trim()});st.message='세션을 끝으로 바꾸고 확인한 분을 넣었습니다(연산 0).';
+      follow(await st.flow.quickEnd(m,endLoc.value.trim()===''?{}:{restartLocator:endLoc.value.trim()}),'세션을 끝으로 바꾸고 확인한 분을 넣었습니다(연산 0).');
     }),'primary')));
   if(!fs.card.sessions.length)add(ses,hint('아직 세션이 없습니다.'));
   for(const s of fs.card.sessions){

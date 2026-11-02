@@ -17,6 +17,15 @@
 //   로드 실패는 다음 호출에서 다시 읽는다. 메모리 사본이 60건이면 거부 전에 디스크를 다시 읽어 센다(다른 창이 지웠을 수 있음, B3i).
 //   같은 칸(디바운스 키)의 더 새 입력이 저장·삭제된 뒤 늦게 끝난 옛 입력의 save는 mem·디스크를 바꾸지 않는다(마지막 입력이 이김). 한 입력이 도는 동안의
 //   다른 호출은 직접 호출로 보고 자기 세대로 판정한다. 잠긴 뒤의 flush도 남은 실패를 던진다(B14).
+//   B16: defer(key,fn,{owned:true})의 콜백은 입력 토큰을 인자로 받고, save·discard에 {input:토큰}으로 넘긴다 → 그 호출의 주인·세대는 그 실행으로
+//   정확히 정해진다(도는 입력들로 추론하지 않음). 토큰 없는 호출은 직접 호출(호출 순간의 새 세대)이다. owned가 아닌 콜백만 예전 추론(B3i·B14)을 쓴다.
+//   카드 전체를 쓰는 저장이 어느 초안 위에서 계산됐는지 {base:draftId|null}로 주면, 그 사이 다른 칸·직접 호출로 초안이 바뀌었을 때 쓰지 않고
+//   CARD_DRAFT_STALE_BASE를 던진다(흐름이 최신 카드 위에 다시 계산, 독립 항목 보존). base 없는 토큰 저장은 그 날짜에 더 새 세대가 이미 저장됐으면 쓰지 않는다.
+//   다시 계산을 끝내 포기한 입력은 그 칸의 실패로 남고(다른 칸 성공으로 지워지지 않음) 같은 칸의 더 새 입력이 저장돼야 지워진다.
+// - B18: defer는 기본이 owned다(콜백은 언제나 입력 토큰을 받는다). 옛 추론(B3i·B14)은 상자를 legacyDeferInference:true로 만든 시험에서만 쓴다(앱 코드 금지).
+//   명시적으로 넘긴 토큰이 지금 도는 이 상자의 그 날짜 실행이 아니면(끝남·다른 상자·다른 날짜) CARD_DRAFT_STALE_INPUT으로 거절하고 mem·디스크를 바꾸지 않는다
+//   (토큰을 넘기지 않은 호출(undefined·null)만 직접 호출). 흐름이 저장·삭제 없이 끝낸 입력(값이 같음)은 keep으로 그 칸의 최신 세대가 되어 늦은 옛 입력을 막는다.
+//   같은 칸의 더 새 입력이 이미 받아들여졌으면 늦게 끝난 옛 입력의 sticky 실패는 기록하지 않는다.
 // - 쓰기 트랜잭션 안에서 디스크의 현재 키 kid를 다시 본다. 다른 창이 키를 새로 만들었으면 쓰지 않고 실패(CARD_DRAFT_KEY_CHANGED) → 새 키로
 //   다시 읽는다. 옛 키 암호문은 지우지 않는다(같은 날짜를 다시 쓰면 UNREADABLE|… 로 옮김). (B3h)
 // 보안 한계(정직하게): 키는 같은 브라우저 프로필 안에 있어 프로필 파일을 가진 사람에게는 저장된 로그인 세션과 같은 수준의 보호다. 앱 잠금이 암호문을 막지는 않는다.
@@ -47,6 +56,8 @@ export const CARD_DRAFT_ERROR_TEXT=Object.freeze({
   CARD_DRAFT_READ_ONLY:'이 창은 읽기 전용이라 초안을 저장하지 않아요 · 기록하는 창에서 입력하세요.',
   CARD_DRAFT_LOCKED:'잠겨 있어 초안을 저장하지 않았어요.',
   STALE_DRAFT:'다른 창에서 같은 날짜 초안이 바뀌어 저장하지 못했어요 — 이 화면을 닫으면 사라져요',
+  CARD_DRAFT_STALE_BASE:'그 사이 초안이 바뀌어 이 입력을 저장하지 못했어요 — 다시 입력해 주세요',
+  CARD_DRAFT_STALE_INPUT:'이미 끝난 입력이라 저장하지 않았어요 — 다시 입력해 주세요',
 });
 
 const KEY_ID='key',UNREADABLE_PREFIX='UNREADABLE|',FLUSH_ROUNDS=8;
@@ -71,12 +82,14 @@ export function cardDraftScope(status){
 }
 
 export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr=globalThis.crypto,scopeId,now=()=>new Date().toISOString(),newId=null,
-  locks=globalThis.navigator?.locks??null,canWrite=()=>true,unlocked=()=>true,emit=null,timers=null,debounceMs=CARD_DRAFT_DEBOUNCE_MS}={}){
+  locks=globalThis.navigator?.locks??null,canWrite=()=>true,unlocked=()=>true,emit=null,timers=null,debounceMs=CARD_DRAFT_DEBOUNCE_MS,legacyDeferInference=false}={}){
   const ids=newId??(()=>Array.from(cr.getRandomValues(new Uint8Array(12)),b=>b.toString(16).padStart(2,'0')).join(''));
   const setT=timers?.set??((f,ms)=>setTimeout(f,ms)),clearT=timers?.clear??(t=>clearTimeout(t));
   const mem=new Map(),unreadable=new Map(),deferred=new Map(),inflight=new Set(),listeners=new Set(),inputFail=new Map(),localLocks=new Map();
   // B14: wrote = 디바운스 키(칸)별로 받아들여진 저장의 입력 세대. 같은 칸의 더 새 입력이 저장된 뒤 늦게 온 옛 입력의 save는 mem·디스크를 바꾸지 않는다(R2-D1).
   const running=new Set(),okGen=new Map(),calls=new Set(),wrote=new Map();
+  // B16: owners = 입력 토큰 → 그 실행(owned 콜백만). accepted = 날짜(pfx)별로 받아들여진 저장·삭제 중 가장 새 세대(토큰·직접 호출만 센다).
+  const owners=new WeakMap(),accepted=new Map();
   let loaded=null,ready=false,keyCache=null,otherRows=0,failure=null,chain=Promise.resolve(),ver=0,inputGen=0,doneSeq=0;
   // S1c: lock() 뒤 새로 시작하는 list·count·save·discard·commit·flush는 디스크를 읽거나 쓰지 않는다(복호 사본·키 캐시를 다시 만들지 않음).
   // lock() 전에 시작한 호출(ops)은 끝까지 가고, lock은 그것들이 끝난 뒤 메모리 사본을 버린다. 다시 unlocked()가 참이 되면 풀린다.
@@ -94,11 +107,13 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
   const pfxOf=key=>key.split('|',2).join('|')+'|';
   const inputFor=(kind,date)=>{for(const [k,c] of inputFail)if(k.startsWith(kind+'|'+date+'|'))return c.code;return null;};
   const firstInput=()=>inputFail.values().next().value?.code??null;
-  const markFail=(key,code,gen)=>{if(gen<(okGen.get(pfxOf(key))??0)||(inputFail.get(key)?.gen??0)>gen)return;inputFail.set(key,{code,gen});};
+  // B16: sticky = 그 입력의 변경이 어디에도 저장되지 않은 실패(다시 계산 포기). 다른 칸·직접 저장의 성공으로는 지우지 않고, 같은 칸의 더 새 입력이 저장돼야 지운다.
+  // B18 (H13-N03): sticky라도 같은 칸의 더 새 입력이 이미 받아들여졌으면(wrote) 기록하지 않는다(디스크 값과 표시 일치).
+  const markFail=(key,code,gen,sticky=false)=>{if(sticky?(wrote.get(key)??0)>gen:(gen<(okGen.get(pfxOf(key))??0)||(inputFail.get(key)?.gen??0)>gen))return;inputFail.set(key,{code,gen,sticky});};
   // only가 있으면 그 칸만 지운다(저장 없이 끝난 입력), 없으면 그 날짜 전체(저장이 받아들여짐).
   const markOk=(pfx,gen,only=null)=>{
     if(!only)okGen.set(pfx,Math.max(okGen.get(pfx)??0,gen));
-    for(const [k,c] of [...inputFail])if((only?k===only:k.startsWith(pfx))&&c.gen<=gen)inputFail.delete(k);
+    for(const [k,c] of [...inputFail])if((only?k===only:k.startsWith(pfx))&&c.gen<=gen&&(!c.sticky||(wrote.get(k)??0)>c.gen))inputFail.delete(k);
   };
   function notify(){
     const count=countNow()??0;
@@ -252,8 +267,9 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
   function runDeferred(key){
     const d=deferred.get(key);if(!d)return null;
     clearT(d.timer);deferred.delete(key);
-    const r={key,pfx:pfxOf(key),gen:d.gen};running.add(r);
-    const p=Promise.resolve().then(d.fn).then(()=>settleRun(r,null),e=>settleRun(r,e)).then(notify);   // 오류는 버리지 않고 기록(화면이 삼킨 거부 포함)
+    const r={key,pfx:pfxOf(key),gen:d.gen,owned:d.owned,saved:false,refused:null,rebased:false},token=d.owned?Object.freeze({}):undefined;running.add(r);
+    if(token)owners.set(token,r);
+    const p=Promise.resolve().then(()=>d.fn(token)).then(()=>settleRun(r,null),e=>settleRun(r,e)).then(notify);   // 오류는 버리지 않고 기록(화면이 삼킨 거부 포함)
     inflight.add(p);p.finally(()=>inflight.delete(p));
     return p;
   }
@@ -263,6 +279,15 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
   // B14 (R2-D2): 입력 하나의 흐름 콜백은 저장을 한 번 하고 곧 끝난다. 그래서 r만 후보인 끝난 호출이 여럿이면 r의 것은 마지막 1건이고,
   // 그 앞의 것들은 r이 도는 동안 들어온 직접 호출이다 → 자기 세대(callGen, r보다 새 입력)로 판정한다(옛 입력의 거절이 새 직접 저장의 성공을 뒤집지 않음).
   function settleRun(r,err){
+    // B16: owned 실행은 자기 토큰으로 한 호출의 결과만 가진다(추론 없음). 직접 호출은 이미 자기 세대로 판정됐다.
+    if(r.owned){
+      running.delete(r);
+      if(err)markFail(r.key,failCode(err),r.gen,r.rebased&&!r.saved&&err?.code==='CARD_DRAFT_STALE_BASE');
+      else if(r.refused)markFail(r.key,r.refused,r.gen);
+      else if(r.rebased&&!r.saved)markFail(r.key,'CARD_DRAFT_STALE_BASE',r.gen,true);   // 다시 계산을 포기했고 콜백이 오류를 삼켰다: 저장됨으로 보이지 않게
+      else markOk(r.pfx,r.gen,r.saved?null:r.key);
+      return;
+    }
     const done=[...calls].filter(c=>c.done&&c.runs.has(r)),hit=err?done.find(c=>c.err===err):null,singles=done.filter(c=>c.runs.size===1);
     const mine=hit?[hit]:[...singles.slice(-1),...done.filter(c=>c.runs.size>1).sort((a,b)=>a.done-b.done).slice(-1)],direct=hit?[]:singles.slice(0,-1);
     running.delete(r);
@@ -282,21 +307,42 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
   // done()은 호출이 끝날 때(저장이 디스크에 닿았거나 거부를 던지기 직전) 부른다.
   // B14: callGen = 이 호출이 직접 호출로 판정될 때의 세대(호출 순간의 새 세대). stale() = 후보 입력 모두가 같은 칸의 더 새 입력에 이미 덮였다(R2-D1).
   // wrote() = 받아들여진 저장: 후보가 한 칸뿐이면 그 칸에 후보 중 가장 새 세대를 적는다(어느 후보의 저장인지 몰라도 그 세대 이상만 막지 않는다).
-  const inputOf=pfx=>{
-    const runs=[...running].filter(r=>r.pfx===pfx);
-    if(!runs.length){const gen=++inputGen;return {runs,stale:()=>false,wrote:()=>{},refuse:code=>{markFail(pfx,code,gen);notify();return fail(code);},ok:()=>markOk(pfx,gen),done:()=>{}};}
+  // B16: exact = 토큰으로 주인이 정해진 호출. 토큰·직접 호출은 받아들여진 세대를 accepted에 적고, base 없는 토큰 저장은 그 날짜에 더 새 세대가
+  // 이미 받아들여졌으면 쓰지 않는다(직접 호출의 base 없는 저장은 예전 그대로). attributed = 거부를 입력(칸)의 실패로 남기는 호출(토큰 또는 예전 추론의 후보).
+  // rebased() = 이 호출이 CARD_DRAFT_STALE_BASE로 돌려보내졌다: 그 실행이 끝까지 저장하지 못하면 그 입력의 실패로 남긴다(흐름이 다시 계산을 포기한 경우).
+  const accept=(pfx,gen)=>{accepted.set(pfx,Math.max(accepted.get(pfx)??0,gen));};
+  const ownerOf=(token,pfx)=>{const r=token!=null&&typeof token==='object'?owners.get(token):null;return r&&running.has(r)&&r.pfx===pfx?r:null;};
+  // B18 (H13-N02): 토큰을 넘겼는데(undefined·null이 아님) 지금 도는 이 상자의 그 날짜 실행이 아니면 거절한다. pfx를 모르면 실행이 도는지만 본다.
+  const checkToken=(token,pfx)=>{
+    if(token==null)return;
+    const r=typeof token==='object'?owners.get(token):null;
+    if(!r||!running.has(r)||(pfx!=null&&r.pfx!==pfx))throw fail('CARD_DRAFT_STALE_INPUT');
+  };
+  const inputOf=(pfx,token=null)=>{
+    checkToken(token,pfx);
+    const own=ownerOf(token,pfx);
+    if(own)return {runs:[own],exact:true,attributed:true,gen:own.gen,
+      stale:()=>(wrote.get(own.key)??0)>own.gen,
+      wrote:()=>{wrote.set(own.key,Math.max(wrote.get(own.key)??0,own.gen));accept(pfx,own.gen);},
+      refuse:code=>{own.refused=code;notify();return fail(code);},
+      rebased:()=>{own.rebased=true;},
+      ok:()=>{own.saved=true;},done:()=>{}};
+    const runs=[...running].filter(r=>!r.owned&&r.pfx===pfx);
+    if(!runs.length){const gen=++inputGen;return {runs,exact:false,attributed:false,gen,stale:()=>false,wrote:()=>accept(pfx,gen),refuse:code=>{markFail(pfx,code,gen);notify();return fail(code);},rebased:()=>{},ok:()=>markOk(pfx,gen),done:()=>{}};}
     const c={pfx,runs:new Set(runs),gen:Math.max(...runs.map(r=>r.gen)),callGen:++inputGen,single:runs.length===1,refused:null,err:null,saved:false,done:0};calls.add(c);
     const keys=new Set(runs.map(r=>r.key));
-    return {runs,
+    return {runs,exact:false,attributed:true,gen:c.gen,rebased:()=>{},
       stale:()=>runs.every(r=>(wrote.get(r.key)??0)>r.gen),
       wrote:()=>{if(keys.size===1){const k=runs[0].key;wrote.set(k,Math.max(wrote.get(k)??0,c.gen));}},
       refuse:code=>{c.refused=code;c.err=fail(code);notify();return c.err;},
       ok:()=>{c.saved=true;},
       done:()=>{if(c.done)return;c.done=++doneSeq;if(!c.runs.size)orphan(c);}};
   };
-  function defer(key,fn){
+  // B16: owned:true면 fn(토큰)으로 부른다. 콜백은 그 토큰을 save·discard의 {input}으로 넘긴다(흐름의 setNote(date,note,{input}) 등).
+  // B18: 기본은 owned(앱 코드는 언제나 토큰 방식). owned:false로 옛 추론을 쓰는 것은 legacyDeferInference 상자(시험)에서만 된다.
+  function defer(key,fn,{owned}={}){
     const old=deferred.get(key);if(old)clearT(old.timer);
-    deferred.set(key,{fn,gen:++inputGen,timer:setT(()=>{void runDeferred(key);},debounceMs)});
+    deferred.set(key,{fn,owned:!legacyDeferInference||owned===true,gen:++inputGen,timer:setT(()=>{void runDeferred(key);},debounceMs)});
     notify();
   }
   // 기다리는 입력을 지금 저장하고, 쓰기가 디스크에 닿을 때까지 기다린다. 기다리는 동안 새 입력이 오면 그것도 저장한다(정해진 횟수까지,
@@ -328,10 +374,13 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
     if(!CARD_DRAFT_KINDS.includes(kind))throw fail('CARD_DRAFT_KIND');
     const byDraft=id=>live().find(e=>e.kind===kind&&e.draft.draftId===id)??null;
     return {
+      locked:()=>isLocked()||!unlocked(),   // B18 (H13-C05): 흐름이 재적용 회차 전에 로그아웃 잠금을 본다
       list:tracked(async()=>{if(isLocked())return [];await load();if(!unlocked())return [];return live().filter(e=>e.kind===kind).map(e=>structuredClone(e.draft));}),
-      save:tracked(async({type,body})=>{
+      // B16: opts.input = defer 토큰(그 실행의 저장), opts.base = 이 카드를 계산한 초안의 draftId(없었으면 null). 둘 다 선택.
+      save:tracked(async({type,body},opts={})=>{
         if(type!=='ENTITY'||body?.entityType!==kind||!DATE_RE.test(body?.entityId??''))throw fail('CARD_DRAFT_SHAPE');
-        const input=inputOf(kind+'|'+body.entityId+'|'),refuse=input.refuse;   // 거부된 입력도 기록(호출자가 오류를 삼켜도 flush가 던짐)
+        const hasBase=Boolean(opts)&&Object.hasOwn(opts,'base');
+        const input=inputOf(kind+'|'+body.entityId+'|',opts?.input),refuse=input.refuse;   // 거부된 입력도 기록(호출자가 오류를 삼켜도 flush가 던짐)
         try{
           try{guardWrite();}catch(e){throw refuse(e.code);}   // 읽기 전용·잠김 거부도 같다
           await load();
@@ -344,6 +393,10 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
           // 메모리 사본은 다른 창이 지운 것을 모른다: 가득 차 보이면 디스크를 다시 읽어 센다. 늘어나는 쓰기의 최종 판단은 쓰기 트랜잭션 안(persistOne).
           if(full()){await reload();if(input.stale())return superseded();if(full())throw refuse('CARD_DRAFT_LIMIT');}
           const prev=mem.get(id),aside=!prev&&unreadable.has(id);
+          // B16 (K1-01): 이 카드를 계산한 뒤 그 날짜 초안이 바뀌었다(다른 칸·직접 호출·다른 창) → 덮어쓰지 않는다. 흐름이 최신 카드 위에 다시 계산한다(실패 아님).
+          if(hasBase&&(prev&&!prev.deleted?prev.draft.draftId:null)!==opts.base){input.rebased();throw fail('CARD_DRAFT_STALE_BASE');}
+          // base 없는 카드 전체 저장(토큰): 그 날짜에 더 새 세대 입력이 이미 받아들여졌다 → 옛 입력은 바꾸지 않는다(입력 순서로 마지막이 이김).
+          if(!hasBase&&input.exact&&(accepted.get(kind+'|'+date+'|')??0)>input.gen)return superseded();
           mem.set(id,{id,kind,date,base:prev?prev.base:aside?unreadable.get(id).base:null,aside:Boolean(prev?.aside)||aside,draft,updatedAt:now(),dirty:true,deleted:false,ver:++ver});
           input.ok();input.wrote();
           notify();await persist();
@@ -351,18 +404,46 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
         }finally{input.done();}
       }),
       // 흐름은 입력을 원래 값으로 되돌리면 디바운스 안에서 discard를 부른다: save와 같은 입력 세대 규칙을 따른다.
-      discard:tracked(async id=>{
+      // B16: opts.input = defer 토큰, opts.date = 되돌리기(흐름)일 때 그 날짜. date를 주면 그 초안이 이미 다른 초안으로 바뀐 경우 CARD_DRAFT_STALE_BASE.
+      discard:tracked(async(id,opts={})=>{
+        checkToken(opts?.input,null);   // B18: 끝난·다른 상자 토큰은 아무것도 읽거나 바꾸기 전에 거절
         let denied=null;try{guardWrite();}catch(err){denied=err;}
         if(!isLocked())await load();   // S1c: 잠긴 뒤에는 디스크를 다시 읽지 않는다(메모리의 미저장 입력만 본다)
-        const e=byDraft(id);
-        if(denied){if(e){const input=inputOf(kind+'|'+e.date+'|');if(input.runs.length){const err=input.refuse(denied.code);input.done();throw err;}}throw denied;}   // 버튼으로 직접 버린 거부는 화면 오류만
-        if(!e)return;
-        const input=inputOf(kind+'|'+e.date+'|');input.ok();input.wrote();   // B14: 새 입력이 되돌린(지운) 뒤 늦은 옛 입력이 초안을 다시 만들지 않게
+        const e=byDraft(id),token=opts?.input,date=e?.date??(DATE_RE.test(opts?.date??'')?opts.date:null),pfx=date?kind+'|'+date+'|':null;
+        if(pfx)checkToken(token,pfx);   // 다른 날짜 실행의 토큰(또는 load 동안 끝난 실행)
+        if(denied){if(pfx&&(e||ownerOf(token,pfx))){const input=inputOf(pfx,token);if(input.attributed){const err=input.refuse(denied.code);input.done();throw err;}}throw denied;}   // 버튼으로 직접 버린 거부는 화면 오류만
+        if(!e){
+          // B16 (K1-01): 이 되돌리기가 읽은 초안이 그 사이 바뀌었다. 같은 칸의 더 새 입력이 이미 정했으면 아무것도 하지 않고(마지막 입력이 이김),
+          // 아니면 다른 칸·직접 호출이 바꾼 것이니 흐름이 최신 카드 위에 다시 계산한다(그 항목을 지우지 않음).
+          if(!pfx)return;
+          const own=ownerOf(token,pfx);
+          if(own&&(wrote.get(own.key)??0)>own.gen){own.saved=true;return;}
+          if(live().some(x=>x.kind===kind&&x.date===date)){if(own)own.rebased=true;throw fail('CARD_DRAFT_STALE_BASE');}
+          return;
+        }
+        const input=inputOf(pfx,token);
+        if(input.exact&&input.stale()){input.ok();input.done();return;}   // B16: 같은 칸의 더 새 입력이 이미 저장·삭제됐다
+        input.ok();input.wrote();   // B14: 새 입력이 되돌린(지운) 뒤 늦은 옛 입력이 초안을 다시 만들지 않게
         try{
           if(e.stale){mem.delete(e.id);await reload();await persist();return;}   // 이 창 초안은 디스크에 없다: 다른 창 초안은 지우지 않고 다시 읽는다
           mem.set(e.id,{...e,deleted:true,dirty:true,ver:++ver});
           notify();await persist();
         }finally{input.done();}
+      }),
+      // B18 (H13-N01): 흐름이 이 입력을 저장·삭제 없이 끝냈다(최신 값이 이미 그 초안·확정값과 같음). 그 칸의 최신 세대로 적어 늦게 끝난 옛 입력의
+      // save·discard를 막는다(초안을 새로 만들지 않음, 쓰기 0). base = 흐름이 본 초안 draftId(없었으면 null): 그 사이 초안이 바뀌었으면 STALE_BASE(다시 계산).
+      // 토큰 없는 호출은 할 일이 없다(직접 호출은 언제나 새 세대).
+      keep:tracked(async(date,opts={})=>{
+        if(!DATE_RE.test(date??''))throw fail('CARD_DRAFT_SHAPE');
+        const pfx=kind+'|'+date+'|',token=opts?.input;
+        checkToken(token,pfx);
+        if(token==null||isLocked())return;
+        await load();
+        const own=ownerOf(token,pfx);if(!own)throw fail('CARD_DRAFT_STALE_INPUT');
+        if((wrote.get(own.key)??0)>own.gen)return;   // 같은 칸의 더 새 입력이 이미 정했다
+        const cur=live().find(x=>x.kind===kind&&x.date===date)?.draft.draftId??null;
+        if(Object.hasOwn(opts,'base')&&cur!==opts.base){own.rebased=true;throw fail('CARD_DRAFT_STALE_BASE');}
+        wrote.set(own.key,own.gen);
       }),
       // 확정: 일반 저장 경로(write, 같은 requestId)로 쓰고, 성공을 확인한 뒤에만 상자에서 지운다. 같은 날짜 확정은 Web Lock으로 줄 세우고,
       // 잠금 안에서 쓰기 권한·잠금을 다시 보고, 디스크에서 그 초안이 아직 있는지(rev·IV, 저장된 초안이면 draftId까지) 다시 읽어 확인한 뒤에만
