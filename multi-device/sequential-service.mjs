@@ -84,7 +84,7 @@ function syncPublishReasons(next,cur){
  return paths.filter(([,get])=>!samePayload(get(next),get(cur))).map(([name])=>name);
 }
 export class SequentialService {
- #nativeGuard;#store;#material;#transport;#auth;#writer;#reuseReplay;#session;#lease=null;#runtime=randomId();#state='AUTHENTICATED_READ_ONLY';#tail=Promise.resolve();#timer=null;#blocked=false;#closed=false;#clock;#capabilities=null;
+ #nativeGuard;#store;#material;#transport;#auth;#writer;#reuseReplay;#session;#lease=null;#runtime=randomId();#state='AUTHENTICATED_READ_ONLY';#tail=Promise.resolve();#timer=null;#blocked=false;#closed=false;#clock;#leaseClock;#capabilities=null;
  // F12-2 진단용 단계 시간(ms): 열기(#sync)·저장(write) 각각 최근 3회. 동작·검사·오류·호출 순서는 바꾸지 않는다(try/finally로만 측정).
  #openTimings=[];#saveTimings=[];
  // F12-3 진단용: 마지막 sync가 publish를 한 이유(필드 이름 문자열만, 값 없음). timings()는 숫자만 담는 규칙을 지키므로 별도 필드.
@@ -97,7 +97,10 @@ export class SequentialService {
  // F12-3 진단용: 기존 합산 'publish' 이름은 그대로 두고, 저장 안 publish 한 번마다를 이름 있는 단계로도 더한다(숫자만, 한 번만 실행).
  async #timeStage2(record,name1,name2,fn){const slot=record??{},t0=performance.now();try{return await fn();}finally{const dt=performance.now()-t0;slot[name1]=(slot[name1]??0)+dt;slot[name2]=(slot[name2]??0)+dt;}}
  #pushTiming(list,record){list.push(record);if(list.length>3)list.shift();}
- constructor({store,material,transport,auth,nativeGuard=null,clock=()=>Date.now(),reuseReplay=true}){this.#reuseReplay=typeof reuseReplay==='function'?reuseReplay:reuseReplay===false?null:true;this.#session=replaySession();this.#nativeGuard=nativeGuard;check(!store.state.sequentialSync.activation.nativeBootstrap||nativeGuard,'MD_PRIMARY_GUARD_REQUIRED');this.#store=store;this.#material=material;this.#transport=transport;this.#auth=auth;this.#clock=clock;this.#writer=WriterContext.create(material.keyring,material.identity,'op');if(store.state.sequentialSync.pending)this.#state='DISPATCHED_UNKNOWN';}
+ // B15 (H1-02): two clocks. `clock` (wall, epoch ms) is only compared with server epoch seconds (enrollment expiresAt).
+ // `leaseClock` times the writer lease deadline and its checks; it must not go backwards. Default performance.now; a caller that
+ // injects only `clock` (synthetic tests) keeps timing the lease with it, as before B15.
+ constructor({store,material,transport,auth,nativeGuard=null,clock,leaseClock,reuseReplay=true}){this.#reuseReplay=typeof reuseReplay==='function'?reuseReplay:reuseReplay===false?null:true;this.#session=replaySession();this.#nativeGuard=nativeGuard;check(!store.state.sequentialSync.activation.nativeBootstrap||nativeGuard,'MD_PRIMARY_GUARD_REQUIRED');this.#store=store;this.#material=material;this.#transport=transport;this.#auth=auth;this.#clock=clock??(()=>Date.now());this.#leaseClock=leaseClock??clock??(()=>performance.now());this.#writer=WriterContext.create(material.keyring,material.identity,'op');if(store.state.sequentialSync.pending)this.#state='DISPATCHED_UNKNOWN';}
  get phase(){return this.#state;}
  get pending(){return this.#store.state.sequentialSync.pending;}
  get material(){return this.#material;}
@@ -183,16 +186,20 @@ export class SequentialService {
  async #acquire(purpose='WRITE'){
   check(this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');
   check(!this.pending&&!this.#store.state.sequentialSync.enrollment&&!this.#blocked,'MD_PENDING_UNRESOLVED');await this.#authenticated();this.#state='ACQUIRING';
-  const token=randomId(),head=this.#headArgs();const state=await this.#transport.call('acquireWriter',{...head,runtimeSessionId:this.#runtime,leaseToken:token,purpose,client:CLIENT});
+  // B13 (CONC-001): the deadline counts from the moment the request was sent, so a slow response cannot stretch it past the server expiry.
+  const token=randomId(),head=this.#headArgs(),sent=this.#leaseClock();const state=await this.#transport.call('acquireWriter',{...head,runtimeSessionId:this.#runtime,leaseToken:token,purpose,client:CLIENT});
   check(state.version===head.expectedVersion&&state.head===head.expectedHead&&state.rosterHash===head.expectedRosterHash&&state.accessEpoch===head.accessEpoch&&state.leaseRuntime===this.#runtime&&state.leaseDevice===this.#material.identity.public.deviceId,'MD_LEASE_STATE');
-  this.#lease={token,epoch:state.leaseEpoch,deadline:this.#clock()+(state.leaseExpires-state.serverTime-LIMITS.safetySeconds)*1000,purpose};
-  this.#state=purpose==='WRITE'?'WRITE_READY':'VERIFIED_READ_ONLY';clearInterval(this.#timer);this.#timer=setInterval(()=>{this.#serial(()=>this.#renew()).catch(()=>this.suspend());},LIMITS.renewSeconds*1000);this.#timer.unref?.();return this.status();
+  this.#lease={token,epoch:state.leaseEpoch,deadline:sent+(state.leaseExpires-state.serverTime-LIMITS.safetySeconds)*1000,purpose};
+  // B15 (H1-03): an answer that arrives after its own deadline is not a write lease; stay read-only, start no renew timer.
+  // The lease is kept so the next acquire releases it and a save still reports MD_LEASE_EXPIRED (#ready).
+  const live=this.#leaseClock()<this.#lease.deadline;
+  this.#state=purpose==='WRITE'&&live?'WRITE_READY':'VERIFIED_READ_ONLY';clearInterval(this.#timer);if(!live)return this.status();this.#timer=setInterval(()=>{this.#serial(()=>this.#renew()).catch(()=>this.suspend());},LIMITS.renewSeconds*1000);this.#timer.unref?.();return this.status();
  }
  acquire(){return this.#serial(async()=>{check(this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');const record={};
   try{return await this.#timeStage(record,'acquire',async()=>{try{await this.#release(true);await this.#sync();return await this.#acquire();}catch(e){if(!this.#blocked)this.#state='READ_ONLY';throw e;}});}
   finally{this.#pushTiming(this.#saveTimings,record);}
  });}
- async #renew(){if(!this.#lease||this.#blocked)return;try{const s=await this.#transport.call('renewWriter',this.#leaseArgs());check(s.leaseEpoch===this.#lease.epoch&&s.leaseRuntime===this.#runtime,'MD_RENEW_FENCE');this.#lease.deadline=this.#clock()+(s.leaseExpires-s.serverTime-LIMITS.safetySeconds)*1000;}catch(e){this.suspend();throw e;}}
+ async #renew(){if(!this.#lease||this.#blocked)return;try{const sent=this.#leaseClock(),s=await this.#transport.call('renewWriter',this.#leaseArgs());check(s.leaseEpoch===this.#lease.epoch&&s.leaseRuntime===this.#runtime,'MD_RENEW_FENCE');this.#lease.deadline=sent+(s.leaseExpires-s.serverTime-LIMITS.safetySeconds)*1000;}catch(e){this.suspend();throw e;}}
  suspend(){this.#blocked=true;clearInterval(this.#timer);if(!this.pending)this.#state='READ_ONLY';this.#session.clear();}
  // F12-4: keepSession=true는 acquire()/sync() 등이 release 바로 뒤에 항상 #sync()를 돌리는 내부 호출에서만 쓴다
  // (호출 순서는 1단계 evidence\01_app_call_order.txt로 확인: #release 뒤에는 어느 경로든 반드시 #sync가 바로 돈다) --
@@ -253,7 +260,7 @@ export class SequentialService {
   const b=intent.body;validateRetirementReceipt(intent,receipt);
   await this.#publish(local=>{const row=local.sequentialSync.lifecycle.retirements[b.intentId];check(same(row.intent,intent)&&(!row.receipt||same(row.receipt,receipt)),'B4_RETIRE_COLLISION');row.receipt=receipt;local.sequentialSync.access.epoch=Math.max(local.sequentialSync.access.epoch,receipt.accessEpoch);});this.#lease=null;this.#state='VERIFIED_READ_ONLY';this.#blocked=false;return receipt;
  }
- enrollmentContext(){check(this.#lease?.purpose==='ENROLL'&&!this.pending&&!this.#blocked&&this.#clock()<this.#lease.deadline,'MD_ENROLLMENT_LEASE');return {...this.#headArgs(),...this.#leaseArgs()};}
+ enrollmentContext(){check(this.#lease?.purpose==='ENROLL'&&!this.pending&&!this.#blocked&&this.#leaseClock()<this.#lease.deadline,'MD_ENROLLMENT_LEASE');return {...this.#headArgs(),...this.#leaseArgs()};}
  submitEnrollment(args){return this.#serial(async()=>{
   lifecycleWritable(this.#store);const pending=this.#store.state.sequentialSync.enrollment;
   check(pending?.approval&&same(pending.approval,args),'MD_ENROLLMENT_PENDING');await this.#authenticated();this.#state='PENDING_SERVER_ROSTER';
@@ -262,7 +269,7 @@ export class SequentialService {
   return this.#acceptEnrollmentTerminal(response);
  });}
 
- #ready(){check(this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');check(this.#state==='WRITE_READY'&&!this.#blocked&&!this.pending&&!this.#store.state.sequentialSync.enrollment,'MD_NOT_WRITE_READY');check(this.#lease?.purpose==='WRITE'&&this.#clock()<this.#lease.deadline,'MD_LEASE_EXPIRED');}
+ #ready(){check(this.#store.state.sequentialSync.lifecycle?.restoreMode!==true,'B4_RESTORE_READ_ONLY_HOLD');if(this.#lease?.purpose==='WRITE')check(this.#leaseClock()<this.#lease.deadline,'MD_LEASE_EXPIRED');check(this.#state==='WRITE_READY'&&!this.#blocked&&!this.pending&&!this.#store.state.sequentialSync.enrollment,'MD_NOT_WRITE_READY');check(this.#lease?.purpose==='WRITE','MD_LEASE_EXPIRED');}
  async #prepare(op,scope=null,record=null){
   const s=this.#store.state.sequentialSync,tip=s.tips[this.#material.identity.public.deviceId];
   const wire=await this.#writer.seal(payloadEncode(op),{objectId:op.opId,sequence:(tip?.sequence??0)+1,previousDigest:tip?.digest??null,roster:this.#material.roster});
@@ -284,10 +291,10 @@ export class SequentialService {
   catch(e){this.#state='REMOTE_COMMITTED_LOCAL_HOLD';this.#blocked=true;this.#session.clear();throw e;}
   if(p.certificate.body.compatibility?.requiredDomainSchemaVersion===2)this.#capabilities=serverCapabilities(2);
   this.#state='LOCAL_CONFIRMED';const resultUI={...savedResult(p.op),status:'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED',remoteVersion:receipt.version,remoteHead:receipt.head};
-  this.#state=this.#lease?.purpose==='WRITE'&&!this.#blocked&&this.#clock()<this.#lease.deadline?'WRITE_READY':'VERIFIED_READ_ONLY';return resultUI;
+  this.#state=this.#lease?.purpose==='WRITE'&&!this.#blocked&&this.#leaseClock()<this.#lease.deadline?'WRITE_READY':'VERIFIED_READ_ONLY';return resultUI;
  }
  async #dispatch(p,scope=null,record=null){
-  await this.#authenticated();check(!this.#blocked&&this.#lease&&this.#clock()<this.#lease.deadline,'MD_DISPATCH_BLOCKED');
+  await this.#authenticated();check(!this.#blocked&&this.#lease&&this.#leaseClock()<this.#lease.deadline,'MD_DISPATCH_BLOCKED');
   await this.#timeStage2(record,'publish','publishDispatched',()=>this.#publish(local=>{check(same(local.sequentialSync.pending,p),'MD_PENDING_CHANGED');local.sequentialSync.pending.status='DISPATCHED_UNKNOWN';},{replay:scope?.replay}));p=this.pending;this.#state='DISPATCHED_UNKNOWN';
   let receipt;try{receipt=await this.#transport.call('appendIntent',{intentId:p.intentId,wire:p.wire,certificate:p.certificate,leaseToken:this.#lease.token});}catch(e){this.#state='DISPATCHED_UNKNOWN';throw e;}
   return this.#materialize(p,receipt,scope,record);

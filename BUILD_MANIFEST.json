@@ -11,8 +11,8 @@
     },
     {
       "path": "multi-device/lifecycle-client.mjs",
-      "sourceSha256": "92c812e5fa34b0b2d0491ae00f1aa7b935bb7e918c1d018de23384bc0bc4ffa1",
-      "outputSha256": "92c812e5fa34b0b2d0491ae00f1aa7b935bb7e918c1d018de23384bc0bc4ffa1",
+      "sourceSha256": "e2235b69c213f6b95beca92788a10350ac4700c7c54f6c94ef08f9cc2c8cdfd6",
+      "outputSha256": "e2235b69c213f6b95beca92788a10350ac4700c7c54f6c94ef08f9cc2c8cdfd6",
       "dependencies": [
         "core/package/src/codec.mjs",
         "core/package/src/crypto.mjs",
@@ -55,8 +55,8 @@
     },
     {
       "path": "multi-device/real-history.mjs",
-      "sourceSha256": "5f07eaa6e84d1bb4e2a7550b8af85a0a554f9f332c2a3e89b4795d5a5bfe6f27",
-      "outputSha256": "5f07eaa6e84d1bb4e2a7550b8af85a0a554f9f332c2a3e89b4795d5a5bfe6f27",
+      "sourceSha256": "40f6a9d0ce416b232999addb2b3113a3f20801f22e62c7d9539a49e09092d2fc",
+      "outputSha256": "40f6a9d0ce416b232999addb2b3113a3f20801f22e62c7d9539a49e09092d2fc",
       "dependencies": [
         "core/package/parent/v2_phase2/source/dag.mjs",
         "core/package/parent/v2_phase2/source/canonical.mjs",
@@ -69,8 +69,8 @@
     },
     {
       "path": "multi-device/sequential-service.mjs",
-      "sourceSha256": "e308a9260822ca00fbb428a754f76ace3fb6d847a7d141753307057d2916c483",
-      "outputSha256": "e308a9260822ca00fbb428a754f76ace3fb6d847a7d141753307057d2916c483",
+      "sourceSha256": "866b1ad4a33e3f3dc2107a394da8929fb656fb4383b21b404b15eb6b524ebd0c",
+      "outputSha256": "866b1ad4a33e3f3dc2107a394da8929fb656fb4383b21b404b15eb6b524ebd0c",
       "dependencies": [
         "core/package/src/codec.mjs",
         "core/package/src/crypto.mjs",
@@ -120,8 +120,8 @@
     },
     {
       "path": "multi-device/md-backend.mjs",
-      "sourceSha256": "442d80deefc156875b2829406d74b3af40f3e3eddbcef98025b968a3478c4b7e",
-      "outputSha256": "442d80deefc156875b2829406d74b3af40f3e3eddbcef98025b968a3478c4b7e",
+      "sourceSha256": "c7cb8d426071ee4902c1ed75fe41c9c6260b39a8829770e734e91e5b3acec12f",
+      "outputSha256": "c7cb8d426071ee4902c1ed75fe41c9c6260b39a8829770e734e91e5b3acec12f",
       "dependencies": [
         "core/package/src/codec.mjs",
         "multi-device/sequential-service.mjs",
@@ -134,8 +134,8 @@
     },
     {
       "path": "multi-device/browser/entry.mjs",
-      "sourceSha256": "d6a5d14f4e23a8bd979165cc13870048b4e0034599b6a0ad7e978e7549fd9f85",
-      "outputSha256": "d6a5d14f4e23a8bd979165cc13870048b4e0034599b6a0ad7e978e7549fd9f85",
+      "sourceSha256": "6209711c3b4a6de114cfb1fe8381c18c25b3395eb65b7b262ab4dff0f81f1b6c",
+      "outputSha256": "6209711c3b4a6de114cfb1fe8381c18c25b3395eb65b7b262ab4dff0f81f1b6c",
       "dependencies": [
         "multi-device/browser/backend.mjs",
         "user-app/public/app.mjs"
@@ -144,8 +144,8 @@
     },
     {
       "path": "multi-device/browser/backend.mjs",
-      "sourceSha256": "c9e97acec61e21b02f67b50d96e56cd06feb22a8dec72fb3a23d964ac6c6efc4",
-      "outputSha256": "c9e97acec61e21b02f67b50d96e56cd06feb22a8dec72fb3a23d964ac6c6efc4",
+      "sourceSha256": "fa283df06403b34ac4510bfdd45c819349e39168d6293e9434a2b70d28c2968d",
+      "outputSha256": "fa283df06403b34ac4510bfdd45c819349e39168d6293e9434a2b70d28c2968d",
       "dependencies": [
         "core/package/src/codec.mjs",
         "multi-device/auth-session.mjs",
@@ -172,8 +172,8 @@
     },
     {
       "path": "multi-device/browser/auth-persist-idb.mjs",
-      "sourceSha256": "13593bc19420c34a3cab0a16ecb4a273716ca865e913e8ffdb6e245f5a1f745a",
-      "outputSha256": "13593bc19420c34a3cab0a16ecb4a273716ca865e913e8ffdb6e245f5a1f745a",
+      "sourceSha256": "68843925b4b1d633104fdd2b4dbf3f33020fefa4c241d6e1939ddc10e930e3de",
+      "outputSha256": "68843925b4b1d633104fdd2b4dbf3f33020fefa4c241d6e1939ddc10e930e3de",
       "dependencies": [
         "core/package/src/codec.mjs"
       ],
@@ -297,8 +297,8 @@
     },
     {
       "path": "user-app/whole-life-model.mjs",
-      "sourceSha256": "c08f1ed810df0d898ee96e21b128b0c58b741f03b932fc429dd7881b62596780",
-      "outputSha256": "f3c61d30b376290dfab983c007a907e9fcdccab9b53082c58881e9b9c91e96c4",
+      "sourceSha256": "f51e108846cf3170ad52ad159383fd45af4b794de26d179f531a6e8427c1abf3",
+      "outputSha256": "e77f4141b03bcda750b06b69ca798e952ae16a0dbd387099ab26e1779a9dfa1c",
       "dependencies": [
         "multi-device/portable/errors.mjs",
         "core/package/src/codec.mjs",
@@ -341,8 +341,8 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "083f6563a17a00ebd4f79c6cbb136458adfcaca28e81b09afbbbcd4ff8b426aa",
-      "outputSha256": "083f6563a17a00ebd4f79c6cbb136458adfcaca28e81b09afbbbcd4ff8b426aa",
+      "sourceSha256": "a9384093921427450c580d68876115185c8860459e2c54cc6b1cc616ca1185a0",
+      "outputSha256": "a9384093921427450c580d68876115185c8860459e2c54cc6b1cc616ca1185a0",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs",
@@ -426,8 +426,8 @@
     },
     {
       "path": "user-app/fin-model.mjs",
-      "sourceSha256": "158b9fd397453291168befc218683dfe0880135464f83809cba20694e47fd8be",
-      "outputSha256": "b5e391661f3514b30e7ab02347e4cdb231636a865445b277f1ac24d5eb52cef3",
+      "sourceSha256": "3a2b181cf10676a709f8c922f8e5ef4dd031f4ac45a9db2e73208088a7854af7",
+      "outputSha256": "a12d583bb60745fe9b8018cd1d285b52987bf6ee539f02256841a77528983b1b",
       "dependencies": [
         "multi-device/portable/errors.mjs"
       ],
@@ -460,8 +460,8 @@
     },
     {
       "path": "user-app/fin-projection.mjs",
-      "sourceSha256": "aa64d41a33a6beb3fd46e18290758696c370f458d3cfd799ea06eb05f0768eb0",
-      "outputSha256": "aa64d41a33a6beb3fd46e18290758696c370f458d3cfd799ea06eb05f0768eb0",
+      "sourceSha256": "44f3d3d538d6af482908bc4cab8033e1c47e0f4fd053b8c1ae058089dfe8ad20",
+      "outputSha256": "44f3d3d538d6af482908bc4cab8033e1c47e0f4fd053b8c1ae058089dfe8ad20",
       "dependencies": [
         "user-app/fin-model.mjs"
       ],
@@ -469,15 +469,15 @@
     },
     {
       "path": "user-app/public/fin-ledger.mjs",
-      "sourceSha256": "326467ea8b31a4ec21f3a7212d7f8bd766444ced368538951442a654f05ecca9",
-      "outputSha256": "326467ea8b31a4ec21f3a7212d7f8bd766444ced368538951442a654f05ecca9",
+      "sourceSha256": "98f9c9c401f9d20d6b51354dca3def7ec6b0d3b8a13abeba91d38cf1f0c2bcf2",
+      "outputSha256": "98f9c9c401f9d20d6b51354dca3def7ec6b0d3b8a13abeba91d38cf1f0c2bcf2",
       "dependencies": [],
       "transforms": []
     },
     {
       "path": "user-app/public/fin-plan.mjs",
-      "sourceSha256": "02a46d6f87a813d46e5c58fcc719d48e5ebc4a4059c8206ca8ee44d61702231b",
-      "outputSha256": "02a46d6f87a813d46e5c58fcc719d48e5ebc4a4059c8206ca8ee44d61702231b",
+      "sourceSha256": "f260b9fb53ef3b2d85e919db4b11f763dc87400aa1e4c06b6f5f500dc5187f77",
+      "outputSha256": "f260b9fb53ef3b2d85e919db4b11f763dc87400aa1e4c06b6f5f500dc5187f77",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-charts.mjs"
@@ -486,8 +486,8 @@
     },
     {
       "path": "user-app/public/fin-charts.mjs",
-      "sourceSha256": "ab1579702e0d90f08bc44e9de36022a86acb20659f6759cfca2c08665b53bd96",
-      "outputSha256": "ab1579702e0d90f08bc44e9de36022a86acb20659f6759cfca2c08665b53bd96",
+      "sourceSha256": "dd5b55b620da84c42c9cb56df2201beab1caf4bee5b5eb58e78f46ed07ce3204",
+      "outputSha256": "dd5b55b620da84c42c9cb56df2201beab1caf4bee5b5eb58e78f46ed07ce3204",
       "dependencies": [
         "user-app/public/fin-ledger.mjs"
       ],
@@ -495,8 +495,8 @@
     },
     {
       "path": "user-app/public/hlt-ui.mjs",
-      "sourceSha256": "397d65b654a074bfc39d62f3c2aba91f701a4cdfad0109e681bdc034a134cfb2",
-      "outputSha256": "397d65b654a074bfc39d62f3c2aba91f701a4cdfad0109e681bdc034a134cfb2",
+      "sourceSha256": "befa3c4d41b46334b507d051f3cdd153c0f885c30e5df288bd0f8ebe49ef81e2",
+      "outputSha256": "befa3c4d41b46334b507d051f3cdd153c0f885c30e5df288bd0f8ebe49ef81e2",
       "dependencies": [
         "user-app/public/hlt-flow.mjs",
         "user-app/public/hlt-projection.mjs",
@@ -506,8 +506,8 @@
     },
     {
       "path": "user-app/public/study-ui.mjs",
-      "sourceSha256": "f9595c5c19d94c7004cf731ecf4dc012b910a53e4f62982204d0e410ff98a7db",
-      "outputSha256": "f9595c5c19d94c7004cf731ecf4dc012b910a53e4f62982204d0e410ff98a7db",
+      "sourceSha256": "665adf01e67664f06aa4f15f9efc7930f655b984bc7a7485a4b0b8542df9d1a9",
+      "outputSha256": "665adf01e67664f06aa4f15f9efc7930f655b984bc7a7485a4b0b8542df9d1a9",
       "dependencies": [
         "user-app/public/study-flow.mjs",
         "user-app/public/study-projection.mjs",
@@ -518,8 +518,8 @@
     },
     {
       "path": "user-app/public/card-draft-box.mjs",
-      "sourceSha256": "aabb86db08a9f43e2de6a365b0886295be04c220f7bc26c6462098e151374a9d",
-      "outputSha256": "aabb86db08a9f43e2de6a365b0886295be04c220f7bc26c6462098e151374a9d",
+      "sourceSha256": "3e613a66694f338a07d691084e823de5bb13a27eb32cc7c7990d30c7a1da954c",
+      "outputSha256": "3e613a66694f338a07d691084e823de5bb13a27eb32cc7c7990d30c7a1da954c",
       "dependencies": [],
       "transforms": []
     },

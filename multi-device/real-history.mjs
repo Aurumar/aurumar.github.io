@@ -21,7 +21,14 @@ function createReplayer({vaultId,roster,legacyCount},legacyPrefixOps){
  const members=new Map([[first.deviceId,first]]);
  for(const event of roster.evidence.events)members.set(event.body.member.deviceId,event.body.member);
  const graph=new Graph({vault:vaultId,mode:'REAL'}),requests=new Set(),tips=new Map();
- let i=0;
+ // B8i: MD_GRAPH_HOLD (pending/rejected/integrityFaults/conflicts all empty) copies the whole graph, so running it after
+ // every append made the first replay O(N^2) on its own. Until finish() first succeeds the graph is private: only this
+ // replayer has ingested into it, every op passed the full-frontier deps check and was ACCEPTED (any core rejection
+ // throws inside ingest), so a clean prefix stays clean and one check in finish() reports the same result, code and
+ // position. Once finish() has returned the graph (a replaySession slot that is later extended), a caller may have
+ // ingested into it, so every append checks again exactly as before. All other checks keep their order.
+ let i=0,exposed=false;
+ const checkHold=()=>check(!graph.pending().length&&!graph.rejected().length&&!graph.integrityFaults().length&&!graph.conflicts().length,'MD_GRAPH_HOLD');
  function append(op){
   check(op.mode==='REAL'&&op.vault===vaultId&&op.control===null&&members.has(op.device),'MD_REAL_NAMESPACE');
   const tip=tips.get(op.device);
@@ -39,11 +46,11 @@ function createReplayer({vaultId,roster,legacyCount},legacyPrefixOps){
    check(i===0?edit.value.format===FORMATS.definition:edit.value.format!==FORMATS.definition,'MD_DEFINITION_IMMUTABLE');
   }
   check(graph.ingest(op)==='ACCEPTED','MD_GRAPH_ADMISSION');
-  check(!graph.pending().length&&!graph.rejected().length&&!graph.integrityFaults().length&&!graph.conflicts().length,'MD_GRAPH_HOLD');
+  if(exposed)checkHold();
   requests.add(p.requestId);tips.set(op.device,op);
   i++;
  }
- function finish(operations){validateWholeSequence(operations);return graph;}
+ function finish(operations){if(!exposed)checkHold();validateWholeSequence(operations);exposed=true;return graph;}
  return {append,finish,graph};
 }
 export function replayReal(operations,{vaultId,roster,legacyCount}){

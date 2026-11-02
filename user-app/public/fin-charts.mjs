@@ -1,7 +1,7 @@
 // FIN01 시각화 계산(순수 함수, DOM 없음). 그리기는 app.mjs가 SVG(createElementNS)와 styles.css 클래스로 한다.
 // 규칙: 금액 계산은 BigInt. 좌표 계산에만 Number를 쓴다(원 단위 14자리 이하라 안전).
 // 이체는 소비가 아니다. 선불 전환·미배분 잔액·순액 모름은 소비 합계에 넣지 않고 따로 센다. 자료 없는 달은 0원이 아니라 "자료 없음".
-import {shiftMonth,monthSpan,monthOK} from './fin-ledger.mjs';
+import {shiftMonth,monthSpan,monthOK,formatWon} from './fin-ledger.mjs';
 
 export function prepare(fin){
   return {
@@ -30,6 +30,9 @@ const CONSUMPTION=new Set(['EXPENSE','REFUND']);
 
 // ---------- 집계 (fin-projection.mjs finSummary와 같은 정의) ----------
 const bucket=()=>({spend:0n,refund:0n,consumption:0n,income:0n,prepaid:0n,transfer:0n,unknownRows:0,lineCount:0,byCategory:{}});
+// 분류·세부 분류 이름은 원천 글자다. '__proto__' 같은 이름이 와도 자체 항목으로만 읽고 쓴다(fin-projection.mjs add()와 같은 방식).
+const ownOf=(o,k)=>Object.hasOwn(o,k)?o[k]:undefined;
+const setOwn=(o,k,v)=>{Object.defineProperty(o,k,{value:v,writable:true,enumerable:true,configurable:true});};
 function addLine(b,l){
   b.lineCount++;
   if(l.net===null){b.unknownRows++;return;}
@@ -38,8 +41,9 @@ function addLine(b,l){
   if(l.kind==='INCOME'){b.income+=l.net;return;}
   if(l.kind==='REFUND')b.refund+=-l.net;else b.spend+=l.net;
   b.consumption+=l.net;
-  const c=b.byCategory[l.category]??={total:0n,sub:{}};
-  c.total+=l.net;c.sub[l.subcategory]=(c.sub[l.subcategory]??0n)+l.net;
+  let c=ownOf(b.byCategory,l.category);
+  if(c===undefined)setOwn(b.byCategory,l.category,c={total:0n,sub:{}});
+  c.total+=l.net;setOwn(c.sub,l.subcategory,(ownOf(c.sub,l.subcategory)??0n)+l.net);
 }
 export function aggregate(prep,range){
   const total=bucket(),months=new Map();
@@ -106,7 +110,7 @@ export function monthlySeries(prep,range,{maxCategories=6,localDate=null}={}){
   const rows=months.map(m=>{
     const b=agg.months.get(m);
     if(!consumed.has(m)||!b)return {month:m,hasData:false,total:null,parts:[],unknownRows:0};
-    const parts=cats.map(c=>({cat:c,value:c==='REST'?Object.entries(b.byCategory).filter(([k])=>!head.includes(k)).reduce((s,[,v])=>s+v.total,0n):b.byCategory[c]?.total??0n}));
+    const parts=cats.map(c=>({cat:c,value:c==='REST'?Object.entries(b.byCategory).filter(([k])=>!head.includes(k)).reduce((s,[,v])=>s+v.total,0n):ownOf(b.byCategory,c)?.total??0n}));
     if(!known.has(m))return {month:m,hasData:true,unknownOnly:true,total:null,parts:[],unknownRows:b.unknownRows};   // 순액 모름 줄만 있는 달: 모름(0원 아님)
     return {month:m,hasData:true,total:b.consumption,parts,unknownRows:b.unknownRows};
   });
@@ -328,4 +332,41 @@ export function completeness(prep,range,localDate){
     return {id,name:a.name,type:a.type,active:a.active,years:ys,have,missing};
   });
   return {from,to,months,years,rows};
+}
+
+// ---------- 홈 "오늘" 한눈 패널 (B5) ----------
+// 보여주기만 한다: 계산은 기존 aggregate를 오늘 하루 줄에 그대로 쓰고, 쓰기·연산·새 기록 종류는 없다. 줄 계산이 던지면 그 줄만 "확인할 수 없음"으로 보인다.
+export const GLANCE_UNAVAILABLE='확인할 수 없음';
+// 오늘(localDate, KST) 확정 지출 한 줄. FIN 자료가 없으면 null(줄 생략). 순액 모름 줄은 0원이 아니라 개수로 따로 적는다.
+export function todaySpendLine(fin,localDate){
+  if(!fin||(!fin.lines?.length&&!fin.residuals?.length))return null;
+  const prep=prepare(fin),day=prep.lines.filter(l=>l.date===localDate&&CONSUMPTION.has(l.kind));
+  if(!day.length)return '오늘 지출 기록 없음';
+  const t=aggregate({...prep,lines:day,residuals:[]},{from:null,to:null}).total;
+  const unknown=t.unknownRows?' · 순액 모름 '+t.unknownRows+'행 별도':'';
+  // "모름"은 순액을 아는 줄이 하나도 없을 때만. 알려진 0원(예: 전액 취소)은 0원으로 쓰고 순액 모름은 따로 센다.
+  if(!day.some(l=>l.net!==null))return '오늘 지출 모름'+unknown;
+  return '오늘 지출 '+formatWon(t.spend)+(t.refund>0n?' · 환불 '+formatWon(t.refund):'')+unknown;
+}
+// items: [{view,label,line:()=>string|null}] 순서대로 그린다. line이 null이면 그 줄은 아예 그리지 않고, 던지면 "확인할 수 없음". 그릴 줄이 없으면 null.
+// go(view)는 화면 이동(앱의 navigate). 줄을 누르면 해당 화면으로 간다.
+export function buildTodayGlance(doc,items,go){
+  const rows=[];
+  for(const it of items){
+    let text;
+    try{text=it.line();}catch{text=GLANCE_UNAVAILABLE;}
+    if(text===null||text===undefined)continue;
+    rows.push({it,text:String(text)});
+  }
+  if(!rows.length)return null;
+  const el=(tag,text,cls)=>{const n=doc.createElement(tag);if(text!==undefined&&text!==null)n.textContent=String(text);if(cls)n.className=cls;return n;};
+  const panel=el('section',null,'panel urgent-panel today-glance');panel.id='today-glance';
+  panel.append(el('h2','오늘','panel-title'));
+  for(const {it,text} of rows){
+    const b=el('button','열기','secondary nav-link');b.type='button';b.dataset.navOnly='1';b.dataset.view=it.view;
+    b.setAttribute('aria-label',it.label+' 열기');b.addEventListener('click',()=>go(it.view));
+    const main=el('div',null,'row-main');main.append(el('strong',it.label),el('p',text,'muted small'));
+    const r=el('div',null,'row');r.dataset.glance=it.view;r.append(main,b);panel.append(r);
+  }
+  return panel;
 }

@@ -77,8 +77,12 @@ function validateTxn(d){
   }
   requireValue(d.kind==='EXPENSE'||d.installments===0,'FIN_INSTALLMENTS_ONLY_FOR_EXPENSE');
 }
+// 원천 행의 저장 필드. 묶음은 불변이므로 이미 저장된 행과 계획의 행이 값까지 같은지 이 필드만으로 비교한다.
+export const ROW_FIELDS=Object.freeze(['rowId','date','month','accountId','merchant','amount','net','status','role','installments','sourceCategory','confidence','sourceFile','sourceRow','duplicateGroup','item','note']);
+// 행 값 지문: 키 순서·객체 모양에 흔들리지 않는다(정본 인코딩이 키를 정렬해도 값이 같으면 같은 지문).
+export const rowsSignature=rows=>JSON.stringify((rows??[]).map(r=>ROW_FIELDS.map(k=>r?.[k]??null)));
 function validateRow(r,source){
-  shape(r,['rowId','date','month','accountId','merchant','amount','net','status','role','installments','sourceCategory','confidence','sourceFile','sourceRow','duplicateGroup','item','note']);
+  shape(r,ROW_FIELDS);
   requireValue(finIdOK(r.rowId)&&finIdOK(r.accountId)&&ROW_STATUSES.includes(r.status)&&ROW_ROLES.includes(r.role),'INVALID_FIN_ROW');
   requireValue(typeof r.amount==='string'&&SIGNED.test(r.amount)&&(r.net===null||typeof r.net==='string'&&SIGNED.test(r.net)),'INVALID_FIN_ROW_AMOUNT');
   if(r.status==='RESIDUAL'){

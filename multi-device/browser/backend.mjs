@@ -41,6 +41,8 @@ export function browserPendingRecords({indexedDBImpl=globalThis.indexedDB}={}){
 // backend behaves exactly as before (sign in and unlock every start).
 function openSavedSession({factory,lockManager,origin}){try{return (factory??createSavedSessionIDB)({locks:lockManager,origin});}catch{return null;}}
 const notifySaveFailure=code=>{try{const elsewhere=code==='AUTH_SIGNED_OUT_ELSEWHERE';globalThis.dispatchEvent?.(new CustomEvent('life-brick-saved-session',{detail:{state:elsewhere?'SIGNED_OUT_ELSEWHERE':'SAVE_FAILED',code}}));const out=globalThis.document?.getElementById('status');if(out)out.textContent=(elsewhere?'다른 창에서 로그아웃되어 이 창의 로그인도 종료되었습니다 · 다시 로그인하세요 · ':'로그인 유지 저장 실패 · 이 페이지를 닫으면 다시 로그인해야 할 수 있습니다 · ')+code;}catch{}};
+// S1: the page is not reloaded (open inputs stay in memory, saving is refused); the screen locks and shows the sign-out line.
+const notifySignedOutElsewhere=()=>{try{globalThis.dispatchEvent?.(new CustomEvent('life-brick-md-state',{detail:{state:'SIGNED_OUT_ELSEWHERE'}}));const out=globalThis.document?.getElementById('status');if(out)out.textContent='다른 창에서 이 기기 로그아웃을 해서 이 창도 잠갔습니다 · 입력 중인 내용은 화면에 남아 있지만 저장되지 않습니다 · 다시 로그인하세요';}catch{}};
 export async function createBrowserBackend({config,authFactory,transportFactory,syntheticOrigin=false,lockManager=globalThis.navigator?.locks,savedSessionFactory}={}){
  config=validatePublicConfig(config);check(config.browserOrigin===location.origin||(syntheticOrigin&&location.hostname==='127.0.0.1'&&isSecureContext),'MD_FIXED_BROWSER_ORIGIN');
  const saved=authFactory?null:openSavedSession({factory:savedSessionFactory,lockManager,origin:location.origin});
@@ -75,19 +77,23 @@ export async function createBrowserBackend({config,authFactory,transportFactory,
    check(response.status===204,'RELAY_EDGE_CONNECTIVITY');return {status:'RELAY_CLIENT_READY'};
   },
  };
- const {backend,suspend:suspendService}=await createMDBackend({surface:'BROWSER',auth,transport,storage,ownership,policy});
+ // S1: another tab's "이 기기에서 로그아웃" closes this tab too (sign-out generation in LIFE_BRICK_AUTH_SIGNOUT_V1, see auth-persist-idb.mjs).
+ const {backend,suspend:suspendService}=await createMDBackend({surface:'BROWSER',auth,transport,storage,ownership,policy,signoutWatch:saved?.signout??null,onSignedOutElsewhere:notifySignedOutElsewhere});
  // Lifecycle port: the accepted S03 browser signals.
  const suspend=()=>{suspendService();globalThis.dispatchEvent(new CustomEvent('life-brick-md-state',{detail:{state:'READ_ONLY'}}));};
  addEventListener('offline',suspend);addEventListener('pagehide',suspend);document.addEventListener('visibilitychange',()=>{if(document.hidden)suspend();});
  return saved?withSavedSession({backend,auth,saved}):backend;
 }
+// Codes that mean the phrase cannot open the capsule: AES-GCM refused it (core recovery.mjs unwrap) or it fails the phrase profile.
+export const WRONG_UNLOCK_PHRASE_CODES=Object.freeze(['UNLOCK_FAILED','UNLOCK_SECRET_PROFILE']);
 // Wraps the shared backend with the saved session (separate export only so the local tests can drive it with fakes).
 export async function withSavedSession({backend,auth,saved,notify=notifySaveFailure}){
  // Remember the unlock phrase only after a successful manual unlock, and only that one field of that one route.
  // M1: right before a manual unlock, a page that is still signed out tries to restore the saved login once more (the start-up attempt may have been
  // deferred by a network or server hiccup). One attempt per click; its outcome is only reported through resumeStatus, a failure never blocks the unlock call.
  const request=async(path,body)=>{if(path==='/api/vault/unlock'&&auth.status?.state==='LOCKED'){try{await auth.resume({reason:'retry'});}catch{}}const result=await backend.request(path,body);if(path==='/api/vault/unlock'&&typeof body?.unlockSecret==='string'){try{await saved.unlock.save(body.unlockSecret);}catch(error){notify(error?.code==='AUTH_SIGNED_OUT_ELSEWHERE'?'AUTH_SIGNED_OUT_ELSEWHERE':'UNLOCK_PERSIST_SAVE_FAILED');}}return result;};
- // Auto-open at start, only when the provider session resumed without email+TOTP. A refused phrase is forgotten; busy/auth/selection results keep it.
- try{if(await auth.resume()){const secret=await saved.unlock.load();if(secret){try{await backend.request('/api/vault/unlock',{unlockSecret:secret});}catch(error){if(!/OWNER|BUSY|CLOSING|SELECTION|ALREADY|AUTH/.test(String(error?.code??'')))await saved.unlock.forget();}}}}catch{}
+ // Auto-open at start, only when the provider session resumed without email+TOTP. B13 (A4-F01): the saved phrase is forgotten only when the
+ // failure proves the phrase itself is wrong (allow list). Busy/auth/selection, a transient IndexedDB error or a newer-format HOLD keep it.
+ try{if(await auth.resume()){const secret=await saved.unlock.load();if(secret){try{await backend.request('/api/vault/unlock',{unlockSecret:secret});}catch(error){if(WRONG_UNLOCK_PHRASE_CODES.includes(error?.code))await saved.unlock.forget();}}}}catch{}
  return Object.freeze({...backend,request});
 }

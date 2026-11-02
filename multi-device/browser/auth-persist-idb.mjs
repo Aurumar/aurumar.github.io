@@ -10,6 +10,10 @@ import {check} from '../../core/package/src/codec.mjs';
 // Sign-out marker (R2 fix): signOut() leaves a random, non-secret id in the separate database LIFE_BRICK_AUTH_SIGNOUT_V1 and then deletes
 // the saved session. A page remembers the marker it saw when it signed in / resumed; any save (login record or unlock phrase) by a page whose
 // remembered marker is no longer current is refused (AUTH_SIGNED_OUT_ELSEWHERE), so a tab that was still signed in cannot recreate the saved login.
+// S1 (2026-11-02): the marker row also carries a generation that every sign-out raises by one (a missing or old row counts as 0). Other tabs read it
+// before each backend request (signout.generation()) and get it at once over a BroadcastChannel when one exists (signout.subscribe()), so a tab
+// that still has the vault open closes it (md-backend.mjs). Only a number and the random id; nothing secret.
+// S1c: signout.state() returns the generation with the random id; a tab treats any id it has not seen as a sign-out (the broadcast stays {generation}).
 export const AUTH_DATABASE_NAME='LIFE_BRICK_AUTH_PERSIST_V1';
 export const SIGNOUT_DATABASE_NAME='LIFE_BRICK_AUTH_SIGNOUT_V1';
 // M1: how many starts in a row could not restore the login without a definite rejection (a number and a time, nothing secret). Kept in its own
@@ -25,7 +29,8 @@ export function createRefreshGuard({locks=globalThis.navigator?.locks,origin=glo
  check(locks&&typeof locks.request==='function'&&typeof origin==='string'&&origin.length>0,'MD_SAVED_SESSION_UNAVAILABLE');
  return fn=>locks.request('lb-auth-refresh:'+origin,{mode:'exclusive'},fn);
 }
-export function createSavedSessionIDB({idb=globalThis.indexedDB,crypto=globalThis.crypto,locks=globalThis.navigator?.locks,origin=globalThis.location?.origin}={}){
+export const SIGNOUT_CHANNEL_PREFIX='lb-signout:';
+export function createSavedSessionIDB({idb=globalThis.indexedDB,crypto=globalThis.crypto,locks=globalThis.navigator?.locks,origin=globalThis.location?.origin,broadcast=globalThis.BroadcastChannel}={}){
  check(idb&&typeof idb.open==='function'&&typeof idb.deleteDatabase==='function'&&crypto?.subtle&&locks&&typeof locks.request==='function'&&typeof origin==='string'&&origin.length>0,'MD_SAVED_SESSION_UNAVAILABLE');
  const aad=format=>enc.encode(format+'\n'+origin);
  const exclusive=fn=>locks.request('lb-saved-session:'+origin,{mode:'exclusive'},fn);
@@ -40,6 +45,13 @@ export function createSavedSessionIDB({idb=globalThis.indexedDB,crypto=globalThi
  const dropAll=()=>new Promise((ok,no)=>{const r=idb.deleteDatabase(AUTH_DATABASE_NAME);r.onsuccess=()=>ok();r.onerror=()=>no(r.error??new Error('SAVED_IDB_DELETE'));});
  async function withDb(fn,name=AUTH_DATABASE_NAME){const db=await open(name);try{return await fn(db);}finally{db.close();}}
  const readMarker=()=>withDb(async db=>(await readAll(db)).get(MARKER_ID)?.value??null,SIGNOUT_DATABASE_NAME);
+ const generationOf=row=>Number.isSafeInteger(row?.generation)&&row.generation>0?row.generation:0;
+ const readGeneration=()=>withDb(async db=>generationOf((await readAll(db)).get(MARKER_ID)),SIGNOUT_DATABASE_NAME);
+ // S1c: generation and random id read together (one transaction). No marker row = {generation:0,id:null}.
+ const readState=()=>withDb(async db=>{const row=(await readAll(db)).get(MARKER_ID);return {generation:generationOf(row),id:typeof row?.value==='string'?row.value:null};},SIGNOUT_DATABASE_NAME);
+ // One channel per page, opened on first use; a page never receives its own postMessage. No BroadcastChannel: the per-request check still applies.
+ let channel;
+ const signoutChannel=()=>{if(channel===undefined){try{channel=typeof broadcast==='function'?new broadcast(SIGNOUT_CHANNEL_PREFIX+origin):null;channel?.unref?.();}catch{channel=null;}}return channel;};
  const readDeferred=()=>withDb(async db=>{const n=(await readAll(db)).get(DEFERRED_ID)?.count;return Number.isSafeInteger(n)&&n>0?n:0;},RESTORE_DATABASE_NAME);
  const randomId=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
  // Returns the key plus the rows that must be written/deleted with it; a missing or unusable key makes the old sealed rows unreadable, so they go.
@@ -91,7 +103,19 @@ export function createSavedSessionIDB({idb=globalThis.indexedDB,crypto=globalThi
   deferredCount(){return exclusive(readDeferred);},
   clearDeferred(){return exclusive(()=>withDb(db=>write(db,[],[DEFERRED_ID]),RESTORE_DATABASE_NAME));},
   // Explicit sign-out: new marker first (so no other tab can save any more), then the whole saved session is deleted. A failure is thrown, never hidden.
-  signOut(){return exclusive(async()=>{lastMarker=undefined;await withDb(db=>write(db,[{id:MARKER_ID,value:randomId()}],[]),SIGNOUT_DATABASE_NAME);await dropAll();try{await withDb(db=>write(db,[],[DEFERRED_ID]),RESTORE_DATABASE_NAME);}catch{}});},
+  // S1: the new marker also raises the generation; other tabs are told after the saved session is gone (a failed notice is only a missed shortcut).
+  signOut(){return exclusive(async()=>{lastMarker=undefined;const generation=await withDb(async db=>{const next=generationOf((await readAll(db)).get(MARKER_ID))+1;await write(db,[{id:MARKER_ID,value:randomId(),generation:next}],[]);return next;},SIGNOUT_DATABASE_NAME);await dropAll();try{await withDb(db=>write(db,[],[DEFERRED_ID]),RESTORE_DATABASE_NAME);}catch{}try{signoutChannel()?.postMessage({generation});}catch{}return generation;});},
+ };
+ // S1: read by md-backend.mjs before every request (generation) and pushed from other tabs (subscribe, returns an unsubscribe function).
+ // S1c: md-backend.mjs reads state() (generation + random id) so a reset/restored marker store with a smaller generation is still a new sign-out.
+ const signout={
+  generation:readGeneration,
+  state:readState,
+  subscribe(fn){
+   check(typeof fn==='function','SIGNOUT_SUBSCRIBER');const ch=signoutChannel();if(!ch)return ()=>{};
+   const listener=event=>{const g=event?.data?.generation;if(Number.isSafeInteger(g)&&g>0){try{fn(g);}catch{}}};
+   ch.addEventListener('message',listener);return ()=>ch.removeEventListener('message',listener);
+  },
  };
  const unlock={
   async save(secret){check(typeof secret==='string'&&secret.isWellFormed()&&secret.length>=12&&secret.length<=1024,'UNLOCK_SECRET_PROFILE');await save(UNLOCK_ID,UNLOCK_SEALED,enc.encode(secret));},
@@ -99,5 +123,5 @@ export function createSavedSessionIDB({idb=globalThis.indexedDB,crypto=globalThi
   // A refused phrase is forgotten on its own; the login stays.
   forget(){return exclusive(()=>withDb(db=>write(db,[],[UNLOCK_ID])));},
  };
- return Object.freeze({auth:Object.freeze(auth),unlock:Object.freeze(unlock)});
+ return Object.freeze({auth:Object.freeze(auth),unlock:Object.freeze(unlock),signout:Object.freeze(signout)});
 }

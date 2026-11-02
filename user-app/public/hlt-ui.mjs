@@ -320,3 +320,5 @@ export function renderHealthSwitch(ctx){
     el('p',on?'지금: 켜짐':'지금: 꺼짐','hlt-switch-state'),button(on?'건강 모듈 끄기':'건강 모듈 켜기',()=>{setHltEnabled(!on,ctx.storage);void ctx.onSwitch?.(!on);},on?'secondary':'primary'));
 }
 export {hltHomeLine};
+// 홈 "오늘" 패널(B5)용 한 줄: 카드 수준 정보만(hltHomeLine). 스위치가 꺼져 있으면 호출하지 않는다.
+export const healthHomeLine=ctx=>hltHomeLine(ctx.getWhole().hlt,kstDate(ctx.now()),true);

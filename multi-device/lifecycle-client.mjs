@@ -52,10 +52,13 @@ export function settlementAttemptsPreserved(before,next){
 export async function validatePublication(response,pending,material,before){
  const validated=await lifecycleContract.terminal(response,pending,material.keyring),r=response.state;
  check(before.roster.events.every((e,i)=>same(e,r.roster.events[i])),'B4_CANONICAL_ROLLBACK');
- const witness=before.sequentialSync.verified;check(r.version>=witness.version&&(r.version!==witness.version||r.head===witness.head),'B4_PREFIX_ROLLBACK');return validated;
+ const witness=before.sequentialSync.verified;check(r.version>=witness.version&&(r.version!==witness.version||r.head===witness.head),'B4_PREFIX_ROLLBACK');
+ // B13 (A6-001): a late terminal carries the access state of its time. One older than the stored access epoch (e.g. 1/ACTIVE after a
+ // 2/FROZEN freeze) is refused, the same fence sync applies to remote state (MD_REMOTE_ACCESS); nothing local changes.
+ check(r.accessEpoch>=before.sequentialSync.access.epoch,'B4_ACCESS_ROLLBACK');return validated;
 }
 export function publishTerminalState(local,response,pending){
- check(same(local.sequentialSync.enrollment,pending),'B4_PENDING_CHANGED');
+ check(same(local.sequentialSync.enrollment,pending),'B4_PENDING_CHANGED');check(response.state.accessEpoch>=local.sequentialSync.access.epoch,'B4_ACCESS_ROLLBACK');
  const s=local.sequentialSync,l=s.lifecycle,sid=pending.pairSessionId;check(l?.archives[sid],'B4_ARCHIVE_MISSING');
  if(l.terminals[sid])check(same(l.terminals[sid].terminal,response.terminal),'B4_TERMINAL_COLLISION');else l.terminals[sid]=copy(response);
  l.archives[sid]={...l.archives[sid],...(response.descriptor?{descriptor:copy(response.descriptor)}:{}),...(response.ack?{ack:copy(response.ack)}:{})};

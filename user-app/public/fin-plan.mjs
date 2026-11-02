@@ -243,11 +243,17 @@ export function vaultHorizon(today,months){
   return ny+'-'+pad(nm)+'-'+pad(Math.min(d,last));
 }
 export const VAULT_MAX_MONTHS=120;
+// 달력에 있는 날짜(YYYY-MM-DD)인지. '2026-11-99'·'2026-02-30'처럼 문자열 모양만 맞는 날짜는 거절한다(문자열 비교 전에 검사).
+export function vaultDateOK(v){
+  if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v))return false;
+  const y=Number(v.slice(0,4)),m=Number(v.slice(5,7)),d=Number(v.slice(8,10));
+  return m>=1&&m<=12&&d>=1&&d<=new Date(Date.UTC(y,m,0)).getUTCDate();
+}
 // months를 직접 받거나(MONTHS), 다음 수입 날짜까지로 잡는다.
 // NEXT_INCOME은 그 날짜를 덮는 가장 작은 달력 개월 수다(올릴수록 월 사용액이 작아져 보수적).
 export function vaultMonths({mode,months,untilDate,today}){
   if(mode==='NEXT_INCOME'){
-    if(!untilDate||untilDate<=today)return null;
+    if(!vaultDateOK(untilDate)||untilDate<=today)return null;
     for(let n=1;n<=VAULT_MAX_MONTHS;n++)if(vaultHorizon(today,n)>=untilDate)return n;
     return null;
   }
@@ -278,7 +284,7 @@ export function vaultPlan({cash,reserve,mode='MONTHS',months=null,untilDate=null
   const missing=[],c=vaultWon(cash),r=vaultWon(reserve),n=vaultMonths({mode,months,untilDate,today});
   if(c===null)missing.push('CASH');
   if(r===null)missing.push('RESERVE');
-  if(n===null)missing.push(mode==='NEXT_INCOME'?'NEXT_INCOME_DATE':'MONTHS');
+  if(n===null)missing.push(mode!=='NEXT_INCOME'?'MONTHS':untilDate&&!vaultDateOK(untilDate)?'NEXT_INCOME_DATE_INVALID':'NEXT_INCOME_DATE');
   const cu=vaultWon(cardUnpaid);
   if(cu===null)missing.push('CARD_UNPAID');
   let fixedMonthly=0n;
@@ -287,6 +293,7 @@ export function vaultPlan({cash,reserve,mode='MONTHS',months=null,untilDate=null
   const horizon=n===null?null:mode==='NEXT_INCOME'?untilDate:vaultHorizon(today,n);
   for(const inc of incomes){
     const v=vaultWon(inc.amount);
+    if(inc.date&&!vaultDateOK(inc.date)){missing.push('INCOME_DATE_INVALID');continue;}
     if(v===null||!inc.date){missing.push('INCOME:'+(inc.date??'?'));continue;}
     if(horizon!==null&&inc.date>=today&&inc.date<horizon){incomeTotal+=v;counted.push({...inc,won:v});}
     else if(horizon!==null)skipped.push({...inc,won:v});

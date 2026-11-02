@@ -1,7 +1,7 @@
 // FIN01 집계: 원천 행(FIN_BATCH)과 거래(FIN_TXN)를 하나의 줄 목록으로 합치고 월·분류별로 센다.
 // 규칙: 거래가 원천 행을 sourceRefs로 가리키면 그 행은 빼고 거래만 센다(이중 집계 금지).
 // 이체는 소비가 아니다. 선불 전환은 따로 센다. 모르는 순액(null)은 합계에 넣지 않고 개수로 보여준다.
-import {EXPENSE_CATEGORIES,INCOME_CATEGORIES,ACCOUNT_TYPES,TXN_KINDS,FIN_LIMITS} from './fin-model.mjs';
+import {EXPENSE_CATEGORIES,INCOME_CATEGORIES,ACCOUNT_TYPES,TXN_KINDS,FIN_LIMITS,rowsSignature} from './fin-model.mjs';
 
 // Spending Lab V3.7 분류 → 표준 분류. 원래 분류 이름은 subcategory로 보존한다.
 export const SOURCE_CATEGORY_MAP=Object.freeze({
@@ -31,7 +31,8 @@ export const SOURCE_CATEGORY_MAP=Object.freeze({
   '편의점·간식 판매처':['FOOD','편의점·간식'],
 });
 export function mapSourceCategory(label){
-  const hit=SOURCE_CATEGORY_MAP[label];
+  // 원천 분류명은 원천 파일의 글자다. '__proto__'·'toString' 같은 이름이 와도 표의 자체 항목만 본다(미등록은 OTHER + 원래 이름).
+  const hit=typeof label==='string'&&Object.hasOwn(SOURCE_CATEGORY_MAP,label)?SOURCE_CATEGORY_MAP[label]:null;
   return hit?{category:hit[0],subcategory:hit[1]}:{category:'OTHER',subcategory:label||'미분류'};
 }
 // 규칙의 세 효과는 각각 따로 정한다: 우선순위 순서로 그 효과를 가진(null이 아닌) 첫 번째 맞는 규칙이 이긴다.
@@ -86,6 +87,9 @@ export function finLines(values){
   return {lines,residuals,accounts};
 }
 const emptyBucket=()=>({spend:0n,refund:0n,consumption:0n,income:0n,prepaid:0n,transfer:0n,unknownRows:0,byCategory:{}});
+// 분류·세부 분류 이름은 원천 글자다. '__proto__' 같은 이름이 와도 자체 항목으로만 읽고 쓴다(소계가 빠지거나 문자열이 되지 않게).
+const ownOf=(o,k)=>Object.hasOwn(o,k)?o[k]:undefined;
+const setOwn=(o,k,v)=>{Object.defineProperty(o,k,{value:v,writable:true,enumerable:true,configurable:true});};
 function add(bucket,line){
   if(line.net===null){bucket.unknownRows++;return;}
   if(line.kind==='TRANSFER'){bucket.transfer+=line.net;return;}
@@ -93,15 +97,17 @@ function add(bucket,line){
   if(line.kind==='INCOME'){bucket.income+=line.net;return;}
   if(line.kind==='REFUND')bucket.refund+=-line.net;else bucket.spend+=line.net;
   bucket.consumption+=line.net;
-  const c=bucket.byCategory[line.category]??={total:0n,sub:{}};
-  c.total+=line.net;c.sub[line.subcategory]=(c.sub[line.subcategory]??0n)+line.net;
+  let c=ownOf(bucket.byCategory,line.category);
+  if(c===undefined)setOwn(bucket.byCategory,line.category,c={total:0n,sub:{}});
+  c.total+=line.net;setOwn(c.sub,line.subcategory,(ownOf(c.sub,line.subcategory)??0n)+line.net);
 }
 export function finSummary(values,{from=null,to=null}={}){
   const {lines,residuals,accounts}=finLines(values);
   const inRange=l=>(from===null||l.month>=from)&&(to===null||l.month<=to);
-  const total=emptyBucket(),months=new Map(),coverage=new Map();
+  const total=emptyBucket(),months=new Map(),coverage=new Map();let lineCount=0;
   for(const l of lines){
     if(!inRange(l))continue;
+    lineCount++;   // 건수도 합계·coverage와 같은 기간의 줄만 센다(기간 없으면 전체)
     add(total,l);
     if(!months.has(l.month))months.set(l.month,emptyBucket());
     add(months.get(l.month),l);
@@ -112,7 +118,7 @@ export function finSummary(values,{from=null,to=null}={}){
   const residualNet=residuals.filter(r=>yearIn(r.chunk.slice(9))).reduce((s,r)=>s+r.net,0n);
   return {total,residualNet,months:[...months.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([month,b])=>({month,...b})),
     coverage:[...coverage.entries()].map(([k,n])=>{const [month,accountId]=k.split('|');return {month,accountId,rows:n};}),
-    accounts:[...accounts.entries()].map(([id,a])=>({id,...a})),categoryLabels:EXPENSE_CATEGORIES,lineCount:lines.length};
+    accounts:[...accounts.entries()].map(([id,a])=>({id,...a})),categoryLabels:EXPENSE_CATEGORIES,lineCount};
 }
 // Spending Lab 통제값과 같은 정의로 다시 계산한다(가져오기 확정 전 검사용, 원천 행만 대상).
 export function sourceControl(values){
@@ -131,7 +137,8 @@ export function finView(values){
   const str=v=>typeof v==='bigint'?v.toString():v;
   const pick=type=>fin.filter(v=>v.entityType===type).map(v=>({id:v.entityId,data:v.data,heads:v.heads??[]})).sort((a,b)=>a.id.localeCompare(b.id));
   const batches=fin.filter(v=>v.entityType==='FIN_BATCH').map(v=>{const d=v.data;
-    return {id:v.entityId,source:d.source,sourceSha256:d.sourceSha256,chunk:d.chunk,part:d.part??null,label:d.label,control:d.control,rowCount:d.rows.length,accountIds:[...new Set(d.rows.map(r=>r.accountId))].sort(),rowIds:d.rows.map(r=>r.rowId)};
+    // rowsSignature: 저장된 행 값의 지문. 가져오기 재개 때 계획의 행과 값까지 같은지 보는 데 쓴다(public/fin-ledger.mjs checkImportPlan).
+    return {id:v.entityId,source:d.source,sourceSha256:d.sourceSha256,chunk:d.chunk,part:d.part??null,label:d.label,control:d.control,rowCount:d.rows.length,accountIds:[...new Set(d.rows.map(r=>r.accountId))].sort(),rowIds:d.rows.map(r=>r.rowId),rowsSignature:rowsSignature(d.rows)};
   }).sort((a,b)=>a.chunk.localeCompare(b.chunk)||a.id.localeCompare(b.id));
   // 분할 묶음 미완료: 같은 분할(원천·달·조각 수)의 조각이 일부만 저장된 달. 그 달 합계는 일부만 반영된 상태다(가져오기 중단).
   const splits=new Map();

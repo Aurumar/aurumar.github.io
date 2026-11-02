@@ -245,3 +245,8 @@ export function renderStudySwitch(ctx){
   return add(section('공부 모듈','기본은 꺼짐입니다. 이 기기에서만 켜고 끕니다(다른 기기에는 영향 없음). 켜기 전에 모든 기기를 같은 날 같은 빌드로 갱신했는지 확인하세요 — 갱신 안 된 기기는 공부 기록을 만나면 열리지 않고 멈춥니다(기록은 안전).'),
     el('p',on?'지금: 켜짐':'지금: 꺼짐','study-switch-state'),button(on?'공부 모듈 끄기':'공부 모듈 켜기',()=>{setStudyEnabled(!on,ctx.storage);void ctx.onSwitch?.(!on);},on?'secondary':'primary'));
 }
+// 홈 "오늘" 패널(B5)용 한 줄: 복습 건수 문구만(목록은 펼치지 않는다). prepareStudy를 먼저 불러 st.flowState가 있어야 한다(없으면 던진다 → 홈은 "확인할 수 없음").
+export function studyHomeLine(ctx,st){
+  if(!st?.flowState)throw new Error('STUDY_NOT_PREPARED');
+  return reviewSummary(projectStudy(projectionCards(ctx.getWhole().study,st.flowState),kstDate(ctx.now()))).line;
+}

@@ -127,8 +127,10 @@ function transition(v,old,ctx,provenance){
     requireValue(d.planId===null||ctx.entities.has(entityKey('PLAN',d.planId)),'UNKNOWN_PLAN_LINK');
   }
   if(type==='EVENT'){
-    requireValue(d.planId===null||ctx.entities.has(entityKey('PLAN',d.planId)),'UNKNOWN_PLAN_LINK');
-    if(d.milestoneId!==null)requireValue(d.planId!==null&&ctx.entities.get(entityKey('PLAN',d.planId))?.data.milestones.some(m=>m.milestoneId===d.milestoneId),'UNKNOWN_MILESTONE_LINK');
+    // 기존 일정의 삭제 전이는 원본을 그대로 보존해야 하므로(아래 DELETE_MUST_PRESERVE_EVENT), 그 사이 지워진 계획·마일스톤 링크를 다시 요구하지 않는다.
+    const deleting=d.deleted===true&&old!=null;
+    if(!deleting)requireValue(d.planId===null||ctx.entities.has(entityKey('PLAN',d.planId)),'UNKNOWN_PLAN_LINK');
+    if(!deleting&&d.milestoneId!==null)requireValue(d.planId!==null&&ctx.entities.get(entityKey('PLAN',d.planId))?.data.milestones.some(m=>m.milestoneId===d.milestoneId),'UNKNOWN_MILESTONE_LINK');
     requireValue(!old?.data.deleted,'EVENT_ALREADY_DELETED');
     if(d.deleted){
       requireValue(old&&provenance.confirmed===true&&provenance.reason.trim(),'DELETE_CONFIRMATION_REQUIRED');

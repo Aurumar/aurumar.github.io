@@ -405,7 +405,9 @@ export const PLAN_FORMAT='LB_FIN_IMPORT_PLAN_1';
 export const PC_ENTITY_REQUEST_LIMIT=65536;
 // 분할 묶음(fin-model.mjs batchPart·batchSiblings와 같은 정의)
 const partOf=d=>d.part??null;
-const partOK=p=>p===null||!!p&&typeof p==='object'&&Object.keys(p).sort().join('|')==='count|index'&&Number.isInteger(p.count)&&Number.isInteger(p.index)&&p.count>=2&&p.count<=26&&p.index>=1&&p.index<=p.count;
+const partOK=p=>p===null||!!p&&Object.getPrototypeOf(p)===Object.prototype&&Object.keys(p).sort().join('|')==='count|index'&&Number.isInteger(p.count)&&Number.isInteger(p.index)&&p.count>=2&&p.count<=26&&p.index>=1&&p.index<=p.count;
+// 같은 조각인지는 값으로 본다. 저장 때 정본 인코딩이 키를 정렬하므로 JSON 글자 비교는 재열기 뒤 거짓 충돌을 만든다.
+const samePart=(a,b)=>a===null?b===null:b!==null&&a.index===b.index&&a.count===b.count;
 export const siblings=(a,b)=>{const p=partOf(a),q=partOf(b);return p!==null&&q!==null&&a.sourceSha256===b.sourceSha256&&a.chunk===b.chunk&&p.count===q.count&&p.index!==q.index;};
 // fin-model.mjs batchControl과 같은 정의
 export function batchControl(rows){
@@ -423,13 +425,26 @@ export function planControl(entities){
   }
   return {rows,knownNet,unallocated:residual,sourceNet:knownNet+residual,prepaid,otherNet:knownNet+residual-prepaid,unknownRows};
 }
+// fin-model.mjs ROW_FIELDS·rowsSignature와 같은 정의. 두 구현이 같은 지문을 내는지는 multi-device/tests/b9-fin-import-fixes.test.mjs가 확인한다.
+const ROW_FIELDS=['rowId','date','month','accountId','merchant','amount','net','status','role','installments','sourceCategory','confidence','sourceFile','sourceRow','duplicateGroup','item','note'];
+export const rowsSignature=rows=>JSON.stringify((rows??[]).map(r=>ROW_FIELDS.map(k=>r?.[k]??null)));
 export const CONTROL_LABELS=Object.freeze([['rows','원천 행 수'],['knownNet','순액을 아는 행 합계'],['unallocated','미배분 잔액'],['sourceNet','원천 순액 합계'],['prepaid','선불 전환'],['otherNet','선불 외 순액'],['unknownRows','순액 모름 행 수']]);
 const idOK=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,40}$/.test(v);
 const intOK=v=>Number.isSafeInteger(v)||typeof v==='string'&&/^(0|-?[1-9]\d{0,15})$/.test(v);
 const SIGNED=/^(0|-?[1-9]\d{0,13})$/;
+// fin-model.mjs shape()·text()와 같은 조건. 사전 검사가 모델보다 느슨하면 계획이 반쯤 저장되다 거절된다.
+const shapeOK=(v,keys)=>!!v&&Object.getPrototypeOf(v)===Object.prototype&&Object.keys(v).sort().join('|')===[...keys].sort().join('|');
+const textOK=(v,max,empty=true)=>typeof v==='string'&&v.isWellFormed()&&[...v].length<=max&&(empty||v.trim().length>0);
+// fin-model.mjs validateAccount과 같은 조건.
+function accountProblem(d){
+  if(!shapeOK(d,['name','type','issuer','active','note']))return '계정 형식';
+  if(!textOK(d.name,60,false)||!textOK(d.issuer,40)||!textOK(d.note,500))return '계정 글자 수 또는 글자 형식';
+  if(!['CARD','CASH','BANK','EPAY','LOAN','OTHER'].includes(d.type)||typeof d.active!=='boolean')return '계정 종류 또는 사용 여부';
+  return null;
+}
 // fin-model.mjs validateRow·validateBatch와 같은 조건. 가져오는 도중 서버가 거절해 반쯤 저장되는 일을 막는다. 문제가 없으면 null.
 function rowProblem(r,chunk,source,accountIds){
-  if(!r||typeof r!=='object')return '행 형식';
+  if(!shapeOK(r,ROW_FIELDS))return '행 형식';
   const at='행 '+String(r.rowId)+' · ';
   if(!idOK(r.rowId)||!idOK(r.accountId))return at+'ID 형식';
   if(!accountIds.has(r.accountId))return at+'없는 계정 '+r.accountId;
@@ -443,12 +458,17 @@ function rowProblem(r,chunk,source,accountIds){
   const signOK=r.status==='PURCHASE'?a>0n&&n>0n&&n<=a:r.status==='REFUND'?a!==0n&&n<0n&&abs(n)<=abs(a):r.status==='RESIDUAL'?n===a&&a!==0n:a>0n;
   if(!signOK)return at+'상태와 금액 부호';
   if(!Number.isInteger(r.installments)||r.installments<0||r.installments>60||!Number.isInteger(r.sourceRow)||r.sourceRow<0||!(r.duplicateGroup===null||idOK(r.duplicateGroup)))return at+'할부·원본 행·중복 묶음 형식';
+  if(!textOK(r.merchant,120)||!textOK(r.sourceCategory,60)||!textOK(r.sourceFile,120)||!textOK(r.item,200)||!textOK(r.note,500))return at+'글자 수 또는 글자 형식';
   return null;
 }
 function batchProblem(d,accountIds){
+  const keys=['source','sourceSha256','chunk','label','rows','control'];
+  if(!shapeOK(d,!!d&&typeof d==='object'&&Object.hasOwn(d,'part')?[...keys,'part']:keys))return '묶음 형식';
   if(!partOK(partOf(d)))return '분할 조각 번호';
   if(!['SPENDING_LAB_V37','CARD_STATEMENT','MANUAL'].includes(d.source)||typeof d.sourceSha256!=='string'||!/^[a-f0-9]{64}$/.test(d.sourceSha256))return '출처 정보';
   if(!(monthOK(d.chunk)||/^RESIDUAL-\d{4}$/.test(d.chunk)))return '묶음 달 표기';
+  if(!textOK(d.label,120))return '묶음 이름 글자 수';
+  if(!shapeOK(d.control,['rowCount','net','prepaidNet','unknownNetRows']))return '묶음 통제값 형식';
   if(d.rows.length<1||d.rows.length>2000)return '행 수는 1~2,000';
   if(new Set(d.rows.map(r=>r?.rowId)).size!==d.rows.length)return '묶음 안에 같은 행 ID';
   for(const r of d.rows){const p=rowProblem(r,d.chunk,d.source,accountIds);if(p)return p;}
@@ -459,15 +479,23 @@ export function entityRequestBytes(entity){
   const body={requestId:'0'.repeat(64),commandDigest:'0'.repeat(64),entityType:entity.entityType,entityId:entity.entityId,expectedHeads:[],data:entity.data,reason:'과거 이력 가져오기 · '+'0'.repeat(12),confirmed:false};
   return new TextEncoder().encode(JSON.stringify(body)).length;
 }
+const blankReport=()=>({ok:false,errors:[],opCheck:{known:false,remaining:null,need:0},localCheck:{known:false,room:null,need:0},counts:{accounts:0,batches:0,rows:0,residualRows:0},controls:[],batchControlMismatch:[],items:[],toSave:0,skipped:0,conflicts:0,sourceSha256:null});
 // existing: 화면의 fin 투영({accounts,batches,limits}). byteLimit: 요청 크기 한도(없으면 null).
-export function checkImportPlan(plan,existing,{byteLimit=null,ops=null,local=null}={}){
-  const report={ok:false,errors:[],opCheck:{known:false,remaining:null,need:0},localCheck:{known:false,room:null,need:0},counts:{accounts:0,batches:0,rows:0,residualRows:0},controls:[],batchControlMismatch:[],items:[],toSave:0,skipped:0,conflicts:0,sourceSha256:null};
+// 던지지 않는다: 계획 파일은 사용자가 고른 JSON이라 무엇이든 올 수 있다. 검사 중 예상 못 한 예외는 연결 오류가 아니라 "형식이 아닌 계획"이다
+// (예외가 미리보기·확정의 perform → fail로 가면 PC 세션이 HOLD_CONNECTION으로 끝난다). 거절이므로 아무것도 저장하지 않는다.
+export function checkImportPlan(plan,existing,options){
+  try{return checkPlan(plan,existing,options);}
+  catch{const report=blankReport();report.errors.push('FIN_IMPORT_FORMAT');return report;}
+}
+function checkPlan(plan,existing,{byteLimit=null,ops=null,local=null}={}){
+  const report=blankReport();
   if(!plan||typeof plan!=='object'||plan.format!==PLAN_FORMAT||!Array.isArray(plan.entities)){report.errors.push('FIN_IMPORT_FORMAT');return report;}
   report.sourceSha256=typeof plan.sourceSha256==='string'&&/^[a-f0-9]{64}$/.test(plan.sourceSha256)?plan.sourceSha256:null;
   if(!report.sourceSha256)report.errors.push('FIN_IMPORT_FORMAT');
   const ids=new Set();
   for(const e of plan.entities){
-    const okShape=e&&['FIN_ACCOUNT','FIN_BATCH'].includes(e.entityType)&&idOK(e.entityId)&&e.data&&typeof e.data==='object'&&(e.entityType!=='FIN_BATCH'||Array.isArray(e.data.rows)&&e.data.control&&typeof e.data.chunk==='string');
+    // 행은 객체여야 한다(null·배열·숫자·문자열 행은 아래 합계에서 던지기 전에 형식 오류로 거절).
+    const okShape=e&&['FIN_ACCOUNT','FIN_BATCH'].includes(e.entityType)&&idOK(e.entityId)&&e.data&&typeof e.data==='object'&&(e.entityType!=='FIN_BATCH'||Array.isArray(e.data.rows)&&e.data.rows.every(r=>!!r&&typeof r==='object'&&!Array.isArray(r))&&e.data.control&&typeof e.data.chunk==='string');
     if(!okShape||ids.has(e.entityType+':'+e.entityId)){report.errors.push('FIN_IMPORT_FORMAT');return report;}
     ids.add(e.entityType+':'+e.entityId);
   }
@@ -493,9 +521,14 @@ export function checkImportPlan(plan,existing,{byteLimit=null,ops=null,local=nul
   const accountIds=new Set([...existing.accounts.map(a=>a.id),...accounts.map(a=>a.entityId)]),problems=new Map();
   const savedRowIds=new Map();for(const b of existing.batches)for(const id of b.rowIds??[])savedRowIds.set(id,b.id);
   const planRowIds=new Map(),planCover=new Map(),planSource=new Map();
-  for(const e of accounts){const d=e.data;if(typeof d.name!=='string'||!d.name.trim()||!['CARD','CASH','BANK','EPAY','LOAN','OTHER'].includes(d.type)||typeof d.active!=='boolean')problems.set(e.entityId,'계정 형식');}
+  for(const e of accounts){const p=accountProblem(e.data);if(p)problems.set(e.entityId,p);}
+  // 저장 순서: 확정 일꾼(app.mjs runFinImport)은 계획의 엔티티 순서 그대로 하나씩 저장하고, 서버는 묶음 저장 때 그 계정이 이미 있어야 한다.
+  // 그래서 같은 순서로 따져 본다: 아직 없는 계정은 계획에서 그 묶음보다 앞에 있어야 한다. 재정렬하지 않고 거절한다(일부만 저장 방지).
+  const haveIds=new Set(existing.accounts.map(a=>a.id)),planAt=new Map(plan.entities.map((e,i)=>[e.entityType+':'+e.entityId,i]));
   for(const e of batches){
     let p=batchProblem(e.data,accountIds);
+    if(!p){const at=planAt.get('FIN_BATCH:'+e.entityId),late=e.data.rows.find(r=>!haveIds.has(r.accountId)&&planAt.get('FIN_ACCOUNT:'+r.accountId)>at);
+      if(late)p='행 '+late.rowId+' · 계정 '+late.accountId+'이(가) 계획에서 이 묶음보다 뒤에 있음(저장 순서: 계정 → 묶음)';}
     const src=e.data.sourceSha256+'|'+e.data.chunk,clash=(planSource.get(src)??[]).find(x=>!siblings(x.data,e.data));
     if(!p&&clash)p='계획의 묶음 '+clash.entityId+'과(와) 같은 원천·같은 달(같은 분할의 다른 조각이 아님)';
     if(!planSource.has(src))planSource.set(src,[]);planSource.get(src).push(e);
@@ -518,7 +551,8 @@ export function checkImportPlan(plan,existing,{byteLimit=null,ops=null,local=nul
       if(have){item.action=have.data.type===e.data.type?'SKIP':'CONFLICT';item.reason=have.data.type===e.data.type?'이미 있는 계정 · 기존 이름 "'+have.data.name+'" 유지':'같은 ID의 다른 종류 계정이 있음';}
     }else{
       const have=haveBatches.get(e.entityId),c=e.data.control;
-      if(have){const same=have.sourceSha256===e.data.sourceSha256&&have.chunk===e.data.chunk&&JSON.stringify(have.part??null)===JSON.stringify(partOf(e.data))&&have.rowCount===e.data.rows.length&&have.control.net===c.net&&have.control.rowCount===c.rowCount;item.action=same?'SKIP':'CONFLICT';item.reason=same?'이미 저장된 묶음':'같은 ID의 다른 묶음이 있음';}
+      // 묶음은 불변이다. 합계·개수·SHA가 같아도 행 값이 하나라도 다르면 "이미 저장됨"이 아니라 충돌이다.
+      if(have){const same=have.sourceSha256===e.data.sourceSha256&&have.chunk===e.data.chunk&&samePart(have.part??null,partOf(e.data))&&have.rowCount===e.data.rows.length&&have.control.net===c.net&&have.control.rowCount===c.rowCount&&have.rowsSignature===rowsSignature(e.data.rows);item.action=same?'SKIP':'CONFLICT';item.reason=same?'이미 저장된 묶음':'같은 ID의 다른 묶음이 있음';}
       else{
         const dup=existing.batches.find(b=>b.sourceSha256===e.data.sourceSha256&&b.chunk===e.data.chunk&&!siblings(b,e.data));
         const overlap=[...new Set(e.data.rows.map(r=>r.accountId))].flatMap(a=>covered.get(e.data.chunk+'|'+a)??[]).find(b=>!siblings(b,e.data))?.id;
