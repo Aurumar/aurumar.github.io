@@ -2,6 +2,9 @@ import {requireValue} from '../multi-device/portable/errors.mjs';
 import {eq} from '../core/package/parent/v2_phase2/source/canonical.mjs';
 import {clock,FORMATS} from './action-model.mjs';
 import {finTitle,FIN_TYPES} from './fin-model.mjs';
+import {hltTitle,HLT_TYPES} from './public/hlt-model.mjs';
+import {hltRawView} from './public/hlt-projection.mjs';
+import {studyTitle,studyRawView,STUDY_TYPES} from './public/study-model.mjs';
 import {finView} from './fin-projection.mjs';
 import {WL_FORMAT,DOMAIN_CODES,DOMAIN_NAMES,effectiveActions,entityKey,emptyDomain,financeTotals,shiftDate,dateOK,shape} from './whole-life-model.mjs';
 
@@ -29,8 +32,8 @@ export function wholeHistory(graph,orderedOperations=null){
       if(v.format===FORMATS.definition){
         context.set(v.actionId,{title:v.title,domain:null});type='ACTION';title=v.title;
       }else if(v.format===WL_FORMAT){
-        type=v.entityType;domain=type==='DOMAIN'?v.entityId:type==='FINANCE'||type.startsWith('FIN_')?'E':v.data.domain??null;
-        title=type==='DOMAIN'?DOMAIN_NAMES[v.entityId]:type==='FINANCE'?v.data.snapshotDate+' 재정 스냅샷':type==='PREFERENCES'?'표시 설정':type.startsWith('FIN_')?finTitle(v):v.data.title;
+        type=v.entityType;domain=type==='DOMAIN'?v.entityId:type==='FINANCE'||type.startsWith('FIN_')?'E':type.startsWith('HLT_')?'B':type.startsWith('STUDY_')?'F':v.data.domain??null;
+        title=type==='DOMAIN'?DOMAIN_NAMES[v.entityId]:type==='FINANCE'?v.data.snapshotDate+' 재정 스냅샷':type==='PREFERENCES'?'표시 설정':type.startsWith('FIN_')?finTitle(v):type.startsWith('HLT_')?hltTitle(v):type.startsWith('STUDY_')?studyTitle(v):v.data.title;
         if(type==='ACTION'){context.set(v.entityId,{title:v.data.title,domain:v.data.domain});actionId=v.entityId;}
       }else{
         type=v.format===FORMATS.result?'RESULT':v.format===MEASUREMENT_FORMAT?'MEASUREMENT':'RESTART';const current=context.get(v.actionId);
@@ -109,6 +112,8 @@ export function wholeLifeView(graph,date=clock().localDate,orderedOperations=nul
   return {version:APP_VERSION,runtimeContract:CLIENT,localDate:date,domains,plans,events,finances,preferences,actions,
     finance:financeTotals(finances[0]??null,date),progress,
     fin:finView(FIN_TYPES.flatMap(type=>entities(graph,type))),
+    hlt:hltRawView(HLT_TYPES.flatMap(type=>entities(graph,type))),
+    study:studyRawView(STUDY_TYPES.flatMap(type=>entities(graph,type))),
     home:{priorityActions:actions.filter(a=>a.active).slice(0,5),restartPoints:actions.filter(a=>a.restartPoint.trim()),
       upcoming:expandCalendar(events,plans,date,shiftDate(date,90)).slice(0,10),
       activePlans:plans.filter(p=>['ACTIVE','MAINTAIN'].includes(p.data.status)),

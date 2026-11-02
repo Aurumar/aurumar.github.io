@@ -83,7 +83,7 @@ export async function createMDBackend({surface,auth,transport,storage,ownership,
   const d=drafts();check(d,'MD_DRAFTS_UNAVAILABLE');const s=service.store.state.sequentialSync,phase=service.phase;
   return {drafts:d.list().map(x=>{const rid=x.body.requestId,receipt=s.receipts[rid];
    const draftStatus=s.pending?.intentId===rid?(phase==='REMOTE_COMMITTED_LOCAL_HOLD'?'REMOTE_COMMITTED_LOCAL_HOLD':s.pending.status==='DISPATCHED_UNKNOWN'?'DISPATCHED_UNKNOWN':'PREPARED_DURABLE'):receipt?.status==='COMMITTED'?'SERVER_COMMITTED':receipt?.status==='ABORTED'?'ABORTED_NOT_COMMITTED':'LOCAL_DRAFT';
-   return {draftId:x.draftId,type:x.type,createdAt:x.createdAt,requestId:rid,status:draftStatus,committedHistory:false};})};
+   return {draftId:x.draftId,type:x.type,createdAt:x.createdAt,requestId:rid,status:draftStatus,committedHistory:false,...(x.type==='ENTITY'&&['HLT_DAY','STUDY_DAY'].includes(x.body?.entityType)?{body:x.body}:{})};})};   // B3: 건강 카드 초안은 앱을 다시 열었을 때 이어서 편집·rebase하도록 본문(내 카드+base heads)을 함께 돌려준다. 다른 종류는 요약만.
  }
  async function md(action,body){check(routes.has(action),'MD_ROUTE');
   if(firstPrimary&&action.startsWith('first-primary-')){

@@ -467,3 +467,11 @@ button.danger{background:#fdf1ea}
 .calendar-title .cal-title-num{font-family:var(--cal-serif);font-weight:400;font-size:24px;font-variant-numeric:lining-nums tabular-nums;color:var(--gold-deep)}
 .calendar-title .cal-title-unit{font-family:"Segoe UI","Malgun Gothic",sans-serif;font-size:12px;font-weight:500;color:var(--muted);letter-spacing:.01em;margin-right:2px}
 @media(max-width:700px){.calendar-title .cal-title-num{font-size:20px}}
+/* B3 건강 모듈 화면 (기본 꺼짐 · 클래스만 사용, 인라인 style 없음) */
+.hlt-view{display:grid;gap:16px}.hlt-chip{display:inline-block;margin:6px 0;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:14px;font-weight:600;color:#514228}
+.hlt-quick button{min-height:44px;min-width:64px;font-size:15px}.hlt-time{display:flex;flex-wrap:wrap;gap:8px}.hlt-form{display:grid;gap:8px;margin:10px 0}
+.hlt-message.error{border-left-color:#b3402a}.hlt-notice{border-left-color:#c08a1c}.hlt-switch-state{font-weight:600}
+@media(max-width:700px){.hlt-quick button{flex:1 1 30%}}
+.study-view{display:grid;gap:16px}.study-chip{display:inline-block;margin:6px 0;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:14px;font-weight:600}.study-overdue{border-color:#b3402a;color:#b3402a}
+.study-quick button{min-height:44px;min-width:64px;font-size:15px}.study-message.error{border-left-color:#b3402a}.study-notice{border-left-color:#c08a1c}.study-switch-state{font-weight:600}
+@media(max-width:700px){.study-quick button{flex:1 1 30%}}

@@ -108,6 +108,7 @@ export class SequentialService {
  #headArgs(){const s=this.#store.state.sequentialSync;return {expectedVersion:s.verified.version,expectedHead:s.verified.head,expectedRosterEpoch:s.access.rosterEpoch,expectedRosterHash:s.access.rosterHash,accessEpoch:s.access.epoch};}
  #leaseArgs(){check(this.#lease,'MD_NO_LEASE');return {runtimeSessionId:this.#runtime,leaseEpoch:this.#lease.epoch,leaseToken:this.#lease.token};}
  async #authenticated(){await this.#auth.accessToken();}
+ #pinStoreGraph(){let g=null;try{g=this.#store.graph;}catch{g=null;}if(g)this.#session.pin(g);}
  async #publish(mutator,{replay}={}){try{await this.#store.transaction(mutator,replay?{replay}:undefined);this.#material.roster=this.#store.roster;}catch(error){this.#blocked=true;this.#state='LOCAL_PUBLICATION_HOLD';this.#session.clear();throw error;}}
  // PAGE_BYTES(한 페이지가 pageBytes 한도를 넘음)면 limit을 반으로 줄여 재시도한다. limit=1에서도 실패하면 멈춘다(무한루프 금지).
  async #pullPage(afterVersion,state){
@@ -145,7 +146,14 @@ export class SequentialService {
   // store.graph로 들고 가는 경로가 없고, "저장소가 쥔 Graph는 이어붙여 바뀌지 않는다" 불변식은 그대로 유지된다.
   // 원격 변화가 없으면(changed 아님) records는 세션이 이미 아는 ops와 지문이 정확히 같아 캐시 적중(돈을 다시
   // 들이지 않음)이고, 바뀌었으면 이 호출 바로 뒤 this.#session.clear()가 돌아 어떤 중간 상태도 남지 않는다.
+  // B8f(A): store.graph가 쥔 슬롯을 이 sync 동안 확장·재설정하지 못하게 write()와 같은 규약으로 pin한다. graph는 캐시 힌트일 뿐이라
+  // (아직 없으면 getter가 던짐) 없으면 pin 없이 진행한다 -- 그 경우 슬롯 선택은 lastReturned 규칙만으로 보호된다.
+  if(this.#reuseReplay===true)this.#pinStoreGraph();
   const result=await this.#timeStage(record,'verifyPrefix',()=>verifyPrefix(records,{...this.#material,roster,legacyCount:s.legacyCount,witness,replay:this.#session.replay}));check(result.verified.head===state.head,'MD_REMOTE_HEAD');
+  // M2.1: records.length는 위 while 루프의 MD_PREFIX_OVERRUN 검사로 이미 state.version을 넘지 못하고, 루프 종료
+  // 조건(records.length<state.version이 거짓)으로 모자라지도 않아 항상 state.version과 같아야 한다 -- 이 줄은 그
+  // 불변식이 깨지는 변경(예: 루프 조건 실수)을 바로 드러내기 위한 명시적 끝단 검사다(정상 경로에서는 항상 통과).
+  check(result.verified.version===state.version,'MD_REMOTE_VERSION');
   const oldOps=this.#store.state.userApp.operations;check(oldOps.every((op,i)=>samePayload(op,result.operations[i])),'MD_HISTORY_REWRITE');
   // No-op sync writes nothing: if the applied result has the same canonical payload bytes (payloadEncode hash) as the
   // current local state, no commit is appended. Rollback/prefix/roster/access checks above already ran; any change to
@@ -154,11 +162,17 @@ export class SequentialService {
   const apply=local=>applySyncResult(local,{roster,records,result,state}),next=copy(this.#store.state);apply(next);
   const changed=!samePayload(next,this.#store.state);
   this.#lastSyncPublishReason=this.#blocked?['LOCAL_PUBLICATION_HOLD']:changed?syncPublishReasons(next,this.#store.state):[];
-  if(this.#blocked||changed)await this.#timeStage(record,'publish',()=>this.#publish(apply));
+  // B8f(A): 위 verifyPrefix가 세션 재생기에 만든 그래프를 publish의 validateSequentialState(store #write)가 지문(opId+payload해시)+
+  // 매개변수 일치로 다시 쓴다 -- 같은 입력의 두 번째 전체 재생만 없앤다. 서명·체인·복호화는 publish 안의 verifyPrefix가 전과 똑같이 다시 돈다.
+  // 지문이 안 맞으면 replaySession이 전체 재생으로 되돌아간다(저장 경로 M2-B/M2-D와 같은 규칙). 재사용 옵션이 켜진 기본 모드에서만.
+  if(this.#blocked||changed)await this.#timeStage(record,'publish',()=>this.#publish(apply,this.#reuseReplay===true?{replay:this.#session.replay}:undefined));
   // F12-4: 원격 변화가 없었고(blocked도 아니면) 세션 재생기 캐시를 비우지 않는다 -- 지문(opId+payload해시)+매개변수가
   // 정확히 일치할 때만 재사용하므로 캐시를 남겨도 다음 candidateReal의 결과는 전체 재생과 바이트까지 같다(안전성은
   // 지문 비교가 보장). 원격이 바뀌었거나(changed) 이전에 blocked였으면 지금처럼 비운다.
-  if(this.#blocked||changed)this.#session.clear();
+  // B8f(B): 재사용 모드(기본)에서는 원격이 바뀌어도(changed) 세션을 비우지 않는다 -- 다음 sync/저장이 지문(전체 op 목록의 opId·순서·payload해시)
+  // + 매개변수가 정확히 접두사일 때만 새 꼬리 op를 이어붙이고, 아니면 전체 재생한다(어느 쪽이든 결과는 전체 재생과 같음). blocked(로컬 publish 실패)
+  // 이거나 재사용이 꺼진/범위형 모드면 지금처럼 비운다.
+  if(this.#blocked||(changed&&this.#reuseReplay!==true))this.#session.clear();
   this.#state='VERIFIED_READ_ONLY';this.#blocked=false;return {status:'VERIFIED_READ_ONLY',version:state.version,head:state.head};
  }
  sync(){return this.#serial(async()=>{try{await this.#release(true);const r=await this.#sync();await this.#afterVerifiedSync();return r;}catch(e){if(!this.#blocked)this.#state='READ_ONLY';throw e;}});}
