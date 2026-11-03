@@ -87,8 +87,8 @@
     },
     {
       "path": "multi-device/auth-session.mjs",
-      "sourceSha256": "1ba432c56248dbb1713c20c205e8c253b0925e7024ee5ae67e1539d976f15b4d",
-      "outputSha256": "1ba432c56248dbb1713c20c205e8c253b0925e7024ee5ae67e1539d976f15b4d",
+      "sourceSha256": "57592ca4ce71c6b502ee6cdbf67d42c7887a0261cb93e3884bef4d6913643617",
+      "outputSha256": "57592ca4ce71c6b502ee6cdbf67d42c7887a0261cb93e3884bef4d6913643617",
       "dependencies": [
         "core/package/src/codec.mjs"
       ],

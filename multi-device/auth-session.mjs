@@ -15,6 +15,9 @@ import {check,keys,unb64,Hold} from '../core/package/src/codec.mjs';
 // The reviewed iPad packaged origin is admitted by exact string only.
 const IPAD_APP_ORIGIN='lifebrick-app://localhost';
 const RESTORE_DEFER_LIMIT=3;
+// B29: the TOTP time inside the access token is stamped by the server in whole seconds; this PC clock can run behind it by about a second,
+// so a TOTP done a moment ago would read as "in the future" and be refused. A future stamp up to 30 s is accepted; the 300 s past limit is unchanged.
+export const TOTP_FUTURE_SKEW_SECONDS=30;
 export function validatePublicConfig(config){
  keys(config,['format','authUrl','issuer','audience','publishableKey','edgeUrl','browserOrigin']);check(config.format==='LB_MD_PUBLIC_CONFIG_1'&&config.audience==='authenticated','MD_PUBLIC_CONFIG');
  const ipadOrigin=config.browserOrigin===IPAD_APP_ORIGIN;
@@ -119,7 +122,7 @@ export class AuthSession {
  async enrollTotp(){check(this.#claims?.aal==='aal1','AUTH_ENROLL_LEVEL');check((await this.factors()).length===0,'TOTP_ALREADY_ENROLLED');const data=await this.#request('/factors',{factor_type:'totp',friendly_name:'LIFE BRICK V1.2 Synthetic Acceptance'},{authenticated:true});check(/^[a-f0-9-]{36}$/.test(data.id)&&typeof data.totp?.secret==='string'&&data.totp.secret.length>=16&&data.totp.secret.length<=256,'TOTP_ENROLL_RESPONSE');return {factorId:data.id,setupKey:data.totp.secret};}
  async verifyTotp(factorId,code){check(/^[a-f0-9-]{36}$/.test(factorId)&&/^\d{6}$/.test(code),'TOTP_PROFILE');const challenge=await this.#request(`/factors/${factorId}/challenge`,{},{authenticated:true});check(typeof challenge.id==='string','TOTP_CHALLENGE');{const data=await this.#request(`/factors/${factorId}/verify`,{challenge_id:challenge.id,code},{authenticated:true});await this.#captureMarker();await this.#accept(data);}check(this.#claims.aal==='aal2','AUTH_AAL2_REQUIRED');await this.#clearDeferred();this.#restore={state:'OK',code:'OK',count:0,relogin:false};return {status:'AUTHENTICATED_READ_ONLY',subject:this.#claims.sub};}
  async accessToken(){check(this.#claims?.aal==='aal2','AUTH_AAL2_REQUIRED');if(this.#claims.exp<=Math.floor(Date.now()/1000)+30){if(!this.#refreshing)this.#refreshing=this.#guarded(async()=>{await this.#adoptSaved();await this.#accept(await this.#request('/token?grant_type=refresh_token',{refresh_token:this.#refresh}));}).catch(e=>{this.clear();throw e;}).finally(()=>{this.#refreshing=null;});await this.#refreshing;}check(this.#claims?.aal==='aal2'&&this.#claims.exp>Math.floor(Date.now()/1000)+5,'AUTH_EXPIRED');return this.#token;}
- async requireRecentMfa(){await this.accessToken();const now=Math.floor(Date.now()/1000),latest=Math.max(-Infinity,...(this.#claims.amr??[]).filter(x=>x.method==='totp').map(x=>x.timestamp));check(Number.isSafeInteger(latest)&&latest<=now&&latest>=now-300,'RECENT_TOTP_REQUIRED');}
+ async requireRecentMfa(){await this.accessToken();const now=Math.floor(Date.now()/1000),latest=Math.max(-Infinity,...(this.#claims.amr??[]).filter(x=>x.method==='totp').map(x=>x.timestamp));check(Number.isSafeInteger(latest)&&latest<=now+TOTP_FUTURE_SKEW_SECONDS&&latest>=now-300,'RECENT_TOTP_REQUIRED');}
  get status(){return {state:this.#claims?.aal==='aal2'?'AUTHENTICATED_READ_ONLY':this.#token?'TOTP_REQUIRED':'LOCKED',subject:this.#claims?.sub??null};}
  clear(){this.#token=null;this.#refresh=null;this.#claims=null;}
  // Explicit local sign-out: drop the memory and forget the saved session (browser: deletes the whole auth IndexedDB incl. its key).
