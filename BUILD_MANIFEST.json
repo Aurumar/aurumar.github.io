@@ -341,8 +341,8 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "99b10d0938b655fdfa25e6d404cc29f4d3838327390e238524f75d036567917f",
-      "outputSha256": "99b10d0938b655fdfa25e6d404cc29f4d3838327390e238524f75d036567917f",
+      "sourceSha256": "d1016ed369e8a6c2dd5f3eaa1cee90b81280096595d82e732d3667160d15defc",
+      "outputSha256": "d1016ed369e8a6c2dd5f3eaa1cee90b81280096595d82e732d3667160d15defc",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs",

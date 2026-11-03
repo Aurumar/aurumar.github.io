@@ -224,8 +224,8 @@ function setupMD(state){
   const r=await api('/api/md/pair-approve',{requestText:pairMode==='MANUAL'||state.surface==='BROWSER'?requestText.value:'',fingerprint:fingerprint.value,confirmed:consent.checked});draft.value=JSON.stringify(r);consent.checked=false;
   if(pairMode==='MANUAL'){out.textContent='수동 진단 경로 · 승인 draft를 신뢰한 경로로 새 장치에 옮기세요.';return;}
   out.textContent='승인 draft를 새 장치에 자동 전달했습니다. ACK와 서버 receipt를 기다립니다.';
-  stopAckPoll?.();stopAckPoll=relayPoll('pair-ack-poll',x=>{pairMode=null;out.textContent='등록 확정 · receipt '+x.receipt.approvalId+' · relay '+x.relayTerminal;status('서버 등록과 relay 종료 확인');});
- })),button('승인 draft 전송 재확인',doIt(()=>call('pair-publish-draft'))),can('pair-relay-status')&&state.surface!=='BROWSER'?button('Relay 상태 확인',doIt(()=>call('pair-relay-status'))):null,button('미확정 등록 결과 확인',doIt(()=>call('pair-reconcile'))),can('pair-diagnostic')?button('미완료 등록 상태 확인',doIt(()=>call('pair-diagnostic'))):null,button(state.surface==='BROWSER'?'만료된 요청 안전 종료':'만료된 등록 세션 안전 종료',doIt(async()=>{if(state.surface!=='BROWSER'){stopRequestPoll?.();stopAckPoll?.();}await call('pair-relay-abort-unapproved');pairMode=null;})),can('pair-abort-expired')?button('만료된 미전송 등록 안전 종료',doIt(()=>call('pair-abort-expired'))):null));
+  stopAckPoll?.();stopAckPoll=relayPoll('pair-ack-poll',x=>{pairMode=null;out.textContent='등록 확정 · receipt '+x.receipt.approvalId+' · relay '+x.relayTerminal;status('서버 등록과 relay 종료 확인');resyncAfterPairing();});
+ })),button('승인 draft 전송 재확인',doIt(()=>call('pair-publish-draft'))),can('pair-relay-status')&&state.surface!=='BROWSER'?button('Relay 상태 확인',doIt(()=>call('pair-relay-status'))):null,button('미확정 등록 결과 확인',doIt(()=>call('pair-reconcile'))),can('pair-diagnostic')?button('미완료 등록 상태 확인',doIt(()=>call('pair-diagnostic'))):null,button(state.surface==='BROWSER'?'만료된 요청 안전 종료':'만료된 등록 세션 안전 종료',doIt(async()=>{if(state.surface!=='BROWSER'){stopRequestPoll?.();stopAckPoll?.();}await call('pair-relay-abort-unapproved');pairMode=null;resyncAfterPairing();})),can('pair-abort-expired')?button('만료된 미전송 등록 안전 종료',doIt(async()=>{await call('pair-abort-expired');resyncAfterPairing();})):null));
  if(can('pair-begin-manual')){const manual=el('details'),manualButtons=el('div',null,'buttons');
   add(manual,el('summary','진단용 수동 전달 · relay 장애 시 fallback'),hint('정상 등록에는 필요하지 않습니다. 수동 경로는 request·draft·ACK를 모두 원래 600초 안에 옮겨야 합니다.'),manualButtons);
   add(manualButtons,button('수동 Pairing 시작 (relay 없음)',doIt(async()=>{stopRequestPoll?.();stopAckPoll?.();const r=await api('/api/md/pair-begin-manual',{confirmed:consent.checked});pairMode='MANUAL';pairingText.value=r.pairingText;consent.checked=false;})),button('Request 확인',doIt(async()=>{const r=await call('pair-inspect',{requestText:requestText.value});out.textContent='Fingerprint: '+r.fingerprint;})),button('ACK 받아 서버 등록',doIt(async()=>{await call('pair-commit',parse(ack));pairMode=null;})));
@@ -242,7 +242,7 @@ function setupMD(state){
    step:createEnrollReceiptStep({api,unlock:()=>unlock.value,clear:()=>{unlock.value='';},say:status,show:t=>{out.textContent=t;},done:async()=>{pairingText.value='';requestText.value='';draft.value='';ack.value='';await refresh();status('이 장치 등록 · prefix 동기화 완료');}})});}
  })),button('서버 receipt 확인 · 이 장치 등록 완료',enrollDo(async()=>{try{await call('enroll-finish',{unlockSecret:unlock.value,...(recoveryPath?{encryptedRecoveryPath:recoveryPath.value}:{})});pairingText.value='';requestText.value='';draft.value='';ack.value='';await refresh();}finally{unlock.value='';}}))));
  if(can('enroll-resume')){const pendingId=field(pair,'중단된 등록 세션 ID','text','');add(pair,button('보관된 등록 세션 목록',doIt(()=>call('enroll-pending-list'))),button('같은 세션 다시 열기',doIt(async()=>{try{const r=await api('/api/md/enroll-resume',{pairSessionId:pendingId.value,unlockSecret:unlock.value});requestText.value=r.requestText;fingerprint.value=r.fingerprint;relayRecipient=r.relay;out.textContent=r.ackReady?'보관된 ACK를 다시 전송하거나 서버 결과를 확인하세요.':'원래 요청과 fingerprint를 다시 열었습니다.';}finally{unlock.value='';}})),button('보관된 ACK 다시 전송',doIt(()=>call('enroll-publish-ack'))));}
- if(can('pair-cancel')){const cancel=field(pair,'현재 등록 세션 종료를 확인합니다','checkbox',false);add(pair,button('현재 세션 종료',doIt(async()=>{await call('pair-cancel',{confirmed:cancel.checked});stopRequestPoll?.();stopAckPoll?.();pairMode=null;cancel.checked=false;})));}
+ if(can('pair-cancel')){const cancel=field(pair,'현재 등록 세션 종료를 확인합니다','checkbox',false);add(pair,button('현재 세션 종료',doIt(async()=>{await call('pair-cancel',{confirmed:cancel.checked});stopRequestPoll?.();stopAckPoll?.();pairMode=null;cancel.checked=false;resyncAfterPairing();})));}
  if(fileTransfer){const diagnostics=el('details'),diagnosticButtons=el('div',null,'buttons');
  add(diagnostics,el('summary','진단용 파일 전달'),diagnosticButtons);
  add(diagnosticButtons,requestImport,button('승인 draft 파일 저장',()=>void perform(()=>saveTransfer('pair-draft-export','life-brick-approval.txt'))),ackImport,button('새 장치 request 파일 저장',()=>void perform(()=>saveTransfer('enroll-request-export','life-brick-request.txt'))),draftImport,button('ACK 파일 저장',()=>void perform(()=>saveTransfer('enroll-ack-export','life-brick-ack.txt'))));
@@ -327,21 +327,27 @@ async function submit(path,body){const result=await submitWrite(path,body);lastS
 // (sync -> acquire -> save -> release), so other devices are not blocked and no extra button is needed.
 let autoWriteFail=null,autoSyncBusy=false,autoSyncLast=0,autoSyncFails=0;
 const AUTO_SYNC_MIN_GAP_MS=15000,AUTO_SYNC_MAX_FAILS=3,AUTO_ACQUIRE_RETRY_MS=3000;
-const autoSyncText=code=>/^AUTH_/.test(code||'')?'로그인이 만료되어 동기화하지 못했습니다 · 읽기 화면은 그대로입니다 · 연결 · 장치에서 서버 로그인 후 동기화하세요.':code==='MD_PENDING_UNRESOLVED'?'미확정 저장이 있어 동기화하지 못했습니다 · 읽기 화면은 그대로입니다 · 연결 · 장치에서 "미확정 저장 결과 확인"을 누르세요.':!code?'오프라인 · 마지막으로 확인된 기록입니다(동기화 전).':'동기화 보류 · '+code+' · 읽기 화면은 유지됩니다.';
+// B37: MD_PENDING_UNRESOLVED has two causes the service reports with the same code (unknown-result save vs. a device pairing in progress).
+// md:status carries pendingIntent only for the save, so UNLOCKED + pendingIntent null means the pairing; a missing status stays neutral.
+const pendingCause=st=>!st||st.state!=='UNLOCKED'?'UNKNOWN':st.pendingIntent?'SAVE':'PAIRING';
+const autoSyncText=(code,st)=>/^AUTH_/.test(code||'')?'로그인이 만료되어 동기화하지 못했습니다 · 읽기 화면은 그대로입니다 · 연결 · 장치에서 서버 로그인 후 동기화하세요.':code==='MD_PENDING_UNRESOLVED'?(({SAVE:'미확정 저장이 있어 동기화하지 못했습니다 · 읽기 화면은 그대로입니다 · 연결 · 장치에서 "미확정 저장 결과 확인"을 누르세요.',PAIRING:'장치 연결(Pairing)이 진행 중이라 동기화를 잠시 멈췄습니다 · 연결을 마치거나 \'현재 세션 종료\'를 누르세요.',UNKNOWN:'동기화를 잠시 멈췄습니다 · 미확정 저장 또는 진행 중인 장치 연결 때문입니다 · 연결 · 장치에서 상태를 확인하세요.'})[pendingCause(st)]):!code?'오프라인 · 마지막으로 확인된 기록입니다(동기화 전).':'동기화 보류 · '+code+' · 읽기 화면은 유지됩니다.';
 // Automatic read-only sync (open / return to the app / back online). Never takes the write lease, never touches a screen the user is typing in,
 // never throws, and stops retrying after 3 failures in a row (open and online start over).
 async function mdAutoSync(reason){
  if(!mdAutoOK()||autoSyncBusy||busy||ended)return;const now=Date.now();
- if(reason==='open')autoSyncFails=0;else{if(reason==='online')autoSyncFails=0;if(now-autoSyncLast<AUTO_SYNC_MIN_GAP_MS||autoSyncFails>=AUTO_SYNC_MAX_FAILS)return;}
+ if(reason==='open'||reason==='pair-done')autoSyncFails=0;else{if(reason==='online')autoSyncFails=0;if(now-autoSyncLast<AUTO_SYNC_MIN_GAP_MS||autoSyncFails>=AUTO_SYNC_MAX_FAILS)return;}
  autoSyncBusy=true;autoSyncLast=now;
  try{
   for(let attempt=0;;attempt++){try{await api('/api/md/sync',{});break;}catch(e){if(attempt>=1||/^AUTH_/.test(e?.code||''))throw e;}}
   autoSyncFails=0;mdApply(await api('/api/md/status',{}));
   if($('editor').open||drafts.size)renderProductState();else await refresh();
   status('동기화됨 · '+saveState().title);
- }catch(e){autoSyncFails++;try{mdApply(await api('/api/md/status',{}));}catch{}status(autoSyncText(e?.code),true);applyMDLocks();}
+ }catch(e){autoSyncFails++;let st=null;try{st=await api('/api/md/status',{});mdApply(st);}catch{st=null;}status(autoSyncText(e?.code,st),true);applyMDLocks();}
  finally{autoSyncBusy=false;}
 }
+// B37: once a device pairing ends (approve ACK confirmed, or the session cancelled/aborted) run the same read-only auto sync once more.
+// It waits (bounded, 20 x 250 ms) for a running button action or sync to finish and never takes the write lease or calls reconcile.
+function resyncAfterPairing(n=0){if(n>=20||ended)return;if(busy||autoSyncBusy){setTimeout(()=>resyncAfterPairing(n+1),250);return;}void mdAutoSync('pair-done');}
 // Save-time write lease: BROWSER asks for the lease only (acquire already syncs first) and retries a busy lease once after 3 s; APP_SHELL keeps sync -> acquire once.
 async function mdAutoWrite(){
  autoWriteFail=null;if(mdReady||!mdAutoOK())return false;
