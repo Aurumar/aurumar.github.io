@@ -341,8 +341,8 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "f0a52f51e29aafbaeac74b452bb48ec5b8029820bcf5e5096b6f6bf960f44bd2",
-      "outputSha256": "f0a52f51e29aafbaeac74b452bb48ec5b8029820bcf5e5096b6f6bf960f44bd2",
+      "sourceSha256": "99b10d0938b655fdfa25e6d404cc29f4d3838327390e238524f75d036567917f",
+      "outputSha256": "99b10d0938b655fdfa25e6d404cc29f4d3838327390e238524f75d036567917f",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs",
@@ -1004,14 +1004,14 @@
     {
       "path": "index.html",
       "sourcePath": "user-app/public/index.html",
-      "sourceSha256": "64be0e13cf28eb8d7289bd539fb941c79f49a47958d881fd155098dabe5128bd",
-      "outputSha256": "54a91851775d7c0a2ce44fec7adc63eace64933351955aca21b6b3311eb2eedd"
+      "sourceSha256": "d73b543740a29bfb6a7c2177b7d40991f0a57ab21bd1b2b06f071b8dbf781884",
+      "outputSha256": "b30cab4bf4b1bed9ead242f355c698fb583f828bd2262821c3222d8080ba1817"
     },
     {
       "path": "styles.css",
       "sourcePath": "user-app/public/styles.css",
-      "sourceSha256": "191769a9ea929ffbf16ec3c4c4828bc196bf38bbe100bd3adf3cea7a981e2a55",
-      "outputSha256": "191769a9ea929ffbf16ec3c4c4828bc196bf38bbe100bd3adf3cea7a981e2a55"
+      "sourceSha256": "4c48ab7cd0b909c3cc11048cb59c63853196ed8199879e196af04a54d14f05e4",
+      "outputSha256": "4c48ab7cd0b909c3cc11048cb59c63853196ed8199879e196af04a54d14f05e4"
     },
     {
       "path": "public-config.json",

@@ -109,6 +109,52 @@ const SIGNED_OUT_ELSEWHERE_TEXT='다른 창에서 이 기기 로그아웃을 해
 // 다시 잠금해제해 refreshCore가 새로 읽을 때까지 render()는 아무 화면도 그리지 않고, 잠금해제·로그인 칸만 상태 줄 아래에 보인다.
 let mdSignedOut=false,mdSignedOutSeq=0;   // seq: 읽기 도중에 잠긴 refreshCore가 잠금을 되돌리지 않게
 function signedOutLock(){mdSignedOut=true;mdSignedOutSeq++;finImport=null;today=null;whole=null;changes=[];calendarState=null;vaultFlash=null;for(const st of [hltSt,studySt])if(st){st.raw=null;st.flowState=null;}$('workspace').hidden=true;$('navigation').hidden=true;if(mdHost&&mdPanel){mdHost.append(mdPanel);mdHost.hidden=false;}$('session-state').textContent='잠김 · 다시 로그인하세요';}
+// B32: 새 기기 등록의 자동 마무리(enroll-finish). 서버가 등록을 확정(terminal)하면 enroll-relay-status는 B4_TERMINAL_RELAY(400)로 거절된다
+// (003_b4_lifecycle_v1.sql relay_execute). 예전 코드는 그 오류를 일반 오류로 보고 조용히 폴링을 끝내 enroll-finish가 불리지 않았다.
+// 지금은 그것을 "서버가 확정함"으로 읽고 enroll-finish가 서버 receipt를 다시 검증하게 한다. 멈추거나 실패하면 이유와 다음 한 가지 행동을 화면에 보인다.
+const ENROLL_NEXT='잠금해제 문구를 다시 넣고 "서버 receipt 확인 · 이 장치 등록 완료"를 누르세요.';
+const ENROLL_HOLD_REASON={UNLOCK_SECRET_PROFILE:'잠금해제 문구가 비어 있거나 12자 미만입니다',B4_RECIPIENT_NOT_COMMITTED:'서버가 이 등록을 확정한 기록을 찾지 못했습니다(중단·만료 가능)',RELAY_EXPIRED_OR_TERMINAL:'서버의 등록 세션이 만료되었거나 종료되었습니다',MD_LOCAL_OWNER_BUSY:'다른 LIFE BRICK 창이 이 장치를 쓰고 있습니다',RECENT_TOTP_REQUIRED:'최근 인증 앱(TOTP) 확인이 필요합니다(TOTP 로그인 뒤 다시 시도)'};
+const ENROLL_NO_PHRASE_TEXT='서버 등록은 끝났습니다 · 이 장치의 잠금해제 문구가 비어 있어 자동 마무리를 못 합니다 · '+ENROLL_NEXT;
+const ENROLL_STALL_TEXT='자동 등록 마무리가 아직 끝나지 않았습니다 · 화면이 백그라운드이거나 서버 확정이 아직일 수 있습니다 · '+ENROLL_NEXT;
+const ENROLL_DONE_REFRESH_TEXT='이 장치 등록은 끝났습니다 · 화면을 새로 읽지 못했습니다 · 앱을 닫았다가 다시 여세요';
+const ALREADY_ENROLLED_TEXT='이 장치는 이미 등록되어 있습니다';
+function enrollHoldText(code){const c=typeof code==='string'&&/^[A-Z][A-Z0-9_]{1,79}$/.test(code)?code:'HOLD_CONNECTION';return '자동 등록 마무리가 멈췄습니다 · '+(ENROLL_HOLD_REASON[c]||'연결 또는 서버 응답을 확인하지 못했습니다')+' ('+c+') · '+ENROLL_NEXT;}
+function alreadyEnrolledText(code,enrolled){return enrolled&&(code==='PAIRING_REQUIRED'||code==='MD_NEW_DEVICE_REQUIRED')?ALREADY_ENROLLED_TEXT+' ('+code+')':null;}
+// d: {api, unlock(), clear(), say(text,error), show(text), done()}. 반환: 'WAIT'(계속 폴링) | 'DONE' | 'HOLD'(폴링 종료, 이유를 화면에 보임)
+function createEnrollReceiptStep(d){
+ let terminal=false;
+ return async()=>{
+  if(!terminal){
+   let r;
+   try{r=await d.api('/api/md/enroll-relay-status',{});}
+   catch(e){const code=e?.code;
+    if(['RELAY_SLOT_ABSENT','RELAY_DRAFT_REQUIRED','RELAY_ACK_PHASE'].includes(code))return 'WAIT';
+    if(code!=='B4_TERMINAL_RELAY'){d.say(enrollHoldText(code),true);return 'HOLD';}
+    r={status:'COMMITTED'};}
+   if(r.status==='OPEN')return 'WAIT';
+   if(r.status!=='COMMITTED'){d.say(enrollHoldText('RELAY_EXPIRED_OR_TERMINAL'),true);return 'HOLD';}
+   terminal=true;}
+  if(d.unlock().length<12){d.show(ENROLL_NO_PHRASE_TEXT);return 'WAIT';}
+  try{await d.api('/api/md/enroll-finish',{unlockSecret:d.unlock()});}
+  catch(e){d.clear();d.say(enrollHoldText(e?.code),true);return 'HOLD';}
+  d.clear();
+  try{await d.done();}catch{d.say(ENROLL_DONE_REFRESH_TEXT,true);}
+  return 'DONE';
+ };
+}
+// o: {step, say, hidden(), ended(), setInterval, clearInterval, setTimeout, clearTimeout, intervalMs, stallMs}. 끝나지 않은 채 stallMs가 지나면 안내만 보이고 폴링은 계속한다.
+function startStepPoll(o){
+ let running=false,stopped=false,stall=null;
+ const stop=()=>{stopped=true;o.clearInterval(timer);o.clearTimeout(stall);};
+ const timer=o.setInterval(async()=>{
+  if(stopped||running||o.hidden()||o.ended())return;running=true;
+  try{const r=await o.step();if(r==='DONE'||r==='HOLD')stop();}
+  catch(e){stop();o.say(enrollHoldText(e?.code),true);}
+  finally{running=false;}
+ },o.intervalMs);
+ stall=o.setTimeout(()=>{if(!stopped)o.say(ENROLL_STALL_TEXT,false);},o.stallMs);
+ return stop;
+}
 function setupMD(state){
   mdCaps=new Set(state.capabilities??(state.surface==='WINDOWS'?LEGACY_WINDOWS_MD_ROUTES:[]));mdApply(state);
  $('setup').hidden=true;$('setup-form').hidden=true;$('save-exit').hidden=false;
@@ -122,6 +168,8 @@ function setupMD(state){
  const loginBox=add(el('details',null,'md-group md-login'),el('summary','서버 로그인 · 이메일 코드와 인증 앱(TOTP)'));
   const out=el('pre','','path'),call=async(name,body={})=>{const r=await api('/api/md/'+name,body);out.textContent=JSON.stringify(r,null,2);return r;};
   const doIt=fn=>()=>perform(async()=>{await fn();const s=await api('/api/md/status',{});mdApply(s);applyMDLocks();});
+  // B32: 이미 등록이 끝난 앱에서 PAIRING_REQUIRED·MD_NEW_DEVICE_REQUIRED가 나오면 일반 오류 대신 "이미 등록" 문구로 보인다(코드는 괄호에 유지).
+  const enrollDo=fn=>doIt(async()=>{try{await fn();}catch(e){const t=alreadyEnrolledText(e?.code,!!(mdScope?.selected||mdUnlocked));if(!t)throw e;status(t,true);out.textContent=t;}});
  const relayPoll=(route,onReady)=>{
   let running=false;const timer=setInterval(async()=>{if(running||document.hidden||ended)return;running=true;
    try{const r=await api('/api/md/'+route,{});
@@ -183,18 +231,16 @@ function setupMD(state){
   add(manualButtons,button('수동 Pairing 시작 (relay 없음)',doIt(async()=>{stopRequestPoll?.();stopAckPoll?.();const r=await api('/api/md/pair-begin-manual',{confirmed:consent.checked});pairMode='MANUAL';pairingText.value=r.pairingText;consent.checked=false;})),button('Request 확인',doIt(async()=>{const r=await call('pair-inspect',{requestText:requestText.value});out.textContent='Fingerprint: '+r.fingerprint;})),button('ACK 받아 서버 등록',doIt(async()=>{await call('pair-commit',parse(ack));pairMode=null;})));
   add(pair,manual);}
  const recoveryPath=state.surface==='WINDOWS'?field(pair,'원래 encrypted recovery-authority .lbw의 전체 경로','text',''):null;
- if(can('enroll-start'))add(pair,el('h3','새 장치'),add(el('div',null,'buttons'),button('새 identity와 request 생성',doIt(async()=>{
+ if(can('enroll-start'))add(pair,el('h3','새 장치'),add(el('div',null,'buttons'),button('새 identity와 request 생성',enrollDo(async()=>{
   const r=await api('/api/md/enroll-start',{pairingText:pairingText.value,...(can('enroll-resume')?{unlockSecret:unlock.value}:{})});requestText.value=r.requestText;fingerprint.value=r.fingerprint;relayRecipient=r.relay===true;consent.checked=false;
   out.textContent='REQUEST 전달 완료 · fingerprint '+r.fingerprint+'\n기존 장치와 전체 값을 대조하세요.';
   if(relayRecipient){stopDraftPoll?.();stopDraftPoll=relayPoll('enroll-draft-poll',x=>{out.textContent='승인 draft 검증 완료 · '+x.approvalId+'\n장치 전용 잠금해제 문구를 입력하고 fingerprint 확인 후 등록을 승인하세요.';});}
- })),button('Fingerprint 확인 · ACK 생성 · 등록',doIt(async()=>{
+ })),button('Fingerprint 확인 · ACK 생성 · 등록',enrollDo(async()=>{
   const r=await api('/api/md/enroll-approve',{draft:relayRecipient?null:parse(draft),fingerprint:fingerprint.value,confirmed:consent.checked});ack.value=JSON.stringify(r);consent.checked=false;
   out.textContent='ACK 전달 완료 · 서버 receipt를 기다립니다.';
-  if(relayRecipient){stopReceiptPoll?.();stopReceiptPoll=relayPoll('enroll-relay-status',async x=>{
-   if(x.status!=='COMMITTED')throw appError('RELAY_EXPIRED_OR_TERMINAL');
-   try{await api('/api/md/enroll-finish',{unlockSecret:unlock.value});pairingText.value='';requestText.value='';draft.value='';ack.value='';await refresh();status('이 장치 등록 · prefix 동기화 완료');}finally{unlock.value='';}
-  });}
- })),button('서버 receipt 확인 · 이 장치 등록 완료',doIt(async()=>{try{await call('enroll-finish',{unlockSecret:unlock.value,...(recoveryPath?{encryptedRecoveryPath:recoveryPath.value}:{})});pairingText.value='';requestText.value='';draft.value='';ack.value='';await refresh();}finally{unlock.value='';}}))));
+  if(relayRecipient){stopReceiptPoll?.();stopReceiptPoll=startStepPoll({intervalMs:1200,stallMs:90000,hidden:()=>document.hidden,ended:()=>ended,setInterval:globalThis.setInterval.bind(globalThis),clearInterval:globalThis.clearInterval.bind(globalThis),setTimeout:globalThis.setTimeout.bind(globalThis),clearTimeout:globalThis.clearTimeout.bind(globalThis),say:status,
+   step:createEnrollReceiptStep({api,unlock:()=>unlock.value,clear:()=>{unlock.value='';},say:status,show:t=>{out.textContent=t;},done:async()=>{pairingText.value='';requestText.value='';draft.value='';ack.value='';await refresh();status('이 장치 등록 · prefix 동기화 완료');}})});}
+ })),button('서버 receipt 확인 · 이 장치 등록 완료',enrollDo(async()=>{try{await call('enroll-finish',{unlockSecret:unlock.value,...(recoveryPath?{encryptedRecoveryPath:recoveryPath.value}:{})});pairingText.value='';requestText.value='';draft.value='';ack.value='';await refresh();}finally{unlock.value='';}}))));
  if(can('enroll-resume')){const pendingId=field(pair,'중단된 등록 세션 ID','text','');add(pair,button('보관된 등록 세션 목록',doIt(()=>call('enroll-pending-list'))),button('같은 세션 다시 열기',doIt(async()=>{try{const r=await api('/api/md/enroll-resume',{pairSessionId:pendingId.value,unlockSecret:unlock.value});requestText.value=r.requestText;fingerprint.value=r.fingerprint;relayRecipient=r.relay;out.textContent=r.ackReady?'보관된 ACK를 다시 전송하거나 서버 결과를 확인하세요.':'원래 요청과 fingerprint를 다시 열었습니다.';}finally{unlock.value='';}})),button('보관된 ACK 다시 전송',doIt(()=>call('enroll-publish-ack'))));}
  if(can('pair-cancel')){const cancel=field(pair,'현재 등록 세션 종료를 확인합니다','checkbox',false);add(pair,button('현재 세션 종료',doIt(async()=>{await call('pair-cancel',{confirmed:cancel.checked});stopRequestPoll?.();stopAckPoll?.();pairMode=null;cancel.checked=false;})));}
  if(fileTransfer){const diagnostics=el('details'),diagnosticButtons=el('div',null,'buttons');
