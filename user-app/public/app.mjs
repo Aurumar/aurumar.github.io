@@ -288,11 +288,11 @@ function status(message,error=false){$('status').textContent=message;$('status')
 const MODEL_VALIDATION_CODES=new Set(['INVALID_TEXT','DEFERRED_REASON_REQUIRED','INVALID_DECIMAL_AMOUNT','FINANCE_ITEMS_REQUIRED','UNSAVED_ACTION_DRAFT']);
 function lock(value){busy=value;for(const n of document.querySelectorAll('button,input,textarea,select')){if(value&&!n.disabled){n.disabled=true;n.dataset.busyLock='1';}else if(!value&&n.dataset.busyLock){n.disabled=false;delete n.dataset.busyLock;}if(ended)n.disabled=true;}applyMDLocks();}
 function appError(code){return Object.assign(new Error(code),{code});}
-// ---- 건강 모듈(B3): 화면 모듈을 동적으로 불러온다. 이 빌드가 그 파일을 내주지 않으면(PC 제품 호스트의 정적 파일 목록에는 아직 없음) 불러오지 못해 건강 메뉴·설정이 나타나지 않는다(앱 나머지는 영향 없음). 기본 꺼짐.
+// ---- 건강 모듈(B3): 화면 모듈을 동적으로 불러온다. 이 빌드가 그 파일을 내주지 않으면(PC 제품 호스트의 정적 파일 목록에는 아직 없음) 불러오지 못해 건강 메뉴·설정이 나타나지 않는다(앱 나머지는 영향 없음). B38부터 기본 켜짐(저장값 없음=켜짐).
 let hltUi=null,hltSt=null;
 import('./hlt-ui.mjs').then(m=>{hltUi=m;hltSt=m.createHealthState();if(hltOn()&&!$('workspace').hidden)void render();}).catch(()=>{hltUi=null;});
 const hltOn=()=>hltUi!==null&&hltUi.hltEnabled(globalThis.localStorage);
-// ---- 공부 모듈(B4): 건강 모듈과 같은 방식(동적 import, 기본 꺼짐, 스위치는 기기별 로컬). 같은 ctx(hltCtx)를 쓴다.
+// ---- 공부 모듈(B4): 건강 모듈과 같은 방식(동적 import, B38부터 기본 켜짐, 스위치는 기기별 로컬). 같은 ctx(hltCtx)를 쓴다.
 let studyUi=null,studySt=null;
 import('./study-ui.mjs').then(m=>{studyUi=m;studySt=m.createStudyState();if(studyOn()&&!$('workspace').hidden)void render();}).catch(()=>{studyUi=null;});
 const studyOn=()=>studyUi!==null&&studyUi.studyEnabled(globalThis.localStorage);

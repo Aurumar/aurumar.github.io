@@ -1,4 +1,4 @@
-// 건강 모듈 화면(B3). 합성 데이터로만 시험한다. 기본 꺼짐: 스위치를 켜기 전에는 화면·메뉴·새 종류 쓰기가 전혀 나타나지 않는다.
+// 건강 모듈 화면(B3). 합성 데이터로만 시험한다. B38부터 기본 켜짐(저장값 없음=켜짐, '0'만 꺼짐). 꺼진 기기에는 화면·메뉴가 나타나지 않고, 켜져 있어도 사용자 동작 없이 새 기록을 쓰지 않는다.
 // 스위치 위치(결정): 이 기기의 로컬 설정(localStorage). 금고 공유로 두면 PREFERENCES의 모양을 바꿔야 해서 아직 갱신하지 않은 기기가 HOLD하고,
 // 새 엔티티 종류로 두면 같은 문제가 첫 쓰기에서 생긴다 → 안전한 쪽은 기기별 로컬. 저장소가 막혀 있으면 이번 실행 동안만 유지한다.
 // 화면 규칙: DOM 생성 함수만 쓴다(innerHTML·인라인 style·외부 라이브러리 없음). 비공개 습관은 "숨김 항목 보기"를 누른 뒤에만 보이고,
@@ -9,7 +9,7 @@ import {HLT_LIMITS,kstDate,shiftDay,dateKeyOK,isoOK,UNITS,MEAL_KINDS,MEAL_SIZES,
 
 const HLT_PROFILE_LIMIT=HLT_LIMITS.HLT_PROFILE;
 export const HLT_SWITCH_KEY='lb.hlt.enabled';
-let memorySwitch=false;
+let memorySwitch=true;   // B38: 저장값이 없으면 켜짐(명시적으로 끈 기기만 '0'으로 꺼짐)
 export function hltEnabled(storage=globalThis.localStorage){try{const v=storage?.getItem(HLT_SWITCH_KEY);return v===null||v===undefined?memorySwitch:v==='1';}catch{return memorySwitch;}}
 export function setHltEnabled(on,storage=globalThis.localStorage){memorySwitch=Boolean(on);try{storage?.setItem(HLT_SWITCH_KEY,on?'1':'0');}catch{/* 저장소가 막혀 있으면 이번 실행 동안만 */}return hltEnabled(storage);}
 
@@ -327,11 +327,11 @@ export function renderHealth(root,ctx,st){
   return out;
 }
 
-// 설정 화면의 모듈 스위치(기본 꺼짐, 이 기기에만 적용).
+// 설정 화면의 모듈 스위치(B38: 기본 켜짐, 끄기는 이 기기에만 적용).
 export function renderHealthSwitch(ctx){
   const doc=ctx.document??globalThis.document,{el,add,button,hint,section}=maker(doc);
   const on=hltEnabled(ctx.storage);
-  return add(section('건강 모듈','기본은 꺼짐입니다. 이 기기에서만 켜고 끕니다(다른 기기에는 영향 없음). 켜기 전에 모든 기기를 같은 날 같은 빌드로 갱신했는지 확인하세요 — 갱신 안 된 기기는 건강 기록을 만나면 열리지 않고 멈춥니다(기록은 안전).'),
+  return add(section('건강 모듈','기본은 켜짐입니다. 끄면 이 기기에서만 건강 화면이 숨겨집니다(다른 기기에는 영향 없음, 기록은 그대로 안전). 모든 기기를 같은 빌드로 갱신한 뒤 쓰세요 — 갱신 안 된 기기는 건강 기록을 만나면 열리지 않고 멈춥니다(기록은 안전).'),
     el('p',on?'지금: 켜짐':'지금: 꺼짐','hlt-switch-state'),button(on?'건강 모듈 끄기':'건강 모듈 켜기',()=>{setHltEnabled(!on,ctx.storage);void ctx.onSwitch?.(!on);},on?'secondary':'primary'));
 }
 export {hltHomeLine};

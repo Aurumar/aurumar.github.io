@@ -1,4 +1,4 @@
-// 공부 모듈 화면(B4). 합성 데이터로만 시험한다. 기본 꺼짐: 스위치를 켜기 전에는 화면·메뉴·새 종류 쓰기가 전혀 나타나지 않는다.
+// 공부 모듈 화면(B4). 합성 데이터로만 시험한다. B38부터 기본 켜짐(저장값 없음=켜짐, '0'만 꺼짐). 꺼진 기기에는 화면·메뉴가 나타나지 않고, 켜져 있어도 사용자 동작 없이 새 기록을 쓰지 않는다.
 // 스위치 위치(결정): 이 기기의 로컬 설정(localStorage) — hlt-ui와 같은 이유(금고 공유로 두면 아직 갱신하지 않은 기기가 HOLD). 저장소가 막혀 있으면 이번 실행 동안만 유지한다.
 // 화면 규칙: DOM 생성 함수만 쓴다(innerHTML·인라인 style·외부 라이브러리 없음). 문제 본문·정답·해설을 넣는 칸은 없다 — 출처 표기+번호, 오답 원인 코드, 메모(100자)뿐.
 // 복습 알림은 앱 안 표시까지(건수·밀린 복습을 복습 목록 맨 위에). 휴대폰 푸시 알림은 만들지 않았다.
@@ -8,7 +8,7 @@ import {reviewSummary,defaultReviewDue} from './study-schedule.mjs';
 import {SUBJECTS,SESSION_STATES,PROVENANCE,ERROR_CODES,EVIDENCE_STATUS,RESULTS,MAX_LOCATOR,MAX_NOTE,kstDate,shiftDay,dateKeyOK} from './study-model.mjs';
 
 export const STUDY_SWITCH_KEY='lb.study.enabled';
-let memorySwitch=false;
+let memorySwitch=true;   // B38: 저장값이 없으면 켜짐(명시적으로 끈 기기만 '0'으로 꺼짐)
 export function studyEnabled(storage=globalThis.localStorage){try{const v=storage?.getItem(STUDY_SWITCH_KEY);return v===null||v===undefined?memorySwitch:v==='1';}catch{return memorySwitch;}}
 export function setStudyEnabled(on,storage=globalThis.localStorage){memorySwitch=Boolean(on);try{storage?.setItem(STUDY_SWITCH_KEY,on?'1':'0');}catch{/* 저장소가 막혀 있으면 이번 실행 동안만 */}return studyEnabled(storage);}
 
@@ -257,11 +257,11 @@ export function renderStudy(root,ctx,st){
   return out;
 }
 
-// 설정 화면의 모듈 스위치(기본 꺼짐, 이 기기에만 적용).
+// 설정 화면의 모듈 스위치(B38: 기본 켜짐, 끄기는 이 기기에만 적용).
 export function renderStudySwitch(ctx){
   const doc=ctx.document??globalThis.document,{el,add,button,section}=maker(doc);
   const on=studyEnabled(ctx.storage);
-  return add(section('공부 모듈','기본은 꺼짐입니다. 이 기기에서만 켜고 끕니다(다른 기기에는 영향 없음). 켜기 전에 모든 기기를 같은 날 같은 빌드로 갱신했는지 확인하세요 — 갱신 안 된 기기는 공부 기록을 만나면 열리지 않고 멈춥니다(기록은 안전).'),
+  return add(section('공부 모듈','기본은 켜짐입니다. 끄면 이 기기에서만 공부 화면이 숨겨집니다(다른 기기에는 영향 없음, 기록은 그대로 안전). 모든 기기를 같은 빌드로 갱신한 뒤 쓰세요 — 갱신 안 된 기기는 공부 기록을 만나면 열리지 않고 멈춥니다(기록은 안전).'),
     el('p',on?'지금: 켜짐':'지금: 꺼짐','study-switch-state'),button(on?'공부 모듈 끄기':'공부 모듈 켜기',()=>{setStudyEnabled(!on,ctx.storage);void ctx.onSwitch?.(!on);},on?'secondary':'primary'));
 }
 // 홈 "오늘" 패널(B5)용 한 줄: 복습 건수 문구만(목록은 펼치지 않는다). prepareStudy를 먼저 불러 st.flowState가 있어야 한다(없으면 던진다 → 홈은 "확인할 수 없음").
