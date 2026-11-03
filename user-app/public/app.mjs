@@ -70,18 +70,29 @@ function renderMDSettings(root,s){const p=section('이 기기의 저장소','기
 let rosterRetirePending=new Set();
 const RETIRE_WARNING='이 기기의 쓰기 권한을 영구히 끝냅니다. 남긴 기록은 지워지지 않습니다.';
 function rosterRetireNote(){return can('device-retire')?hint('다른 기기 줄의 "이 기기 권한 해제…"로 그 기기의 쓰기 권한을 끝낼 수 있습니다. 서버 로그인과 최근 인증 앱(TOTP) 확인이 필요하고, "이 기기" 자신은 해제할 수 없습니다.'):hint('해제는 Windows PC 앱(LIFE BRICK)의 설정 화면에서 할 수 있습니다.');}
+// B27: 해제 상자의 인증 앱(TOTP) 6자리. 값이 있으면 TOTP 확인 → 해제를 한 번에 하고, 칸은 바로 비운다(코드는 화면·로그·상태 줄에 남기지 않음).
+// factor ID는 서버 로그인 칸의 값을 쓰고, 비어 있으면 앱이 계정의 유일한 TOTP factor를 찾는다. 오류는 사람이 읽는 문장 + 괄호 안 기술 코드로 보인다.
+let mdTotpFactor=()=>'';
+const RETIRE_ERROR_TEXT={RECENT_TOTP_REQUIRED:'최근 5분 안의 인증 앱(TOTP) 확인이 필요합니다 · 해제 상자의 TOTP 6자리 칸에 지금 코드를 넣고 다시 누르세요.',TOTP_PROFILE:'TOTP 코드는 숫자 6자리여야 합니다.',TOTP_FACTOR_NONE:'이 계정에 등록된 인증 앱(TOTP)을 찾지 못했습니다 · 서버 로그인 칸에서 확인하세요.',TOTP_FACTOR_AMBIGUOUS:'인증 앱이 여러 개 등록되어 있습니다 · 서버 로그인 칸의 "TOTP factor ID"에 쓸 것을 넣고 다시 누르세요.',TOTP_FACTOR_REQUIRED:'이 앱 구성에서는 인증 앱 정보를 읽을 수 없습니다 · 서버 로그인 칸에서 TOTP로 로그인한 뒤 다시 누르세요.',AUTH_AAL2_REQUIRED:'서버 로그인이 필요합니다 · 연결 · 장치의 서버 로그인에서 이메일 코드와 인증 앱으로 로그인하세요.',AUTH_EXPIRED:'서버 로그인이 만료되었습니다 · 연결 · 장치에서 다시 로그인하세요.',AUTH_REQUIRED:'서버 로그인이 필요합니다 · 연결 · 장치에서 로그인하세요.',
+ B4_TARGET_SESSIONS_CHANGED:'서버가 계산한 그 기기의 장치 연결 기록이 요청과 달라 거절했습니다 · 해제되지 않았습니다 · 잠시 뒤 다시 시도하세요.',B4_TARGET_CHANGED:'그 기기의 서버 상태가 요청과 달라 거절되었습니다(다른 기기에서 이미 해제했을 수 있음) · 해제되지 않았습니다.',B4_RETIRE_STALE:'요청을 만든 뒤 서버 기록이 바뀌었거나 5분이 지나 거절되었습니다 · 해제되지 않았습니다 · 다시 시도하세요.',B4_NON_TARGET_BUSY:'다른 기기가 지금 기록 권한을 쥐고 있어 거절되었습니다 · 그 기기의 기록이 끝난 뒤(약 2분) 다시 시도하세요.',B4_NON_TARGET_SESSION_HOLD:'다른 기기의 장치 연결이 진행 중이라 거절되었습니다 · 연결을 끝내거나 취소한 뒤 다시 시도하세요.',B4_SELF_RETIRE_REFUSED:'이 기기 자신은 해제할 수 없습니다.',B4_SELF_OR_AMBIGUOUS_TARGET:'서버 기기 목록에서 그 기기를 하나로 찾지 못했거나 이미 해제된 기기입니다.',
+ B24_SELF_RETIRE_REFUSED:'이 기기 자신은 해제할 수 없습니다.',B24_ALREADY_RETIRED:'이미 해제가 확인된 기기입니다.',B24_KEY_CONFIRMATION:'확인란이나 기기 키 앞 8자리 입력이 맞지 않습니다.',B24_RETIRE_RESULT_UNKNOWN:'이 기기에 결과를 모르는 해제 요청이 있습니다 · "같은 해제 요청 결과 확인"을 먼저 누르세요.',B24_RETIRE_PENDING_NONE:'결과를 확인할 해제 요청이 없습니다 · 새로 해제를 요청하세요.',B27_RETIRE_ALREADY_REFUSED:'이 요청은 서버가 거절했고 서버에 남지 않았음이 확인되었습니다 · 새로 해제를 요청하세요.',B27_INVENTORY_EXPIRY:'서버가 보낸 장치 연결 기록 형식이 예상과 달라 요청을 만들지 않았습니다 · 앱 업데이트가 필요할 수 있습니다.',MD_PENDING_UNRESOLVED:'결과를 모르는 저장이나 장치 연결이 있어 해제할 수 없습니다 · 먼저 그 결과를 확인하세요.',MD_LOCAL_FOLLOWER_READ_ONLY:'이 창은 읽기 전용이라 해제할 수 없습니다 · 기록 창에서 하세요.'};
+function retireErrorText(code){const c=typeof code==='string'&&/^[A-Z][A-Z0-9_]{1,79}$/.test(code)?code:'HOLD_CONNECTION';return (RETIRE_ERROR_TEXT[c]||(c.startsWith('B4_')?'서버가 해제 요청을 거절했습니다 · 해제되지 않았습니다':'기기 권한 해제를 끝내지 못했습니다 · 연결을 확인한 뒤 같은 해제 요청 결과부터 확인하세요'))+' ('+c+')';}
+async function retireWithTotp(totpInput,call){const code=totpInput.value.trim();totpInput.value='';
+ if(code&&!/^\d{6}$/.test(code)){status(RETIRE_ERROR_TEXT.TOTP_PROFILE,true);return;}
+ try{if(code)await api('/api/md/totp',{factorId:mdTotpFactor(),code});await afterRosterRetire(await call());}catch(e){await refresh().catch(()=>{});status(retireErrorText(e?.code),true);}}
+function retireTotpField(box){const f=field(box,'인증 앱(TOTP) 6자리 · 최근 5분 안에 TOTP로 로그인했으면 비워 두어도 됨','password','');f.autocomplete='one-time-code';f.inputMode='numeric';f.maxLength=6;return f;}
 async function afterRosterRetire(r){mdApply(await api('/api/md/status',{}));applyMDLocks();await refresh();status(r.status==='COMMITTED'?'기기 키 '+r.targetKeyId8+'의 쓰기 권한을 해제했습니다 · 목록에 "해제됨(이 기기가 확인)"으로 표시됩니다.':'기기 키 '+r.targetKeyId8+' 해제 요청 결과 · '+r.status);}
 function rosterRowAction(d){
  if(d.self||d.retired||!can('device-retire'))return null;
  const wrap=el('div'),box=el('div',null,'md-group');
- if(rosterRetirePending.has(d.keyId8)){add(wrap,hint('기기 키 '+d.keyId8+' 해제 요청의 결과를 아직 모릅니다. 새로 요청하지 말고 같은 요청의 결과를 확인하세요.'),button('같은 해제 요청 결과 확인',()=>perform(async()=>afterRosterRetire(await api('/api/md/device-retire-reconcile',{targetKeyId8:d.keyId8})))));return wrap;}
+ if(rosterRetirePending.has(d.keyId8)){const again=el('div');const totpAgain=retireTotpField(again);add(wrap,hint('기기 키 '+d.keyId8+' 해제 요청의 결과를 아직 모릅니다. 새로 요청하지 말고 같은 요청의 결과를 확인하세요. 서버에 없으면 같은 요청을 다시 보내고, 서버가 거절하면 그 요청을 정리해 새로 요청할 수 있게 됩니다.'),again,button('같은 해제 요청 결과 확인',()=>perform(()=>retireWithTotp(totpAgain,()=>api('/api/md/device-retire-reconcile',{targetKeyId8:d.keyId8})))));return wrap;}
  box.hidden=true;
  add(box,el('h3','기기 키 '+d.keyId8+' 권한 해제'),hint((d.recordCount===null?'확정 기록 모름':'확정 기록 '+d.recordCount+'건')+' · 마지막 기록 '+(d.lastRecordDate?d.lastRecordDate+'(UTC 날짜)':d.recordCount===0?'없음':'모름')));
- const consent=field(box,RETIRE_WARNING,'checkbox',false),typed=field(box,'확인: 기기 키 앞 8자리('+d.keyId8+')를 그대로 입력','text','');
+ const consent=field(box,RETIRE_WARNING,'checkbox',false),typed=field(box,'확인: 기기 키 앞 8자리('+d.keyId8+')를 그대로 입력','text',''),totpCode=retireTotpField(box);
  add(box,add(el('div',null,'buttons'),button('권한 해제 실행',()=>{
-  if(!consent.checked||typed.value.trim().toLowerCase()!==d.keyId8){status('확인란이 비어 있거나 입력한 값이 기기 키 앞 8자리와 달라 해제하지 않았습니다.',true);return;}
-  void perform(async()=>{let r;try{r=await api('/api/md/device-retire',{targetKeyId8:d.keyId8,confirmText:typed.value,confirmed:consent.checked});}catch(e){await refresh().catch(()=>{});throw e;}finally{consent.checked=false;typed.value='';}await afterRosterRetire(r);});
- },'primary'),button('취소',()=>{box.hidden=true;consent.checked=false;typed.value='';})));
+  if(!consent.checked||typed.value.trim().toLowerCase()!==d.keyId8){status('확인란이 비어 있거나 입력한 값이 기기 키 앞 8자리와 달라 해제하지 않았습니다.',true);totpCode.value='';return;}
+  void perform(async()=>{try{await retireWithTotp(totpCode,()=>api('/api/md/device-retire',{targetKeyId8:d.keyId8,confirmText:typed.value,confirmed:consent.checked}));}finally{consent.checked=false;typed.value='';}});
+ },'primary'),button('취소',()=>{box.hidden=true;consent.checked=false;typed.value='';totpCode.value='';})));
  add(wrap,button('이 기기 권한 해제…',()=>{box.hidden=!box.hidden;}),box);return wrap;}
 // B22: 기기 목록. 이 앱이 이미 가진 로스터·확정 기록에서 계산한 값만 보인다(서버 호출 없음, 이름 저장 없음). 키는 앞 8자리만. B24 해제 버튼은 rosterRowAction이 만든다.
 function renderDeviceRosterPanel(devices){const p=section('기기 목록','이 앱이 알고 있는 등록 기기입니다. 기기마다 설정 화면을 열어 "이 기기" 줄을 보면 그 기기가 목록의 어느 줄인지 알 수 있습니다. 다른 기기에서 해제한 기기는 여기서 알 수 없습니다.');p.id='device-roster';add(p,rosterRetireNote());
@@ -123,6 +134,9 @@ function setupMD(state){
  };
  let stopRequestPoll=null,stopAckPoll=null,stopDraftPoll=null,stopReceiptPoll=null,relayRecipient=false,pairMode=null;
  const email=field(loginBox,'Owner 이메일','email',''),otp=field(loginBox,'이메일 코드','text',''),factor=field(loginBox,'TOTP factor ID','text',''),totp=field(loginBox,'TOTP 코드','password',''),setupKey=field(loginBox,'인증 앱 수동 등록 키','password','');setupKey.readOnly=true;setupKey.parentElement.hidden=true;
+ // B27: 저장된 로그인으로 이미 서버 로그인된 경우 "TOTP factor ID"를 서버의 등록 정보(factors)로 채운다(인증 앱이 하나일 때만, 칸이 비어 있을 때만). 실패해도 화면은 그대로.
+ const fillFactor=()=>{if(factor.value||!can('totp-factors'))return;void api('/api/md/totp-factors',{}).then(r=>{if(!factor.value&&r?.factors?.length===1)factor.value=r.factors[0].id;}).catch(()=>{});};
+ loginBox.addEventListener('toggle',()=>{if(loginBox.open)fillFactor();});if(state.auth?.state&&state.auth.state!=='LOCKED')fillFactor();mdTotpFactor=()=>factor.value.trim();
  add(loginBox,add(el('div',null,'buttons'),button('이메일 코드 요청',doIt(()=>call('email',{email:email.value}))),button('이메일 코드 확인',doIt(async()=>{try{const r=await call('email-code',{email:email.value,code:otp.value});if(r.factors?.length===1)factor.value=r.factors[0].id;}finally{otp.value='';}})),can('totp-enroll')&&button('TOTP 최초 등록',doIt(async()=>{const r=await api('/api/md/totp-enroll',{});factor.value=r.factorId;setupKey.value=r.setupKey;setupKey.parentElement.hidden=false;out.textContent='인증 앱에 설정 키를 등록한 뒤 TOTP 코드를 입력하세요. 설정 키는 저장되지 않습니다.';})),can('totp-enroll')&&button('설정 키 표시',()=>{if(setupKey.value)setupKey.type=setupKey.type==='password'?'text':'password';}),button('TOTP 로그인',doIt(async()=>{try{await call('totp',{factorId:factor.value,code:totp.value});setupKey.value='';setupKey.parentElement.hidden=true;}finally{totp.value='';}}))));
  if(can('first-primary-status')){
   const initial=section('이 Windows에서 처음 시작하기','먼저 이메일 코드와 TOTP로 로그인하세요. 새 잠금 문구와 별도의 복구 문구를 앱에 입력합니다. 문구는 채팅으로 보내지 마세요.');

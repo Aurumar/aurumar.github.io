@@ -249,13 +249,24 @@ export class SequentialService {
   lifecycleWritable(this.#store);check(!this.pending&&!this.#store.state.sequentialSync.enrollment,'MD_PENDING_UNRESOLVED');await this.#auth.requireRecentMfa();await this.#release(true);
   await this.#sync();const remote=await this.#transport.call('getLifecycleState'),intent=await prepareRetirement(this.#material,remote,selection);
   await this.#publish(local=>{local.sequentialSync.lifecycle.retirements[intent.body.intentId]={intent,receipt:null};});this.suspend();
-  const receipt=await this.#transport.call('retireDevice',{intent});return this.#publishRetirement(intent,receipt);
+  let receipt;try{receipt=await this.#transport.call('retireDevice',{intent});}catch(e){await this.#settleRefusedRetirement(intent,e);throw e;}return this.#publishRetirement(intent,receipt);
  });}
  reconcileRetirement(intentId){return this.#serial(async()=>{
-  const row=this.#store.state.sequentialSync.lifecycle?.retirements[intentId];check(row,'B4_RETIRE_INTENT_REQUIRED');await this.#authenticated();
+  const row=this.#store.state.sequentialSync.lifecycle?.retirements[intentId];check(row,'B4_RETIRE_INTENT_REQUIRED');check(!row.serverRejected,'B27_RETIRE_ALREADY_REFUSED');await this.#authenticated();
   let receipt=await this.#transport.call('getLifecycleIntent',{intentId,intentHash:sha(encode(row.intent))});
-  if(receipt.status==='NOT_FOUND'){await this.#auth.requireRecentMfa();receipt=await this.#transport.call('retireDevice',{intent:row.intent});}return this.#publishRetirement(row.intent,receipt);
+  if(receipt.status==='NOT_FOUND'){await this.#auth.requireRecentMfa();try{receipt=await this.#transport.call('retireDevice',{intent:row.intent});}catch(e){await this.#settleRefusedRetirement(row.intent,e);throw e;}}return this.#publishRetirement(row.intent,receipt);
  });}
+ // B27: a retire request the server refused (its SQL transaction rolled back, nothing applied) used to stay here without a receipt, and B24 then
+ // refused every new request for that device (B24_RETIRE_RESULT_UNKNOWN). Only a refusal code the server itself answers counts, and only after
+ // getLifecycleIntent confirms the server holds no such intent is the row marked serverRejected (kept as evidence, never resubmitted). Network
+ // errors, timeouts and generic codes leave the row unknown, because that request may still have committed. The original error is rethrown.
+ async #settleRefusedRetirement(intent,error){
+  if(!definiteRetireRefusal(error?.code))return;
+  try{
+   const found=await this.#transport.call('getLifecycleIntent',{intentId:intent.body.intentId,intentHash:sha(encode(intent))});if(found?.status!=='NOT_FOUND')return;
+   await this.#publish(local=>{const row=local.sequentialSync.lifecycle.retirements[intent.body.intentId];check(row&&same(row.intent,intent)&&!row.receipt,'B4_RETIRE_COLLISION');row.serverRejected={code:error.code,checkedAt:Math.floor(this.#clock()/1000)};});
+  }catch{}
+ }
  // B24: 기기 목록 줄에서 해제. 화면은 키 앞 8자리와 입력한 확인 문구만 보낸다. 전체 deviceId·지문은 로컬 로스터에서 찾아 retireDevice에 넘긴다
  // (TOTP 최근성·확인·서버 검증은 retireDevice 그대로). 결과는 상태와 키 앞 8자리만 돌려준다(영수증·intentId는 화면에 보내지 않음).
  async retireDeviceByRosterKey({targetKeyId8,confirmText,confirmed}){const receipt=await this.retireDevice(rosterRetireSelection({...rosterRetireInputs(this),targetKeyId8,confirmText,confirmed}));return {status:receipt.status,targetKeyId8};}
@@ -416,6 +427,11 @@ export function deviceRosterView({rosterEvidence,operations,retirements,selfDevi
 // 예전 형태(target.deviceId)도 읽는다.
 const retireTargetId=r=>{const t=r?.intent?.body?.target,id=t?.member?.deviceId??t?.deviceId;return typeof id==='string'?id:null;};
 const retiredDeviceIds=retirements=>new Set(Object.values(retirements??{}).filter(r=>r?.receipt).map(retireTargetId).filter(Boolean));
+// B27: a request without a receipt is "result unknown" unless the server refused it and confirmed it holds no such intent (serverRejected).
+const unresolvedRetirement=r=>r&&!r.receipt&&!r.serverRejected;
+// B27: refusal codes only the server answers for retireDevice (Edge checks before the RPC, or an SQL assert that rolls the transaction back).
+const RETIRE_REFUSALS=new Set(['RECENT_TOTP_REQUIRED','AUTH_SCOPE','CHALLENGE_BINDING','INACTIVE_DEVICE','DEVICE_PROOF','DEVICE_NAMESPACE']);
+export const definiteRetireRefusal=code=>typeof code==='string'&&(/^B4_[A-Z0-9_]{1,76}$/.test(code)||RETIRE_REFUSALS.has(code));
 const rosterMembers=e=>[e.genesis.body.firstDevice,...e.events.map(x=>x.body.member)];
 const rosterRetireInputs=service=>({rosterEvidence:service.store.roster.evidence,retirements:service.store.state.sequentialSync.lifecycle?.retirements,selfDeviceId:service.material.identity.public.deviceId});
 // 키 앞 8자리 → 로스터 기기 하나(앱 내부 전용, view()에 넣지 않는다). 정확히 하나만 맞아야 한다.
@@ -430,17 +446,17 @@ export function rosterRetireSelection({rosterEvidence,retirements,selfDeviceId,t
  check(confirmed===true&&typeof confirmText==='string'&&confirmText.trim().toLowerCase()===targetKeyId8,'B24_KEY_CONFIRMATION');
  const member=rosterMemberByKey(rosterEvidence,targetKeyId8);check(member.deviceId!==selfDeviceId,'B24_SELF_RETIRE_REFUSED');
  check(!retiredDeviceIds(retirements).has(member.deviceId),'B24_ALREADY_RETIRED');
- check(!Object.values(retirements??{}).some(r=>r&&!r.receipt&&retireTargetId(r)===member.deviceId),'B24_RETIRE_RESULT_UNKNOWN');
+ check(!Object.values(retirements??{}).some(r=>unresolvedRetirement(r)&&retireTargetId(r)===member.deviceId),'B24_RETIRE_RESULT_UNKNOWN');
  return {targetDeviceId:member.deviceId,targetFingerprint:fingerprint(member),reason:'USER_REPLACEMENT',confirmed:true};
 }
 // B24: 결과를 모르는 해제 요청(영수증 없음)의 intentId. 같은 기기에 하나만 있어야 한다.
 export function pendingRetirementIntent({rosterEvidence,retirements,targetKeyId8}){
  const member=rosterMemberByKey(rosterEvidence,targetKeyId8);
- const ids=Object.entries(retirements??{}).filter(([,r])=>r&&!r.receipt&&retireTargetId(r)===member.deviceId).map(([id])=>id);
+ const ids=Object.entries(retirements??{}).filter(([,r])=>unresolvedRetirement(r)&&retireTargetId(r)===member.deviceId).map(([id])=>id);
  check(ids.length>0,'B24_RETIRE_PENDING_NONE');check(ids.length===1,'B24_RETIRE_PENDING_AMBIGUOUS');return ids[0];
 }
 // B24: 결과를 모르는 해제 요청이 있는 기기의 키 앞 8자리(화면의 "같은 요청 결과 확인" 버튼용). 전체 값·intentId는 넣지 않는다.
 export function retirePendingKeys({rosterEvidence,retirements}){
- const pending=new Set(Object.values(retirements??{}).filter(r=>r&&!r.receipt).map(retireTargetId).filter(Boolean));
+ const pending=new Set(Object.values(retirements??{}).filter(unresolvedRetirement).map(retireTargetId).filter(Boolean));
  return rosterMembers(rosterEvidence).filter(m=>pending.has(m.deviceId)).map(m=>m.keyId.slice(0,8));
 }

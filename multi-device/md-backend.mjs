@@ -16,7 +16,7 @@ import {PROFILE,same} from './contracts.mjs';
 import {normalizeCommand} from '../user-app/action-model.mjs';
 
 export const MD_ROUTE_GROUPS=Object.freeze({
- CORE:Object.freeze(['status','email','email-code','totp','select-profile','sync','acquire','release','reconcile','suspend','handoff']),
+ CORE:Object.freeze(['status','email','email-code','totp','totp-factors','select-profile','sync','acquire','release','reconcile','suspend','handoff']),
  TOTP_ENROLL:Object.freeze(['totp-enroll']),
  FREEZE:Object.freeze(['freeze']),
  RELAY_CLIENT_PREFLIGHT:Object.freeze(['relay-client-preflight']),
@@ -92,6 +92,7 @@ export async function createMDBackend({surface,auth,transport,storage,ownership,
    catch(error){await store?.close();if(owned)await dropOwner();else localRole='NONE';if(error.code==='MD_EXPLICIT_ENROLLMENT_REQUIRED'){lastUnlockState='LOCAL_RECORD_MISSING_OR_MISMATCH';check(false,'MD_LOCAL_RECORD_MISSING_OR_MISMATCH');}throw error;}
   }finally{opening=false;if(lateSignout)await closeForSignout(lateSignout);else settleHeld();}
  }
+ async function onlyTotpFactor(){check(typeof auth.factors==='function','TOTP_FACTOR_REQUIRED');const list=await auth.factors();check(Array.isArray(list)&&list.length>0,'TOTP_FACTOR_NONE');check(list.length===1,'TOTP_FACTOR_AMBIGUOUS');return list[0].id;}
  async function online(fn){try{const r=await fn();verified=true;lastOnlineFailure=null;return r;}catch(error){verified=false;lastOnlineFailure=typeof error?.code==='string'?error.code:'ONLINE_OPERATION_FAILED';throw error;}}
  function draftList(){
   const d=drafts();check(d,'MD_DRAFTS_UNAVAILABLE');const s=service.store.state.sequentialSync,phase=service.phase;
@@ -114,7 +115,10 @@ export async function createMDBackend({surface,auth,transport,storage,ownership,
   case 'email':keys(body,['email']);return auth.requestEmailCode(body.email);
   case 'email-code':keys(body,['email','code']);return auth.verifyEmailCode(body.email,body.code);
   case 'totp-enroll':keys(body,[]);return auth.enrollTotp();
-  case 'totp':keys(body,['factorId','code']);return auth.verifyTotp(body.factorId,body.code);
+  // B27: an empty factor ID (saved-login auto open never fills the field) uses the account's only verified TOTP factor; none or several is refused.
+  case 'totp':keys(body,['factorId','code']);return auth.verifyTotp(body.factorId===''?await onlyTotpFactor():body.factorId,body.code);
+  // B27: verified TOTP factors of the signed-in account (id and display name only) so the screen can fill "TOTP factor ID" itself.
+  case 'totp-factors':keys(body,[]);check(typeof auth.factors==='function','TOTP_FACTOR_REQUIRED');return {factors:(await auth.factors()).map(f=>({id:f.id,friendlyName:f.friendlyName}))};
   case 'select-profile':keys(body,['id']);check(!service&&profiles.some(p=>p.id===body.id),'MD_PROFILE_SELECTION');selected=body.id;lastUnlockState=null;return status();
   case 'sync':keys(body,[]);return online(()=>need().sync());
   case 'acquire':keys(body,[]);return online(()=>need().acquire());

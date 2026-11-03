@@ -26,7 +26,9 @@ export async function validateLifecycleState(state,material){
  if(pending?.settlement){const archive=life.archives[pending.pairSessionId];check(archive&&same(pending.registration,archive.registration),'B4_SETTLEMENT_ARCHIVE');await validateSettlementAttempt(pending.settlement,archive,material);if(archive.settlementAttempts)check(same(archive.settlementAttempts.at(-1),pending.settlement),'B4_SETTLEMENT_ACTIVE_ATTEMPT');}
  for(const [sid,response]of Object.entries(life.terminals)){check(life.archives[sid],'B4_TERMINAL_ARCHIVE_MISSING');await lifecycleContract.terminal(response,{pairSessionId:sid,...life.archives[sid]},material.keyring);}
  for(const [iid,row]of Object.entries(life.retirements)){
-  keys(row,['intent','receipt']);const b=row.intent.body;
+  keys(row,['intent','receipt',...(Object.hasOwn(row,'serverRejected')?['serverRejected']:[])]);const b=row.intent.body;
+  // B27: serverRejected = the server refused this intent and getLifecycleIntent then confirmed it holds no such intent. Never has a receipt.
+  if(row.serverRejected){keys(row.serverRejected,['code','checkedAt']);check(row.receipt===null&&typeof row.serverRejected.code==='string'&&/^[A-Z][A-Z0-9_]{1,79}$/.test(row.serverRejected.code)&&Number.isSafeInteger(row.serverRejected.checkedAt)&&row.serverRejected.checkedAt>=0,'B27_LOCAL_RETIRE_REJECTED');}
   keys(b,['format','accountId','vaultId','genesisPin','intentId','actor','target','expected','targetSessionsHash','reason','expiresAt','confirmationHash']);lifecycleContract.namespace(b,material.keyring);
   check(idOK(iid)&&b.intentId===iid&&b.actor.deviceId===material.identity.public.deviceId&&['LOST_DEVICE','BROKEN_DEVICE','USER_REPLACEMENT'].includes(b.reason),'B4_LOCAL_RETIRE_INTENT');await lifecycleContract.signed(row.intent,'LBOS/B4/retire-device',b.actor);
   if(row.receipt)validateRetirementReceipt(row.intent,row.receipt);
@@ -65,6 +67,21 @@ export function publishTerminalState(local,response,pending){
  local.roster=copy(response.state.roster);s.enrollment=null;s.access={rosterEpoch:response.state.rosterEpoch,rosterHash:response.state.rosterHash,epoch:response.state.accessEpoch,status:response.state.status};
  if(response.terminal.status==='COMMITTED')s.receipts[response.terminal.admittedReceipt.approvalId]=copy(response.terminal.admittedReceipt);
 }
+// B27: the server checks targetSessionsHash against lb_owner_seq.b4_hash(b4_inventory(vault,target)) (003_b4_lifecycle_v1.sql:231).
+// b4_inventory builds expiresAt with extract(epoch from s.expires) (003:55), which PostgreSQL 14+ returns as numeric with scale 6, and
+// lb_owner_seq.canonical writes a jsonb number as its text (001:57): "1761562800.000000". The Edge response carries it as the JSON number
+// 1761562800, so fingerprint(inventory) hashed "1761562800" and never matched (B4_TARGET_SESSIONS_CHANGED on every non-empty inventory).
+// This hashes the server's exact canonical text. expiresAt is always whole seconds (sessions store to_timestamp(integer expiresAt));
+// anything else is refused rather than guessed. An empty inventory is "[]" on both sides.
+const INVENTORY_KEYS=['descriptorHash','expiresAt','pairSessionId','recipientDeviceId','registrationHash','status'];
+export function serverInventoryHash(inventory){
+ check(Array.isArray(inventory),'B4_TARGET_INVENTORY');
+ const rows=inventory.map(row=>{
+  keys(row,INVENTORY_KEYS);check(Number.isSafeInteger(row.expiresAt)&&row.expiresAt>=0,'B27_INVENTORY_EXPIRY');
+  return '{'+INVENTORY_KEYS.map(k=>{const v=row[k];if(k==='expiresAt')return JSON.stringify(k)+':'+v+'.000000';check(v===null||typeof v==='string','B27_INVENTORY_VALUE');return JSON.stringify(k)+':'+JSON.stringify(v);}).join(',')+'}';
+ });
+ return sha(new TextEncoder().encode('['+rows.join(',')+']'));
+}
 export async function prepareRetirement(material,remote,{targetDeviceId,targetFingerprint,reason,confirmed,now=Math.floor(Date.now()/1000)}){
  check(confirmed===true&&idOK(targetDeviceId)&&idOK(targetFingerprint),'B4_EXACT_RETIRE_CONFIRMATION');
  const target=remote.devices.find(x=>x.member.deviceId===targetDeviceId);check(target?.active===true&&fingerprint(target.member)===targetFingerprint&&targetDeviceId!==material.identity.public.deviceId,'B4_SELF_OR_AMBIGUOUS_TARGET');
@@ -72,6 +89,6 @@ export async function prepareRetirement(material,remote,{targetDeviceId,targetFi
  const roster=await Roster.load(state.roster,material.keyring.genesisPin);check(roster.head===state.rosterHash&&roster.epoch===state.rosterEpoch,'B4_RETIRE_ROSTER');
  const inventory=remote.sessions.find(x=>x.deviceId===targetDeviceId)?.inventory;check(Array.isArray(inventory),'B4_TARGET_INVENTORY');
  const expected={version:state.version,head:state.head,rosterEpoch:state.rosterEpoch,rosterHash:state.rosterHash,accessEpoch:state.accessEpoch};
- const body={format:lifecycleContract.FORMAT,accountId:state.accountId,vaultId:state.vaultId,genesisPin:state.genesisPin,intentId:randomId(),actor:material.identity.public,target:copy(target),expected,targetSessionsHash:fingerprint(inventory),reason,expiresAt:now+300,confirmationHash:fingerprint({targetDeviceId,targetFingerprint,reason,confirmed})};
+ const body={format:lifecycleContract.FORMAT,accountId:state.accountId,vaultId:state.vaultId,genesisPin:state.genesisPin,intentId:randomId(),actor:material.identity.public,target:copy(target),expected,targetSessionsHash:serverInventoryHash(inventory),reason,expiresAt:now+300,confirmationHash:fingerprint({targetDeviceId,targetFingerprint,reason,confirmed})};
  check(['LOST_DEVICE','BROKEN_DEVICE','USER_REPLACEMENT'].includes(reason),'B4_RETIRE_REASON');return {body,signature:await material.identity.sign('LBOS/B4/retire-device',encode(body))};
 }
