@@ -175,8 +175,9 @@ export async function createMDBackend({surface,auth,transport,storage,ownership,
   }
   case 'pair-abort-expired':keys(body,[]);controller??=new EnrollmentController(need(),transport(need().material.identity,need().material.keyring));return controller.reconcile({decision:'EXPIRE',reason:'EXPIRED'});
   case 'lifecycle-state':keys(body,[]);return need().lifecycleCall('getLifecycleState');
-  case 'device-retire':keys(body,['targetDeviceId','targetFingerprint','reason','confirmed']);return needOwner().retireDevice(body);
-  case 'device-retire-reconcile':keys(body,['intentId']);return needOwner().reconcileRetirement(body.intentId);
+  // B24: the device roster sends only the 8-char key prefix and the typed confirmation; the service resolves the full id/fingerprint itself.
+  case 'device-retire':if(Object.hasOwn(body,'targetKeyId8')){keys(body,['targetKeyId8','confirmText','confirmed']);return needOwner().retireDeviceByRosterKey(body);}keys(body,['targetDeviceId','targetFingerprint','reason','confirmed']);return needOwner().retireDevice(body);
+  case 'device-retire-reconcile':if(Object.hasOwn(body,'targetKeyId8')){keys(body,['targetKeyId8']);return needOwner().reconcileRetirementByRosterKey(body.targetKeyId8);}keys(body,['intentId']);return needOwner().reconcileRetirement(body.intentId);
   case 'pair-cancel':keys(body,['confirmed']);check(body.confirmed===true,'B4_EXPLICIT_CANCEL');controller??=new EnrollmentController(need(),transport(need().material.identity,need().material.keyring));return controller.reconcile({decision:'ABORT',reason:'USER_CANCEL'});
   case 'enroll-pending-list':keys(body,[]);check(storage.pending,'B4_DURABLE_RECIPIENT_REQUIRED');return {sessions:await storage.pending.list()};
   case 'enroll-resume':keys(body,['pairSessionId','unlockSecret']);check(!service&&!recipient&&!selected,'MD_NEW_DEVICE_REQUIRED');await auth.accessToken();recipient=await EnrollmentRecipient.resume({persistence:storage.pending,unlockSecret:body.unlockSecret,transportFactory:transport,pairSessionId:body.pairSessionId});recipientAck=recipient.pendingAck;return {...recipient.request,relay:recipient.relayEnabled,ackReady:!!recipientAck};

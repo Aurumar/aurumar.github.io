@@ -1,4 +1,4 @@
-import {check,keys,copy,encode,payloadEncode,decode,sha,b64,unb64,randomId,idOK} from '../core/package/src/codec.mjs';
+import {check,keys,copy,encode,payloadEncode,decode,sha,b64,unb64,randomId,idOK,fingerprint} from '../core/package/src/codec.mjs';
 import {WriterContext,openEnvelope,verify} from '../core/package/src/crypto.mjs';
 import {Roster} from '../core/package/src/enrollment.mjs';
 import {normalizeCommand,today,savedResult,replay as replayLegacy} from '../user-app/action-model.mjs';
@@ -256,6 +256,10 @@ export class SequentialService {
   let receipt=await this.#transport.call('getLifecycleIntent',{intentId,intentHash:sha(encode(row.intent))});
   if(receipt.status==='NOT_FOUND'){await this.#auth.requireRecentMfa();receipt=await this.#transport.call('retireDevice',{intent:row.intent});}return this.#publishRetirement(row.intent,receipt);
  });}
+ // B24: 기기 목록 줄에서 해제. 화면은 키 앞 8자리와 입력한 확인 문구만 보낸다. 전체 deviceId·지문은 로컬 로스터에서 찾아 retireDevice에 넘긴다
+ // (TOTP 최근성·확인·서버 검증은 retireDevice 그대로). 결과는 상태와 키 앞 8자리만 돌려준다(영수증·intentId는 화면에 보내지 않음).
+ async retireDeviceByRosterKey({targetKeyId8,confirmText,confirmed}){const receipt=await this.retireDevice(rosterRetireSelection({...rosterRetireInputs(this),targetKeyId8,confirmText,confirmed}));return {status:receipt.status,targetKeyId8};}
+ async reconcileRetirementByRosterKey(targetKeyId8){const receipt=await this.reconcileRetirement(pendingRetirementIntent({...rosterRetireInputs(this),targetKeyId8}));return {status:receipt.status,targetKeyId8};}
  async #publishRetirement(intent,receipt){
   const b=intent.body;validateRetirementReceipt(intent,receipt);
   await this.#publish(local=>{const row=local.sequentialSync.lifecycle.retirements[b.intentId];check(same(row.intent,intent)&&(!row.receipt||same(row.receipt,receipt)),'B4_RETIRE_COLLISION');row.receipt=receipt;local.sequentialSync.access.epoch=Math.max(local.sequentialSync.access.epoch,receipt.accessEpoch);});this.#lease=null;this.#state='VERIFIED_READ_ONLY';this.#blocked=false;return receipt;
@@ -387,7 +391,7 @@ export class SequentialService {
  command(requestId){if(['LOCAL_PUBLICATION_HOLD','REMOTE_COMMITTED_LOCAL_HOLD'].includes(this.#state))return {status:this.#state,requestId};const p=this.pending;if(p?.intentId===requestId)return {status:this.#state,requestId};const receipt=this.#store.state.sequentialSync.receipts[requestId];if(receipt?.status==='ABORTED')return {status:'ABORTED',requestId};const op=this.#store.state.userApp.operations.find(x=>x.provenance.requestId===requestId);if(receipt?.status==='COMMITTED'&&op)return {...savedResult(op),status:'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED',remoteVersion:receipt.version,remoteHead:receipt.head};return {status:'NOT_ESTABLISHED',requestId};}
  today(){return today(this.#store.graph);}
  history(){return {changes:wholeHistory(this.#store.graph,this.#store.state.userApp.operations)};}
- view(){return {...wholeLifeView(this.#store.graph,undefined,this.#store.state.userApp.operations),settings:{storage:this.#store.storageKind,session:this.#state,profile:PROFILE,writeReady:this.status().writeReady,remoteCheckpoint:this.#store.state.sequentialSync.verified,localState:this.#store.localState??null,backup:this.#store.backupLocation??'SYNC_PRIMARY_WINDOWS_THEN_COLD_BACKUP',dataRoot:this.#store.location??'CURRENT_HTTPS_ORIGIN_INDEXEDDB',timings:this.timings(),lastSyncPublishReason:this.#lastSyncPublishReason,devices:this.#deviceRoster()}};}
+ view(){return {...wholeLifeView(this.#store.graph,undefined,this.#store.state.userApp.operations),settings:{storage:this.#store.storageKind,session:this.#state,profile:PROFILE,writeReady:this.status().writeReady,remoteCheckpoint:this.#store.state.sequentialSync.verified,localState:this.#store.localState??null,backup:this.#store.backupLocation??'SYNC_PRIMARY_WINDOWS_THEN_COLD_BACKUP',dataRoot:this.#store.location??'CURRENT_HTTPS_ORIGIN_INDEXEDDB',timings:this.timings(),lastSyncPublishReason:this.#lastSyncPublishReason,devices:this.#deviceRoster(),devicesRetirePending:retirePendingKeys(rosterRetireInputs(this))}};}
  #deviceRoster(){const s=this.#store.state;return deviceRosterView({rosterEvidence:this.#store.roster.evidence,operations:s.userApp.operations,retirements:s.sequentialSync.lifecycle?.retirements,selfDeviceId:this.#material.identity.public.deviceId,writeReady:this.status().writeReady});}
  // F12-2 진단용: 단계 이름→ms 숫자만(시간 숫자와 이름 외에는 아무것도 담지 않음). 내부 배열을 그대로 내보내지 않고 얕은 복제.
  timings(){return {open:this.#openTimings.map(r=>({...r})),save:this.#saveTimings.map(r=>({...r})),lastSaveFullReplays:this.#lastSaveFullReplays};}
@@ -402,9 +406,41 @@ export function samePayload(a,b){return a!==undefined&&b!==undefined&&sha(payloa
 // 쓰기 자격(writeRole)은 로스터 역할이고, 지금 기록 권한(lease)을 쥐었는지(writeReady)는 이 기기만 안다(다른 기기는 null=모름).
 export function deviceRosterView({rosterEvidence,operations,retirements,selfDeviceId,writeReady}){
  const members=[{member:rosterEvidence.genesis.body.firstDevice,role:'ADMIN'},...rosterEvidence.events.map(e=>({member:e.body.member,role:e.body.role}))];
- const retired=new Set(Object.values(retirements??{}).filter(r=>r?.receipt&&typeof r.intent?.body?.target?.deviceId==='string').map(r=>r.intent.body.target.deviceId));
+ const retired=retiredDeviceIds(retirements);
  const stats=Array.isArray(operations)?new Map():null;
  if(stats)for(const op of operations){const s=stats.get(op.device)??{count:0,last:null},at=op.provenance?.recordedAt;s.count++;if(typeof at==='string'&&(s.last===null||at>s.last))s.last=at;stats.set(op.device,s);}
  return members.map(({member,role})=>{const self=member.deviceId===selfDeviceId,gone=retired.has(member.deviceId),s=stats?(stats.get(member.deviceId)??{count:0,last:null}):null;
   return {keyId8:member.keyId.slice(0,8),deviceId8:member.deviceId.slice(0,8),self,retired:gone,writeRole:gone?null:role,writeReady:self?writeReady===true:null,recordCount:s?s.count:null,lastRecordDate:s?.last?s.last.slice(0,10):null};});
+}
+// B24: 해제 요청의 대상 deviceId. prepareRetirement가 만든 intent는 target={member,active,readOnly,sequence,digest}이다(target.member.deviceId).
+// 예전 형태(target.deviceId)도 읽는다.
+const retireTargetId=r=>{const t=r?.intent?.body?.target,id=t?.member?.deviceId??t?.deviceId;return typeof id==='string'?id:null;};
+const retiredDeviceIds=retirements=>new Set(Object.values(retirements??{}).filter(r=>r?.receipt).map(retireTargetId).filter(Boolean));
+const rosterMembers=e=>[e.genesis.body.firstDevice,...e.events.map(x=>x.body.member)];
+const rosterRetireInputs=service=>({rosterEvidence:service.store.roster.evidence,retirements:service.store.state.sequentialSync.lifecycle?.retirements,selfDeviceId:service.material.identity.public.deviceId});
+// 키 앞 8자리 → 로스터 기기 하나(앱 내부 전용, view()에 넣지 않는다). 정확히 하나만 맞아야 한다.
+function rosterMemberByKey(rosterEvidence,targetKeyId8){
+ check(typeof targetKeyId8==='string'&&/^[a-f0-9]{8}$/.test(targetKeyId8),'B24_KEY_PREFIX');
+ const hits=rosterMembers(rosterEvidence).filter(m=>m.keyId.slice(0,8)===targetKeyId8);check(hits.length>0,'B24_KEY_NOT_IN_ROSTER');check(hits.length===1,'B24_KEY_PREFIX_AMBIGUOUS');return hits[0];
+}
+// B24: 기기 목록 해제의 선택값. 확인란과 키 앞 8자리 입력이 맞아야 하고, 이 기기 자신·이미 해제 확인된 기기·결과 모르는 해제 요청이 있는 기기는 거부한다.
+// 돌려주는 전체 deviceId·지문은 retireDevice 인자로만 쓴다(사유는 USER_REPLACEMENT 고정).
+export function rosterRetireSelection({rosterEvidence,retirements,selfDeviceId,targetKeyId8,confirmText,confirmed}){
+ check(typeof targetKeyId8==='string'&&/^[a-f0-9]{8}$/.test(targetKeyId8),'B24_KEY_PREFIX');
+ check(confirmed===true&&typeof confirmText==='string'&&confirmText.trim().toLowerCase()===targetKeyId8,'B24_KEY_CONFIRMATION');
+ const member=rosterMemberByKey(rosterEvidence,targetKeyId8);check(member.deviceId!==selfDeviceId,'B24_SELF_RETIRE_REFUSED');
+ check(!retiredDeviceIds(retirements).has(member.deviceId),'B24_ALREADY_RETIRED');
+ check(!Object.values(retirements??{}).some(r=>r&&!r.receipt&&retireTargetId(r)===member.deviceId),'B24_RETIRE_RESULT_UNKNOWN');
+ return {targetDeviceId:member.deviceId,targetFingerprint:fingerprint(member),reason:'USER_REPLACEMENT',confirmed:true};
+}
+// B24: 결과를 모르는 해제 요청(영수증 없음)의 intentId. 같은 기기에 하나만 있어야 한다.
+export function pendingRetirementIntent({rosterEvidence,retirements,targetKeyId8}){
+ const member=rosterMemberByKey(rosterEvidence,targetKeyId8);
+ const ids=Object.entries(retirements??{}).filter(([,r])=>r&&!r.receipt&&retireTargetId(r)===member.deviceId).map(([id])=>id);
+ check(ids.length>0,'B24_RETIRE_PENDING_NONE');check(ids.length===1,'B24_RETIRE_PENDING_AMBIGUOUS');return ids[0];
+}
+// B24: 결과를 모르는 해제 요청이 있는 기기의 키 앞 8자리(화면의 "같은 요청 결과 확인" 버튼용). 전체 값·intentId는 넣지 않는다.
+export function retirePendingKeys({rosterEvidence,retirements}){
+ const pending=new Set(Object.values(retirements??{}).filter(r=>r&&!r.receipt).map(retireTargetId).filter(Boolean));
+ return rosterMembers(rosterEvidence).filter(m=>pending.has(m.deviceId)).map(m=>m.keyId.slice(0,8));
 }
