@@ -622,8 +622,8 @@
     },
     {
       "path": "user-app/public/ics-export.mjs",
-      "sourceSha256": "4d5ce5ec103c8fe360044bff23a87f7e664230a29a8c5bbd161b70745032b4ed",
-      "outputSha256": "4d5ce5ec103c8fe360044bff23a87f7e664230a29a8c5bbd161b70745032b4ed",
+      "sourceSha256": "5119852bf625fe5ec883cc7851540edc16202ad31c953062e8fbb615d022d31b",
+      "outputSha256": "5119852bf625fe5ec883cc7851540edc16202ad31c953062e8fbb615d022d31b",
       "dependencies": [
         "user-app/public/life-model.mjs"
       ],

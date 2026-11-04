@@ -52,16 +52,21 @@ export function stampOf(now){
 
 // ---- 일정 모으기 ----
 // 입력은 wholeLifeView가 이미 주는 모양: events/plans = 엔티티 행({entityId,data}), life = lifeRawView(PLAN_DAY·시험).
-// 반환 항목: {uid,summary,date,time|null}. time이 null이면 종일. 범위 = today부터 ICS_DAYS일(양 끝 포함).
-export function rangeOf(today){return {from:today,to:shiftDay(today,ICS_DAYS-1)};}
+// 반환 항목: {uid,summary,date,time|null}. time이 null이면 종일. 범위 = today부터 ICS_DAYS일(양 끝 포함). 시험만 예외로 today 이후면 상한 없이 넣는다(B46G 소유자 결정).
+// rangeOf의 to: 항목(날짜순)을 넘기면 max(창 끝, 마지막 항목 날짜)이고, 항목이 없으면 창 끝이다.
+export function rangeOf(today,items=[]){
+  const end=shiftDay(today,ICS_DAYS-1),last=items.at(-1)?.date;
+  return {from:today,to:last&&last>end?last:end};
+}
 export function collectIcsItems({events=[],plans=[],life=null,today}){
   if(!dateKeyOK(today)){const e=new Error('INVALID_TODAY');e.code='INVALID_TODAY';throw e;}
   const {from,to}=rangeOf(today),items=[];
-  const push=(uid,title,date,time)=>{
+  const pushOpen=(uid,title,date,time)=>{
     const summary=cleanText(title);
-    if(!summary||!dateKeyOK(date)||date<from||date>to)return;
+    if(!summary||!dateKeyOK(date)||date<from)return;
     items.push({uid:uid+'@'+UID_HOST,summary,date,time:timeOK(time)?time:null});
   };
+  const push=(uid,title,date,time)=>{if(!(date>to))pushOpen(uid,title,date,time);};
   for(const ev of events){
     const d=ev?.data;if(!d||d.deleted||excluded(d)||!dateKeyOK(d.date))continue;
     const r=d.recurrence,count=Math.min(r?.count??1,MAX_REPEAT),step=r?r.interval*(r.frequency==='WEEKLY'?7:1):0;
@@ -82,7 +87,7 @@ export function collectIcsItems({events=[],plans=[],life=null,today}){
     const d=row?.data;if(!d||excluded(d)||row.date<from||row.date>to)continue;
     for(const x of d.items??[])if(!excluded(x))push('pd-'+safeId(row.date)+'-'+safeId(x.id),'공부 계획 · '+(BLOCK_TEXT[x.block]??'')+' · '+x.title,row.date,null);
   }
-  for(const x of lifeDefs(life).exams.items??[])if(!excluded(x))push('ex-'+safeId(x.id),'시험 · '+x.name+(x.status==='잠정'?' (잠정)':''),x.date,null);
+  for(const x of lifeDefs(life).exams.items??[])if(!excluded(x))pushOpen('ex-'+safeId(x.id),'시험 · '+x.name+(x.status==='잠정'?' (잠정)':''),x.date,null);
   items.sort((a,b)=>a.date.localeCompare(b.date)||(a.time??'').localeCompare(b.time??'')||(a.uid<b.uid?-1:a.uid>b.uid?1:0));
   return items.slice(0,MAX_ITEMS);
 }
@@ -101,7 +106,7 @@ export function buildIcs(items,{now}){
 }
 // 화면용 한 번에: {text,count,from,to}. 항목이 없으면 유효한 빈 VCALENDAR가 나오고 count=0이다(화면은 내려받기를 막는다).
 export function buildIcsFromViews({events=[],plans=[],life=null,today,now}){
-  const items=collectIcsItems({events,plans,life,today}),{from,to}=rangeOf(today);
+  const items=collectIcsItems({events,plans,life,today}),{from,to}=rangeOf(today,items);
   return {text:buildIcs(items,{now}),count:items.length,from,to};
 }
 export const icsFileName=today=>'life-brick-schedule-'+today+'.ics';
@@ -110,7 +115,7 @@ export const icsFileName=today=>'life-brick-schedule-'+today+'.ics';
 // h={el,add,button}, kit={sheet}, views()=>{events,plans,life,today}, now()=>ISO, download(name,text). 서버 호출·저장·연산 없음.
 export const ICS_TEXT=Object.freeze({
   title:'일정 내보내기 (.ics)',
-  lead:'오늘부터 '+ICS_DAYS+'일 동안의 일정·계획·시험을 .ics 파일 한 장으로 내려받아 PC·iPad 캘린더 앱에 직접 넣습니다. 제목만 담기며 메모·건강·공부 카드·돈 거래는 들어가지 않습니다. 자동으로 보내지 않습니다.',
+  lead:'오늘부터 '+ICS_DAYS+'일 동안의 일정·계획과, 날짜가 정해진 시험은 기간과 상관없이 모두 .ics 파일 한 장으로 내려받아 PC·iPad 캘린더 앱에 직접 넣습니다. 제목만 담기며 메모·건강·공부 카드·돈 거래는 들어가지 않습니다. 자동으로 보내지 않습니다.',
   empty:'이 기간에 내보낼 일정이 없습니다.',
   fail:'일정 파일을 만들지 못했습니다. 다시 시도해 주세요.',
 });
