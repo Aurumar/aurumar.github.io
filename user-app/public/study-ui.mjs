@@ -21,9 +21,9 @@ export const STUDY_ERROR_TEXT=Object.freeze({
   INVALID_STUDY_ITEMREF:'출처 표기와 번호만 넣을 수 있습니다(예: OFFICIAL_KICE_SAMPLE:2026-06-12). 문제 문장은 넣지 않습니다.',
   INVALID_STUDY_TEXT:'글자 수를 확인하세요.',INVALID_STUDY_DATE:'날짜는 YYYY-MM-DD 형식이어야 합니다.',INVALID_STUDY_NEXT_DUE:'다음 복습일은 복습한 날 이후여야 합니다.',
   INVALID_STUDY_SESSION:'세션 값을 확인하세요(분은 0~1440 정수).',NO_STARTED_SESSION:'시작한 세션이 없습니다. 먼저 "공부 시작"을 누르세요.',
-  APP_ENTITY_LIMIT:'개수 한도에 닿았습니다.',STALE_HEADS:'다른 기기에서 먼저 바뀌었습니다. 다시 받아 합친 뒤 확정하세요.',
-  MD_NOT_WRITE_READY:'지금은 서버에 확정할 수 없습니다. 초안은 이 기기에 남아 있습니다.',VERSION_CONFLICT:'다른 기기가 먼저 확정했습니다. 다시 확정을 누르면 받아서 합칩니다.',
-  ABORTED:'서버가 이 확정을 받지 않았습니다(기록되지 않음) · 초안은 그대로 있습니다. 다시 확정할 수 있습니다.',
+  APP_ENTITY_LIMIT:'개수 한도에 닿았습니다.',STALE_HEADS:'다른 기기에서 먼저 바뀌었습니다. 다시 받아 합친 뒤 쌓으세요.',
+  MD_NOT_WRITE_READY:'지금은 서버에 쌓을 수 없습니다. 초안은 이 기기에 남아 있습니다.',VERSION_CONFLICT:'다른 기기가 먼저 쌓았습니다. 다시 쌓기를 누르면 받아서 합칩니다.',
+  ABORTED:'서버가 이 쌓기를 받지 않았습니다(기록되지 않음) · 초안은 그대로 있습니다. 다시 쌓을 수 있습니다.',
 });
 export const studyErrorText=code=>STUDY_ERROR_TEXT[code]??(code?'처리하지 못했습니다 ('+code+') · 초안은 그대로 있습니다.':'처리하지 못했습니다.');
 export const NOTICE_TEXT=Object.freeze({
@@ -32,9 +32,9 @@ export const NOTICE_TEXT=Object.freeze({
   REBASE_VALUE_OVERWRITTEN:'같은 항목을 양쪽에서 고쳤습니다 · 내 값을 썼고 상대 값은 이력에 남아 있습니다.',
 });
 const STATUS_TEXT=Object.freeze({
-  CONFIRMED:'저장 및 동기화 확인됨 · 확정했습니다 (연산 1).',ALREADY_APPLIED:'이미 반영되어 있습니다 · 새로 저장하지 않았습니다.',NOTHING_TO_CONFIRM:'확정할 초안이 없습니다.',
-  UNKNOWN:'서버 응답을 확인하지 못했습니다 · 초안은 그대로 있습니다. 다시 확정을 누르면 결과를 확인한 뒤 이어서 처리합니다(중복 저장 없음).',
-  SYNC_FAILED:'서버에서 최신 기록을 받지 못했습니다 · 초안은 그대로 있습니다.',FAILED:'저장하지 못했습니다 · 초안은 그대로 있습니다.',STALE:'다른 기기와 계속 겹쳐 확정하지 못했습니다 · 초안은 그대로 있습니다.',
+  CONFIRMED:'저장 및 동기화 확인됨 · 쌓았습니다.',ALREADY_APPLIED:'이미 반영되어 있습니다 · 새로 저장하지 않았습니다.',NOTHING_TO_CONFIRM:'쌓을 초안이 없습니다.',
+  UNKNOWN:'서버 응답을 확인하지 못했습니다 · 초안은 그대로 있습니다. 다시 쌓기를 누르면 결과를 확인한 뒤 이어서 처리합니다(중복 저장 없음).',
+  SYNC_FAILED:'서버에서 최신 기록을 받지 못했습니다 · 초안은 그대로 있습니다.',FAILED:'저장하지 못했습니다 · 초안은 그대로 있습니다.',STALE:'다른 기기와 계속 겹쳐 쌓지 못했습니다 · 초안은 그대로 있습니다.',
 });
 export const CLOSE_WARNING='다음 복습일을 안 정하면 이 오답은 복습 목록에서 빠져요.';
 export const RESULT_TEXT=Object.freeze({RECALLED:'기억남',PARTIAL:'일부만 기억',FAILED:'못 떠올림'});
@@ -139,7 +139,7 @@ export function renderStudy(root,ctx,st){
   // 0) 복습 목록(맨 위): 오늘 도래·밀린 건수 + 목록 + 결과 기록
   let proj=null,sum=null;
   try{proj=projectStudy(projectionCards(st.raw,fs),st.today);sum=reviewSummary(proj);}catch{proj=null;}
-  const rev=section('복습','복습 결과를 고르면 다음 복습일을 제안합니다(1·3·7·14·30·60·120일 사다리). 날짜는 바꿀 수 있습니다. 기록은 오늘 카드의 초안에 들어갑니다(연산 0).');
+  const rev=section('복습','복습 결과를 고르면 다음 복습일을 제안합니다(1·3·7·14·30·60·120일 사다리). 날짜는 바꿀 수 있습니다. 기록은 오늘 카드의 초안에 들어갑니다.');
   if(!sum)add(rev,el('p','복습 목록을 계산하지 못했습니다(카드 값 확인 필요).','notice error study-message'));
   else{
     add(rev,el('p',sum.line,sum.overdue?'study-chip study-overdue':'study-chip'));
@@ -165,7 +165,7 @@ export function renderStudy(root,ctx,st){
               if(v!==''&&!dateKeyOK(v)){const e=new Error('INVALID_STUDY_DATE');e.code='INVALID_STUDY_DATE';throw e;}
               if(v===''&&!f.graduated&&!(ctx.confirmDialog?.(CLOSE_WARNING+' 그래도 비워 둘까요?')??true))return;
               const r2=await st.flow.recordReview(st.today,{mistakeId:f.mistakeId,result:f.result,nextDue:v});
-              st.reviewForm=null;st.message=r2.closed?(f.graduated?'졸업으로 기록했습니다(초안, 연산 0).':'다음 복습일 없이 기록했습니다 · 이 오답은 복습 목록에서 빠집니다(초안, 연산 0).'):'복습을 초안에 기록했습니다(연산 0).';
+              st.reviewForm=null;st.message=r2.closed?(f.graduated?'졸업으로 기록했습니다(초안).':'다음 복습일 없이 기록했습니다 · 이 오답은 복습 목록에서 빠집니다(초안).'):'복습을 초안에 기록했습니다.';
             }),'primary'),
             button('취소',()=>{st.reviewForm=null;void ctx.rerender();})));
       }
@@ -174,14 +174,14 @@ export function renderStudy(root,ctx,st){
   add(out,rev);
 
   // 1) 상태·날짜
-  const head=section('공부 · 하루 1장','입력은 이 기기의 임시 저장(초안)에 쌓이고, "확정"을 눌러야 금고에 기록됩니다(연산 1). 같은 날 카드를 또 확정하면 연산이 하나 더 듭니다.');
+  const head=section('공부 · 하루 1장','입력은 이 기기의 임시 저장(초안)에 모이고, "카드 쌓기"를 눌러야 금고에 기록됩니다.');
   const b=box?.statusFor('STUDY_DAY',date);
   const chip=b?.typing?T.typing:b?.has?'이 기기에만 있는 초안 · '+(b.dirty?(b.failed?'아직 이 기기에 저장하지 못함':T.typing):T.saved)+(b.old?' · '+T.old:''):
-    fs.status==='LOCAL_DRAFT'?'이 기기에만 있는 초안 (아직 금고에 없음) · 초안 저장됨':fs.status==='CONFIRMED'?'확정됨 · 이 카드는 '+fs.latestConfirmCount+'번 확정':'아직 기록 없음';
+    fs.status==='LOCAL_DRAFT'?'이 기기에만 있는 초안 (아직 금고에 없음) · 초안 저장됨':fs.status==='CONFIRMED'?'쌓임 · 이 카드는 '+fs.latestConfirmCount+'번 쌓음':'아직 기록 없음';
   const dateIn=input(date,{inputmode:'numeric',placeholder:'YYYY-MM-DD',maxlength:'10'});
   const go=d=>()=>{if(!dateKeyOK(d)){st.message='날짜는 YYYY-MM-DD 형식이어야 합니다.';st.error=true;void ctx.rerender();return;}st.date=d;st.form=null;st.reviewForm=null;st.message=null;st.notices=[];void ctx.perform(async()=>{await prepareStudy(ctx,st);await ctx.rerender();});};
   add(head,add(el('div',null,'buttons'),button('◀ 전날',()=>go(shiftDay(date,-1))()),dateIn,button('이동',()=>go(dateIn.value.trim())()),button('▶ 다음날',()=>go(shiftDay(date,1))()),button('오늘',()=>go(st.today)())),el('p',chip,'study-chip'));
-  if(st.ports?.persistent===false)add(head,hint('이 환경에는 임시 저장 저널이 없어 초안이 앱을 닫거나 새로고침하면 사라집니다. 확정하기 전에 닫지 마세요. (PC 앱에서는 초안이 기기에 암호화되어 남습니다.)'));
+  if(st.ports?.persistent===false)add(head,hint('이 환경에는 임시 저장 저널이 없어 초안이 앱을 닫거나 새로고침하면 사라집니다. 쌓기 전에 닫지 마세요. (PC 앱에서는 초안이 기기에 암호화되어 남습니다.)'));
   if(box){
     const s=box.status();
     add(head,hint(T.modeBox));
@@ -192,7 +192,7 @@ export function renderStudy(root,ctx,st){
       button(T.resumeKeep,()=>{seen();void ctx.rerender();},'primary'),
       button(T.resumeDrop,()=>{if(ctx.confirmDialog?.(T.dropConfirm)??true)void act(async()=>{await st.ports.drafts.discard(fs.draftId);st.notices=[];})();})));
   }
-  if(fs.latestConfirmCount+1>=3&&fs.status==='LOCAL_DRAFT')add(head,hint('이 카드는 이번이 '+(fs.latestConfirmCount+1)+'번째 확정입니다. 막지는 않지만, 모아서 한 번에 확정하면 기록 연산을 아낄 수 있습니다.'));
+  if(fs.latestConfirmCount+1>=3&&fs.status==='LOCAL_DRAFT')add(head,hint('이 카드는 이번이 '+(fs.latestConfirmCount+1)+'번째 쌓기입니다. 막지는 않지만, 모아서 한 번에 쌓는 편이 좋습니다.'));
   if(st.message)add(head,el('p',st.message,st.error?'notice error study-message':'notice study-message'));
   if(st.notices.length)add(head,el('p','다른 기기에서 바뀐 내용이 있어 합쳤어요.','notice study-merged'));
   for(const n of st.notices)add(head,el('p',NOTICE_TEXT[n.code]??n.code,'notice study-notice'));
@@ -201,10 +201,10 @@ export function renderStudy(root,ctx,st){
   // 2) 세션
   const ses=section('그날 세션','공부 시간은 내가 입력·확인한 분만 셉니다(자동 측정 없음). 세션 '+fs.card.sessions.length+'개');
   const sSel=select(subjectOptions(),SUBJECTS[0]),endMin=input('',{inputmode:'numeric',placeholder:'확인한 분'}),endLoc=input('',{maxlength:String(MAX_LOCATOR),placeholder:'이어하기 위치(선택)'});
-  add(ses,add(el('div',null,'buttons study-quick'),field('과목',sSel),button('공부 시작',act(async()=>{follow(await st.flow.quickStart(sSel.value),'세션을 시작으로 초안에 넣었습니다(연산 0).');}),'primary')),
+  add(ses,add(el('div',null,'buttons study-quick'),field('과목',sSel),button('공부 시작',act(async()=>{follow(await st.flow.quickStart(sSel.value),'세션을 시작으로 초안에 넣었습니다.');}),'primary')),
     add(el('div',null,'buttons study-quick'),field('확인한 분',endMin),field('이어하기 위치',endLoc),button('공부 끝',act(async()=>{
       const m=int(endMin.value);if(Number.isNaN(m)||m>1440){const e=new Error('INVALID_STUDY_SESSION');e.code='INVALID_STUDY_SESSION';throw e;}
-      follow(await st.flow.quickEnd(m,endLoc.value.trim()===''?{}:{restartLocator:endLoc.value.trim()}),'세션을 끝으로 바꾸고 확인한 분을 넣었습니다(연산 0).');
+      follow(await st.flow.quickEnd(m,endLoc.value.trim()===''?{}:{restartLocator:endLoc.value.trim()}),'세션을 끝으로 바꾸고 확인한 분을 넣었습니다.');
     }),'primary')));
   if(!fs.card.sessions.length)add(ses,hint('아직 세션이 없습니다.'));
   for(const s of fs.card.sessions){
@@ -225,24 +225,24 @@ export function renderStudy(root,ctx,st){
     button('오답 넣기',act(async()=>{
       const reviewDue=mDue.value.trim();
       await st.flow.addMistake(date,{subject:mSub.value,itemRef:mProv.value+':'+mNum.value.trim(),errorCode:mCode.value,evidence:mEv.value,note:mNote.value.trim(),...(reviewDue?{reviewDue}:{})});
-      st.message='오답을 초안에 넣었습니다(연산 0).';
+      st.message='오답을 초안에 넣었습니다.';
     }),'primary'));
   add(out,mis);
 
   // 4) 확정
-  const fin=section('확정');
+  const fin=section('쌓기');
   add(fin,add(el('div',null,'buttons'),
-    button('확정 (연산 1)',act(async()=>{
+    button('카드 쌓기',act(async()=>{
       const r=await st.flow.confirm(date);st.notices=r.notices??[];
       if(r.status==='REJECTED'){st.message=studyErrorText(r.code);st.error=true;}
       else if(['UNKNOWN','SYNC_FAILED','FAILED','STALE'].includes(r.status)){st.message=(r.code&&STUDY_ERROR_TEXT[r.code])||STATUS_TEXT[r.status];st.error=true;}
       else st.message=STATUS_TEXT[r.status]??r.status;
     }),'primary'),
-    fs.status==='LOCAL_DRAFT'?button('초안 버리기',()=>{if(ctx.confirmDialog?.('이 날짜의 초안을 버릴까요? 금고에 확정된 기록에는 영향이 없습니다.')??true)void act(async()=>{await st.ports.drafts.discard(fs.draftId);st.notices=[];})();}):null));
+    fs.status==='LOCAL_DRAFT'?button('초안 버리기',()=>{if(ctx.confirmDialog?.('이 날짜의 초안을 버릴까요? 금고에 쌓인 기록에는 영향이 없습니다.')??true)void act(async()=>{await st.ports.drafts.discard(fs.draftId);st.notices=[];})();}):null));
   add(out,fin);
 
   // 5) 요약(계산만, 연산 0)
-  const sm=section('최근 공부 요약','확인한 분만 합산합니다. 저장하지 않고 계산만 합니다(연산 0). 기준일 '+st.today+' · KST');
+  const sm=section('최근 공부 요약','확인한 분만 합산합니다. 저장하지 않고 계산만 합니다. 기준일 '+st.today+' · KST');
   if(proj){
     for(const [name,w] of [['최근 7일',proj.minutes.w7],['최근 30일',proj.minutes.w30]]){
       const parts=SUBJECTS.filter(c=>w[c]>0).map(c=>c+' '+w[c]+'분');

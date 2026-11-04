@@ -297,15 +297,16 @@
     },
     {
       "path": "user-app/whole-life-model.mjs",
-      "sourceSha256": "f51e108846cf3170ad52ad159383fd45af4b794de26d179f531a6e8427c1abf3",
-      "outputSha256": "e77f4141b03bcda750b06b69ca798e952ae16a0dbd387099ab26e1779a9dfa1c",
+      "sourceSha256": "ace7b98a1e72e8ef1615ac1a9f0e94d1d6bc07da5189a059b7e5f5eefc7ac2d9",
+      "outputSha256": "1bcca29d70b15b30d71262e0b923b3c4a4dc36f37cba23ac451437c10a65495a",
       "dependencies": [
         "multi-device/portable/errors.mjs",
         "core/package/src/codec.mjs",
         "core/package/parent/v2_phase2/source/canonical.mjs",
         "user-app/fin-model.mjs",
         "user-app/public/hlt-model.mjs",
-        "user-app/public/study-model.mjs"
+        "user-app/public/study-model.mjs",
+        "user-app/public/life-model.mjs"
       ],
       "transforms": [
         "PURE_REQUIRE_VALUE_IMPORT"
@@ -313,8 +314,8 @@
     },
     {
       "path": "user-app/whole-life-projection.mjs",
-      "sourceSha256": "329622e525466ef9eb92fe84909a01e8235ff75d8a4c2f430f48d8b7260a1761",
-      "outputSha256": "53935d31b867aef3facb001cbfa0f2529147726ad52f520531efe1bcf3e13d7a",
+      "sourceSha256": "50d5d5af2bbc561b52cf840dfc8118ec368147fef8c01883bba0c77a64c3c22b",
+      "outputSha256": "030058c2690cfdf3656d4dc2c88e9c537238a27537fe8e842f70941464be0f0d",
       "dependencies": [
         "multi-device/portable/errors.mjs",
         "core/package/parent/v2_phase2/source/canonical.mjs",
@@ -323,6 +324,7 @@
         "user-app/public/hlt-model.mjs",
         "user-app/public/hlt-projection.mjs",
         "user-app/public/study-model.mjs",
+        "user-app/public/life-model.mjs",
         "user-app/fin-projection.mjs",
         "user-app/whole-life-model.mjs",
         "user-app/measurement.mjs",
@@ -341,14 +343,22 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "1ec49c5296855c45d2bc09211044161d1af2ce11ab9bd9b2296b1fe8fb3e09e1",
-      "outputSha256": "1ec49c5296855c45d2bc09211044161d1af2ce11ab9bd9b2296b1fe8fb3e09e1",
+      "sourceSha256": "777fb52c7ea1170a71268b54caf2d7bf7f1271930c9e74bddf771766e0c65741",
+      "outputSha256": "777fb52c7ea1170a71268b54caf2d7bf7f1271930c9e74bddf771766e0c65741",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs",
         "user-app/public/fin-charts.mjs",
+        "user-app/public/fin-recurring.mjs",
         "user-app/public/hlt-ui.mjs",
         "user-app/public/study-ui.mjs",
+        "user-app/public/life-tower.mjs",
+        "user-app/public/ui-kit.mjs",
+        "user-app/public/life-plan.mjs",
+        "user-app/public/native-bridge.mjs",
+        "user-app/public/life-model.mjs",
+        "user-app/public/life-ui.mjs",
+        "user-app/public/state-export.mjs",
         "user-app/public/card-draft-box.mjs"
       ],
       "transforms": []
@@ -426,8 +436,8 @@
     },
     {
       "path": "user-app/fin-model.mjs",
-      "sourceSha256": "3a2b181cf10676a709f8c922f8e5ef4dd031f4ac45a9db2e73208088a7854af7",
-      "outputSha256": "a12d583bb60745fe9b8018cd1d285b52987bf6ee539f02256841a77528983b1b",
+      "sourceSha256": "4c486f56a3c2efd0d955674688045a04c95355e98ea83d8980aed9f931b0c56e",
+      "outputSha256": "edd7a059c2ae2d0a70024697f7203751ee1001ec3409920acb3f5dbf1a4dd6bb",
       "dependencies": [
         "multi-device/portable/errors.mjs"
       ],
@@ -450,9 +460,16 @@
       "transforms": []
     },
     {
+      "path": "user-app/public/life-model.mjs",
+      "sourceSha256": "09a09d36f8c68976d09d3e3621828f9f797f59b9ebcfeed8c82d2c80a0e7362f",
+      "outputSha256": "09a09d36f8c68976d09d3e3621828f9f797f59b9ebcfeed8c82d2c80a0e7362f",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
       "path": "user-app/public/hlt-projection.mjs",
-      "sourceSha256": "d0d19348e5043eb0451d1c784c734bce268913ec0de70c9b057849c343c5451b",
-      "outputSha256": "d0d19348e5043eb0451d1c784c734bce268913ec0de70c9b057849c343c5451b",
+      "sourceSha256": "5babfc5ef8b7cbee312dfae8ab44b3424709df30ab5e693cdc5df196d4519e9b",
+      "outputSha256": "5babfc5ef8b7cbee312dfae8ab44b3424709df30ab5e693cdc5df196d4519e9b",
       "dependencies": [
         "user-app/public/hlt-model.mjs"
       ],
@@ -460,8 +477,8 @@
     },
     {
       "path": "user-app/fin-projection.mjs",
-      "sourceSha256": "44f3d3d538d6af482908bc4cab8033e1c47e0f4fd053b8c1ae058089dfe8ad20",
-      "outputSha256": "44f3d3d538d6af482908bc4cab8033e1c47e0f4fd053b8c1ae058089dfe8ad20",
+      "sourceSha256": "a38c590f94298cebe06e2f82beecd49457f845dd6138101082987eaef28a9de2",
+      "outputSha256": "a38c590f94298cebe06e2f82beecd49457f845dd6138101082987eaef28a9de2",
       "dependencies": [
         "user-app/fin-model.mjs"
       ],
@@ -469,8 +486,8 @@
     },
     {
       "path": "user-app/public/fin-ledger.mjs",
-      "sourceSha256": "98f9c9c401f9d20d6b51354dca3def7ec6b0d3b8a13abeba91d38cf1f0c2bcf2",
-      "outputSha256": "98f9c9c401f9d20d6b51354dca3def7ec6b0d3b8a13abeba91d38cf1f0c2bcf2",
+      "sourceSha256": "118499af56feb0c600bb563def216129f45e45a83c3a691f716f050a08131e90",
+      "outputSha256": "118499af56feb0c600bb563def216129f45e45a83c3a691f716f050a08131e90",
       "dependencies": [],
       "transforms": []
     },
@@ -494,9 +511,19 @@
       "transforms": []
     },
     {
+      "path": "user-app/public/fin-recurring.mjs",
+      "sourceSha256": "665c72f625db1a6425961e90f03dc682899c833ceb082eee71452b6a5d93d7ba",
+      "outputSha256": "665c72f625db1a6425961e90f03dc682899c833ceb082eee71452b6a5d93d7ba",
+      "dependencies": [
+        "user-app/public/fin-ledger.mjs",
+        "user-app/public/fin-plan.mjs"
+      ],
+      "transforms": []
+    },
+    {
       "path": "user-app/public/hlt-ui.mjs",
-      "sourceSha256": "ca7183582ba021ee19ba4cefc5c33992cda73626bded1a7ab6ab5efc63f2dee3",
-      "outputSha256": "ca7183582ba021ee19ba4cefc5c33992cda73626bded1a7ab6ab5efc63f2dee3",
+      "sourceSha256": "e75fecc5aba005d8e73358ada842f5716f29d8c0493659418d99d994a20dafce",
+      "outputSha256": "e75fecc5aba005d8e73358ada842f5716f29d8c0493659418d99d994a20dafce",
       "dependencies": [
         "user-app/public/hlt-flow.mjs",
         "user-app/public/hlt-projection.mjs",
@@ -506,8 +533,8 @@
     },
     {
       "path": "user-app/public/study-ui.mjs",
-      "sourceSha256": "d020616c808e6dc620ce5b5e71e3e2ddf1394c401e476163d192e70a89a47209",
-      "outputSha256": "d020616c808e6dc620ce5b5e71e3e2ddf1394c401e476163d192e70a89a47209",
+      "sourceSha256": "af5bd1b1f013d1c70d9a93adeec81131398d854089954efb07700fc0e4f7effd",
+      "outputSha256": "af5bd1b1f013d1c70d9a93adeec81131398d854089954efb07700fc0e4f7effd",
       "dependencies": [
         "user-app/public/study-flow.mjs",
         "user-app/public/study-projection.mjs",
@@ -517,9 +544,72 @@
       "transforms": []
     },
     {
+      "path": "user-app/public/life-tower.mjs",
+      "sourceSha256": "675707cfeba0930368d5c962a4d12e13e515e1cc58ff19c9430a9faed49a2eb9",
+      "outputSha256": "675707cfeba0930368d5c962a4d12e13e515e1cc58ff19c9430a9faed49a2eb9",
+      "dependencies": [
+        "user-app/public/life-achieve.mjs",
+        "user-app/public/life-model.mjs",
+        "user-app/public/tower-3d.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/ui-kit.mjs",
+      "sourceSha256": "c4f2c08380f38ef4a428334f43c3e77b53374f83b51cffbc64a9dba2d8932287",
+      "outputSha256": "c4f2c08380f38ef4a428334f43c3e77b53374f83b51cffbc64a9dba2d8932287",
+      "dependencies": [
+        "user-app/public/app.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/life-plan.mjs",
+      "sourceSha256": "55037da6bb2fff1256ae4d820e7e566e73804af58d3aa33cedffca0e025b88e3",
+      "outputSha256": "55037da6bb2fff1256ae4d820e7e566e73804af58d3aa33cedffca0e025b88e3",
+      "dependencies": [
+        "user-app/public/life-achieve.mjs",
+        "user-app/public/life-rebase.mjs",
+        "user-app/public/life-model.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/native-bridge.mjs",
+      "sourceSha256": "61a6bef7d377c67ed2f9aae7b270763f4d1e5f91338c677315f99ffab88809d1",
+      "outputSha256": "61a6bef7d377c67ed2f9aae7b270763f4d1e5f91338c677315f99ffab88809d1",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/life-ui.mjs",
+      "sourceSha256": "f80fc5e5cc7eb5f5a3e8e7491bacc7ff2fb3f4f63a3a3a78a3dd804e46a2e383",
+      "outputSha256": "f80fc5e5cc7eb5f5a3e8e7491bacc7ff2fb3f4f63a3a3a78a3dd804e46a2e383",
+      "dependencies": [
+        "user-app/public/ui-kit.mjs",
+        "user-app/public/life-flow.mjs",
+        "user-app/public/life-achieve.mjs",
+        "user-app/public/life-model.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/state-export.mjs",
+      "sourceSha256": "b0702e91d7837e2f3d0d8181694105980d463e791451856933bec4c11df9dfa3",
+      "outputSha256": "b0702e91d7837e2f3d0d8181694105980d463e791451856933bec4c11df9dfa3",
+      "dependencies": [
+        "user-app/public/life-model.mjs",
+        "user-app/public/life-achieve.mjs",
+        "user-app/public/life-plan.mjs",
+        "user-app/public/fin-charts.mjs",
+        "user-app/public/fin-plan.mjs"
+      ],
+      "transforms": []
+    },
+    {
       "path": "user-app/public/card-draft-box.mjs",
-      "sourceSha256": "4e49790c941494786b973b4fbd94d3e227563815f2824c2866177fc618f1cb17",
-      "outputSha256": "4e49790c941494786b973b4fbd94d3e227563815f2824c2866177fc618f1cb17",
+      "sourceSha256": "5fc2bcde987e9744327c53a2384eea019773b9ae59bbe3de4546c84223e84e3f",
+      "outputSha256": "5fc2bcde987e9744327c53a2384eea019773b9ae59bbe3de4546c84223e84e3f",
       "dependencies": [],
       "transforms": []
     },
@@ -677,6 +767,44 @@
       "sourceSha256": "e16e067861a32d57d24d35217f6416872fee8b8fc8d096756267e5767d142b4d",
       "outputSha256": "e16e067861a32d57d24d35217f6416872fee8b8fc8d096756267e5767d142b4d",
       "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/life-achieve.mjs",
+      "sourceSha256": "82a1662bac1c07aedd491de584c87864ad04b5b522b63fcbadff12991da07718",
+      "outputSha256": "82a1662bac1c07aedd491de584c87864ad04b5b522b63fcbadff12991da07718",
+      "dependencies": [
+        "user-app/public/life-model.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/tower-3d.mjs",
+      "sourceSha256": "23391d5a0ba3730e3336a1ce90874ad9082be9b7f275a8fe525219e9c14e246e",
+      "outputSha256": "23391d5a0ba3730e3336a1ce90874ad9082be9b7f275a8fe525219e9c14e246e",
+      "dependencies": [
+        "user-app/public/three.module.js",
+        "user-app/public/tower-3d-layout.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/life-rebase.mjs",
+      "sourceSha256": "668f39ff957afd2e83901435cd27ba608baa3d428a0698aa539bdc61449f631c",
+      "outputSha256": "668f39ff957afd2e83901435cd27ba608baa3d428a0698aa539bdc61449f631c",
+      "dependencies": [
+        "user-app/public/life-model.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/life-flow.mjs",
+      "sourceSha256": "09787d9d7f863be22afafa847ab3c8b0480dbaacae7ec93ab78d1abe5212aa3a",
+      "outputSha256": "09787d9d7f863be22afafa847ab3c8b0480dbaacae7ec93ab78d1abe5212aa3a",
+      "dependencies": [
+        "user-app/public/life-model.mjs",
+        "user-app/public/life-rebase.mjs"
+      ],
       "transforms": []
     },
     {
@@ -921,6 +1049,20 @@
       "transforms": []
     },
     {
+      "path": "user-app/public/three.module.js",
+      "sourceSha256": "76dea8151bc9352aef3528b4262e249b2604f62543828328db978d060d61a495",
+      "outputSha256": "76dea8151bc9352aef3528b4262e249b2604f62543828328db978d060d61a495",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/tower-3d-layout.mjs",
+      "sourceSha256": "3527d167447b58a159c26052fd424a708963ec502473189b25c6a899d4961627",
+      "outputSha256": "3527d167447b58a159c26052fd424a708963ec502473189b25c6a899d4961627",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
       "path": "core/package/node_modules/@hpke/common/esm/_dnt.shims.js",
       "sourceSha256": "964bd4f895fc78959f40b3f3c87aa031389468a0221e5650b00445ff059d3715",
       "outputSha256": "964bd4f895fc78959f40b3f3c87aa031389468a0221e5650b00445ff059d3715",
@@ -1004,14 +1146,14 @@
     {
       "path": "index.html",
       "sourcePath": "user-app/public/index.html",
-      "sourceSha256": "d73b543740a29bfb6a7c2177b7d40991f0a57ab21bd1b2b06f071b8dbf781884",
-      "outputSha256": "b30cab4bf4b1bed9ead242f355c698fb583f828bd2262821c3222d8080ba1817"
+      "sourceSha256": "3b6339b71ebf5da90c8e91681884b43e9c8f6fd9e304219797ccea0251a2059a",
+      "outputSha256": "099c43d181a8ea4e4e1ae9986d9049894f2fd4d9b994a9a4f27a4c0599ced1be"
     },
     {
       "path": "styles.css",
       "sourcePath": "user-app/public/styles.css",
-      "sourceSha256": "4c48ab7cd0b909c3cc11048cb59c63853196ed8199879e196af04a54d14f05e4",
-      "outputSha256": "4c48ab7cd0b909c3cc11048cb59c63853196ed8199879e196af04a54d14f05e4"
+      "sourceSha256": "c49c7c7f12b2d3e09dd45529edd61fadde5da6158a2c10efb1c9ed3b3ad3aaea",
+      "outputSha256": "c49c7c7f12b2d3e09dd45529edd61fadde5da6158a2c10efb1c9ed3b3ad3aaea"
     },
     {
       "path": "public-config.json",

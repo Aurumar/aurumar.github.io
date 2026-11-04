@@ -1,0 +1,225 @@
+// LIFE_DAY 하루 1장 흐름(임시 저장 → 쌓기). hlt-flow와 같은 방식이다: 저장소·네트워크·시계·명령 서명(makeBody)은 ports로 주입한다.
+// 하루 중 입력은 초안(이 기기의 암호화 상자 또는 메모리)에만 모이고 연산 0이다. "오늘 쌓기" 1번 = 확정 = 연산 1(같은 날 다시 쌓으면 연산 1 더).
+// 화면을 열거나 동기화하는 것만으로는 어떤 엔티티도 쓰지 않는다: 쓰기는 confirm()과 saveDefinitions()(습관·과목·시험 편집 저장)에서만 일어난다.
+// 초안은 확정 성공을 확인한 뒤에만 지운다. 검증 거부·저장 실패·응답 불명이면 초안을 그대로 둔다.
+// 건강·공부와 달리 PC 초안 저널(drafts.lbd)은 쓰지 않는다: 저널의 목록 응답이 LIFE_DAY 본문을 돌려주지 않는다. 상자(브라우저 IndexedDB 암호문) 또는 메모리다.
+import {validateLifeData,emptyDay,kstDate,lifeDefs} from './life-model.mjs';
+import {rebase,hasChanges,diffDay,stable} from './life-rebase.mjs';
+
+const codeOf=e=>typeof e?.code==='string'?e.code:(e?.message??'UNKNOWN');
+const REJECT_CODE=/^(INVALID_|LIFE_|HABIT_|EXAM_|APP_ENTITY_LIMIT|REBASE_|INVALID_WHOLE_LIFE)/;
+export const DRAFT_REASON='오늘 카드 임시 저장';
+export const CONFIRM_REASON='오늘 카드 쌓기';
+const STALE_BASE='CARD_DRAFT_STALE_BASE',EDIT_ROUNDS=5;
+const flowError=code=>Object.assign(new Error(code),{code});
+const sameHeads=(a,b)=>a.length===b.length&&a.every((h,i)=>h===b[i]);
+
+export class LifeFlow{
+  #p;
+  #sent=new Set();#aborted=new Set();
+  constructor(ports){this.#p=ports;}
+  async #drafts(){
+    return (await this.#p.drafts.list()).filter(d=>d.type==='ENTITY'&&d.body?.entityType==='LIFE_DAY');
+  }
+  async #draftFor(date){
+    const list=(await this.#drafts()).filter(d=>d.body.entityId===date);
+    if(!list.length)return null;
+    return list.reduce((a,b)=>(b.createdAt>=a.createdAt?b:a));
+  }
+  #baseOf(date,heads){return heads.length?this.#p.revision(date,heads[0]):null;}
+  // 이 기기에만 있는 초안의 날짜들(오래된 순). 어제 쌓지 않은 초안을 찾는 데 쓴다.
+  async draftDates(){return [...new Set((await this.#drafts()).map(d=>d.body.entityId))].sort();}
+  // NONE(카드 없음), CONFIRMED(금고에 있음, 초안 없음), LOCAL_DRAFT(이 기기에만 있는 초안).
+  async state(date){
+    const draft=await this.#draftFor(date),latest=this.#p.latest(date);
+    if(draft){
+      const base=this.#baseOf(date,draft.body.expectedHeads);
+      return {status:'LOCAL_DRAFT',card:structuredClone(draft.body.data),base,baseHeads:[...draft.body.expectedHeads],draftId:draft.draftId,changes:diffDay(base,draft.body.data)};
+    }
+    return {status:latest.card?'CONFIRMED':'NONE',card:latest.card?structuredClone(latest.card):emptyDay(date),base:latest.card,baseHeads:[...latest.heads],draftId:null,changes:diffDay(latest.card,latest.card)};
+  }
+  // 입력 즉시 초안에 저장한다(연산 0). 검증에 걸리면 아무것도 바꾸지 않고 던진다. 변경이 base와 같아지면 초안을 지운다.
+  async edit(date,mutate,{input=null}={}){
+    const alive=this.#alive();
+    for(let round=1;;round++){
+      if(round>1)alive.check();
+      const s=await this.state(date),next=structuredClone(s.card);
+      mutate(next);
+      next.date=date;
+      validateLifeData('LIFE_DAY',date,next);
+      try{
+        if(!hasChanges(s.base,next)){if(s.draftId)await this.#p.drafts.discard(s.draftId,{input,date});else await this.#p.drafts.keep?.(date,{input,base:null});return this.state(date);}
+        if(s.draftId&&stable(next)===stable(s.card)){await this.#p.drafts.keep?.(date,{input,base:s.draftId});return s;}
+        const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:next,heads:s.baseHeads,reason:DRAFT_REASON});
+        await this.#p.drafts.save({type:'ENTITY',body},{input,base:s.draftId});
+      }catch(e){if(e?.code===STALE_BASE&&round<EDIT_ROUNDS)continue;throw e;}
+      if(s.draftId)await this.#p.drafts.discard(s.draftId,{input});
+      return this.state(date);
+    }
+  }
+  // entry = {done,at,minutes,count} 또는 null(되돌리기: 그 습관 기록을 지운다).
+  setHabit(date,habitId,entry,opts){return this.edit(date,c=>{if(entry===null)delete c.habits[habitId];else c.habits[habitId]=entry;},opts);}
+  setMood(date,mood,opts){return this.edit(date,c=>{c.mood=mood;},opts);}
+  setNote(date,note,opts){return this.edit(date,c=>{c.note=note??'';},opts);}
+  setDayType(date,dayType,opts){return this.edit(date,c=>{c.dayType=dayType;},opts);}
+
+  // 쌓기: 서버 최신을 받은 뒤 최신 카드 위에 내 변경을 다시 얹어(rebase) 연산 1개로 쓴다. (hlt-flow.confirm과 같은 단계)
+  async confirm(date,{maxAttempts=3}={}){
+    const alive=this.#alive();
+    for(let attempt=1;attempt<=maxAttempts;attempt++){
+      if(attempt>1&&alive.gone())return {status:'FAILED',code:alive.code()};
+      const draft=await this.#draftFor(date);
+      if(!draft)return {status:'NOTHING_TO_CONFIRM'};
+      try{
+        if(this.#p.hasPending?.())await this.#p.reconcile();
+        await this.#p.sync();
+      }catch(e){return {status:this.#p.hasPending?.()?'UNKNOWN':'SYNC_FAILED',code:codeOf(e)};}
+      const now=await this.#draftFor(date);
+      if(!now)return {status:'NOTHING_TO_CONFIRM'};
+      if(now.draftId!==draft.draftId){if(attempt<maxAttempts)continue;return {status:'STALE',code:STALE_BASE};}
+      let ended;
+      try{ended=Boolean(await this.#p.terminal?.(draft.body.requestId));}catch(e){return {status:'UNKNOWN',code:codeOf(e)};}
+      const settled=await this.#settleSent(draft,ended);
+      if(settled)return settled;
+      const latest=this.#p.latest(date),base=this.#baseOf(date,draft.body.expectedHeads);
+      const rb=rebase({date,base,mine:draft.body.data,latest:latest.card});
+      if(rb.status==='REJECTED')return {status:'REJECTED',code:rb.code,notices:rb.notices};
+      if(rb.status==='ALREADY_APPLIED'){await this.#p.drafts.discard(draft.draftId);return {status:'ALREADY_APPLIED',notices:rb.notices};}
+      let target=draft;
+      if(!(stable(draft.body.data)===stable(rb.card)&&sameHeads(draft.body.expectedHeads,latest.heads))||ended||this.#aborted.has(draft.body.requestId)){
+        const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:rb.card,heads:latest.heads,reason:CONFIRM_REASON});
+        let saved;
+        try{saved=await this.#p.drafts.save({type:'ENTITY',body},{base:draft.draftId});}
+        catch(e){if(codeOf(e)===STALE_BASE){if(attempt<maxAttempts)continue;return {status:'STALE',code:STALE_BASE,notices:rb.notices};}throw e;}
+        await this.#p.drafts.discard(draft.draftId);
+        target={draftId:saved.draftId,body};
+      }
+      let result;
+      try{result=await this.#p.drafts.commit(target.draftId);}
+      catch(e){
+        const code=codeOf(e);
+        if(code==='STALE_HEADS'&&attempt<maxAttempts)continue;
+        if(this.#p.hasPending?.()){this.#sent.add(target.body.requestId);return {status:'UNKNOWN',code,notices:rb.notices};}
+        return {status:REJECT_CODE.test(code)?'REJECTED':'FAILED',code,notices:rb.notices};
+      }
+      if(result?.status==='ABORTED'){this.#aborted.add(target.body.requestId);return {status:'FAILED',code:'ABORTED',notices:rb.notices};}
+      if(result?.status!=='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED'){this.#sent.add(target.body.requestId);return {status:'UNKNOWN',code:result?.status??'NO_RESULT',notices:rb.notices};}
+      this.#sent.delete(target.body.requestId);
+      return {status:'CONFIRMED',requestId:target.body.requestId,notices:rb.notices};
+    }
+    return {status:'STALE',code:'STALE_HEADS'};
+  }
+  #alive(){
+    const s0=this.#p.session?.();
+    const code=()=>this.#p.drafts.locked?.()?'CARD_DRAFT_LOCKED':'MD_SIGNED_OUT_ELSEWHERE';
+    const gone=()=>this.#p.session?.()!==s0||Boolean(this.#p.drafts.locked?.());
+    return {gone,code,check:()=>{if(gone())throw flowError(code());}};
+  }
+  async #settleSent(draft,ended){
+    const rid=draft.body.requestId;
+    if(this.#aborted.has(rid))return null;
+    if(!(this.#sent.has(rid)||ended))return null;
+    let result;
+    try{result=await this.#p.drafts.commit(draft.draftId);}
+    catch(e){
+      const code=codeOf(e);
+      if(code==='MD_TERMINAL_INTENT'||code==='STALE_HEADS'){this.#sent.delete(rid);this.#aborted.add(rid);return null;}
+      return {status:this.#p.hasPending?.()?'UNKNOWN':'FAILED',code};
+    }
+    if(result?.status==='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED'){this.#sent.delete(rid);return {status:'ALREADY_APPLIED',requestId:rid,notices:[]};}
+    if(result?.status==='ABORTED'){this.#sent.delete(rid);this.#aborted.add(rid);return null;}
+    return {status:'UNKNOWN',code:result?.status??'NO_RESULT'};
+  }
+}
+
+// "오늘 쌓기" 1탭: (1) 담아 둔 공부 초안이 있으면 먼저 공부 카드 확정(연산 1), (2) 이어서 LIFE_DAY 확정(연산 1).
+// (1)이 실패하면 (2)를 하지 않고 두 초안을 그대로 둔다. (1) 성공 뒤 (2)가 실패하면 공부는 쌓인 채 오늘 카드 초안만 남는다.
+// study = StudyFlow(공부 모듈이 꺼져 있으면 null). 돌려주는 값: {phase:'STUDY_FAILED'|'DONE', study, life}.
+export const STACK_DONE=Object.freeze(['CONFIRMED','ALREADY_APPLIED']);
+export async function stackDay(date,{life,study=null}){
+  let studyResult=null;
+  if(study&&(await study.state(date)).status==='LOCAL_DRAFT'){
+    try{studyResult=await study.confirm(date);}
+    catch(e){studyResult={status:'FAILED',code:codeOf(e)};}
+    if(!STACK_DONE.includes(studyResult.status))return {phase:'STUDY_FAILED',study:studyResult,life:null};
+  }
+  let lifeResult;
+  try{lifeResult=await life.confirm(date);}
+  catch(e){lifeResult={status:'FAILED',code:codeOf(e)};}
+  return {phase:'DONE',study:studyResult,life:lifeResult};
+}
+
+// ---- 포트: 앱의 api/기록 함수를 LifeFlow가 쓰는 모양으로 ----
+// ctx: {api, getWhole(), getChanges(), syncForWrite(), hasPending(), reconcile(), receipt(), digest(), uid(), now(), cardDraftBox(), write(), session()}
+export function createLifePorts(ctx){
+  const memoryDrafts=new Map();let seq=0,cache=null;
+  const life=()=>ctx.getWhole().life??{days:[]};
+  const revisionMap=()=>{const rows=ctx.getChanges();if(cache?.rows===rows)return cache.map;const m=new Map();for(const c of rows)if(c.type==='LIFE_DAY')m.set(c.revisionId,c.value.data);cache={rows,map:m};return m;};
+  const box=ctx.cardDraftBox?.()??null,mode=box?.available()?'DEVICE_BOX':'MEMORY';
+  const write=body=>ctx.write?ctx.write(body):ctx.api('/api/entity',body);
+  return {
+    mode,persistent:mode!=='MEMORY',box:mode==='DEVICE_BOX'?box:null,
+    latest(date){const d=life().days.find(x=>x.date===date);return {card:d?structuredClone(d.data):null,heads:d?[...d.heads]:[]};},
+    revision(date,ref){const v=revisionMap().get(ref);return v?structuredClone(v):null;},
+    sync:()=>ctx.syncForWrite(),
+    session:()=>ctx.session?.()??null,
+    hasPending:()=>Boolean(ctx.hasPending?.()),reconcile:()=>ctx.reconcile?.(),
+    terminal:ctx.receipt?async rid=>(await ctx.receipt(rid))?.status!=='NOT_ESTABLISHED':()=>false,
+    makeBody:async({requestId,date,data,heads,reason})=>{const fields={entityType:'LIFE_DAY',entityId:date,expectedHeads:[...heads],data:structuredClone(data),reason,confirmed:false};return {requestId,commandDigest:await ctx.digest({type:'ENTITY',...fields}),...fields};},
+    now:()=>ctx.now(),newRequestId:()=>ctx.uid(),
+    drafts:mode==='DEVICE_BOX'?box.port('LIFE_DAY',{write}):{
+      list:async()=>[...memoryDrafts.values()],
+      save:async({type,body})=>{const id='local'+(++seq);memoryDrafts.set(id,{draftId:id,type,body:structuredClone(body),createdAt:new Date().toISOString()+String(seq).padStart(6,'0')});return {draftId:id,status:'LOCAL_DRAFT'};},
+      discard:async id=>{memoryDrafts.delete(id);},
+      commit:async id=>{const d=memoryDrafts.get(id);const r=await write(d.body);const status=r?.status==='LOCAL_SAVED'||r?.status==='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED'?'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED':r?.status;if(status==='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED')memoryDrafts.delete(id);return {...r,status};},
+    },
+  };
+}
+
+// 정의 저장(습관·과목·시험 일정): 소유자가 "저장"을 누를 때만 부른다. 엔티티마다 연산 1. 최신과 겹치면(STALE_HEADS) 최신을 받아 내 값을 그대로 쓴다.
+// rows = [{type,id,data,heads}] — 바뀐 것만 넘긴다. 돌려주는 값 = 실제로 저장한 개수.
+export async function saveDefinitions(ctx,rows,reason){
+  let saved=0;
+  for(const r of rows){
+    validateLifeData(r.type,r.id,r.data);
+    try{await ctx.entity(r.type,r.id,r.data,r.heads,reason);}
+    catch(e){
+      if(e?.code!=='STALE_HEADS'||!ctx.reload)throw e;
+      await ctx.reload();
+      const latest=lookup(ctx.getWhole().life,r.type,r.id);
+      await ctx.entity(r.type,r.id,r.data,latest?latest.heads:[],reason);
+    }
+    saved++;
+  }
+  return saved;
+}
+function lookup(life,type,id){
+  if(!life)return null;
+  if(type==='HABIT_DEF')return life.habits.find(x=>x.id===id)??null;
+  if(type==='SUBJECT_DEF')return life.subjects.find(x=>x.id===id)??null;
+  if(type==='EXAM_SCHEDULE')return life.exams;
+  return null;
+}
+// 바뀐 정의만 골라 낸다. 저장된 정의가 하나도 없던 종류(기본값 상태)는 처음 저장 때 전부 쓴다. 숨김은 삭제가 아니다.
+export function collectRows(work,life,defs=lifeDefs(life)){
+  const rows=[];
+  const pick=(type,list,stored,effective)=>{
+    // 저장된 정의가 없는 구역은 소유자가 실제로 고친 경우에만 처음 저장한다(고치지 않은 기본값은 쓰지 않는다).
+    if(!stored.length&&stable(list.map((x,i)=>({...x,order:i})))===stable(effective.map((x,i)=>({...x,order:i}))))return;
+    list.forEach((x,i)=>{
+      const data={...x,order:i};
+      if(type==='HABIT_DEF'){data.name=String(data.name).trim();}
+      if(type==='SUBJECT_DEF'){data.name=String(data.name).trim();}
+      const old=stored.find(s=>s.id===x.id);
+      if(old&&stable(old.data)===stable(data))return;
+      rows.push({type,id:x.id,data,heads:old?old.heads:[]});
+    });
+  };
+  pick('HABIT_DEF',work.habits,life.habits,defs.habits);
+  pick('SUBJECT_DEF',work.subjects,life.subjects,defs.subjects);
+  const examData={items:work.exams.items.map(x=>({...x,name:String(x.name).trim()}))};
+  if(stable(examData)!==stable(defs.exams))rows.push({type:'EXAM_SCHEDULE',id:'exams',data:examData,heads:life.exams?life.exams.heads:[]});
+  return rows;
+}
+
+export {kstDate};

@@ -41,11 +41,19 @@ export const FIN_ERROR_TEXT=Object.freeze({
   INVALID_FIN_BUDGET:'예산 시작 달 또는 분류가 올바르지 않습니다(달은 2026-11처럼, 분류는 지출 분류만).',
   INVALID_FIN_BUDGET_AMOUNT:'예산 금액은 0원 이상의 정수로 입력하세요(원 단위, 최대 14자리). 빈칸은 예산 없음입니다.',
   FIN_BUDGET_DUPLICATE_MONTH:'같은 달에 시작하는 예산이 이미 있습니다. 그 예산을 수정하세요.',
+  INVALID_FIN_RECURRING:'정기 결제 목록 모양이 올바르지 않습니다.',
+  INVALID_FIN_RECURRING_RULE:'정기 결제 규칙 값이 올바르지 않습니다(이름 1~60자, 매달 주기).',
+  INVALID_FIN_RECURRING_AMOUNT:'정기 결제 금액은 1원 이상의 정수여야 합니다(원 단위, 최대 14자리).',
+  INVALID_FIN_RECURRING_TOLERANCE:'정기 결제 허용 오차는 0~50% 정수여야 합니다.',
+  DUPLICATE_FIN_RECURRING_RULE:'정기 결제 규칙 ID가 겹칩니다.',
+  FIN_RECURRING_LIMIT:'정기 결제는 최대 60개까지 등록할 수 있습니다.',
+  FIN_RECURRING_DUPLICATE:'같은 가맹점의 정기 결제가 이미 등록되어 있습니다.',
+  FIN_RECURRING_UNKNOWN_RULE:'없는 정기 결제 규칙입니다. 화면을 새로 고쳐 최신 목록을 확인하세요.',
   INVALID_ENTITY_ID:'항목 ID가 올바르지 않습니다.',
   FIN_IMPORT_LOCAL_CAPACITY:'저장할 항목이 이 기기의 로컬 저장 용량(봉인 한 번 약 3.7MB)을 넘을 것으로 예상되어 시작하지 않습니다. 분할 저장(형식 5) 앱으로 업데이트한 뒤 가져오세요.',
   FIN_IMPORT_SESSION_BUDGET:'저장할 항목 수가 이번 실행에서 안전하게 저장할 수 있는 양을 넘을 것으로 예상되어 시작하지 않습니다. 앱을 닫았다가 다시 연 뒤 가져오세요.',
   FIN_IMPORT_WRITE_PERMISSION:'기록 권한을 받지 못해 가져오기를 시작하지 않았습니다. 연결 · 장치에서 서버 로그인과 동기화 상태를 확인한 뒤 다시 누르세요. 저장된 항목은 그대로입니다.',
-  FIN_IMPORT_OP_LIMIT:'저장할 항목 수가 이 금고에 남은 연산보다 많아 시작하지 않습니다. 한 항목이 연산 하나를 씁니다. 금고 이월(docs/FIN01_VAULT_MIGRATION.md)을 먼저 준비하세요.',
+  FIN_IMPORT_OP_LIMIT:'저장할 항목 수가 이 금고에 남은 저장 횟수보다 많아 시작하지 않습니다. 금고 이월(docs/FIN01_VAULT_MIGRATION.md)을 먼저 준비하세요.',
   APP_ENTITY_LIMIT:'이 종류의 항목 한도에 도달했습니다(계정 60 · 거래 8,000 · 묶음 400 · 규칙 300).',
   FIN_BATCH_IMMUTABLE:'가져온 원천 묶음은 한 번 저장하면 바꿀 수 없습니다.',
   UNKNOWN_FIN_ACCOUNT:'없는 계정을 가리키고 있습니다. 계정을 먼저 만드세요.',
@@ -226,9 +234,9 @@ export function opBudget(checkpoint,{pending=0,limit=VAULT_OP_LIMIT}={}){
 const opCount=n=>n.toLocaleString('en-US');
 // 가져오기 확인 화면용: 가져온 뒤 남는 연산. 모르면 known:false, 모자라면 short(시작하지 않음). 거절 규칙은 checkImportPlan(많으면 거절, 같으면 통과).
 export function opsAfter(opCheck){
-  if(!opCheck?.known||!countOK(opCheck.remaining,VAULT_OP_LIMIT)||!countOK(opCheck.need,Number.MAX_SAFE_INTEGER))return {known:false,after:null,short:0,text:'가져온 뒤 남는 연산 확인 불가'};
+  if(!opCheck?.known||!countOK(opCheck.remaining,VAULT_OP_LIMIT)||!countOK(opCheck.need,Number.MAX_SAFE_INTEGER))return {known:false,after:null,short:0,text:'가져온 뒤 남는 저장 횟수 확인 불가'};
   const after=opCheck.remaining-opCheck.need;
-  return after>=0?{known:true,after,short:0,text:'가져온 뒤 남는 연산 '+opCount(after)+'개'}:{known:true,after:null,short:-after,text:'가져온 뒤 남는 연산 없음 · '+opCount(-after)+'개 부족(시작하지 않음)'};
+  return after>=0?{known:true,after,short:0,text:'가져온 뒤 남는 저장 횟수 '+opCount(after)+'개'}:{known:true,after:null,short:-after,text:'가져온 뒤 남는 저장 횟수 없음 · '+opCount(-after)+'개 부족(시작하지 않음)'};
 }
 export function opBudgetNotice(b){
   if(!b?.known)return {stage:'UNKNOWN',tone:'muted',text:'남은 연산 확인 불가 · 이 기기에 검증한 원격 버전이 없습니다(서버 동기화 전이거나 서버 금고를 쓰지 않는 모드). 가져오기는 막지 않고 서버가 최종 판정합니다.'};

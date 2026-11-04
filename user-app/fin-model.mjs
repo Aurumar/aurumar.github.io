@@ -1,11 +1,13 @@
 import {requireValue} from '../multi-device/portable/errors.mjs';
 // FIN01 가계부 모델 (MD03 앱 모듈). 금액은 원 단위 정수 문자열, 계산은 BigInt. null은 0이 아니다.
-// 엔티티: FIN_ACCOUNT(계정), FIN_TXN(거래), FIN_BATCH(가져온 원천 묶음, 불변), FIN_RULE(분류·고정/변동·반복결제 규칙), FIN_BUDGET(월 예산).
+// 엔티티: FIN_ACCOUNT(계정), FIN_TXN(거래), FIN_BATCH(가져온 원천 묶음, 불변), FIN_RULE(분류·고정/변동·반복결제 규칙), FIN_BUDGET(월 예산), FIN_RECURRING(정기 결제 규칙 목록 1장, B48).
 // 새 엔티티 종류를 받으면 옛 빌드는 HOLD한다. F5에서 FIN_BUDGET까지 확정(docs/FIN01_F5_DESIGN.md).
 
-export const FIN_TYPES=Object.freeze(['FIN_ACCOUNT','FIN_TXN','FIN_BATCH','FIN_RULE','FIN_BUDGET']);
+export const FIN_TYPES=Object.freeze(['FIN_ACCOUNT','FIN_TXN','FIN_BATCH','FIN_RULE','FIN_BUDGET','FIN_RECURRING']);
 // MD03 금고 전체 연산 한도는 10,000이다(서버 LOG_LIMIT). 거래 한도는 그 안에서만 의미가 있다.
-export const FIN_LIMITS=Object.freeze({FIN_ACCOUNT:60,FIN_TXN:8000,FIN_BATCH:400,FIN_RULE:300,FIN_BUDGET:240});
+export const FIN_LIMITS=Object.freeze({FIN_ACCOUNT:60,FIN_TXN:8000,FIN_BATCH:400,FIN_RULE:300,FIN_BUDGET:240,FIN_RECURRING:1});
+// B48 정기 결제: 규칙 목록은 entityId 'recurring' 한 장. 규칙 최대 60개, 허용 오차(%) 0~50(기본 10).
+export const RECURRING_ID='recurring',RECURRING_MAX_RULES=60,RECURRING_DEFAULT_TOLERANCE=10,RECURRING_MAX_TOLERANCE=50,RECURRING_CYCLES=Object.freeze(['MONTHLY']);
 export const ACCOUNT_TYPES=Object.freeze(['CARD','CASH','BANK','EPAY','LOAN','OTHER']);
 export const TXN_KINDS=Object.freeze(['EXPENSE','INCOME','REFUND','TRANSFER','PREPAID_LOAD']);
 export const EXPENSE_CATEGORIES=Object.freeze({
@@ -151,13 +153,33 @@ function validateBudget(d){
   requireValue(Object.values(d.categories).every(v=>typeof v==='string'&&WON0.test(v)),'INVALID_FIN_BUDGET_AMOUNT');
   text(d.note,500);
 }
+// 정기 결제 규칙 목록(B48). 거래(FIN_TXN)의 저장 형식은 건드리지 않고, 소유자가 확정한 규칙만 한 장에 모은다.
+// 규칙 = { id, name, match:{merchant(정규화 문자열), amount(원 단위 정수 문자열), tolerancePct}, cycle:'MONTHLY', hidden, createdAt }
+const instantOK=v=>typeof v==='string'&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString()===v;
+function validateRecurring(d){
+  shape(d,['rules'],'INVALID_FIN_RECURRING');
+  requireValue(Array.isArray(d.rules),'INVALID_FIN_RECURRING');
+  requireValue(d.rules.length<=RECURRING_MAX_RULES,'FIN_RECURRING_LIMIT');
+  for(const r of d.rules){
+    shape(r,['id','name','match','cycle','hidden','createdAt'],'INVALID_FIN_RECURRING_RULE');
+    requireValue(finIdOK(r.id)&&RECURRING_CYCLES.includes(r.cycle)&&bool(r.hidden)&&instantOK(r.createdAt),'INVALID_FIN_RECURRING_RULE');
+    text(r.name,60,false);
+    shape(r.match,['merchant','amount','tolerancePct'],'INVALID_FIN_RECURRING_RULE');
+    text(r.match.merchant,120,false);
+    requireValue(typeof r.match.amount==='string'&&POS.test(r.match.amount),'INVALID_FIN_RECURRING_AMOUNT');
+    requireValue(Number.isInteger(r.match.tolerancePct)&&r.match.tolerancePct>=0&&r.match.tolerancePct<=RECURRING_MAX_TOLERANCE,'INVALID_FIN_RECURRING_TOLERANCE');
+  }
+  requireValue(unique(d.rules.map(r=>r.id)),'DUPLICATE_FIN_RECURRING_RULE');
+}
 export function validateFinData(type,id,d){
   requireValue(FIN_TYPES.includes(type)&&finIdOK(id),'INVALID_ENTITY_ID');
+  requireValue(type!=='FIN_RECURRING'||id===RECURRING_ID,'INVALID_ENTITY_ID');
   if(type==='FIN_ACCOUNT')validateAccount(d);
   else if(type==='FIN_TXN')validateTxn(d);
   else if(type==='FIN_BATCH')validateBatch(d);
   else if(type==='FIN_RULE')validateRule(d);
-  else validateBudget(d);
+  else if(type==='FIN_BUDGET')validateBudget(d);
+  else validateRecurring(d);
 }
 
 // 색인: 원천 행을 대신하는 거래(sourceRefs)가 한 행에 하나만 있게 한다(이중 집계 방지).
@@ -236,5 +258,6 @@ export function finTitle(v){
   if(v.entityType==='FIN_TXN')return '가계부 거래 · '+d.date+' '+(d.merchant||d.kind)+(d.voided?' (무효)':'');
   if(v.entityType==='FIN_BATCH')return '가계부 가져오기 · '+d.label;
   if(v.entityType==='FIN_BUDGET')return '가계부 예산 · '+d.effectiveFrom+'부터';
+  if(v.entityType==='FIN_RECURRING')return '가계부 정기 결제 · 규칙 '+d.rules.length+'개';
   return '가계부 분류 규칙 · '+d.merchantContains;
 }

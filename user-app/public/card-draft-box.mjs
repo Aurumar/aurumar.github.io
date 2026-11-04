@@ -31,7 +31,7 @@
 // 보안 한계(정직하게): 키는 같은 브라우저 프로필 안에 있어 프로필 파일을 가진 사람에게는 저장된 로그인 세션과 같은 수준의 보호다. 앱 잠금이 암호문을 막지는 않는다.
 export const CARD_DRAFT_DB='LIFE_BRICK_CARD_DRAFTS_V1';
 export const CARD_DRAFT_FORMAT='LB_CARD_DRAFT_1';
-export const CARD_DRAFT_KINDS=Object.freeze(['HLT_DAY','STUDY_DAY']);
+export const CARD_DRAFT_KINDS=Object.freeze(['HLT_DAY','STUDY_DAY','LIFE_DAY']);
 export const CARD_DRAFT_LIMITS=Object.freeze({records:60,recordBytes:96*1024});
 export const CARD_DRAFT_EVENT='lb:card-drafts-changed';
 export const CARD_DRAFT_DEBOUNCE_MS=600;
@@ -45,13 +45,13 @@ export const CARD_DRAFT_TEXT=Object.freeze({
   modeBox:'초안은 이 기기(브라우저)에 암호화되어 남습니다 · 브라우저 저장소를 지우면 사라짐 · 백업 아님 · 다른 기기에서는 안 보임.',
   failed:'초안을 저장하지 못했어요 — 이 화면을 닫으면 사라져요',
   resume:'이 기기에 저장된 초안이 있어요',resumeKeep:'이어서 쓰기',resumeDrop:'버리기',
-  dropConfirm:'이 기기에 저장된 초안을 버릴까요? 금고에 확정된 기록에는 영향이 없습니다.',
+  dropConfirm:'이 기기에 저장된 초안을 버릴까요? 금고에 쌓인 기록에는 영향이 없습니다.',
   old:'오래된 초안(14일 넘음)',
   unreadable:'열 수 없는 초안이 이 기기에 보존되어 있어요(지우지 않았어요). 브라우저 저장소의 키가 바뀌었거나 손상되었을 수 있어요.',
 });
 export const deviceOnlyLine=n=>'이 기기에만 있는 초안 '+n+'건';
 export const CARD_DRAFT_ERROR_TEXT=Object.freeze({
-  CARD_DRAFT_LIMIT:'이 기기의 초안이 60건이라 새 날짜 초안을 저장하지 않았어요. 지우거나 줄이지 않았어요 · 오래된 초안을 확정하거나 버린 뒤 다시 하세요.',
+  CARD_DRAFT_LIMIT:'이 기기의 초안이 60건이라 새 날짜 초안을 저장하지 않았어요. 지우거나 줄이지 않았어요 · 오래된 초안을 쌓거나 버린 뒤 다시 하세요.',
   CARD_DRAFT_TOO_LARGE:'초안이 너무 커서(96KB) 저장하지 않았어요 · 메모나 항목을 줄인 뒤 다시 하세요.',
   CARD_DRAFT_READ_ONLY:'이 창은 읽기 전용이라 초안을 저장하지 않아요 · 기록하는 창에서 입력하세요.',
   CARD_DRAFT_LOCKED:'잠겨 있어 초안을 저장하지 않았어요.',

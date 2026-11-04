@@ -146,7 +146,7 @@ export function finView(values){
   const incompleteSplits=[...splits.values()].filter(x=>x.saved.length<x.count).map(x=>({...x,saved:x.saved.sort((p,q)=>p-q)})).sort((p,q)=>p.chunk.localeCompare(q.chunk));
   const control=sourceControl(fin);
   return {incompleteSplits,labels:{expense:EXPENSE_CATEGORIES,income:INCOME_CATEGORIES,accountTypes:ACCOUNT_TYPES,kinds:TXN_KINDS},limits:FIN_LIMITS,
-    accounts:pick('FIN_ACCOUNT'),txns:pick('FIN_TXN'),rules:pick('FIN_RULE'),budgets:pick('FIN_BUDGET').sort((a,b)=>a.data.effectiveFrom.localeCompare(b.data.effectiveFrom)),batches,
+    accounts:pick('FIN_ACCOUNT'),txns:pick('FIN_TXN'),rules:pick('FIN_RULE'),budgets:pick('FIN_BUDGET').sort((a,b)=>a.data.effectiveFrom.localeCompare(b.data.effectiveFrom)),recurring:pick('FIN_RECURRING')[0]??null,batches,
     lines:lines.map(l=>({...l,net:str(l.net)})),residuals:residuals.map(r=>({...r,net:str(r.net)})),
     sourceControl:Object.fromEntries(Object.entries(control).map(([k,v])=>[k,str(v)]))};
 }

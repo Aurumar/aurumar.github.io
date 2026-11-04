@@ -70,5 +70,5 @@ export function hltView(raw,today,{showPrivate=false}={}){
 export function hltHomeLine(raw,today,enabled){
   if(!enabled)return null;
   const c=raw.days.find(d=>d.date===today);
-  return c?'오늘 건강 카드 · 확정 '+c.data.confirmCount+'번':'오늘 건강 카드 · 아직 확정 전';
+  return c?'오늘 건강 카드 · 쌓음 '+c.data.confirmCount+'번':'오늘 건강 카드 · 아직 쌓기 전';
 }
