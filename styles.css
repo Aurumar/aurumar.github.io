@@ -1,3 +1,4 @@
+@font-face{font-family:"Pretendard Variable";src:url("PretendardVariable.woff2") format("woff2-variations");font-weight:45 920;font-style:normal;font-display:swap;}
 /* LIFE BRICK 디자인 언어 "AURUMAR Gold" (B40, 설계 LIFE_BRICK_REDESIGN_V3 §6)
    - 색은 전부 :root 토큰으로만 쓴다. 다크 모드를 만들 때 이 블록만 바꾸면 된다(지금은 만들지 않음).
    - 예외: .brand·.brand-mark·.intro-panel·.intro-mark의 고정 값은 B35·B36 시험이 그대로 확인한다.
@@ -896,8 +897,8 @@ dialog[open]{animation:lb-rise .22s ease-out}
 .life-habits{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:var(--lb-s-2)}
 .life-habit{display:grid;align-content:start;gap:6px;padding:10px 12px;border-radius:var(--lb-r-2);border:1.5px dashed var(--lb-line);background:var(--lb-surface-2);min-width:0}
 .life-habit.done{border:1.5px solid var(--lb-gold-2);background:var(--lb-gold-soft);box-shadow:var(--lb-gold-glow)}
-.life-habit-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.life-habit-head strong{font-size:14px;color:var(--lb-ink-1)}
+.life-habit-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 8px}
+.life-habit-head strong{font-size:14px;color:var(--lb-ink-1);flex:0 0 auto;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .life-habit-value{font-size:var(--lb-caption);color:var(--lb-ink-3);font-variant-numeric:tabular-nums;text-align:right}
 .life-habit.done .life-habit-value{color:var(--lb-gold-3);font-weight:700}
 .life-habit-btn{min-height:44px;width:100%}
