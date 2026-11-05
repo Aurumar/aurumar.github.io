@@ -37,7 +37,7 @@
   /* 간격 8pt */
   --lb-s-1:4px;--lb-s-2:8px;--lb-s-3:16px;--lb-s-4:24px;--lb-s-5:32px;--lb-s-6:48px;
   /* 글꼴·위계 4단 */
-  --lb-font:"One UI Sans","Malgun Gothic","Apple SD Gothic Neo","Pretendard",system-ui,sans-serif;
+  --lb-font:"Pretendard Variable",Pretendard,"One UI Sans","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
   --lb-display:34px;--lb-title:18px;--lb-body:14px;--lb-caption:12px;
   /* 과목 7 (설계 §4.3) */
   --lb-subj-kor:#8E6BC4;--lb-subj-math:#A6714E;--lb-subj-eng:#D9534F;--lb-subj-hist:#5BA66B;--lb-subj-soc:#D4B33C;--lb-subj-sci:#4F86C6;--lb-subj-bio:#3FA7A0;
@@ -54,8 +54,9 @@
   --ivory:var(--lb-bg);--cream:var(--lb-surface-solid);--cream-2:var(--lb-surface-tint);--gold-bright:var(--lb-gold-bright);--gold-mid:var(--lb-gold-3);--gold-deep:var(--lb-ink-1);--gold-line:var(--lb-line);--gold-line-soft:var(--lb-line-soft);--muted:var(--lb-ink-3);--line:var(--lb-line);
   --cal-chip-bg:var(--lb-gold-soft);--cal-chip-bar:var(--lb-gold-2);--cal-chip-text:var(--lb-ink-2);--cal-chip-deadline-bg:var(--lb-gold-1);--cal-chip-deadline-bar:var(--lb-gold-3);--cal-chip-deadline-text:var(--lb-ink-1);--cal-sun:var(--lb-bad);--cal-sun-num:var(--lb-bad);--cal-sat:var(--lb-gold-3);--cal-today-ring:var(--lb-gold-3);--cal-today-tint:var(--lb-gold-1);
   --cal-serif:"Palatino Linotype","Book Antiqua",Palatino,Georgia,"Noto Serif KR","Noto Serif CJK KR","AppleMyungjo",Batang,serif;
-  font-family:var(--lb-font);color:var(--lb-ink-2);background:var(--lb-bg);line-height:1.55;font-size:var(--lb-body);
+  font-family:var(--lb-font);color:var(--lb-ink-2);background:var(--lb-bg);line-height:1.6;font-size:var(--lb-body);
 }
+@media (min-width:701px){:root{--lb-body:15px}}
 
 /* ===== 2. 바탕 ===== */
 *{box-sizing:border-box}

@@ -344,6 +344,8 @@ function openNativePayDrafts(){
 import('./life-ui.mjs').then(m=>{lifeUi=m;lifeSt=m.createLifeState();if(!$('workspace').hidden)void render();}).catch(()=>{lifeUi=null;});
 // ---- 사령부 상태 내보내기(B47'): 설정 안의 수동 단추 하나. PC 앱(APP_SHELL)에서만 단추가 있고, 미리보기를 본 뒤 확인해야 host가 고정 경로에 한 파일을 쓴다. 자동 내보내기 없음.
 let stateExportMod=null;
+const stateSend=markdown=>api('/api/state-export',{markdown});
+const stateViews=()=>({life:whole.life??null,study:whole.study??null,fin:whole.fin??null});
 import('./state-export.mjs').then(m=>{stateExportMod=m;if(!$('workspace').hidden&&view==='SETTINGS')void render();}).catch(()=>{stateExportMod=null;});
 let icsExportMod=null;
 import('./ics-export.mjs').then(m=>{icsExportMod=m;if(!$('workspace').hidden&&view==='PLANS')void render();}).catch(()=>{icsExportMod=null;});
@@ -362,7 +364,7 @@ globalThis.addEventListener?.('lb:card-drafts-changed',e=>showCardDrafts(documen
 // B16 (K1-02): refreshCore와 같은 세대 검사. 읽는 도중 로그아웃 잠금이 끼었으면(그 뒤 재로그인 포함) 읽은 값을 today·whole·changes에 넣지 않고
 // MD_SIGNED_OUT_ELSEWHERE로 끝낸다(남은 읽기도 하지 않음, 부른 확정·저장 흐름이 옛 값으로 계속하지 않게). 모든 읽기가 끝난 뒤에만 한꺼번에 넣는다.
 async function hltReload(){const lockSeq=mdSignedOutSeq,gone=()=>lockSeq!==mdSignedOutSeq||mdSignedOut;const [nextToday,nextWhole]=await Promise.all([api('/api/today'),api('/api/whole-life')]);if(gone())throw appError('MD_SIGNED_OUT_ELSEWHERE');const nextChanges=(await api('/api/history')).changes;if(gone())throw appError('MD_SIGNED_OUT_ELSEWHERE');today=nextToday;whole=nextWhole;changes=nextChanges;}
-const lifeCtx=()=>({...hltCtx(),storage:globalThis.localStorage,kit:uiKit,study:()=>studyOn()?{ui:studyUi,st:studySt,ctx:hltCtx}:null});
+const lifeCtx=()=>({...hltCtx(),storage:globalThis.localStorage,kit:uiKit,study:()=>studyOn()?{ui:studyUi,st:studySt,ctx:hltCtx}:null,exportAfterStack:(st,status)=>stateExportMod?stateExportMod.exportAfterStack({surface:mdSurface,views:stateViews,now:()=>new Date().toISOString(),storage:globalThis.localStorage,send:stateSend},st,status):Promise.resolve({status:'SKIPPED',reason:'MODULE'})});
 const hltCtx=()=>({document,api,uid,digest:sha,now:()=>new Date().toISOString(),session:()=>mdSignedOutSeq,mdProfile:()=>mdProfile,getWhole:()=>whole,getChanges:()=>changes,
   syncForWrite:async()=>{if(mdProfile&&!mdReady){await mdAutoWrite();if(!mdReady)throw appError(autoWriteFail||'MD_NOT_WRITE_READY');}await hltReload();},
   hasPending:()=>Boolean(mdProduct?.pendingStatus),reconcile:async()=>{await api('/api/md/reconcile',{});await hltReload();},
@@ -1654,7 +1656,7 @@ function renderFingerprint(root){
  add(box,button('상태 지문 확인',()=>{show().catch(()=>{out.textContent='UNKNOWN';});}),out);add(root,box);
 }
 function timingText(rec){return rec&&Object.keys(rec).length?Object.entries(rec).map(([k,v])=>k+' '+Math.round(v)+'ms').join(' · '):'아직 없음';}
-function renderSettings(root){if(hltUi)add(root,hltUi.renderHealthSwitch({...hltCtx(),storage:globalThis.localStorage,onSwitch:()=>{if(!hltOn()&&view==='HEALTH')view='HOME';void render();}}));if(studyUi)add(root,studyUi.renderStudySwitch({...hltCtx(),storage:globalThis.localStorage,onSwitch:()=>{if(!studyOn()&&view==='STUDY')view='HOME';void render();}}));if(nativeOn())nativeUi.renderNativeSettings(root,{h:{el,add,button},kit:{toggle:uiKit.toggle},br:nativeBr,exams:nativeLife.lifeDefs(whole.life).exams,stackedToday:nativeStacked,bedtime:nativeBedtime,status});if(stateExportMod&&uiKit)stateExportMod.renderStateExport(root,{h:{el,add,button},kit:uiKit,surface:mdSurface,views:()=>({life:whole.life??null,study:whole.study??null,fin:whole.fin??null}),now:()=>new Date().toISOString(),storage:lifeCtx().storage,send:markdown=>api('/api/state-export',{markdown})});const info=section('앱 정보');add(info,row('앱 버전',whole.version));const ax=whole.runtimeContract,tech=add(el('details'),el('summary','업데이트 기술 정보'));if(ax)add(tech,el('p','STORE '+ax.storeFormatVersion+' · DOMAIN '+ax.domainSchemaVersion+' · SYNC '+ax.syncProtocolVersion,'path'));add(info,tech);
+function renderSettings(root){if(hltUi)add(root,hltUi.renderHealthSwitch({...hltCtx(),storage:globalThis.localStorage,onSwitch:()=>{if(!hltOn()&&view==='HEALTH')view='HOME';void render();}}));if(studyUi)add(root,studyUi.renderStudySwitch({...hltCtx(),storage:globalThis.localStorage,onSwitch:()=>{if(!studyOn()&&view==='STUDY')view='HOME';void render();}}));if(nativeOn())nativeUi.renderNativeSettings(root,{h:{el,add,button},kit:{toggle:uiKit.toggle},br:nativeBr,exams:nativeLife.lifeDefs(whole.life).exams,stackedToday:nativeStacked,bedtime:nativeBedtime,status});if(stateExportMod&&uiKit)stateExportMod.renderStateExport(root,{h:{el,add,button},kit:uiKit,surface:mdSurface,views:stateViews,now:()=>new Date().toISOString(),storage:lifeCtx().storage,send:stateSend});const info=section('앱 정보');add(info,row('앱 버전',whole.version));const ax=whole.runtimeContract,tech=add(el('details'),el('summary','업데이트 기술 정보'));if(ax)add(tech,el('p','STORE '+ax.storeFormatVersion+' · DOMAIN '+ax.domainSchemaVersion+' · SYNC '+ax.syncProtocolVersion,'path'));add(info,tech);
  const t=whole.settings?.timings,saveRecs=t?.save??[],saveMerged=saveRecs.length?Object.assign({},...saveRecs.slice(-2)):null;
  const diag=add(el('details'),el('summary','진단 · 마지막 열기·저장 단계 시간(ms)'));
  add(diag,el('p','서버 열기(sync) · '+timingText(t?.open?.at(-1)),'path'),el('p','서버 저장(acquire+write) · '+timingText(saveMerged),'path'),

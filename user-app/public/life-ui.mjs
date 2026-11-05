@@ -210,6 +210,9 @@ async function reportConfirm(ctx,st,r){
   if(r.status==='REJECTED'){st.message=lifeErrorText(r.code);st.error=true;}
   else if(['UNKNOWN','SYNC_FAILED','FAILED','STALE'].includes(r.status)){st.message=(r.code&&LIFE_ERROR_TEXT[r.code])||STATUS_TEXT[r.status];st.error=true;}
   else st.message=STATUS_TEXT[r.status]??r.status;
+  // B54: 쌓기 성공(STACK_DONE) 직후 사령부 상태 자동 내보내기. 성공 여부·표면(PC 앱)·토글 검사와 실패 문구 덧붙이기는 state-export.mjs의 exportAfterStack 안에 있다.
+  // 실패해도 쌓기 결과(status·error)는 바꾸지 않는다.
+  try{await ctx.exportAfterStack?.(st,r.status);}catch{st.message=(st.message??'')+' · 상태 내보내기 실패: 내보내지 못했습니다.';}
 }
 // 누르면 onTap, 길게(0.5초) 누르면 onHold. 길게 누른 뒤 따라오는 click은 무시한다.
 function pressable(node,onTap,onHold){

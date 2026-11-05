@@ -8,6 +8,7 @@ import {achieve} from './life-achieve.mjs';
 import {csatTarget} from './life-plan.mjs';
 import {prepare} from './fin-charts.mjs';
 import {budgetStatus} from './fin-plan.mjs';
+import {STACK_DONE} from './life-flow.mjs';
 
 export const STATE_FORMAT='v1';
 export const STATE_MAX_BYTES=8192,STATE_TARGET_BYTES=4096;
@@ -21,6 +22,12 @@ const AREA_TEXT=Object.freeze({BODY:'몸',HEAD:'머리',MONEY:'돈',HEART:'마�
 let memoryLine=false;
 export function lineEnabled(storage){try{const v=storage?.getItem(LINE_SWITCH_KEY);return v===null||v===undefined?memoryLine:v==='1';}catch{return memoryLine;}}
 export function setLineEnabled(on,storage){memoryLine=Boolean(on);try{storage?.setItem(LINE_SWITCH_KEY,on?'1':'0');}catch{/* 이번 실행 동안만 */}return lineEnabled(storage);}
+
+// ---- 이 기기 설정: "쌓을 때 자동 내보내기" 토글(B54, 기본 켬). PC 앱에서만 쓰인다. 저장소가 막혀 있으면 이번 실행 동안만 ----
+export const AUTO_SWITCH_KEY='lb.state.auto';
+let memoryAuto=true;
+export function autoEnabled(storage){try{const v=storage?.getItem(AUTO_SWITCH_KEY);return v===null||v===undefined?memoryAuto:v==='1';}catch{return memoryAuto;}}
+export function setAutoEnabled(on,storage){memoryAuto=Boolean(on);try{storage?.setItem(AUTO_SWITCH_KEY,on?'1':'0');}catch{/* 이번 실행 동안만 */}return autoEnabled(storage);}
 
 // ---- 글 정리: 표·머리말을 깨는 문자 제거 ----
 export function clean(value,max=20){
@@ -194,14 +201,39 @@ export const EXPORT_TEXT=Object.freeze({
 });
 export const exportResultText=code=>code==='OK'?EXPORT_TEXT.ok:code==='MD_UNLOCK_REQUIRED'?EXPORT_TEXT.STATE_EXPORT_LOCKED:Object.hasOwn(EXPORT_TEXT,code)&&!['ok','fail','browser'].includes(code)?EXPORT_TEXT[code]:EXPORT_TEXT.fail;
 
+// ---- 자동 내보내기(B54): 쌓기 성공 직후 부른 쪽이 1번 부른다. 같은 builder·같은 send(host의 B47P 경로)를 쓰고 한 줄은 토글과 무관하게 항상 비공개다 ----
+// ctx = {surface, storage, views()=>{life,study,fin}, now()=>ISO, send(markdown)=>Promise}. 절대 던지지 않는다.
+// 돌려주는 값: {status:'SKIPPED',reason:'SURFACE'|'OFF'} | {status:'OK'} | {status:'FAILED',code,text}. 실패는 쌓기 결과를 바꾸지 않는다(부른 쪽이 문구만 덧붙인다).
+export async function exportStateAuto(ctx){
+  if(ctx?.surface!=='APP_SHELL')return {status:'SKIPPED',reason:'SURFACE'};
+  if(!autoEnabled(ctx.storage))return {status:'SKIPPED',reason:'OFF'};
+  try{
+    const text=buildLifeState(snapshotFromViews({...ctx.views(),now:ctx.now(),includeLine:false}),{includeLine:false});
+    await ctx.send(text);
+    return {status:'OK'};
+  }catch(e){
+    const code=typeof e?.code==='string'?e.code:'fail';
+    return {status:'FAILED',code,text:exportResultText(code)};
+  }
+}
+
+// 쌓기 화면이 쌓기 결과(status)마다 1번 부른다. 쌓기 성공(STACK_DONE)일 때만 exportStateAuto를 부르고, 실패하면 st.message 뒤에 문구만 덧붙인다(status·error는 건드리지 않는다).
+export async function exportAfterStack(ctx,st,status){
+  if(!STACK_DONE.includes(status))return {status:'SKIPPED',reason:'NOT_STACKED'};
+  const r=await exportStateAuto(ctx);
+  if(r.status==='FAILED'&&st)st.message=(st.message??'')+' · 상태 내보내기 실패: '+r.text;
+  return r;
+}
+
 // ---- 화면: 설정 안의 카드 하나. 단추 → 미리보기(내보낼 전문 그대로) → "내보내기" 확인 → 쓰기 → 결과 문구 ----
 // PC 앱(APP_SHELL)이 아니면 단추 없이 안내 문구만 보인다. h={el,add,button}, kit={toggle,sheet}, views()=>{life,study,fin}, now()=>ISO, send(markdown)=>Promise.
 export function renderStateExport(root,ctx){
   const {h,kit}=ctx,sec=h.add(h.el('section',null,'panel state-export'),h.el('h2','사령부로 상태 내보내기','panel-title'));
   h.add(root,sec);
   if(ctx.surface!=='APP_SHELL'){h.add(sec,h.el('p',EXPORT_TEXT.browser,'muted'));return sec;}
-  h.add(sec,h.el('p','숫자 요약 한 장을 사령부 폴더(AURUMAR_HQ\\state)에 덮어씁니다. 이 단추를 누를 때만 보내고 자동으로는 보내지 않습니다. 메모·건강 세부·거래 내역·가게 이름은 들어가지 않습니다.','muted'));
+  h.add(sec,h.el('p','숫자 요약 한 장을 사령부 폴더(AURUMAR_HQ\\state)에 덮어씁니다. 이 단추를 누르거나, 아래 자동 내보내기를 켜 두면 "오늘 쌓기"가 끝난 직후에만 보냅니다. 메모·건강 세부·거래 내역·가게 이름은 들어가지 않습니다.','muted'));
   h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('어제 한 줄도 내보내기 (최대 60자 · 이 기기 설정)',lineEnabled(ctx.storage),on=>{setLineEnabled(on,ctx.storage);})));
+  h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('쌓을 때 사령부 상태 자동 내보내기 (한 줄은 항상 비공개 · 이 기기 설정)',autoEnabled(ctx.storage),on=>{setAutoEnabled(on,ctx.storage);})));
   const result=h.el('p','','muted');result.setAttribute('role','status');
   let busy=false;
   const show=code=>{result.textContent=exportResultText(code);};

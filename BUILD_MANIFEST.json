@@ -343,8 +343,8 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "bff0673e2c14fe58ae0e828f493a01cf3ef2e3eb93ffaec3857bf3529a30b6ec",
-      "outputSha256": "bff0673e2c14fe58ae0e828f493a01cf3ef2e3eb93ffaec3857bf3529a30b6ec",
+      "sourceSha256": "fa8dda333eabc6ceda768cbfaadd4e0c6054a7af297c15325cea384ed5d6d239",
+      "outputSha256": "fa8dda333eabc6ceda768cbfaadd4e0c6054a7af297c15325cea384ed5d6d239",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs",
@@ -597,8 +597,8 @@
     },
     {
       "path": "user-app/public/life-ui.mjs",
-      "sourceSha256": "f80fc5e5cc7eb5f5a3e8e7491bacc7ff2fb3f4f63a3a3a78a3dd804e46a2e383",
-      "outputSha256": "f80fc5e5cc7eb5f5a3e8e7491bacc7ff2fb3f4f63a3a3a78a3dd804e46a2e383",
+      "sourceSha256": "66ed1b59d30ae98752867847af2447411ef02a407f14969c585e4bb4f60abc18",
+      "outputSha256": "66ed1b59d30ae98752867847af2447411ef02a407f14969c585e4bb4f60abc18",
       "dependencies": [
         "user-app/public/ui-kit.mjs",
         "user-app/public/life-flow.mjs",
@@ -609,14 +609,15 @@
     },
     {
       "path": "user-app/public/state-export.mjs",
-      "sourceSha256": "b0702e91d7837e2f3d0d8181694105980d463e791451856933bec4c11df9dfa3",
-      "outputSha256": "b0702e91d7837e2f3d0d8181694105980d463e791451856933bec4c11df9dfa3",
+      "sourceSha256": "935ea00a7c058e9c2efe1c22cf21da536eba24019bf71403efa82f4b8bb6dc87",
+      "outputSha256": "935ea00a7c058e9c2efe1c22cf21da536eba24019bf71403efa82f4b8bb6dc87",
       "dependencies": [
         "user-app/public/life-model.mjs",
         "user-app/public/life-achieve.mjs",
         "user-app/public/life-plan.mjs",
         "user-app/public/fin-charts.mjs",
-        "user-app/public/fin-plan.mjs"
+        "user-app/public/fin-plan.mjs",
+        "user-app/public/life-flow.mjs"
       ],
       "transforms": []
     },
@@ -1195,8 +1196,8 @@
     {
       "path": "styles.css",
       "sourcePath": "user-app/public/styles.css",
-      "sourceSha256": "a66106c5602e4315cb71a2019c45f9d9794ad50b07736b8d50cfdd33102bb47d",
-      "outputSha256": "a66106c5602e4315cb71a2019c45f9d9794ad50b07736b8d50cfdd33102bb47d"
+      "sourceSha256": "a1f5c73b7c21b05c106f5f75c9da2ea2ce3fb65ac7b6826ab83f3ab41ee67217",
+      "outputSha256": "a1f5c73b7c21b05c106f5f75c9da2ea2ce3fb65ac7b6826ab83f3ab41ee67217"
     },
     {
       "path": "public-config.json",
