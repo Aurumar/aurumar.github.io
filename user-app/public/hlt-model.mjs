@@ -8,7 +8,7 @@ function requireValue(ok,code){if(!ok)throw Object.assign(new Error(code),{code}
 export const HLT_TYPES=Object.freeze(['HLT_PROFILE','HLT_DAY']);
 // HLT_PROFILE 한도는 MED와 HABIT을 합친 60이다(B1 §3 표의 30은 60으로 정정, B3 R2).
 export const HLT_LIMITS=Object.freeze({HLT_PROFILE:60,HLT_DAY:3700});
-export const ITEM_TYPES=Object.freeze(['dose','sleep','wake','clarity','checkin','change','symptom','meal','habit']);
+export const ITEM_TYPES=Object.freeze(['dose','sleep','wake','clarity','checkin','change','symptom','meal','habit','steps']);
 export const UNITS=Object.freeze(['mg','mL','tablet','capsule']);
 export const SLEEP_KINDS=Object.freeze(['main','nap']);
 export const CHANGE_KINDS=Object.freeze(['depression','fatigue']);
@@ -23,6 +23,9 @@ export const MAX_NOTE=200;
 export const MAX_LABEL=40;
 export const MAX_SLEEP_MS=48*3600000;
 export const MAX_AMOUNT=5000;
+// B58B: 걸음은 카드당 1개(고정 id). 0은 실제 값이고, 자료 없음(null)은 항목을 만들지 않는다. 이 항목을 모르는 옛 빌드는 카드를 거부(HOLD)하므로 첫 확정 전에 모든 기기를 갱신한다.
+export const MAX_STEPS=200000;
+export const STEPS_ITEM_ID='hc-steps';
 const KST_MS=9*3600000;
 const DAY_MS=86400000;
 
@@ -74,9 +77,10 @@ const ITEM_KEYS={
   symptom:['id','type','kind','intensity','at'],
   meal:['id','type','at','kind','size'],
   habit:['id','type','profileKey','count','at'],
+  steps:['id','type','count'],
 };
 // 카드 date의 앞뒤 1일 안(기록이 전날 밤~다음날 새벽에 걸칠 수 있음).
-function nearDate(date,iso){return Math.abs(dayNumber(kstDate(iso))-dayNumber(date))<=1;}
+export function nearDate(date,iso){return Math.abs(dayNumber(kstDate(iso))-dayNumber(date))<=1;}
 function validateItem(it,date){
   requireValue(it&&typeof it==='object'&&!Array.isArray(it)&&Object.getPrototypeOf(it)===Object.prototype&&ITEM_TYPES.includes(it.type),'INVALID_HLT_ITEM');
   shape(it,ITEM_KEYS[it.type],'INVALID_HLT_ITEM');
@@ -100,6 +104,7 @@ function validateItem(it,date){
     case 'symptom':requireValue(SYMPTOM_KINDS.includes(it.kind)&&score(it.intensity),'INVALID_HLT_SYMPTOM');t(it.at);break;
     case 'meal':requireValue(MEAL_KINDS.includes(it.kind)&&(it.size===null||MEAL_SIZES.includes(it.size)),'INVALID_HLT_MEAL');t(it.at);break;
     case 'habit':requireValue(hltIdOK(it.profileKey)&&typeof it.count==='number'&&Number.isInteger(it.count)&&it.count>=1&&it.count<=99,'INVALID_HLT_HABIT');t(it.at,true);break;
+    case 'steps':requireValue(it.id===STEPS_ITEM_ID&&typeof it.count==='number'&&Number.isInteger(it.count)&&it.count>=0&&it.count<=MAX_STEPS,'INVALID_HLT_STEPS');break;
   }
   for(const v of times)requireValue(nearDate(date,v),'HLT_TIME_OUTSIDE_CARD_DATE');
 }

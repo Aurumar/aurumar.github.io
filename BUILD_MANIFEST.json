@@ -343,8 +343,8 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "fa8dda333eabc6ceda768cbfaadd4e0c6054a7af297c15325cea384ed5d6d239",
-      "outputSha256": "fa8dda333eabc6ceda768cbfaadd4e0c6054a7af297c15325cea384ed5d6d239",
+      "sourceSha256": "a47917f98db6bcc2603b397f86afcbf1afaafafec3df7188623c72b45baec12c",
+      "outputSha256": "a47917f98db6bcc2603b397f86afcbf1afaafafec3df7188623c72b45baec12c",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs",
@@ -449,8 +449,8 @@
     },
     {
       "path": "user-app/public/hlt-model.mjs",
-      "sourceSha256": "6b3fe0dc34b9edfbacef7be5712a8df1b10c8969c8304a8169fb5021670efb0e",
-      "outputSha256": "6b3fe0dc34b9edfbacef7be5712a8df1b10c8969c8304a8169fb5021670efb0e",
+      "sourceSha256": "37de306a5057686a6a160cbb6656fdf6b73edf7aa2873c48936fdda30afec54f",
+      "outputSha256": "37de306a5057686a6a160cbb6656fdf6b73edf7aa2873c48936fdda30afec54f",
       "dependencies": [],
       "transforms": []
     },
@@ -524,8 +524,8 @@
     },
     {
       "path": "user-app/public/hlt-ui.mjs",
-      "sourceSha256": "e75fecc5aba005d8e73358ada842f5716f29d8c0493659418d99d994a20dafce",
-      "outputSha256": "e75fecc5aba005d8e73358ada842f5716f29d8c0493659418d99d994a20dafce",
+      "sourceSha256": "3218b72900b2ebe7058298f627776519e03f85724cdfa1c2ad2e865869d96aea",
+      "outputSha256": "3218b72900b2ebe7058298f627776519e03f85724cdfa1c2ad2e865869d96aea",
       "dependencies": [
         "user-app/public/hlt-flow.mjs",
         "user-app/public/hlt-projection.mjs",
@@ -590,8 +590,8 @@
     },
     {
       "path": "user-app/public/native-bridge.mjs",
-      "sourceSha256": "61a6bef7d377c67ed2f9aae7b270763f4d1e5f91338c677315f99ffab88809d1",
-      "outputSha256": "61a6bef7d377c67ed2f9aae7b270763f4d1e5f91338c677315f99ffab88809d1",
+      "sourceSha256": "1fe2e113c693fbeeb1c1b18783890a5eec296eab0c142396c85436ecb8cc4de3",
+      "outputSha256": "1fe2e113c693fbeeb1c1b18783890a5eec296eab0c142396c85436ecb8cc4de3",
       "dependencies": [],
       "transforms": []
     },

@@ -6,6 +6,7 @@
 // - 중복 방지: 알림 id(32자 16진) 또는 시각+금액+가맹점 해시. 이 기기에서 이미 처리한 키(localStorage)와 같으면 보이지 않고 다리에 처리됨만 알린다.
 // - 로컬 알림 4종 토글은 이 기기 localStorage에만 저장하고, 켜고 끌 때마다 다리 scheduleReminders()에 "전체 목록"을 보낸다(부분 목록은 나머지를 취소함).
 // - 캘린더는 사용자가 단추를 눌렀을 때만 쓴다(자동 호출 없음). 일정 key가 안정적이라 다시 눌러도 새로 만들지 않고 고친다.
+// - 걸음·수면(B58B, Health Connect): 건강 화면이 부를 때만 읽는다. 값은 메모리로만 지나가고 이 파일은 저장·로그하지 않는다. 다리의 readHealthDay는 pending 뒤 결과를 한 번만 주므로 여기서 짧게 되묻는다.
 // 모든 다리 호출은 try/catch로 감싸 실패해도 화면은 계속 돌아간다.
 export const NATIVE_KEYS=Object.freeze({reminders:'lb.native.reminders',seen:'lb.native.seen',calendar:'lb.native.calendar'});
 export const NATIVE_LIMITS=Object.freeze({seen:500,drafts:200,events:64});
@@ -106,8 +107,20 @@ export function examEvents(exams){
   return out.slice(0,NATIVE_LIMITS.events);
 }
 
+// ---- 걸음·수면(Health Connect) ----
+export const HEALTH_POLL=Object.freeze({waitMs:400,attempts:40});
+const epochOK=v=>Number.isSafeInteger(v)&&v>0;
+// 다리가 준 하루치를 검증해 화면이 쓰는 모양으로 바꾼다. 자료 없음은 null 그대로(0으로 바꾸지 않는다). 모양이 틀리면 null.
+export function normalizeHealthDay(raw,date){
+  if(!raw||raw.date!==date||!(raw.steps===null||(Number.isSafeInteger(raw.steps)&&raw.steps>=0)))return null;
+  if(raw.sleep===null)return {ok:true,date,steps:raw.steps,sleep:null};
+  const s=raw.sleep;
+  if(!s||typeof s!=='object'||!epochOK(s.start)||!epochOK(s.end)||s.end<s.start)return null;
+  return {ok:true,date,steps:raw.steps,sleep:{startAt:new Date(s.start).toISOString(),endAt:new Date(s.end).toISOString()}};
+}
+
 // ---- 다리 묶음 ----
-export function createNativeBridge({native=globalThis.LifeBrickNative,storage,now=()=>Date.now()}={}){
+export function createNativeBridge({native=globalThis.LifeBrickNative,storage,now=()=>Date.now(),wait=ms=>new Promise(r=>setTimeout(r,ms))}={}){
   const store=pickStorage(storage);
   let pending=[],lastError=null;
   // 다리가 확인되면 이 인스턴스에서는 다시 묻지 않는다(version() 반복 호출 방지). 없으면 매번 다시 확인한다(늦게 붙는 경우 대비).
@@ -158,6 +171,19 @@ export function createNativeBridge({native=globalThis.LifeBrickNative,storage,no
       if(!available())return {ok:false,error:'BRIDGE_UNAVAILABLE'};
       const list=buildReminders(api.reminderPrefs(),{now:now(),stackedToday,bedtime});
       return callNative(native,'scheduleReminders',JSON.stringify(list));
+    },
+    // 걸음·수면. 옛 앱(메서드 없음)·미지원이면 healthState는 null이거나 supported:false다(건강 화면 버튼이 숨는다).
+    healthState(){const r=callNative(native,'healthState');return r.ok===true?{supported:r.supported===true,available:r.available===true,steps:r.steps==='granted'?'granted':'denied',sleep:r.sleep==='granted'?'granted':'denied'}:null;},
+    requestHealthPermission:()=>callNative(native,'requestHealthPermission'),
+    // 결과: {ok:true,date,steps:number|null,sleep:{startAt,endAt}|null} 또는 {ok:false,error}.
+    async readHealthDay(date,{waitMs=HEALTH_POLL.waitMs,attempts=HEALTH_POLL.attempts}={}){
+      for(let i=0;i<attempts;i++){
+        const r=callNative(native,'readHealthDay',date);
+        if(r.ok===true&&r.pending===true){await wait(waitMs);continue;}
+        if(r.ok!==true)return {ok:false,error:r.error||'BRIDGE_ERROR'};
+        return normalizeHealthDay(r,date)??{ok:false,error:'BRIDGE_BAD_RESPONSE'};
+      }
+      return {ok:false,error:'TIMEOUT'};
     },
     calendarState(){const v=readJson(store,NATIVE_KEYS.calendar,null);return v&&typeof v==='object'&&Number.isSafeInteger(v.calendarId)&&Array.isArray(v.keys)?v:null;},
     listCalendars(){const r=callNative(native,'listCalendars');return r.ok&&Array.isArray(r.calendars)?r.calendars.filter(c=>c&&Number.isSafeInteger(c.id)&&typeof c.name==='string'):null;},
