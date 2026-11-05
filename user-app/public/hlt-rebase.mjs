@@ -6,7 +6,8 @@
 //  ⑥ 양쪽 삭제: 삭제 유지, 알림 없음.  ④ 결과는 검증 규칙으로 다시 검사. ⑨ 위반하면 아무것도 저장하지 않는다(자동 삭제·분할 없음).
 //  ⑧ 결과가 최신 카드와 같으면 op를 쓰지 않는다(ALREADY_APPLIED).  confirmCount는 초안이 아니라 최신 카드 값 + 1.
 //  note: 한쪽만 바뀌었으면 그쪽, 양쪽이 바뀌었으면 mine + 알림.
-import {validateHltData} from './hlt-model.mjs';
+// B58C: rebase 규칙은 그대로다. 쌓기 전에 소유자에게 물어야 하는 겹침은 rebaseChoices가 찾고, 답은 applyChoices가 rebase 입력으로 옮긴다.
+import {validateHltData,STEPS_ITEM_ID} from './hlt-model.mjs';
 
 export function stable(v){
   if(v===null||typeof v!=='object')return JSON.stringify(v);
@@ -72,4 +73,49 @@ export function rebase({date,base,mine,latest}){
   try{validateHltData('HLT_DAY',date,merged);}
   catch(e){return {status:'REJECTED',code:e.code??'HLT_REBASE_INVALID',notices,detail:{items:items.length}};}
   return {status:'MERGED',card:merged,notices};
+}
+
+// B58C: 쌓기 전에 소유자에게 물어야 하는 겹침(순수 함수). 없으면 [].
+//  sleep: 양쪽이 서로 다른 끝난 main 수면을 새로 가져왔다. 그대로 합치면 리듬 요약이 두 밤을 더한다(hlt-projection.mjs:39).
+//  steps: 걸음 고정 id를 양쪽이 서로 다른 값으로 처음 넣었다. 그대로면 rebase가 식사·수면까지 카드 전체를 막는다(REBASE_ID_COLLISION).
+// 한 초안 안의 여러 수면(나눠 잔 밤을 직접 적음)이나 base에 이미 있던 수면 곁에 더한 수면은 묻지 않는다: 겹침을 보고 적은 것이다.
+// mine·theirs = 그쪽이 가져온 항목. sig = 이 겹침의 내용 지문: 답은 지문에 묶이므로 그 사이 내용이 바뀌면 다시 묻는다.
+const isClosedMain=i=>i?.type==='sleep'&&i.kind==='main'&&i.endAt!==null;
+export function rebaseChoices({base,mine,latest}){
+  const B=new Map(itemsOf(base).map(i=>[i.id,i])),M=new Map(itemsOf(mine).map(i=>[i.id,i])),T=new Map(itemsOf(latest).map(i=>[i.id,i]));
+  const choice=(kind,m,t)=>({kind,mine:m,theirs:t,sig:kind+':'+stable({mine:sortById(m),theirs:sortById(t)})});
+  const out=[];
+  const ms=M.get(STEPS_ITEM_ID),ts=T.get(STEPS_ITEM_ID);
+  if(ms&&ts&&!B.has(STEPS_ITEM_ID)&&!same(ms,ts))out.push(choice('steps',[ms],[ts]));
+  const mineNew=[...M.values()].filter(m=>isClosedMain(m)&&!same(m,B.get(m.id))&&!same(m,T.get(m.id)));
+  const theirsNew=[...T.values()].filter(t=>{
+    const b=B.get(t.id),m=M.get(t.id);
+    if(!isClosedMain(t)||isClosedMain(b)||same(t,m))return false;
+    return !(b&&m&&!same(m,b));   // 같은 항목을 양쪽이 고침: 한 항목으로 남는다(rebase가 내 값 + 알림)
+  });
+  if(mineNew.length&&theirsNew.length)out.push(choice('sleep',mineNew,theirsNew));
+  return out;
+}
+const baseWith=(base,date,B)=>({...(base??{date,confirmCount:0}),items:[...B.values()]});
+// 답(answers[sig]='MINE'|'THEIRS')을 rebase 입력으로 옮긴다(새 병합 규칙을 만들지 않는다).
+//  MINE: 상대가 가져온 항목을 base에 넣어 "상대 변경 없음"으로 만든다. 내가 안 가진 항목은 내 삭제로 빠지고 같은 id면 내 값이 남는다(쌓여 있던 값은 그래프 이력에 남음).
+//  THEIRS: 내가 가져온 항목을 초안에서 뺀다(고친 항목이면 base 값으로 되돌림). 나머지는 상대 결과를 따른다.
+export function applyChoices({date,base,mine,latest},answers){
+  const B=new Map(itemsOf(base).map(i=>[i.id,i])),M=new Map(itemsOf(mine).map(i=>[i.id,i]));
+  for(const c of rebaseChoices({base,mine,latest})){
+    if(answers?.[c.sig]==='MINE'){
+      const keep=new Set(c.mine.map(i=>i.id));
+      for(const t of c.theirs){B.set(t.id,t);if(!keep.has(t.id))M.delete(t.id);}
+    }else if(answers?.[c.sig]==='THEIRS'){
+      for(const m of c.mine){const b=B.get(m.id);if(b)M.set(m.id,b);else M.delete(m.id);}
+    }
+  }
+  return {date,base:baseWith(base,date,B),mine:{...mine,items:[...M.values()]},latest};
+}
+// 지금 쌓으면 어떤 카드가 되는지 미리 본다(쓰기 없음). 같은 id의 겹침은 내 초안 값으로 보고, 서로 다른 id의 수면 겹침은 둘 다 보인다(쌓을 때 물음).
+export function previewRebase({date,base,mine,latest}){
+  const choices=rebaseChoices({base,mine,latest}),B=new Map(itemsOf(base).map(i=>[i.id,i]));
+  for(const c of choices)for(const t of c.theirs)if(c.mine.some(m=>m.id===t.id))B.set(t.id,t);
+  const rb=rebase({date,base:baseWith(base,date,B),mine,latest});
+  return {card:rb.status==='MERGED'?rb.card:rb.status==='ALREADY_APPLIED'?latest??mine:mine,blocked:rb.status==='REJECTED',code:rb.code??null,choices,notices:rb.notices};
 }

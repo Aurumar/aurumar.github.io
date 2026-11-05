@@ -4,18 +4,22 @@
 //   초안을 열어 기존 거래 입력의 "저장"을 눌렀을 때만 만들어진다. 저장이 성공한 뒤에만 markHandled()가 id를 기억하고 다리에 ackExpenseDrafts()를 보낸다.
 //   초안 자체는 다리(PayDraftStore)가 확인 전까지 보관한다 — 웹은 새 저장 형식을 만들지 않는다.
 // - 중복 방지: 알림 id(32자 16진) 또는 시각+금액+가맹점 해시. 이 기기에서 이미 처리한 키(localStorage)와 같으면 보이지 않고 다리에 처리됨만 알린다.
+// - 같은 결제 경고(B48C F1): 저장한 초안은 "금액 + 5분 칸" 해시만 lb.native.added에 남긴다(금액·시각·가맹점 원문 없음, seen과 같은 수준의 구분용 해시). 나중에 온 다른 알림이 같은 금액·가까운 시각이면 added 표시(저장은 막지 않음).
+// - 처리 표시(B48C F2): 거래가 받아들여지면(서버 확정·임시 저장 LOCAL_DRAFT 모두) markAdded()가 처리됨으로 표시한다.
+// - ack 실패(B48C F9): 다리에 처리됨을 못 알린 초안의 키는 lb.native.unacked에 따로 둔다. seen 500개 상한에 밀려나도 되살아나지 않고, 다음 읽기 때 ack를 다시 보낸다.
 // - 로컬 알림 4종 토글은 이 기기 localStorage에만 저장하고, 켜고 끌 때마다 다리 scheduleReminders()에 "전체 목록"을 보낸다(부분 목록은 나머지를 취소함).
 // - 캘린더는 사용자가 단추를 눌렀을 때만 쓴다(자동 호출 없음). 일정 key가 안정적이라 다시 눌러도 새로 만들지 않고 고친다.
 // - 걸음·수면(B58B, Health Connect): 건강 화면이 부를 때만 읽는다. 값은 메모리로만 지나가고 이 파일은 저장·로그하지 않는다. 다리의 readHealthDay는 pending 뒤 결과를 한 번만 주므로 여기서 짧게 되묻는다.
 // 모든 다리 호출은 try/catch로 감싸 실패해도 화면은 계속 돌아간다.
-export const NATIVE_KEYS=Object.freeze({reminders:'lb.native.reminders',seen:'lb.native.seen',calendar:'lb.native.calendar'});
-export const NATIVE_LIMITS=Object.freeze({seen:500,drafts:200,events:64});
+export const NATIVE_KEYS=Object.freeze({reminders:'lb.native.reminders',seen:'lb.native.seen',calendar:'lb.native.calendar',added:'lb.native.added',unacked:'lb.native.unacked'});
+export const NATIVE_LIMITS=Object.freeze({seen:500,drafts:200,events:64,added:200,unacked:1000});
 export const NATIVE_TEXT=Object.freeze({
   chip:n=>'Fold 결제 '+n+'건 · 눌러서 쌓기',
   sheetTitle:'Fold 결제 알림',
   empty:'처리할 결제 알림이 없어요.',
   cancel:'취소 알림 — 이미 넣은 거래가 있으면 가계부에서 직접 정리하세요.',
   twin:'같은 결제로 보이는 알림이 더 있어요 — 하나만 넣으세요.',
+  added:'이미 넣은 결제일 수 있어요 — 가계부를 확인한 뒤 넣으세요.',
   add:'가계부에 넣기',discard:'넣지 않고 지우기',ok:'확인했어요',
   settingsTitle:'알림 · 캘린더',
   payAccessOn:'결제 알림 읽기가 켜져 있어요',payAccessOff:'결제 알림을 읽으려면 알림 접근을 켜야 해요',payAccessBtn:'알림 접근 설정 열기',
@@ -27,7 +31,7 @@ export const NATIVE_TEXT=Object.freeze({
 });
 export const REMINDER_LABELS=Object.freeze({morning:'아침 · 오늘 쌓기 전에',night:'밤 · 오늘 카드를 안 쌓았을 때',bed:'취침 목표 30분 전',weekly:'주간 리뷰 · 일요일'});
 export const REMINDER_DEFAULTS=Object.freeze({morning:{on:false,time:'08:00'},night:{on:false},bed:{on:false},weekly:{on:false}});
-const NIGHT_TIME='21:30',WEEKLY_TIME='20:00',BED_LEAD_MIN=30,HM=/^([01]\d|2[0-3]):[0-5]\d$/;
+const SAME_PAYMENT_MS=300000,NIGHT_TIME='21:30',WEEKLY_TIME='20:00',BED_LEAD_MIN=30,HM=/^([01]\d|2[0-3]):[0-5]\d$/;
 
 // ---- 다리 호출(실패해도 던지지 않는다) ----
 export function callNative(native,name,...args){
@@ -60,6 +64,11 @@ export function normalizeDraft(raw){
 }
 export const kstDateOf=at=>new Date(at+9*3600000).toISOString().slice(0,10);
 export const kstTimeOf=at=>new Date(at+9*3600000).toISOString().slice(11,16);
+// 알림 시각 ±5분이 걸치는 KST 날짜(거래에는 시각이 없어 날짜로 비교한다, 자정 근처면 2개).
+export const kstDatesNear=at=>[...new Set([kstDateOf(at-SAME_PAYMENT_MS),kstDateOf(at+SAME_PAYMENT_MS)])];
+// 금액 + 5분 칸의 구분용 해시. 저장은 그 칸 하나, 비교는 앞뒤 칸까지 본다(±5분은 언제나 걸린다).
+const addedSig=(slot,amount)=>{const s=slot+'|'+amount;return 's'+fnv(s,2166136261)+fnv(s,0x9747b28c);};
+const slotOf=at=>Math.floor(at/SAME_PAYMENT_MS);
 
 // ---- 로컬 알림 ----
 export function normalizeReminders(raw){
@@ -128,6 +137,16 @@ export function createNativeBridge({native=globalThis.LifeBrickNative,storage,no
   const available=()=>confirmed||(confirmed=nativeAvailable(native));
   const seenList=()=>{const v=readJson(store,NATIVE_KEYS.seen,[]);return Array.isArray(v)?v.filter(x=>typeof x==='string'):[];};
   const rememberSeen=keys=>{const list=seenList();for(const k of keys)if(!list.includes(k))list.push(k);return writeJson(store,NATIVE_KEYS.seen,list.slice(-NATIVE_LIMITS.seen));};
+  const listOf=key=>{const v=readJson(store,key,[]);return Array.isArray(v)?v.filter(x=>typeof x==='string'):[];};
+  const noteUnacked=keys=>{const list=listOf(NATIVE_KEYS.unacked);for(const k of keys)if(!list.includes(k))list.push(k);writeJson(store,NATIVE_KEYS.unacked,list.slice(-NATIVE_LIMITS.unacked));};
+  const clearUnacked=keys=>{const list=listOf(NATIVE_KEYS.unacked);if(list.some(k=>keys.includes(k)))writeJson(store,NATIVE_KEYS.unacked,list.filter(k=>!keys.includes(k)));};
+  const flagDrafts=()=>{
+    const added=new Set(listOf(NATIVE_KEYS.added));
+    for(const d of pending){
+      d.twin=pending.some(o=>o!==d&&o.kind===d.kind&&o.amount===d.amount&&Math.abs(o.at-d.at)<=SAME_PAYMENT_MS);
+      const slot=slotOf(d.at);d.added=d.kind==='EXPENSE'&&[slot-1,slot,slot+1].some(x=>added.has(addedSig(x,d.amount)));
+    }
+  };
   const ack=ids=>{const clean=ids.filter(x=>typeof x==='string'&&/^[0-9a-f]{32}$/.test(x)).slice(0,NATIVE_LIMITS.drafts);return clean.length?callNative(native,'ackExpenseDrafts',JSON.stringify(clean)):{ok:true,removed:0};};
   const api={
     available,
@@ -141,23 +160,31 @@ export function createNativeBridge({native=globalThis.LifeBrickNative,storage,no
       const r=callNative(native,'getExpenseDrafts');
       if(!r.ok||!Array.isArray(r.drafts)){lastError=r.error||'BRIDGE_ERROR';return pending;}
       lastError=null;
-      const seen=new Set(seenList()),batch=new Set(),fresh=[],done=[];
+      const seen=new Set([...seenList(),...listOf(NATIVE_KEYS.unacked)]),batch=new Set(),fresh=[],done=[];
       for(const raw of r.drafts.slice(0,NATIVE_LIMITS.drafts)){
         const d=normalizeDraft(raw);if(!d)continue;
-        if(d.keys.some(k=>seen.has(k))){if(d.id)done.push(d.id);continue;}
+        if(d.keys.some(k=>seen.has(k))){if(d.id)done.push(d);continue;}
         if(d.keys.some(k=>batch.has(k)))continue;
         d.keys.forEach(k=>batch.add(k));fresh.push(d);
       }
-      if(done.length)ack(done);
+      if(done.length&&ack(done.map(d=>d.id)).ok)clearUnacked(done.flatMap(d=>d.keys));
       fresh.sort((a,b)=>a.at-b.at);
-      for(const d of fresh)d.twin=fresh.some(o=>o!==d&&o.kind===d.kind&&o.amount===d.amount&&Math.abs(o.at-d.at)<=300000);
-      pending=fresh;return pending;
+      pending=fresh;flagDrafts();return pending;
     },
     // 저장이 성공한 뒤(또는 사용자가 버린 뒤)에만 부른다: 이 기기에 처리됨으로 기억하고 다리에 알린다.
     markHandled(draft){
       if(!draft||!Array.isArray(draft.keys))return {ok:false};
       rememberSeen(draft.keys);pending=pending.filter(d=>d!==draft&&!d.keys.some(k=>draft.keys.includes(k)));
-      return draft.id?ack([draft.id]):{ok:true,removed:0};
+      const r=draft.id?ack([draft.id]):{ok:true,removed:0};
+      if(!r.ok&&draft.id)noteUnacked(draft.keys);
+      return r;
+    },
+    // 거래가 받아들여진 뒤(서버 확정·임시 저장 모두) 부른다: 넣은 결제로 기억하고, 아직 처리 표시가 안 됐으면(임시 저장) 처리됨으로 표시한다.
+    markAdded(draft){
+      if(!draft||!Array.isArray(draft.keys)||typeof draft.at!=='number')return {ok:false};
+      if(draft.kind==='EXPENSE'){const list=listOf(NATIVE_KEYS.added),sig=addedSig(slotOf(draft.at),draft.amount);if(!list.includes(sig))list.push(sig);writeJson(store,NATIVE_KEYS.added,list.slice(-NATIVE_LIMITS.added));}
+      const r=pending.includes(draft)?api.markHandled(draft):{ok:true,removed:0};
+      flagDrafts();return r;
     },
     reminderPrefs:()=>normalizeReminders(readJson(store,NATIVE_KEYS.reminders,null)),
     setReminder(name,patch){
@@ -217,7 +244,8 @@ export function renderPayChip(root,{h,br,onOpen}){
 }
 // 초안 시트 안쪽. onAdd(draft)=기존 거래 입력 열기, onDiscard(draft)·onAck(draft)는 처리됨 표시 후 다시 그리기.
 // recurringName(draft)=정기 결제 규칙과 맞으면 규칙 이름(B48). 작은 칩만 보이고 자동 확정은 없다.
-export function payDraftBody({h,br,formatWon,onAdd,onDiscard,recurringName=null}){
+// alreadyAdded(draft)=이미 가계부에 같은 결제로 보이는 거래가 있으면 참(B48C F1). 경고만 하고 막지 않는다.
+export function payDraftBody({h,br,formatWon,onAdd,onDiscard,recurringName=null,alreadyAdded=null}){
   const body=h.el('div',null,'native-pay-list'),list=br.pending();
   if(!list.length)h.add(body,h.el('p',NATIVE_TEXT.empty,'muted'));
   for(const d of list){
@@ -227,6 +255,7 @@ export function payDraftBody({h,br,formatWon,onAdd,onDiscard,recurringName=null}
     if(rec)h.add(row,h.el('span','정기 결제: '+rec,'native-pay-recurring'));
     if(cancel)h.add(row,h.el('p',NATIVE_TEXT.cancel,'muted small'));
     if(d.twin)h.add(row,h.el('p',NATIVE_TEXT.twin,'muted small'));
+    if(!cancel&&(d.added||alreadyAdded?.(d)))h.add(row,h.el('p',NATIVE_TEXT.added,'muted small'));
     h.add(row,h.add(h.el('div',null,'button-row'),cancel?null:h.button(NATIVE_TEXT.add,()=>onAdd(d),'primary'),h.button(cancel?NATIVE_TEXT.ok:NATIVE_TEXT.discard,()=>onDiscard(d),'secondary')));
     h.add(body,row);
   }

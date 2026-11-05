@@ -123,7 +123,10 @@ export function renderStudy(root,ctx,st){
   const fs=st.flowState,date=st.date,isToday=date===st.today;
   const box=st.ports?.box??null,T=box?.TEXT;   // B3c: 이 기기 상자(브라우저)일 때만 있다
   const seen=()=>(st.resumed??=new Set()).add(date);   // 이 날짜에서 한 번이라도 입력했으면 "저장된 초안이 있어요" 안내를 다시 띄우지 않는다
-  const act=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;seen();try{await fn();}catch(e){st.message=box?.ERROR_TEXT[e?.code]??studyErrorText(e?.code);st.error=true;}await prepareStudy(ctx,st);await ctx.rerender();});
+  // B2C (DEFECT-5 묶음): 상자 쓰기 실패는 save가 던지지 않는다(설계). 버튼이 끝났을 때 그 날짜 초안이 실패 상태면 성공 문구 대신 실패 문구를 보인다(날짜가 옮겨 갔을 수 있어 st.date).
+  const boxFailText=()=>{const c=box?.status().failed;return c?box.ERROR_TEXT[c]??T.failed:null;};
+  const flagBoxFail=()=>{const x=box?.statusFor('STUDY_DAY',st.date);if(x?.has&&x.failed&&!st.error){st.message=box.ERROR_TEXT[x.failed]??T.failed;st.error=true;}};
+  const act=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;seen();try{await fn();}catch(e){st.message=box?.ERROR_TEXT[e?.code]??studyErrorText(e?.code);st.error=true;}flagBoxFail();await prepareStudy(ctx,st);await ctx.rerender();});
   // B17 (H12-N02): 복습은 오늘 카드에 기록한다고 약속한다. 클릭 시점에 오늘 날짜를 다시 확인해, 화면을 그린 뒤 날짜가 바뀌었으면 기록하지 않고
   // "날짜가 바뀌었습니다"를 알린 뒤 오늘 화면으로 새로 그린다(옛 날짜 기준으로 계산한 다음 복습일 제안을 그대로 쓰지 않게, 결과를 다시 고르게 한다).
   const dayMoved=()=>{
@@ -193,7 +196,7 @@ export function renderStudy(root,ctx,st){
       button(T.resumeDrop,()=>{if(ctx.confirmDialog?.(T.dropConfirm)??true)void act(async()=>{await st.ports.drafts.discard(fs.draftId);st.notices=[];})();})));
   }
   if(fs.latestConfirmCount+1>=3&&fs.status==='LOCAL_DRAFT')add(head,hint('이 카드는 이번이 '+(fs.latestConfirmCount+1)+'번째 쌓기입니다. 막지는 않지만, 모아서 한 번에 쌓는 편이 좋습니다.'));
-  if(st.message)add(head,el('p',st.message,st.error?'notice error study-message':'notice study-message'));
+  if(st.message&&st.message!==boxFailText())add(head,el('p',st.message,st.error?'notice error study-message':'notice study-message'));   // 위 빨간 줄과 같은 문구는 두 번 보이지 않는다
   if(st.notices.length)add(head,el('p','다른 기기에서 바뀐 내용이 있어 합쳤어요.','notice study-merged'));
   for(const n of st.notices)add(head,el('p',NOTICE_TEXT[n.code]??n.code,'notice study-notice'));
   add(out,head);

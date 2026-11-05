@@ -131,7 +131,7 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
     let tx,out,cause=null;
     try{tx=mode==='readwrite'?db.transaction(stores,mode,{durability:'strict'}):db.transaction(stores,mode);}catch(e){no(e);return;}
     const stop=e=>{cause??=e;try{tx.abort();}catch{/* 이미 끝남 */}};
-    tx.oncomplete=()=>ok(out);tx.onabort=()=>no(cause??tx.error??fail('CARD_DRAFT_IDB_ABORT'));tx.onerror=()=>{};
+    tx.oncomplete=()=>ok(out);tx.onabort=()=>no(tx.error?.name==='QuotaExceededError'?tx.error:cause??tx.error??fail('CARD_DRAFT_IDB_ABORT'));tx.onerror=()=>{};   // B2C (DEFECT-4): 브라우저가 공간 부족으로 끊으면 대기 요청의 AbortError보다 Quota가 원인이다
     const req=(r,cb)=>{r.onsuccess=()=>{try{cb?.(r.result);}catch(e){stop(e);}};r.onerror=ev=>{ev?.preventDefault?.();stop(r.error??fail('CARD_DRAFT_IDB_REQUEST'));};};
     try{body(tx,req,v=>{out=v;},stop);}catch(e){stop(e);}
   });
@@ -162,7 +162,7 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
         const got={rows:[],key:null};set(got);
         readKey(tx,req,got);req(tx.objectStore('drafts').getAll(),r=>{got.rows=r??[];});
       })));
-    }catch(e){failure={code:e?.name==='QuotaExceededError'?'QUOTA_EXCEEDED':(e?.code||'CARD_DRAFT_IDB_OPEN'),load:true};notify();return false;}
+    }catch(e){failure={code:e?.name==='QuotaExceededError'?'QUOTA_EXCEEDED':((typeof e?.code==='string'&&e.code)||(typeof e?.code==='number'&&e.name)||'CARD_DRAFT_IDB_OPEN'),load:true};notify();return false;}
     if(failure?.load)failure=null;
     keyCache=key;otherRows=0;unreadable.clear();
     const seen=new Set();
@@ -210,7 +210,8 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
   }
   // 바뀐(dirty) 항목을 항목마다 한 트랜잭션으로 쓴다(한 항목의 충돌이 다른 날짜 쓰기를 막지 않게). 실패하면 메모리 사본을 그대로 두고
   // failure를 세운다(던지지 않음). 쓰기는 한 줄로 직렬화한다. STALE 항목은 다음 입력이 올 때까지 쓰지 않는다(다른 창 초안 보존).
-  const failCode=e=>e?.code==='STALE_DRAFT'?'STALE_DRAFT':e?.name==='QuotaExceededError'||/QUOTA/i.test(String(e?.message??''))?'QUOTA_EXCEEDED':(e?.code||e?.name||'CARD_DRAFT_WRITE_FAILED');
+  // B2C (DEFECT-3): DOMException의 .code는 숫자다. 실패 코드는 언제나 문자열로 둔다(문자열 code가 없으면 이름).
+  const failCode=e=>e?.code==='STALE_DRAFT'?'STALE_DRAFT':e?.name==='QuotaExceededError'||/QUOTA/i.test(String(e?.message??''))?'QUOTA_EXCEEDED':((typeof e?.code==='string'&&e.code)||e?.name||'CARD_DRAFT_WRITE_FAILED');
   async function persistOne(e){
     const v=e.ver,aside=e.aside?{from:e.id,to:UNREADABLE_PREFIX+e.id+'|'+ids()}:null,row=e.deleted?null:await seal(e,nextRev(e.base));
     let disk=null;

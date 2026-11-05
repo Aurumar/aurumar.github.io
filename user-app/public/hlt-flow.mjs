@@ -3,7 +3,7 @@
 // base 카드는 그래프 이력(revision)에서 heads로 다시 읽으므로 base·변경 목록이 앱을 껐다 켜도 복원된다. 초안 입력은 연산 0, "확정" 1번 = 연산 1.
 // 초안은 확정 성공을 확인한 뒤에만 지운다. 검증 거부·저장 실패·응답 불명이면 초안을 그대로 둔다.
 import {validateHltData,kstDate,dayNumber,isoOK,MAX_SLEEP_MS} from './hlt-model.mjs';
-import {rebase,emptyCard,hasChanges,diffCard,stable} from './hlt-rebase.mjs';
+import {rebase,emptyCard,hasChanges,diffCard,stable,rebaseChoices,applyChoices,previewRebase} from './hlt-rebase.mjs';
 
 const codeOf=e=>typeof e?.code==='string'?e.code:(e?.message??'UNKNOWN');
 const REJECT_CODE=/^(INVALID_|HLT_|UNKNOWN_HLT|DUPLICATE_HLT|BROKEN_HLT|APP_ENTITY_LIMIT|REBASE_|INVALID_TEXT|INVALID_WHOLE_LIFE)/;
@@ -42,23 +42,37 @@ export class HltFlow{
   // 저널·메모리 초안 포트는 두 번째 인자를 쓰지 않는다.
   // B18 (H13-N01): 값이 같아 저장·삭제 없이 끝나도 drafts.keep으로 이 입력을 그 칸의 최신 세대로 알린다(상자만, 쓰기 0).
   // B18 (H13-C05): 다시 적용하는 회차마다 시작 전에 로그아웃·세대 변경을 확인하고, 바뀌었으면 쓰기 없이 멈춘다(B14와 같은 세대 검사).
-  async edit(date,mutate,{input=null}={}){
+  // B58C: onLatest = 소유자가 확인한 교체처럼 다른 기기가 쌓은 항목까지 고치는 편집. 초안을 최신 카드 위로 옮긴 뒤 적용한다(연산 0).
+  async edit(date,mutate,{input=null,onLatest=false}={}){
     const alive=this.#alive();
     for(let round=1;;round++){
       if(round>1)alive.check();
-      const s=await this.state(date),next=structuredClone(s.card);
+      const s=await this.state(date),on=onLatest?this.#onLatest(date,s):s,next=structuredClone(on.card);
       mutate(next);
-      next.date=date;next.confirmCount=(s.base?.confirmCount??0)+1;
+      next.date=date;next.confirmCount=(on.base?.confirmCount??0)+1;
       validateHltData('HLT_DAY',date,next);
       try{
-        if(!hasChanges(s.base,next)){if(s.draftId)await this.#p.drafts.discard(s.draftId,{input,date});else await this.#p.drafts.keep?.(date,{input,base:null});return this.state(date);}
+        if(!hasChanges(on.base,next)){if(s.draftId)await this.#p.drafts.discard(s.draftId,{input,date});else await this.#p.drafts.keep?.(date,{input,base:null});return this.state(date);}
         if(s.draftId&&stable(next)===stable(s.card)){await this.#p.drafts.keep?.(date,{input,base:s.draftId});return s;}
-        const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:next,heads:s.baseHeads,reason:DRAFT_REASON});
+        const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:next,heads:on.baseHeads,reason:DRAFT_REASON});
         await this.#p.drafts.save({type:'ENTITY',body},{input,base:s.draftId});
       }catch(e){if(e?.code===STALE_BASE&&round<EDIT_ROUNDS)continue;throw e;}
       if(s.draftId)await this.#p.drafts.discard(s.draftId,{input});
       return this.state(date);
     }
+  }
+  #onLatest(date,s){
+    const latest=this.#p.latest(date);
+    if(!s.draftId||sameHeads(s.baseHeads,latest.heads))return s;
+    const v=previewRebase({date,base:s.base,mine:s.card,latest:latest.card});
+    if(v.blocked)throw flowError(v.code);
+    return {card:v.card,base:latest.card,baseHeads:latest.heads};
+  }
+  // B58C: 지금 쌓으면 어떤 카드가 되는지(쓰기 없음). 초안이 최신 카드 위에 있으면 초안 그대로다. drift = 그 사이 다른 기기가 쌓아 합쳐 본 값, choices = 쌓을 때 물을 겹침.
+  async preview(date){
+    const s=await this.state(date),latest=this.#p.latest(date);
+    if(!s.draftId||sameHeads(s.baseHeads,latest.heads))return {card:s.card,drift:false,blocked:false,code:null,choices:[],notices:[]};
+    return {...previewRebase({date,base:s.base,mine:s.card,latest:latest.card}),drift:true};
   }
   addItem(date,item){return this.edit(date,c=>{c.items.push({...item,id:item.id??this.#p.newId()});});}
   updateItem(date,item){return this.edit(date,c=>{const i=c.items.findIndex(x=>x.id===item.id);if(i<0){const e=new Error('UNKNOWN_HLT_ITEM');e.code='UNKNOWN_HLT_ITEM';throw e;}c.items[i]=item;});}
@@ -88,7 +102,8 @@ export class HltFlow{
 
   // 확정: 서버 최신을 받은 뒤 최신 카드 위에 내 변경을 다시 얹어(rebase) 연산 1개로 쓴다.
   // B18 (H13-N04): 동기화 동안 로컬 초안이 다른 초안으로 바뀌었으면(원격 heads가 그대로여도) 옛 id로 확정하지 않고 처음부터 최신 초안을 다시 얹는다(같은 상한).
-  async confirm(date,{maxAttempts=3}={}){
+  // B58C: 양쪽이 서로 다른 수면·걸음을 가져왔으면 조용히 합치거나 카드 전체를 막지 않고 NEEDS_CHOICE로 멈춘다(쓰기 0, 초안 그대로). answers = {겹침 지문: 'MINE'|'THEIRS'}.
+  async confirm(date,{maxAttempts=3,answers=null}={}){
     const alive=this.#alive();
     for(let attempt=1;attempt<=maxAttempts;attempt++){
       if(attempt>1&&alive.gone())return {status:'FAILED',code:alive.code()};   // B18 (H13-C05): 재시도 전에 로그아웃·세대 변경이면 멈춘다
@@ -108,7 +123,9 @@ export class HltFlow{
       const settled=await this.#settleSent(draft,ended);
       if(settled)return settled;
       const latest=this.#p.latest(date),base=this.#baseOf(date,draft.body.expectedHeads);
-      const rb=rebase({date,base,mine:draft.body.data,latest:latest.card});
+      const merge={date,base,mine:draft.body.data,latest:latest.card},choices=rebaseChoices(merge);
+      if(choices.some(c=>!answers?.[c.sig]))return {status:'NEEDS_CHOICE',choices,notices:[]};
+      const rb=rebase(choices.length?applyChoices(merge,answers):merge);
       if(rb.status==='REJECTED')return {status:'REJECTED',code:rb.code,itemId:rb.itemId??null,notices:rb.notices};
       if(rb.status==='ALREADY_APPLIED'){await this.#p.drafts.discard(draft.draftId);return {status:'ALREADY_APPLIED',notices:rb.notices};}
       let target=draft;

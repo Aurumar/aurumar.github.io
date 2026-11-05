@@ -5,7 +5,7 @@
 // 앱을 다시 열면 다시 숨겨진다(저장하지 않음). 숨김 상태에서는 라벨뿐 아니라 횟수·시각·마지막 기록 후 n일·7·30일 횟수·알림 문구에도 나오지 않는다.
 import {HltFlow} from './hlt-flow.mjs';
 import {hltView,hltHomeLine} from './hlt-projection.mjs';
-import {HLT_LIMITS,kstDate,shiftDay,dateKeyOK,isoOK,UNITS,MEAL_KINDS,MEAL_SIZES,SLEEP_KINDS,CHANGE_KINDS,SYMPTOM_KINDS,MAX_NOTE,MAX_LABEL,MAX_ITEMS,ITEM_TYPES,MAX_STEPS,STEPS_ITEM_ID,nearDate} from './hlt-model.mjs';
+import {HLT_LIMITS,kstDate,kstMinutes,shiftDay,dateKeyOK,isoOK,UNITS,MEAL_KINDS,MEAL_SIZES,SLEEP_KINDS,CHANGE_KINDS,SYMPTOM_KINDS,MAX_NOTE,MAX_LABEL,MAX_ITEMS,ITEM_TYPES,MAX_STEPS,STEPS_ITEM_ID,nearDate} from './hlt-model.mjs';
 
 const HLT_PROFILE_LIMIT=HLT_LIMITS.HLT_PROFILE;
 export const HLT_SWITCH_KEY='lb.hlt.enabled';
@@ -15,7 +15,7 @@ export function setHltEnabled(on,storage=globalThis.localStorage){memorySwitch=B
 
 export const HLT_ERROR_TEXT=Object.freeze({
   HLT_ITEM_LIMIT:'한 카드에는 항목을 120개까지만 둘 수 있습니다. 자동으로 지우거나 나누지 않았습니다 · 초안은 그대로 있습니다. 항목을 직접 줄인 뒤 다시 쌓으세요.',
-  REBASE_ID_COLLISION:'다른 기기에서 같은 항목 번호로 다른 내용을 추가했습니다. 아무것도 저장하지 않았습니다 · 초안은 그대로 있습니다.',
+  REBASE_ID_COLLISION:'다른 기기에서 같은 항목 번호(걸음·Fold 수면 등)로 다른 내용을 추가했습니다. 아무것도 저장하지 않았습니다 · 초안은 그대로 있습니다. 초안에서 그 항목을 지우면 다시 쌓을 수 있습니다.',
   UNKNOWN_HLT_PROFILE:'없는 프로필을 가리키는 항목이 있습니다. 항목을 고치거나 프로필을 먼저 만드세요.',
   INVALID_HLT_STEPS:'걸음 수는 0~'+MAX_STEPS+' 사이의 정수여야 합니다.',
   HLT_DOSE_NEEDS_MED_PROFILE:'복용 기록은 약·측정 프로필만 고를 수 있습니다.',HLT_HABIT_NEEDS_HABIT_PROFILE:'습관 기록은 습관 프로필만 고를 수 있습니다.',
@@ -197,16 +197,34 @@ function itemForm(h,type,ctx,st,existing){
 
 // ---- Fold 가져오기(B58B): Health Connect 하루치를 초안 칸에만 채운다. 저장 경로는 flow.edit 하나뿐이고(연산 0) 확정은 사용자가 "카드 쌓기"를 눌러야 한다. ----
 // 다리(fold)는 앱이 ctx.foldHealth()로 준다(native-bridge.mjs). 값은 초안에만 들어가고 로그·기기 저장(localStorage)·외부 전송에는 쓰지 않는다.
+const spanMinutes=i=>Math.round((Date.parse(i.endAt)-Date.parse(i.startAt))/60000);
+const durationText=m=>{const h=Math.floor(m/60),r=m%60;return h&&r?h+'시간 '+r+'분':h?h+'시간':r+'분';};
+const sleepAmount=items=>'수면 '+items.length+'개('+durationText(items.reduce((s,i)=>s+spanMinutes(i),0))+')';
 export const FOLD_TEXT=Object.freeze({
-  button:'Fold에서 가져오기',none:'Fold에 기록 없음',denied:'권한 꺼짐(Health Connect 설정에서 켤 수 있어요)',kept:'그대로 뒀어요',same:'이미 같은 값이에요',filled:'초안에 넣었어요',
+  button:'Fold에서 가져오기',none:'Fold에 기록 없음',denied:'권한 꺼짐(Health Connect 설정에서 켤 수 있어요)',kept:'그대로 뒀어요',same:'이미 같은 값이에요',filled:'초안에 넣었어요',nap:'낮잠으로 넣었어요',
   sleepOutside:'수면 기록이 날짜 범위를 벗어나 가져오지 않았어요',stepsBad:'값이 범위를 벗어나 가져오지 않았어요',
   permission:'걸음·수면 권한을 허용한 뒤 다시 눌러 주세요.',notYet:'아직 쌓기 전이에요 · 확인하고 "카드 쌓기"를 누르세요.',signedOut:'로그아웃되어 가져오지 않았어요.',
-  overwriteSleep:'이 카드에 이미 적은 수면이 있어요. Fold 기록으로 바꿀까요? (더하지 않고 교체합니다)',
+  // B58C (F3): 지워질 항목 수와 합계 시간을 보여 준다.
+  overwriteSleep:(from,to)=>(from.every(i=>i.id==='hc-sleep')?'Fold에서 가져온 ':'손으로 적은 ')+sleepAmount(from)+'를 Fold '+sleepAmount([to])+'로 바꿀까요? (더하지 않고 교체합니다)',
   overwriteSteps:(from,to)=>'이 카드의 걸음 '+from+'을(를) Fold 값 '+to+'(으)로 바꿀까요?',
   error:Object.freeze({NOT_SUPPORTED:'Android 14 이상의 Fold에서만 가져올 수 있어요.',NOT_AVAILABLE:'이 기기에서 Health Connect를 쓸 수 없어요.',NO_PERMISSION:'걸음·수면 권한이 꺼져 있어요.',BAD_DATE:'날짜 형식이 맞지 않아요.',BAD_RANGE:'오늘부터 30일 전까지의 카드만 가져올 수 있어요.',READ_FAILED:'Health Connect에서 읽지 못했어요. 잠시 뒤 다시 눌러 주세요.',TIMEOUT:'Health Connect 응답이 늦어요. 잠시 뒤 다시 눌러 주세요.'}),
   fail:'Fold 앱과 연결하지 못했어요. 앱을 다시 열어 보세요.',
 });
+// B58C (F1·F2): 쌓기가 양쪽의 겹침을 만나 멈췄을 때 묻는 문구. 고르면 그 카드의 나머지 항목과 함께 쌓인다.
+export const CHOICE_TEXT=Object.freeze({
+  stopped:'아직 쌓지 않았어요 · 초안은 그대로 있습니다. 아래에서 어느 쪽을 남길지 골라 주세요.',
+  note:'고르지 않은 쪽만 이 카드에서 빠지고 나머지 항목은 함께 쌓입니다. 이미 쌓였던 값은 이력에 남습니다.',
+  sleep:'다른 기기에 수면 기록이 있어요 · 어느 쪽을 남길까요',steps:'다른 기기에 걸음 기록이 있어요 · 어느 쪽을 남길까요',
+  amount:(kind,items)=>kind==='steps'?items[0].count+'걸음':sleepAmount(items),
+  mine:c=>'이 기기 것 남기기 · '+CHOICE_TEXT.amount(c.kind,c.mine),theirs:c=>'다른 기기 것 남기기 · '+CHOICE_TEXT.amount(c.kind,c.theirs),
+});
 const closedMainSleeps=card=>card.items.filter(i=>i.type==='sleep'&&i.kind==='main'&&i.endAt!==null);
+// B58C (F5): 낮·저녁에 시작한 3시간 미만 세션은 낮잠이다(밤잠 평균에 넣지 않는다). 항목 종류는 기존 'nap'을 쓴다.
+export const NAP_MAX_MINUTES=180,NAP_START_FROM=12*60,NAP_START_BEFORE=21*60;
+export function foldSleepKind(sleep){
+  const start=kstMinutes(sleep.startAt);
+  return spanMinutes(sleep)<NAP_MAX_MINUTES&&start>=NAP_START_FROM&&start<NAP_START_BEFORE?'nap':'main';
+}
 // 카드와 하루치 값(steps:number|null, sleep:{startAt,endAt}|null)을 비교해 칸별로 할 일을 정한다. 순수 함수(쓰기 없음).
 export function foldPlan(card,date,{steps,sleep}){
   const old=card.items.find(i=>i.type==='steps');
@@ -214,9 +232,12 @@ export function foldPlan(card,date,{steps,sleep}){
   let sleepPlan;
   if(sleep===null)sleepPlan={action:'NONE'};
   else if(!nearDate(date,sleep.startAt)||!nearDate(date,sleep.endAt))sleepPlan={action:'OUTSIDE'};   // 카드 날짜 범위 규칙(HLT_TIME_OUTSIDE_CARD_DATE)과 같은 함수
-  else{
+  else if(foldSleepKind(sleep)==='nap'){
+    const dup=card.items.some(i=>i.type==='sleep'&&i.kind==='nap'&&i.startAt===sleep.startAt&&i.endAt===sleep.endAt);
+    sleepPlan={action:dup?'SAME':'ADD',kind:'nap',startAt:sleep.startAt,endAt:sleep.endAt};   // 밤잠과 겹쳐 세지 않으므로 교체하지 않는다
+  }else{
     const closed=closedMainSleeps(card),one=closed.length===1&&closed[0].startAt===sleep.startAt&&closed[0].endAt===sleep.endAt;
-    sleepPlan={action:one?'SAME':closed.length?'REPLACE':'ADD',startAt:sleep.startAt,endAt:sleep.endAt};
+    sleepPlan={action:one?'SAME':closed.length?'REPLACE':'ADD',kind:'main',startAt:sleep.startAt,endAt:sleep.endAt,from:closed};
   }
   return {steps:stepsPlan,sleep:sleepPlan};
 }
@@ -227,7 +248,7 @@ export function applyFoldDay(card,date,day,allow,newId){
   if(p.steps.action==='ADD')card.items.push({id:STEPS_ITEM_ID,type:'steps',count:p.steps.count});
   if(p.steps.action==='REPLACE'&&allow.steps)card.items.find(i=>i.type==='steps').count=p.steps.count;
   const s=p.sleep;
-  if(s.action==='ADD')card.items.push({id:card.items.some(i=>i.id==='hc-sleep')?newId():'hc-sleep',type:'sleep',startAt:s.startAt,endAt:s.endAt,kind:'main'});
+  if(s.action==='ADD')card.items.push({id:card.items.some(i=>i.id==='hc-sleep')?newId():'hc-sleep',type:'sleep',startAt:s.startAt,endAt:s.endAt,kind:s.kind});
   if(s.action==='REPLACE'&&allow.sleep){
     const [first,...rest]=closedMainSleeps(card),drop=new Set(rest.map(i=>i.id));
     card.items=card.items.filter(i=>!drop.has(i.id)).map(i=>i.id===first.id?{id:first.id,type:'sleep',startAt:s.startAt,endAt:s.endAt,kind:'main'}:i);
@@ -243,13 +264,19 @@ export async function importFromFold({flow,fold,date,confirm,newId,session=()=>n
   if(session()!==signedIn)return {text:FOLD_TEXT.signedOut,error:true};   // 읽는 동안 로그아웃: 초안에 쓰지 않는다
   if(!r.ok)return {text:FOLD_TEXT.error[r.error]??FOLD_TEXT.fail,error:true};
   const day={steps:hs.steps==='granted'?r.steps:null,sleep:hs.sleep==='granted'?r.sleep:null};
-  const {card}=await flow.state(date),plan=foldPlan(card,date,day);
-  const allow={steps:plan.steps.action==='REPLACE'&&confirm(FOLD_TEXT.overwriteSteps(plan.steps.from,plan.steps.count))===true,sleep:plan.sleep.action==='REPLACE'&&confirm(FOLD_TEXT.overwriteSleep)===true};
+  // B58C (F1·F2): 초안만 보지 않고 "지금 쌓으면 될 카드"(다른 기기가 쌓은 수면·걸음 포함)와 비교해 같은 확인창을 띄운다.
+  const view=await flow.preview(date),plan=foldPlan(view.card,date,day);
+  const allow={steps:plan.steps.action==='REPLACE'&&confirm(FOLD_TEXT.overwriteSteps(plan.steps.from,plan.steps.count))===true,sleep:plan.sleep.action==='REPLACE'&&confirm(FOLD_TEXT.overwriteSleep(plan.sleep.from,plan.sleep))===true};
   const line=(name,denied,p,ok,extra)=>name+': '+(denied?FOLD_TEXT.denied:p.action==='NONE'?FOLD_TEXT.none:extra[p.action]??(p.action==='SAME'?FOLD_TEXT.same:p.action==='REPLACE'&&!ok?FOLD_TEXT.kept:FOLD_TEXT.filled));
-  const lines=[line('걸음',hs.steps!=='granted',plan.steps,allow.steps,{BAD:FOLD_TEXT.stepsBad}),line('수면',hs.sleep!=='granted',plan.sleep,allow.sleep,{OUTSIDE:FOLD_TEXT.sleepOutside})];
+  const lines=[line('걸음',hs.steps!=='granted',plan.steps,allow.steps,{BAD:FOLD_TEXT.stepsBad}),line('수면',hs.sleep!=='granted',plan.sleep,allow.sleep,{OUTSIDE:FOLD_TEXT.sleepOutside,...(plan.sleep.kind==='nap'?{ADD:FOLD_TEXT.nap}:{})})];
   const wrote=plan.steps.action==='ADD'||plan.sleep.action==='ADD'||allow.steps||allow.sleep;
-  if(wrote){await flow.edit(date,c=>{applyFoldDay(c,date,day,allow,newId);});lines.push(FOLD_TEXT.notYet);}
-  return {text:lines.join(' · '),error:false};
+  if(!wrote)return {text:lines.join(' · '),error:false};
+  // 확인받은 칸·새 칸만 쓴다. 다른 기기 항목을 바꾸는 교체는 초안을 최신 카드 위로 옮겨야 한다. 단 아직 답하지 않은 겹침이 남으면 옮기지 않는다(옮기면 쌓을 때 묻지 못해 조용히 둘 다 남는다).
+  const only={steps:plan.steps.action==='ADD'||allow.steps?day.steps:null,sleep:plan.sleep.action==='ADD'||allow.sleep?day.sleep:null};
+  const open=view.blocked||view.choices.some(c=>c.kind==='steps'||!allow.sleep),onLatest=view.drift&&(allow.steps||allow.sleep)&&!open;
+  await flow.edit(date,c=>{applyFoldDay(c,date,only,allow,newId);},{onLatest});
+  lines.push(FOLD_TEXT.notYet);
+  return {text:lines.join(' · '),error:false,notices:onLatest?view.notices:[]};
 }
 
 export function renderHealth(root,ctx,st){
@@ -261,7 +288,11 @@ export function renderHealth(root,ctx,st){
   const visible=it=>it.type!=='habit'||st.showPrivate||(all.get(it.profileKey)&&!all.get(it.profileKey).data.private);
   const box=st.ports?.box??null,T=box?.TEXT;   // B3c: 이 기기 상자(브라우저)일 때만 있다
   const seen=()=>(st.resumed??=new Set()).add(date);   // 이 날짜에서 한 번이라도 입력했으면 "저장된 초안이 있어요" 안내를 다시 띄우지 않는다
-  const act=(fn)=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;seen();try{await fn();}catch(e){st.message=box?.ERROR_TEXT[e?.code]??hltErrorText(e?.code);st.error=true;}await prepareHealth(ctx,st);await ctx.rerender();});
+  // B2C (DEFECT-5): 상자 쓰기 실패는 save가 던지지 않는다(설계). 버튼이 끝났을 때 그 날짜 초안이 실패 상태면 성공 문구 대신 실패 문구를 보인다(날짜가 옮겨 갔을 수 있어 st.date).
+  // 쌓기가 성공하면 초안이 지워져 has가 거짓이다. 초안을 쓰지 않는 프로필 버튼은 draft:false로 제 결과 문구를 지킨다.
+  const boxFailText=()=>{const c=box?.status().failed;return c?box.ERROR_TEXT[c]??T.failed:null;};
+  const flagBoxFail=()=>{const b=box?.statusFor('HLT_DAY',st.date);if(b?.has&&b.failed&&!st.error){st.message=box.ERROR_TEXT[b.failed]??T.failed;st.error=true;}};
+  const act=(fn,{draft=true}={})=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;seen();try{await fn();}catch(e){st.message=box?.ERROR_TEXT[e?.code]??hltErrorText(e?.code);st.error=true;}if(draft)flagBoxFail();await prepareHealth(ctx,st);await ctx.rerender();});
   const out=el('div',null,'hlt-view');
 
   // 1) 상태·날짜
@@ -290,7 +321,7 @@ export function renderHealth(root,ctx,st){
       button(T.resumeDrop,()=>{if(ctx.confirmDialog?.(T.dropConfirm)??true)void act(async()=>{await st.ports.drafts.discard(fs.draftId);st.notices=[];})();})));
   }
   if(fs.latestConfirmCount+1>=3&&fs.status==='LOCAL_DRAFT')add(head,hint('이 카드는 이번이 '+(fs.latestConfirmCount+1)+'번째 쌓기입니다. 막지는 않지만, 모아서 한 번에 쌓는 편이 좋습니다.'));
-  if(st.message)add(head,el('p',st.message,st.error?'notice error hlt-message':'notice hlt-message'));
+  if(st.message&&st.message!==boxFailText())add(head,el('p',st.message,st.error?'notice error hlt-message':'notice hlt-message'));   // 위 빨간 줄과 같은 문구는 두 번 보이지 않는다
   if(st.notices.length)add(head,el('p','다른 기기에서 바뀐 내용이 있어 합쳤어요.','notice hlt-merged'));
   for(const n of st.notices){
     const hiddenRef=n.profileKey&&!st.showPrivate&&!(all.get(n.profileKey)&&!all.get(n.profileKey).data.private);
@@ -305,11 +336,11 @@ export function renderHealth(root,ctx,st){
   const follow=(s,text=null)=>{const d=s?.card?.date,moved=Boolean(d)&&d!==date;if(moved){st.date=d;st.form=null;st.notices=[];}st.message=[text,moved?'빠른 입력은 오늘('+d+') 카드에 들어갑니다 · 화면을 그 날짜로 옮겼습니다.':null].filter(Boolean).join(' · ')||null;};
   const quick=add(el('div',null,'buttons hlt-quick'),
     button('지금 기상',act(async()=>{const w=await st.flow.quickWake();follow(w,w.withSleep?'기상과 수면을 초안에 넣었습니다.':'기상을 초안에 넣었습니다(수면은 직접 입력하세요).');}),'primary'),
-    button('지금 취침',act(async()=>{st.flow.quickSleep();st.message='취침 시각을 이 기기에 적어 두었습니다. 기상 때 수면으로 합쳐집니다.';})));
+    button('지금 취침',act(async()=>{st.flow.quickSleep();st.message='취침 시각을 적어 두었습니다 · 이 화면을 닫으면 사라져요. 기상 때 수면으로 합쳐집니다.';})));   // B2C (DEFECT-10 A안): 메모리에만 있다. 기기 보존은 새 레코드가 필요해 통제탑 결정 대기
   for(const k of MEAL_KINDS)add(quick,button(MEAL_TEXT[k],act(async()=>{follow(await st.flow.quickMeal(k));})));
   const habitProfiles=view.profiles.filter(p=>p.data.kind==='HABIT'&&p.data.enabled);
   for(const p of habitProfiles)add(quick,button(p.data.label,act(async()=>{follow(await st.flow.quickHabit(p.key,p.data));})));
-  add(q,quick);if(pend)add(q,hint('취침 기록 중 · '+hhmmKst(pend)+' (KST) — 기상을 누르면 수면으로 합쳐집니다.'));
+  add(q,quick);if(pend)add(q,hint('취침 기록 중 · '+hhmmKst(pend)+' (KST) — 기상을 누르면 수면으로 합쳐집니다 · 이 화면을 닫으면 사라져요.'));
   add(out,q);
 
   // 3) 항목
@@ -326,7 +357,7 @@ export function renderHealth(root,ctx,st){
   const fold=ctx.foldHealth?.()??null;
   if(fold?.healthState()?.supported)add(list,add(el('div',null,'buttons hlt-fold'),button(FOLD_TEXT.button,act(async()=>{
     const r=await importFromFold({flow:st.flow,fold,date,confirm:text=>ctx.confirmDialog?.(text)??false,newId:()=>st.ports.newId(),session:()=>ctx.session?.()??null});
-    st.message=r.text;st.error=r.error;
+    st.message=r.text;st.error=r.error;if(r.notices?.length)st.notices=r.notices;
   }))));
   if(st.form){
     const f=itemForm(h,st.form.type,ctx,st,st.form.item);
@@ -346,15 +377,24 @@ export function renderHealth(root,ctx,st){
     note.addEventListener('blur',()=>{void box.flush().catch(()=>{}).then(()=>{chipEl.textContent=chipText();});});
   }
   const fin=section('메모와 쌓기');
-  add(fin,field('메모 (최대 '+MAX_NOTE+'자)',note),add(el('div',null,'buttons'),
-    button('메모를 초안에 넣기',act(async()=>{await st.flow.setNote(date,note.value);})),
-    button('카드 쌓기',act(async()=>{
-      const r=await st.flow.confirm(date);st.notices=r.notices??[];
-      if(r.status==='REJECTED'){st.message=hltErrorText(r.code);st.error=true;}
+  const stack=(answers={})=>act(async()=>{
+      const r=await st.flow.confirm(date,{answers});st.notices=r.notices??[];
+      st.choice=r.status==='NEEDS_CHOICE'?{draftId:(await st.flow.state(date)).draftId,choices:r.choices,answers}:null;
+      if(r.status==='NEEDS_CHOICE')st.message=CHOICE_TEXT.stopped;
+      else if(r.status==='REJECTED'){st.message=hltErrorText(r.code);st.error=true;}
       else if(['UNKNOWN','SYNC_FAILED','FAILED','STALE'].includes(r.status)){st.message=(r.code&&HLT_ERROR_TEXT[r.code])||STATUS_TEXT[r.status];st.error=true;}
       else st.message=STATUS_TEXT[r.status]??r.status;
-    }),'primary'),
+    });
+  add(fin,field('메모 (최대 '+MAX_NOTE+'자)',note),add(el('div',null,'buttons'),
+    button('메모를 초안에 넣기',act(async()=>{await st.flow.setNote(date,note.value);})),
+    button('카드 쌓기',stack(),'primary'),
     fs.status==='LOCAL_DRAFT'?button('초안 버리기',()=>{if(ctx.confirmDialog?.('이 날짜의 초안을 버릴까요? 금고에 쌓인 기록에는 영향이 없습니다.')??true)void act(async()=>{await st.ports.drafts.discard(fs.draftId);st.notices=[];})();}):null));
+  // B58C (F1·F2): 물은 뒤 초안이 바뀌면(다른 날짜로 가도) 질문을 내린다. 다시 쌓을 때 최신 내용으로 다시 묻는다. 겹침이 둘이면 하나씩 묻고 다 고르면 연산 1개로 쌓는다.
+  const asked=st.choice?.draftId===fs.draftId?st.choice:null,c=asked?.choices.find(x=>!asked.answers[x.sig]);
+  if(c){
+    const pick=side=>()=>{const answers={...asked.answers,[c.sig]:side};if(asked.choices.every(x=>answers[x.sig]))stack(answers)();else{st.choice={...asked,answers};void ctx.rerender();}};
+    add(fin,el('p',CHOICE_TEXT[c.kind],'notice hlt-choice'),hint(CHOICE_TEXT.note),add(el('div',null,'buttons'),button(CHOICE_TEXT.mine(c),pick('MINE'),'primary'),button(CHOICE_TEXT.theirs(c),pick('THEIRS'))));
+  }
   add(out,fin);
 
   // 5) 리듬 요약(계산만, 연산 0)
@@ -369,9 +409,9 @@ export function renderHealth(root,ctx,st){
   for(const p of view.profiles){
     const d=p.data;
     add(prof,row(d.label,profileDetail(d),add(el('div',null,'buttons'),
-      button(d.enabled?'사용 중단':'다시 사용',act(async()=>{await saveProfile(ctx,p.key,{...d,enabled:!d.enabled},p.heads,'건강 프로필 사용 여부',{field:'enabled'});})),
-      button(d.private?'공개로 바꾸기':'비공개로 바꾸기',act(async()=>{await saveProfile(ctx,p.key,{...d,private:!d.private},p.heads,'건강 프로필 비공개 여부');})),
-      button('프로필 삭제',()=>{if(ctx.confirmDialog?.('이 항목을 삭제할까요? 지운 항목은 목록에서 사라지고 지난 기록에는 이름이 남아요. 나중에 복원할 수 있어요.')??true)void act(async()=>{await saveProfile(ctx,p.key,{...d,removed:true},p.heads,'건강 프로필 삭제');})();}))));
+      button(d.enabled?'사용 중단':'다시 사용',act(async()=>{await saveProfile(ctx,p.key,{...d,enabled:!d.enabled},p.heads,'건강 프로필 사용 여부',{field:'enabled'});},{draft:false})),
+      button(d.private?'공개로 바꾸기':'비공개로 바꾸기',act(async()=>{await saveProfile(ctx,p.key,{...d,private:!d.private},p.heads,'건강 프로필 비공개 여부');},{draft:false})),
+      button('프로필 삭제',()=>{if(ctx.confirmDialog?.('이 항목을 삭제할까요? 지운 항목은 목록에서 사라지고 지난 기록에는 이름이 남아요. 나중에 복원할 수 있어요.')??true)void act(async()=>{await saveProfile(ctx,p.key,{...d,removed:true},p.heads,'건강 프로필 삭제');},{draft:false})();}))));
   }
   const nl=input('',{maxlength:String(MAX_LABEL),placeholder:'이름 (최대 '+MAX_LABEL+'자)'}),kindSel=select([['HABIT','습관'],['MED','약·측정']],'HABIT'),modeSel=select([['COUNT','횟수'],['CHECK','했다/안했다']],'COUNT'),amt=input('1',{inputmode:'decimal'}),unitSel=select(UNITS.map(u=>[u,u]),'mg'),priv=el('input');priv.type='checkbox';
   add(prof,el('h3','프로필 추가','panel-title'),field('이름',nl),field('종류',kindSel),field('방식(습관)',modeSel),field('기본 용량(약·측정)',amt),field('단위(약·측정)',unitSel),add(el('label','비공개'),priv),
@@ -379,12 +419,12 @@ export function renderHealth(root,ctx,st){
       const label=nl.value.trim(),key=(kindSel.value==='MED'?'med-':'hab-')+ctx.uid().slice(0,12);
       const data=kindSel.value==='MED'?{key,kind:'MED',label,defaultAmount:num(amt.value),unit:unitSel.value,enabled:true,private:priv.checked,removed:false}:{key,kind:'HABIT',label,mode:modeSel.value,enabled:true,private:priv.checked,removed:false};
       await ctx.entity('HLT_PROFILE',key,data,[],'건강 프로필 추가');st.message='프로필을 만들었습니다.';
-    }),'primary'));
+    },{draft:false}),'primary'));
   add(prof,el('h3','삭제한 항목','panel-title'),button(st.showRemoved?'삭제한 항목 숨기기':'삭제한 항목 보기',()=>{st.showRemoved=!st.showRemoved;void ctx.rerender();}));
   if(st.showRemoved){
     if(!view.removedProfiles.length)add(prof,hint('삭제한 항목이 없습니다.'));
     for(const p of view.removedProfiles)add(prof,row(p.data.label,profileDetail(p.data),add(el('div',null,'buttons'),
-      button('복원',act(async()=>{await saveProfile(ctx,p.key,{...p.data,removed:false},p.heads,'건강 프로필 복원');st.message='복원했습니다.';})))));
+      button('복원',act(async()=>{await saveProfile(ctx,p.key,{...p.data,removed:false},p.heads,'건강 프로필 복원');st.message='복원했습니다.';},{draft:false})))));
   }
   add(out,prof);
 

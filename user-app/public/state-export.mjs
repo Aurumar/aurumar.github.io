@@ -1,14 +1,17 @@
-// 사령부 상태 내보내기 (B47'). 이미 화면에 보이는 투영값을 LIFE_STATE.md 한 장의 글(형식 v1, 절 1~7)로 요약한다.
+// 사령부 상태 내보내기 (B47'·B47). 이미 화면에 보이는 투영값을 LIFE_STATE.md 한 장의 글(형식 v1, 절 1~7, 켠 경우 8·9)로 요약한다.
 // 이 모듈은 아무것도 쓰지 않고 시계·난수·저장소·네트워크를 쓰지 않는다(이 기기 설정 읽기·쓰기는 부른 쪽이 넘긴 storage로만).
 // 기본 제외: 자유 메모·일기 본문·건강 세부·거래 내역·가게 이름·카테고리 세부·계정·기기 식별자·토큰. 7절 "한 줄"은 기본 비공개이고
 // 소유자가 같은 화면의 토글을 켠 때만(최대 60자) 어제 카드의 한 줄을 싣는다. 값을 모르면 UNKNOWN(0과 구분).
-// 형식 정본: AUTOPILOT\design\STATE_FORMAT_V1.md. 8절(공부 상세)·9절(건강 상세)은 제안이라 아직 내보내지 않는다.
-import {lifeDefs,entryDone,nearestExam,dDay,shiftDay,kstDate,hhmmFromIso} from './life-model.mjs';
-import {achieve} from './life-achieve.mjs';
+// 8절(공부 요약: 과목명과 숫자만)·9절(건강 요약: 수면·걸음 평균과 기록 일수만)은 토글이 기본 꺼짐이고, 소유자가 켠 절만 단추 내보내기와 쌓기 뒤 자동 내보내기에 들어간다(토글을 켠 것이 동의, 통제탑 결정 B61).
+// 형식 정본: AUTOPILOT\design\STATE_FORMAT_V1.md (8·9절 범위는 작업 B47 지시서가 정한다).
+import {lifeDefs,entryDone,nearestExam,dDay,shiftDay,kstDate,hhmmFromIso,subjectOfSession} from './life-model.mjs';
+import {achieve,SUBJECT_BY_CODE} from './life-achieve.mjs';
 import {csatTarget} from './life-plan.mjs';
 import {prepare} from './fin-charts.mjs';
 import {budgetStatus} from './fin-plan.mjs';
 import {STACK_DONE} from './life-flow.mjs';
+import {projectStudy} from './study-projection.mjs';
+import {rhythmSummary} from './hlt-projection.mjs';
 
 export const STATE_FORMAT='v1';
 export const STATE_MAX_BYTES=8192,STATE_TARGET_BYTES=4096;
@@ -28,6 +31,12 @@ export const AUTO_SWITCH_KEY='lb.state.auto';
 let memoryAuto=true;
 export function autoEnabled(storage){try{const v=storage?.getItem(AUTO_SWITCH_KEY);return v===null||v===undefined?memoryAuto:v==='1';}catch{return memoryAuto;}}
 export function setAutoEnabled(on,storage){memoryAuto=Boolean(on);try{storage?.setItem(AUTO_SWITCH_KEY,on?'1':'0');}catch{/* 이번 실행 동안만 */}return autoEnabled(storage);}
+
+// ---- 이 기기 설정: 8절 공부 요약·9절 건강 요약 토글(B47, 둘 다 기본 끔). 저장소가 막혀 있으면 이번 실행 동안만 ----
+export const SECTION_SWITCH_KEYS=Object.freeze({study:'lb.state.study',health:'lb.state.health'});
+const memorySection={study:false,health:false};
+export function sectionEnabled(which,storage){try{const v=storage?.getItem(SECTION_SWITCH_KEYS[which]);return v===null||v===undefined?memorySection[which]:v==='1';}catch{return memorySection[which];}}
+export function setSectionEnabled(which,on,storage){memorySection[which]=Boolean(on);try{storage?.setItem(SECTION_SWITCH_KEYS[which],on?'1':'0');}catch{/* 이번 실행 동안만 */}return sectionEnabled(which,storage);}
 
 // ---- 글 정리: 표·머리말을 깨는 문자 제거 ----
 export function clean(value,max=20){
@@ -100,8 +109,34 @@ function yesterdayInfo(life,today,includeLine){
   if(includeLine&&card){const first=card.note.split(/\r?\n/).map(x=>clean(x,MAX_LINE_CHARS)).find(x=>x);line=first??'';}
   return {mood:card&&Number.isInteger(card.mood)?card.mood:null,hasCard:Boolean(card),line};
 }
-// views = {life,study,fin}(wholeLifeView의 같은 이름 항목, 없으면 null). now = ISO 시각 문자열. includeLine = 소유자가 켠 토글.
-export function snapshotFromViews({life=null,study=null,fin=null,now,includeLine=false,deviceName=DEVICE_NAME}){
+// 8절: 이번 주(월요일~오늘) 쌓은 공부 분은 벽돌과 같은 기준(COMPLETED만), 오답은 이번 주 기록 수, 복습 예정은 오늘까지 할 것(밀린 것 포함). 과목명과 숫자만 뽑는다.
+function studySummaryOf(life,study,today){
+  if(!study)return null;
+  const names=new Map(lifeDefs(life).subjects.map(s=>[s.id,clean(s.name)])),monday=shiftDay(lastSunday(today),1),by=new Map();
+  const row=id=>{const name=names.get(id)||'기타';if(!by.has(name))by.set(name,{name,minutes:0,due:0,mistakes:0});return by.get(name);};
+  for(const d of study.days){
+    if(d.date<monday||d.date>today)continue;
+    for(const s of d.data.sessions)if(s.state==='COMPLETED'&&nat(s.confirmedMin)&&s.confirmedMin<=1440)row(subjectOfSession(s.id)??SUBJECT_BY_CODE[s.subject]).minutes+=s.confirmedMin;
+    for(const m of d.data.mistakes)row(SUBJECT_BY_CODE[m.subject]).mistakes++;
+  }
+  const p=projectStudy(study.days.map(d=>d.data),today);
+  for(const r of [...p.dueToday,...p.overdue])row(SUBJECT_BY_CODE[r.subject]).due++;
+  return {rows:[...by.values()].filter(r=>r.minutes||r.due||r.mistakes).sort((a,b)=>b.minutes-a.minutes||b.due-a.due||(a.name<b.name?-1:1))};
+}
+// 9절: 최근 7일의 수면(본잠 합계의 하루 평균)·걸음 평균·기록 일수만. 약·증상·기분·메모·습관 항목은 읽지 않는다. 기록 일수 = 수면 또는 걸음 기록이 있는 날.
+function healthSummaryOf(hlt,today){
+  if(!hlt)return null;
+  const from=shiftDay(today,-(WINDOW_DAYS-1)),days=hlt.days.filter(d=>d.date>=from&&d.date<=today),steps=[];
+  let recorded=0;
+  for(const d of days){
+    const st=d.data.items.find(i=>i.type==='steps'&&nat(i.count));
+    if(st)steps.push(st.count);
+    if(st||d.data.items.some(i=>i.type==='sleep'&&i.kind==='main'&&i.endAt!==null))recorded++;
+  }
+  return {from,to:today,days:recorded,avgSleepMinutes:rhythmSummary(days,[],today).week.avgSleepMinutes,avgSteps:steps.length?Math.round(steps.reduce((a,b)=>a+b,0)/steps.length):null};
+}
+// views = {life,study,fin,hlt}(wholeLifeView의 같은 이름 항목, 없으면 null). now = ISO 시각 문자열. includeLine·includeStudy·includeHealth = 소유자가 켠 토글(끄면 그 값은 읽지도 않는다).
+export function snapshotFromViews({life=null,study=null,fin=null,hlt=null,now,includeLine=false,includeStudy=false,includeHealth=false,deviceName=DEVICE_NAME}){
   const today=kstDate(now);
   // 지난 일요일 기준 계산을 먼저 하고 오늘 기준 계산을 마지막에 해, achieve의 마지막 결과 보관이 오늘 값으로 남게 한다(화면 계산을 다시 하지 않게).
   const before=life?guard(()=>achieve({life,study,today:lastSunday(today)})):null;
@@ -113,7 +148,9 @@ export function snapshotFromViews({life=null,study=null,fin=null,now,includeLine
     levels:ach&&before?guard(()=>levelInfo(ach,before)):null,
     vault:guard(()=>vaultInfo(fin,today)),
     exams:guard(()=>examInfo(life,today)),
-    yesterday:guard(()=>yesterdayInfo(life,today,includeLine))};
+    yesterday:guard(()=>yesterdayInfo(life,today,includeLine)),
+    studySummary:includeStudy?guard(()=>studySummaryOf(life,study,today)):null,
+    healthSummary:includeHealth?guard(()=>healthSummaryOf(hlt,today)):null};
 }
 
 // ---- 글 만들기: 순수 함수. 스냅샷만 보고 글을 만든다(시계·저장소 없음) ----
@@ -173,6 +210,19 @@ function sectionYesterday(s,includeLine){
   const line=!includeLine||SECRET_SHAPE.test(y?.line??'')?'비공개':one?one:'없음';
   return ['- 기분: '+mood,'- 한 줄: '+line];
 }
+function sectionStudy(s){
+  const head=['과목','이번 주 분','복습 예정','오답'],v=s.studySummary;
+  if(!v||!Array.isArray(v.rows))return table(head,[unknownRow(4)]);
+  const rows=v.rows.slice(0,MAX_SUBJECT_ROWS).filter(r=>r&&clean(r.name)&&nat(r.minutes)&&nat(r.due)&&nat(r.mistakes));
+  const sum=k=>String(rows.reduce((a,r)=>a+r[k],0));
+  return [...table(head,[...rows.map(r=>[clean(r.name),String(r.minutes),String(r.due),String(r.mistakes)]),['전체',sum('minutes'),sum('due'),sum('mistakes')]]),'- 복습 예정: 오늘까지 할 것(밀린 것 포함) / 오답: 이번 주 기록 수'];
+}
+function sectionHealth(s){
+  const v=s.healthSummary;
+  if(!v||!dateOK(v.from)||!dateOK(v.to)||!nat(v.days))return ['- 기간: UNKNOWN / 기록 일수: UNKNOWN','- 수면 평균: UNKNOWN / 걸음 평균: UNKNOWN'];
+  const sleep=nat(v.avgSleepMinutes)?Math.floor(v.avgSleepMinutes/60)+'시간 '+(v.avgSleepMinutes%60)+'분':UNKNOWN,steps=nat(v.avgSteps)?v.avgSteps+'걸음':UNKNOWN;
+  return ['- 기간: '+v.from+' ~ '+v.to+' / 기록 일수: '+v.days,'- 수면 평균: '+sleep+' / 걸음 평균: '+steps];
+}
 export function buildLifeState(snapshot,opts={}){
   const s=snapshot&&typeof snapshot==='object'?snapshot:{},includeLine=opts.includeLine===true;
   const today=dateOK(s.today)?s.today:UNKNOWN,at=typeof s.exportedAt==='string'&&/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(s.exportedAt)?s.exportedAt:UNKNOWN;
@@ -184,11 +234,16 @@ export function buildLifeState(snapshot,opts={}){
     '## 5. 금고',...sectionVault(s),'',
     '## 6. 가장 가까운 시험',...sectionExams(s),'',
     '## 7. 어제',...sectionYesterday(s,includeLine),''];
+  if(opts.includeStudy===true)out.push('## 8. 공부 요약',...sectionStudy(s),'');
+  if(opts.includeHealth===true)out.push('## 9. 건강 요약',...sectionHealth(s),'');
   const text=out.join('\n');
   if(new TextEncoder().encode(text).length>STATE_MAX_BYTES){const e=new Error('STATE_TOO_LARGE');e.code='STATE_TOO_LARGE';throw e;}
   return text;
 }
 export const stateBytes=text=>new TextEncoder().encode(text).length;
+// 게이트(B47): 시트에서 보여 주는 포함 절 목록은 보낼 글에서 그대로 뽑는다(글과 어긋날 수 없게).
+export const includedSections=text=>text.split('\n').filter(l=>l.startsWith('## ')).map(l=>l.slice(3));
+export const GATE_TEXT='이 내용은 사령부 비서가 Claude로 분석합니다(외부 전송)';
 
 // ---- 결과 문구(화면) ----
 export const EXPORT_TEXT=Object.freeze({
@@ -208,7 +263,8 @@ export async function exportStateAuto(ctx){
   if(ctx?.surface!=='APP_SHELL')return {status:'SKIPPED',reason:'SURFACE'};
   if(!autoEnabled(ctx.storage))return {status:'SKIPPED',reason:'OFF'};
   try{
-    const text=buildLifeState(snapshotFromViews({...ctx.views(),now:ctx.now(),includeLine:false}),{includeLine:false});
+    const includeStudy=sectionEnabled('study',ctx.storage),includeHealth=sectionEnabled('health',ctx.storage);   // B61: 소유자가 켠 8·9절만
+    const text=buildLifeState(snapshotFromViews({...ctx.views(),now:ctx.now(),includeLine:false,includeStudy,includeHealth}),{includeLine:false,includeStudy,includeHealth});
     await ctx.send(text);
     return {status:'OK'};
   }catch(e){
@@ -234,13 +290,16 @@ export function renderStateExport(root,ctx){
   h.add(sec,h.el('p','숫자 요약 한 장을 사령부 폴더(AURUMAR_HQ\\state)에 덮어씁니다. 이 단추를 누르거나, 아래 자동 내보내기를 켜 두면 "오늘 쌓기"가 끝난 직후에만 보냅니다. 메모·건강 세부·거래 내역·가게 이름은 들어가지 않습니다.','muted'));
   h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('어제 한 줄도 내보내기 (최대 60자 · 이 기기 설정)',lineEnabled(ctx.storage),on=>{setLineEnabled(on,ctx.storage);})));
   h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('쌓을 때 사령부 상태 자동 내보내기 (한 줄은 항상 비공개 · 이 기기 설정)',autoEnabled(ctx.storage),on=>{setAutoEnabled(on,ctx.storage);})));
+  h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('공부 요약도 내보내기 (과목별 분·복습·오답 수 · 자동 내보내기에도 포함 · 이 기기 설정)',sectionEnabled('study',ctx.storage),on=>{setSectionEnabled('study',on,ctx.storage);})));
+  h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('건강 요약도 내보내기 (수면·걸음 평균·기록 일수 · 자동 내보내기에도 포함 · 이 기기 설정)',sectionEnabled('health',ctx.storage),on=>{setSectionEnabled('health',on,ctx.storage);})));
   const result=h.el('p','','muted');result.setAttribute('role','status');
   let busy=false;
   const show=code=>{result.textContent=exportResultText(code);};
   const preview=()=>{
     let text;
-    try{const includeLine=lineEnabled(ctx.storage);text=buildLifeState(snapshotFromViews({...ctx.views(),now:ctx.now(),includeLine}),{includeLine});}
+    try{const opts={includeLine:lineEnabled(ctx.storage),includeStudy:sectionEnabled('study',ctx.storage),includeHealth:sectionEnabled('health',ctx.storage)};text=buildLifeState(snapshotFromViews({...ctx.views(),now:ctx.now(),...opts}),opts);}
     catch(e){show(e?.code==='STATE_TOO_LARGE'?'STATE_TOO_LARGE':'fail');return;}
+    const gate=h.el('p',GATE_TEXT,'state-export-gate'),sections=h.el('p','포함 절: '+includedSections(text).join(' · '),'muted');
     const note=h.el('p',stateBytes(text)+' 바이트 · 아래 내용 그대로 한 파일로 덮어씁니다.','muted'),pre=h.el('pre',text,'path state-export-text'),msg=h.el('p','','muted');
     msg.setAttribute('role','status');
     let dlg=null;
@@ -250,7 +309,7 @@ export function renderStateExport(root,ctx){
       catch(e){const code=typeof e?.code==='string'?e.code:'fail';show(code);msg.textContent=exportResultText(code);go.disabled=false;}
       finally{busy=false;}
     },'primary');
-    const body=h.add(h.el('div',null,'state-export-body'),note,pre,msg,h.add(h.el('div',null,'buttons'),go,h.button('취소',()=>dlg?.close(),'secondary')));
+    const body=h.add(h.el('div',null,'state-export-body'),gate,sections,note,pre,msg,h.add(h.el('div',null,'buttons'),go,h.button('취소',()=>dlg?.close(),'secondary')));
     dlg=kit.sheet('사령부로 내보낼 내용',body);
   };
   h.add(sec,h.add(h.el('div',null,'buttons'),h.button('미리보기 후 내보내기',preview,'primary')),result);

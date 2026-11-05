@@ -5,6 +5,7 @@
 import {chip,toggle,sheet,xpBar,ring} from './ui-kit.mjs';
 import {LifeFlow,createLifePorts,saveDefinitions,collectRows,stackDay,STACK_DONE} from './life-flow.mjs';
 import {achieve,previewAchieve,habitXpToday,multText} from './life-achieve.mjs';
+import {timerElapsedMin,timerRecordMin,liveTick} from './study-stage.mjs';
 import {HABIT_KINDS,HABIT_AREAS,DAY_TYPES,MAX_NAME,MAX_NOTE,SUBJECT_COLOR_KEYS,HABIT_HINTS,
   kstDate,shiftDay,dateKeyOK,dayNumber,hhmmFromIso,timeOK,targetTimeOK,lifeIdOK,
   brickOf,sumBricks,entryDone,nearestExam,lifeDefs,weekCount,studyCodeOf,sessionIdFor,subjectOfSession,emptyDay} from './life-model.mjs';
@@ -58,6 +59,11 @@ const int=s=>typeof s==='string'&&/^\d+$/.test(s.trim())?Number(s.trim()):NaN;
 
 export function createLifeState(){return {today:null,flow:null,ports:null,boxRef:null,flowState:null,studyCard:null,pending:[],subjectId:null,timer:null,message:null,error:false,notices:[],pastDate:null,editing:false,floatXp:null};}
 
+// B2C (DEFECT-6): 상자 쓰기 실패는 save가 던지지 않는다(설계). 버튼이 끝났을 때 오늘 카드·공부 벽돌 초안이 실패 상태면 성공 문구 대신 실패 문구를 보인다. 쌓기가 성공하면 초안이 지워져 has가 거짓이다.
+function flagBoxFail(st,date){
+  const box=st.ports?.box;
+  for(const kind of ['LIFE_DAY','STUDY_DAY']){const b=box?.statusFor(kind,date);if(b?.has&&b.failed&&!st.error){st.message=box.ERROR_TEXT[b.failed]??box.TEXT.failed;st.error=true;}}
+}
 function readTimer(storage){try{const v=JSON.parse(storage?.getItem(TIMER_KEY)??'null');return v&&typeof v.subjectId==='string'&&typeof v.startIso==='string'&&Number.isFinite(Date.parse(v.startIso))?{subjectId:v.subjectId,startIso:v.startIso}:null;}catch{return null;}}
 function writeTimer(storage,t){try{if(t)storage?.setItem(TIMER_KEY,JSON.stringify(t));else storage?.removeItem(TIMER_KEY);}catch{/* 저장소가 막혀 있으면 이번 실행 동안만 */}}
 
@@ -100,7 +106,7 @@ export function renderLifeToday(root,ctx,st){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,hint,input}=h;
   const whole=ctx.getWhole(),life=whole.life??{habits:[],days:[],subjects:[],exams:null};
   const defs=lifeDefs(life),fs=st.flowState,date=st.today,card=fs.card,box=st.ports?.box??null,T=box?.TEXT;
-  const act=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{await fn();}catch(e){st.message=box?.ERROR_TEXT[e?.code]??lifeErrorText(e?.code);st.error=true;}await prepareLife(ctx,st);await ctx.rerender();});
+  const act=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{await fn();}catch(e){st.message=box?.ERROR_TEXT[e?.code]??lifeErrorText(e?.code);st.error=true;}flagBoxFail(st,date);await prepareLife(ctx,st);await ctx.rerender();});
   const out=add(el('section',null,'panel next-panel life-panel'),null);out.id='life-today';
 
   // 1) 머리: 날짜, 가장 가까운 시험 D-day(잠정 배지), 오늘 XP 링(쌓은 기록 기준), 연속·레벨 칩
@@ -126,11 +132,15 @@ export function renderLifeToday(root,ctx,st){
   if(infoMsg)extra.push(chipText());
   if(st.ports?.persistent===false)extra.push('이 환경에는 임시 저장 상자가 없어 입력이 앱을 닫거나 새로고침하면 사라집니다. 쌓기 전에 닫지 마세요.');
   if(defs.usingDefaults.habits)extra.push('기본 습관 13개를 보여 주는 중입니다 · 습관 편집에서 저장하면 내 습관이 됩니다.');
-  const summaryText=(infoMsg??chipText())+(extra.length-(infoMsg?1:0)>0?' · 안내 '+(extra.length-(infoMsg?1:0))+'개':'');
-  if(extra.length){const d=add(el('details',null,'life-notes'),el('summary',summaryText,'life-state'));d.id='life-notes';for(const t of extra)add(d,el('p',t,'muted small'));add(status,d);}
-  else add(status,el('p',summaryText,'life-state life-notes-chip'));
-  if(box&&box.status().failed)add(status,el('p',box.ERROR_TEXT[box.status().failed]??T.failed,'notice error card-draft-failed'));
-  if(st.message&&st.error)add(status,el('p',st.message,'notice error life-message'));
+  const moreText=extra.length-(infoMsg?1:0)>0?' · 안내 '+(extra.length-(infoMsg?1:0))+'개':'',summaryText=(infoMsg??chipText())+moreText;
+  const stateEl=extra.length?el('summary',summaryText,'life-state'):el('p',summaryText,'life-state life-notes-chip');
+  if(extra.length){const d=add(el('details',null,'life-notes'),stateEl);d.id='life-notes';for(const t of extra)add(d,el('p',t,'muted small'));add(status,d);}
+  else add(status,stateEl);
+  // B2C (DEFECT-7): 한 줄 입력은 다시 그리지 않는다(입력이 끊기지 않게). 저장이 끝나면 상태 줄만 고친다(건강 메모 칩과 같은 방식).
+  const noteState=(bad=null)=>{stateEl.textContent=(bad??chipText())+moreText;};
+  const boxFailText=box&&box.status().failed?box.ERROR_TEXT[box.status().failed]??T.failed:null;
+  if(boxFailText)add(status,el('p',boxFailText,'notice error card-draft-failed'));
+  if(st.message&&st.error&&st.message!==boxFailText)add(status,el('p',st.message,'notice error life-message'));   // 위 빨간 줄과 같은 문구는 두 번 보이지 않는다
   for(const n of st.notices)add(status,el('p',LIFE_NOTICE_TEXT[n.code]??n.code,'notice life-notice'));
   // 자정 이후 첫 열기: 어제(또는 그 전) 쌓지 않은 입력이 있으면 한 번 눌러 쌓게 안내
   for(const d of st.pending)add(status,add(el('div',null,'notice life-yesterday'),el('span',(d===shiftDay(date,-1)?'어제':dateLabel(d))+' 카드를 아직 쌓지 않았어요. '),button((d===shiftDay(date,-1)?'어제':dateLabel(d))+' 카드 쌓기',act(async()=>{const r=await st.flow.confirm(d);await reportConfirm(ctx,st,r);}),'primary')));
@@ -177,8 +187,8 @@ export function renderLifeToday(root,ctx,st){
   for(const [v,face,label] of MOODS){const b=el('button',face,'life-mood'+(card.mood===v?' selected':''));b.type='button';b.setAttribute('aria-label','기분 '+v+' '+label);b.setAttribute('aria-pressed',String(card.mood===v));b.addEventListener('click',act(async()=>{await st.flow.setMood(date,card.mood===v?null:v);}));add(moodRow,b);}
   const note=input(card.note??'',{maxlength:String(MAX_NOTE),placeholder:'한 줄 (최대 '+MAX_NOTE+'자)','aria-label':'오늘 한 줄'});
   if(box){
-    note.addEventListener('input',()=>{box.defer('LIFE_DAY|'+date+'|note',async input=>{try{await st.flow.setNote(date,note.value,{input});}catch(e){st.message=lifeErrorText(e?.code);st.error=true;}},{owned:true});});
-    note.addEventListener('blur',()=>{void box.flush().catch(()=>{});});
+    note.addEventListener('input',()=>{box.defer('LIFE_DAY|'+date+'|note',async input=>{let bad=null;try{await st.flow.setNote(date,note.value,{input});}catch(e){bad=st.message=box.ERROR_TEXT[e?.code]??lifeErrorText(e?.code);st.error=true;}noteState(bad);},{owned:true});});
+    note.addEventListener('blur',()=>{void box.flush().catch(()=>{}).then(()=>{noteState();});});
   }else note.addEventListener('change',()=>{void st.flow.setNote(date,note.value).catch(e=>{st.message=lifeErrorText(e?.code);st.error=true;});});
   const typeSel=h.select(DAY_TYPES.map(t=>[t,DAY_TYPE_TEXT[t]]),card.dayType);
   typeSel.setAttribute('aria-label','하루 종류');typeSel.addEventListener('change',act(async()=>{await st.flow.setDayType(date,typeSel.value);}));
@@ -263,9 +273,12 @@ function renderBricks(ctx,st,h,defs,life,act,goalBricks){
   if(!subject){add(sec,hint('보이는 과목이 없습니다. 습관 편집의 과목에서 추가하세요.'));return sec;}
   const timerRow=el('div',null,'life-timer');
   if(st.timer){
-    const t=st.timer,ts=subjects.find(s=>s.id===t.subjectId)??defs.subjects.find(s=>s.id===t.subjectId),elapsed=Math.max(0,Math.round((Date.parse(ctx.now())-Date.parse(t.startIso))/60000));
-    add(timerRow,el('span','집중 중 · '+(ts?.name??'과목')+' · '+hhmmFromIso(t.startIso)+' 시작 · '+elapsed+'분','life-timer-text'),
-      button('끝내고 담기',act(async()=>{const m=Math.min(1440,Math.max(1,elapsed));st.timer=null;writeTimer(ctx.storage??globalThis.localStorage,null);await recordNow(ts??subject,m);}),'primary'),
+    const t=st.timer,ts=subjects.find(s=>s.id===t.subjectId)??defs.subjects.find(s=>s.id===t.subjectId);
+    // AV2: 화면을 그린 때의 분을 붙들지 않는다. 글자는 다시 계산해 고치고(화면 꺼짐·탭 정지 뒤 포함), 저장할 분은 누른 순간의 시각으로 구한다.
+    const timerText=()=>'집중 중 · '+(ts?.name??'과목')+' · '+hhmmFromIso(t.startIso)+' 시작 · '+timerElapsedMin(t.startIso,ctx.now())+'분',timerLabel=el('span',timerText(),'life-timer-text');
+    liveTick(timerLabel,ctx.document??globalThis.document,()=>{timerLabel.textContent=timerText();});
+    add(timerRow,timerLabel,
+      button('끝내고 담기',act(async()=>{const m=timerRecordMin(t.startIso,ctx.now());st.timer=null;writeTimer(ctx.storage??globalThis.localStorage,null);await recordNow(ts??subject,m);}),'primary'),
       button('취소',()=>{st.timer=null;writeTimer(ctx.storage??globalThis.localStorage,null);void ctx.rerender();}));
   }else add(timerRow,button('집중 시작',()=>{st.timer={subjectId:subject.id,startIso:ctx.now()};writeTimer(ctx.storage??globalThis.localStorage,st.timer);void ctx.rerender();},'primary'));
   const min=input('',{inputmode:'numeric',placeholder:'분','aria-label':'공부한 분'});
@@ -285,7 +298,7 @@ function openEntrySheet(ctx,st,hb,e){
   else{const c=input(e?.count?String(e.count):'',{inputmode:'numeric'});add(body,field('횟수',c));read=()=>{const v=int(c.value);if(!(v>=1&&v<=99))throw Object.assign(new Error('INVALID_LIFE_ENTRY'),{code:'INVALID_LIFE_ENTRY'});return entryFor(hb,{count:v});};}
   const err=el('p',null,'notice error');err.hidden=true;
   const dlg=sheet(hb.name+' 수정',body);
-  const apply=entry=>{dlg.close();void ctx.perform(async()=>{st.message=null;st.error=false;try{await st.flow.setHabit(date,hb.id,entry);}catch(x){st.message=lifeErrorText(x?.code);st.error=true;}await prepareLife(ctx,st);await ctx.rerender();});};
+  const apply=entry=>{dlg.close();void ctx.perform(async()=>{st.message=null;st.error=false;try{await st.flow.setHabit(date,hb.id,entry);}catch(x){st.message=lifeErrorText(x?.code);st.error=true;}flagBoxFail(st,date);await prepareLife(ctx,st);await ctx.rerender();});};
   add(body,err,add(el('div',null,'buttons'),button('저장',()=>{try{apply(read());}catch(x){err.textContent=lifeErrorText(x.code);err.hidden=false;}},'primary'),e?button('지우기',()=>apply(null)):null));
 }
 

@@ -343,24 +343,30 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "a47917f98db6bcc2603b397f86afcbf1afaafafec3df7188623c72b45baec12c",
-      "outputSha256": "a47917f98db6bcc2603b397f86afcbf1afaafafec3df7188623c72b45baec12c",
+      "sourceSha256": "2757894ae89a8a3a195380b4ed8b29c08a6db0ff28ae32d4d7abf37bda41bc6f",
+      "outputSha256": "2757894ae89a8a3a195380b4ed8b29c08a6db0ff28ae32d4d7abf37bda41bc6f",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs",
         "user-app/public/fin-charts.mjs",
         "user-app/public/fin-recurring.mjs",
+        "user-app/public/fin-forecast.mjs",
         "user-app/public/hlt-ui.mjs",
         "user-app/public/study-ui.mjs",
         "user-app/public/life-tower.mjs",
         "user-app/public/ui-kit.mjs",
         "user-app/public/universe-view.mjs",
+        "user-app/public/status-view.mjs",
         "user-app/public/life-plan.mjs",
         "user-app/public/native-bridge.mjs",
         "user-app/public/life-model.mjs",
         "user-app/public/life-ui.mjs",
         "user-app/public/state-export.mjs",
+        "user-app/public/ai-gate.mjs",
+        "user-app/public/study-suggest.mjs",
+        "user-app/public/fin-analysis.mjs",
         "user-app/public/ics-export.mjs",
+        "user-app/public/pc-toast.mjs",
         "user-app/public/card-draft-box.mjs"
       ],
       "transforms": []
@@ -488,8 +494,8 @@
     },
     {
       "path": "user-app/public/fin-ledger.mjs",
-      "sourceSha256": "118499af56feb0c600bb563def216129f45e45a83c3a691f716f050a08131e90",
-      "outputSha256": "118499af56feb0c600bb563def216129f45e45a83c3a691f716f050a08131e90",
+      "sourceSha256": "726aa92a5501298ff1e1baa8dc15d872bb77af91db0f114ed914c2ba8063c242",
+      "outputSha256": "726aa92a5501298ff1e1baa8dc15d872bb77af91db0f114ed914c2ba8063c242",
       "dependencies": [],
       "transforms": []
     },
@@ -514,8 +520,8 @@
     },
     {
       "path": "user-app/public/fin-recurring.mjs",
-      "sourceSha256": "665c72f625db1a6425961e90f03dc682899c833ceb082eee71452b6a5d93d7ba",
-      "outputSha256": "665c72f625db1a6425961e90f03dc682899c833ceb082eee71452b6a5d93d7ba",
+      "sourceSha256": "7674b431d6cead68d73c99faae57a412364a364bf9247a5018c6ab23522e2d90",
+      "outputSha256": "7674b431d6cead68d73c99faae57a412364a364bf9247a5018c6ab23522e2d90",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs"
@@ -523,9 +529,21 @@
       "transforms": []
     },
     {
+      "path": "user-app/public/fin-forecast.mjs",
+      "sourceSha256": "cba7c94b4af50b291ea046e5ddb408dfa8da68ed8ad7e5a071dc2c343c16bb7e",
+      "outputSha256": "cba7c94b4af50b291ea046e5ddb408dfa8da68ed8ad7e5a071dc2c343c16bb7e",
+      "dependencies": [
+        "user-app/public/fin-ledger.mjs",
+        "user-app/public/fin-charts.mjs",
+        "user-app/public/fin-recurring.mjs",
+        "user-app/public/ai-gate.mjs"
+      ],
+      "transforms": []
+    },
+    {
       "path": "user-app/public/hlt-ui.mjs",
-      "sourceSha256": "3218b72900b2ebe7058298f627776519e03f85724cdfa1c2ad2e865869d96aea",
-      "outputSha256": "3218b72900b2ebe7058298f627776519e03f85724cdfa1c2ad2e865869d96aea",
+      "sourceSha256": "16b6af0a3dedb5b6db2ad47d204a6ce170bfbe0a58b78016a0e6f33971a69b67",
+      "outputSha256": "16b6af0a3dedb5b6db2ad47d204a6ce170bfbe0a58b78016a0e6f33971a69b67",
       "dependencies": [
         "user-app/public/hlt-flow.mjs",
         "user-app/public/hlt-projection.mjs",
@@ -535,8 +553,8 @@
     },
     {
       "path": "user-app/public/study-ui.mjs",
-      "sourceSha256": "af5bd1b1f013d1c70d9a93adeec81131398d854089954efb07700fc0e4f7effd",
-      "outputSha256": "af5bd1b1f013d1c70d9a93adeec81131398d854089954efb07700fc0e4f7effd",
+      "sourceSha256": "9a3602f9e6fc68134888a5127b06c8a1afe8e1706c269ef4d7bdcf5859840560",
+      "outputSha256": "9a3602f9e6fc68134888a5127b06c8a1afe8e1706c269ef4d7bdcf5859840560",
       "dependencies": [
         "user-app/public/study-flow.mjs",
         "user-app/public/study-projection.mjs",
@@ -578,9 +596,21 @@
       "transforms": []
     },
     {
+      "path": "user-app/public/status-view.mjs",
+      "sourceSha256": "4461af07a4c5a9421d1ab85c6ee10beeb6701cb9b7f7ade61edd96abbd16a579",
+      "outputSha256": "4461af07a4c5a9421d1ab85c6ee10beeb6701cb9b7f7ade61edd96abbd16a579",
+      "dependencies": [
+        "user-app/public/study-stage.mjs",
+        "user-app/public/life-achieve.mjs",
+        "user-app/public/life-model.mjs",
+        "user-app/public/universe-view.mjs"
+      ],
+      "transforms": []
+    },
+    {
       "path": "user-app/public/life-plan.mjs",
-      "sourceSha256": "55037da6bb2fff1256ae4d820e7e566e73804af58d3aa33cedffca0e025b88e3",
-      "outputSha256": "55037da6bb2fff1256ae4d820e7e566e73804af58d3aa33cedffca0e025b88e3",
+      "sourceSha256": "6e593e8613e2d9b62be94a13402e72c36c67b1e734888c89585d9d2752a62d7c",
+      "outputSha256": "6e593e8613e2d9b62be94a13402e72c36c67b1e734888c89585d9d2752a62d7c",
       "dependencies": [
         "user-app/public/life-achieve.mjs",
         "user-app/public/life-rebase.mjs",
@@ -590,34 +620,69 @@
     },
     {
       "path": "user-app/public/native-bridge.mjs",
-      "sourceSha256": "1fe2e113c693fbeeb1c1b18783890a5eec296eab0c142396c85436ecb8cc4de3",
-      "outputSha256": "1fe2e113c693fbeeb1c1b18783890a5eec296eab0c142396c85436ecb8cc4de3",
+      "sourceSha256": "a4277a100f93b7590c117e56a6c807dfdf284687d7357ddf7952c8a00ccb8ac7",
+      "outputSha256": "a4277a100f93b7590c117e56a6c807dfdf284687d7357ddf7952c8a00ccb8ac7",
       "dependencies": [],
       "transforms": []
     },
     {
       "path": "user-app/public/life-ui.mjs",
-      "sourceSha256": "66ed1b59d30ae98752867847af2447411ef02a407f14969c585e4bb4f60abc18",
-      "outputSha256": "66ed1b59d30ae98752867847af2447411ef02a407f14969c585e4bb4f60abc18",
+      "sourceSha256": "82eace8c2680b2b9bfa72b0d6a92fd72b596a899b754e6a9cb97f9de002d5198",
+      "outputSha256": "82eace8c2680b2b9bfa72b0d6a92fd72b596a899b754e6a9cb97f9de002d5198",
       "dependencies": [
         "user-app/public/ui-kit.mjs",
         "user-app/public/life-flow.mjs",
         "user-app/public/life-achieve.mjs",
+        "user-app/public/study-stage.mjs",
         "user-app/public/life-model.mjs"
       ],
       "transforms": []
     },
     {
       "path": "user-app/public/state-export.mjs",
-      "sourceSha256": "935ea00a7c058e9c2efe1c22cf21da536eba24019bf71403efa82f4b8bb6dc87",
-      "outputSha256": "935ea00a7c058e9c2efe1c22cf21da536eba24019bf71403efa82f4b8bb6dc87",
+      "sourceSha256": "31c91ad7cd4d5fead7b7f809e62ec627d853f9f7c1624d40d36cf8d01b9bc199",
+      "outputSha256": "31c91ad7cd4d5fead7b7f809e62ec627d853f9f7c1624d40d36cf8d01b9bc199",
       "dependencies": [
         "user-app/public/life-model.mjs",
         "user-app/public/life-achieve.mjs",
         "user-app/public/life-plan.mjs",
         "user-app/public/fin-charts.mjs",
         "user-app/public/fin-plan.mjs",
-        "user-app/public/life-flow.mjs"
+        "user-app/public/life-flow.mjs",
+        "user-app/public/study-projection.mjs",
+        "user-app/public/hlt-projection.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/ai-gate.mjs",
+      "sourceSha256": "15a33ebdd9dbc5ab1950bdc57a176f077c1d918aee87101ca63351634ca51a33",
+      "outputSha256": "15a33ebdd9dbc5ab1950bdc57a176f077c1d918aee87101ca63351634ca51a33",
+      "dependencies": [],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/study-suggest.mjs",
+      "sourceSha256": "ca64ba160b26f45a13f45491d956bec3d0f6b13ddfa751f82548a75711173190",
+      "outputSha256": "ca64ba160b26f45a13f45491d956bec3d0f6b13ddfa751f82548a75711173190",
+      "dependencies": [
+        "user-app/public/life-model.mjs",
+        "user-app/public/life-achieve.mjs",
+        "user-app/public/life-plan.mjs",
+        "user-app/public/study-projection.mjs",
+        "user-app/public/ai-gate.mjs"
+      ],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/fin-analysis.mjs",
+      "sourceSha256": "e50d2a629a9468603cd64e08213f875d7a39b1dd38b8df48b5282f9e2307075b",
+      "outputSha256": "e50d2a629a9468603cd64e08213f875d7a39b1dd38b8df48b5282f9e2307075b",
+      "dependencies": [
+        "user-app/public/ai-gate.mjs",
+        "user-app/public/fin-charts.mjs",
+        "user-app/public/fin-ledger.mjs",
+        "user-app/public/fin-recurring.mjs"
       ],
       "transforms": []
     },
@@ -631,9 +696,21 @@
       "transforms": []
     },
     {
+      "path": "user-app/public/pc-toast.mjs",
+      "sourceSha256": "39afddc55d8edf7c2a7de1c3545398904de0b9b6ae26ef9186577981e7232859",
+      "outputSha256": "39afddc55d8edf7c2a7de1c3545398904de0b9b6ae26ef9186577981e7232859",
+      "dependencies": [
+        "user-app/public/fin-recurring.mjs",
+        "user-app/public/fin-ledger.mjs",
+        "user-app/public/fin-plan.mjs",
+        "user-app/public/life-model.mjs"
+      ],
+      "transforms": []
+    },
+    {
       "path": "user-app/public/card-draft-box.mjs",
-      "sourceSha256": "5fc2bcde987e9744327c53a2384eea019773b9ae59bbe3de4546c84223e84e3f",
-      "outputSha256": "5fc2bcde987e9744327c53a2384eea019773b9ae59bbe3de4546c84223e84e3f",
+      "sourceSha256": "51eff679b881e4da7540985f012d37415d187bcbf4aac4394ac8fdc881af200d",
+      "outputSha256": "51eff679b881e4da7540985f012d37415d187bcbf4aac4394ac8fdc881af200d",
       "dependencies": [],
       "transforms": []
     },
@@ -760,8 +837,8 @@
     },
     {
       "path": "user-app/public/hlt-flow.mjs",
-      "sourceSha256": "83cd1442d5eb9950b78dffb438e9377a9135a5966e7ed129d865b653a5cea399",
-      "outputSha256": "83cd1442d5eb9950b78dffb438e9377a9135a5966e7ed129d865b653a5cea399",
+      "sourceSha256": "fa836c897dc327f621bf1ddf8d6dc75a43c283dc5a56225cf965636ab1af65d1",
+      "outputSha256": "fa836c897dc327f621bf1ddf8d6dc75a43c283dc5a56225cf965636ab1af65d1",
       "dependencies": [
         "user-app/public/hlt-model.mjs",
         "user-app/public/hlt-rebase.mjs"
@@ -795,8 +872,8 @@
     },
     {
       "path": "user-app/public/life-achieve.mjs",
-      "sourceSha256": "82a1662bac1c07aedd491de584c87864ad04b5b522b63fcbadff12991da07718",
-      "outputSha256": "82a1662bac1c07aedd491de584c87864ad04b5b522b63fcbadff12991da07718",
+      "sourceSha256": "36389bb110720bae7829fd529a7ee8c6113617ee6090e787ee492fc26459173a",
+      "outputSha256": "36389bb110720bae7829fd529a7ee8c6113617ee6090e787ee492fc26459173a",
       "dependencies": [
         "user-app/public/life-model.mjs"
       ],
@@ -830,6 +907,13 @@
         "user-app/public/three.module.js",
         "user-app/public/tower-3d-layout.mjs"
       ],
+      "transforms": []
+    },
+    {
+      "path": "user-app/public/study-stage.mjs",
+      "sourceSha256": "57bd025a5533dac2c4149d64b16af303b7e44e833ec268b0ff8840cb4dd88c75",
+      "outputSha256": "57bd025a5533dac2c4149d64b16af303b7e44e833ec268b0ff8840cb4dd88c75",
+      "dependencies": [],
       "transforms": []
     },
     {
@@ -1076,8 +1160,8 @@
     },
     {
       "path": "user-app/public/hlt-rebase.mjs",
-      "sourceSha256": "944aa0d4f5acef1ea93a4e87f9ef7180ba2d27551830f01fef549c1baa7dc929",
-      "outputSha256": "944aa0d4f5acef1ea93a4e87f9ef7180ba2d27551830f01fef549c1baa7dc929",
+      "sourceSha256": "b1747732a1a9e68eae7677d6383829076352e7dec5668bbbbd5820fc584825fa",
+      "outputSha256": "b1747732a1a9e68eae7677d6383829076352e7dec5668bbbbd5820fc584825fa",
       "dependencies": [
         "user-app/public/hlt-model.mjs"
       ],
@@ -1190,14 +1274,14 @@
     {
       "path": "index.html",
       "sourcePath": "user-app/public/index.html",
-      "sourceSha256": "356564fa54f77d8042ba79e0dd60ce6cd248da67e6a81d293962d533deb4cd00",
-      "outputSha256": "b75d76d43262e56f1d7aa0d0d4cf547a7e5f89c3d3cb2b307c6ef9b6403753b0"
+      "sourceSha256": "cda4a2d2be2b6a9fb177926a327a9d2e8d021361c4b8692635704de46fae35c3",
+      "outputSha256": "433e47ff0c3e6ef2f4a08ad5ccf002e37e29a908c0123e4e94224aeee79f8384"
     },
     {
       "path": "styles.css",
       "sourcePath": "user-app/public/styles.css",
-      "sourceSha256": "33d00a922444533e863ede709a3cfffbee9c8cdb7e3bd638d9baa8d730af6b5f",
-      "outputSha256": "33d00a922444533e863ede709a3cfffbee9c8cdb7e3bd638d9baa8d730af6b5f"
+      "sourceSha256": "2ee0df291a8ea07b26798b43e0f96f01b4cf6439eea95858c6547ce255632b99",
+      "outputSha256": "2ee0df291a8ea07b26798b43e0f96f01b4cf6439eea95858c6547ce255632b99"
     },
     {
       "path": "public-config.json",
@@ -1210,6 +1294,246 @@
       "sourcePath": "user-app/public/PretendardVariable.woff2",
       "sourceSha256": "9599f12fd42fc0bce1cd50b47a0c022e108d7aa64dd0d1bb0ed44f3282d900b4",
       "outputSha256": "9599f12fd42fc0bce1cd50b47a0c022e108d7aa64dd0d1bb0ed44f3282d900b4"
+    },
+    {
+      "path": "av_s01_base.webp",
+      "sourcePath": "user-app/public/av_s01_base.webp",
+      "sourceSha256": "35acd43e3f7f6b17062b5e8a0aec48077c7cac308ff759e4a4dbd4bbe4108f42",
+      "outputSha256": "35acd43e3f7f6b17062b5e8a0aec48077c7cac308ff759e4a4dbd4bbe4108f42"
+    },
+    {
+      "path": "av_s01_intense.webp",
+      "sourcePath": "user-app/public/av_s01_intense.webp",
+      "sourceSha256": "26a5b4fb581ed798970c96d2a5ad17c06bd41ae1df9bd6840ad1481e664814f6",
+      "outputSha256": "26a5b4fb581ed798970c96d2a5ad17c06bd41ae1df9bd6840ad1481e664814f6"
+    },
+    {
+      "path": "av_s02_base.webp",
+      "sourcePath": "user-app/public/av_s02_base.webp",
+      "sourceSha256": "d115a693911a245c9b67e205030785f020757b333140b3a193c5d7a22eaedd86",
+      "outputSha256": "d115a693911a245c9b67e205030785f020757b333140b3a193c5d7a22eaedd86"
+    },
+    {
+      "path": "av_s02_intense.webp",
+      "sourcePath": "user-app/public/av_s02_intense.webp",
+      "sourceSha256": "3dd18f87b3111e04d967a2a6372ec35a6a452dc8d1283ca9c15b0e7cb2eda22c",
+      "outputSha256": "3dd18f87b3111e04d967a2a6372ec35a6a452dc8d1283ca9c15b0e7cb2eda22c"
+    },
+    {
+      "path": "av_s03_base.webp",
+      "sourcePath": "user-app/public/av_s03_base.webp",
+      "sourceSha256": "e6c76a6719c72818e3e52b020c509189e5e965117b8bdd3e86222b7375d12971",
+      "outputSha256": "e6c76a6719c72818e3e52b020c509189e5e965117b8bdd3e86222b7375d12971"
+    },
+    {
+      "path": "av_s03_intense.webp",
+      "sourcePath": "user-app/public/av_s03_intense.webp",
+      "sourceSha256": "f07fc890f1d7bfc17a0b49309b9be175d2d19db2b9df15e146f043ca65b64245",
+      "outputSha256": "f07fc890f1d7bfc17a0b49309b9be175d2d19db2b9df15e146f043ca65b64245"
+    },
+    {
+      "path": "av_s04_base.webp",
+      "sourcePath": "user-app/public/av_s04_base.webp",
+      "sourceSha256": "f0539f4d82fd75d77ad19c8681326daccea82c93d93f98b9d14345bb33ca0ab2",
+      "outputSha256": "f0539f4d82fd75d77ad19c8681326daccea82c93d93f98b9d14345bb33ca0ab2"
+    },
+    {
+      "path": "av_s04_intense.webp",
+      "sourcePath": "user-app/public/av_s04_intense.webp",
+      "sourceSha256": "d53248c73c0515aa1fbacd99106536802934c55fa85985c72ed5267625dbe7b1",
+      "outputSha256": "d53248c73c0515aa1fbacd99106536802934c55fa85985c72ed5267625dbe7b1"
+    },
+    {
+      "path": "av_s05_base.webp",
+      "sourcePath": "user-app/public/av_s05_base.webp",
+      "sourceSha256": "2a80c55d024c44d134e85f455ff406773eb432cc9d2d3fe2b0a1f0735ad8c8aa",
+      "outputSha256": "2a80c55d024c44d134e85f455ff406773eb432cc9d2d3fe2b0a1f0735ad8c8aa"
+    },
+    {
+      "path": "av_s05_intense.webp",
+      "sourcePath": "user-app/public/av_s05_intense.webp",
+      "sourceSha256": "48158d19f28a93164ec55e8d88c3be6f7a4e9f25df19754764a84361612fd23a",
+      "outputSha256": "48158d19f28a93164ec55e8d88c3be6f7a4e9f25df19754764a84361612fd23a"
+    },
+    {
+      "path": "av_s06_base.webp",
+      "sourcePath": "user-app/public/av_s06_base.webp",
+      "sourceSha256": "521f005d461f1bb4e2f565fe124fcfb88552572dd781a3214462fe2585034a8d",
+      "outputSha256": "521f005d461f1bb4e2f565fe124fcfb88552572dd781a3214462fe2585034a8d"
+    },
+    {
+      "path": "av_s06_intense.webp",
+      "sourcePath": "user-app/public/av_s06_intense.webp",
+      "sourceSha256": "757a8b08de20443b069e7be0d2d7f4407c0889bb262133e0ce1e809742fc966b",
+      "outputSha256": "757a8b08de20443b069e7be0d2d7f4407c0889bb262133e0ce1e809742fc966b"
+    },
+    {
+      "path": "av_s07_base.webp",
+      "sourcePath": "user-app/public/av_s07_base.webp",
+      "sourceSha256": "9683fb40f1b69b9145b4e8860d38212d3565f842796ceb2a8dba590de2d93370",
+      "outputSha256": "9683fb40f1b69b9145b4e8860d38212d3565f842796ceb2a8dba590de2d93370"
+    },
+    {
+      "path": "av_s07_intense.webp",
+      "sourcePath": "user-app/public/av_s07_intense.webp",
+      "sourceSha256": "2044a7c43ca927b618467a6aabe199ed19a4b333af93ef0281879d47db16ff4e",
+      "outputSha256": "2044a7c43ca927b618467a6aabe199ed19a4b333af93ef0281879d47db16ff4e"
+    },
+    {
+      "path": "av_s08_base.webp",
+      "sourcePath": "user-app/public/av_s08_base.webp",
+      "sourceSha256": "6cd88dd34a43d0fe509252cbfe5debcccd5017dd8dd67706c68141b47a6cacd3",
+      "outputSha256": "6cd88dd34a43d0fe509252cbfe5debcccd5017dd8dd67706c68141b47a6cacd3"
+    },
+    {
+      "path": "av_s08_intense.webp",
+      "sourcePath": "user-app/public/av_s08_intense.webp",
+      "sourceSha256": "25dcfd763de6841748e5016aadac8609b7a45fead2a4547ec32d3e9c300814c6",
+      "outputSha256": "25dcfd763de6841748e5016aadac8609b7a45fead2a4547ec32d3e9c300814c6"
+    },
+    {
+      "path": "av_s09_base.webp",
+      "sourcePath": "user-app/public/av_s09_base.webp",
+      "sourceSha256": "1216f62cb61a9629746b1b6d07c9d0bb543d708ba92fe8000245f386ab047b06",
+      "outputSha256": "1216f62cb61a9629746b1b6d07c9d0bb543d708ba92fe8000245f386ab047b06"
+    },
+    {
+      "path": "av_s09_intense.webp",
+      "sourcePath": "user-app/public/av_s09_intense.webp",
+      "sourceSha256": "8f3d9b7b9d278b3bcd5b11668de7d6d75b72219585351e265d9663c5400bf32d",
+      "outputSha256": "8f3d9b7b9d278b3bcd5b11668de7d6d75b72219585351e265d9663c5400bf32d"
+    },
+    {
+      "path": "av_s10_base.webp",
+      "sourcePath": "user-app/public/av_s10_base.webp",
+      "sourceSha256": "4d33ce0e71454527c1b1ba95f68aca5643c1d52f11314c188c04e9c7b97566f7",
+      "outputSha256": "4d33ce0e71454527c1b1ba95f68aca5643c1d52f11314c188c04e9c7b97566f7"
+    },
+    {
+      "path": "av_s10_intense.webp",
+      "sourcePath": "user-app/public/av_s10_intense.webp",
+      "sourceSha256": "cc11d3974f59afdb72b98df5e5846a9d1e60365bc3d74de8e5f644d103682db8",
+      "outputSha256": "cc11d3974f59afdb72b98df5e5846a9d1e60365bc3d74de8e5f644d103682db8"
+    },
+    {
+      "path": "av_s11_base.webp",
+      "sourcePath": "user-app/public/av_s11_base.webp",
+      "sourceSha256": "0b6d45a128bfff08d39d3f43d62f0e25fbf9e3806645c919a0c04003d1f4b183",
+      "outputSha256": "0b6d45a128bfff08d39d3f43d62f0e25fbf9e3806645c919a0c04003d1f4b183"
+    },
+    {
+      "path": "av_s11_intense.webp",
+      "sourcePath": "user-app/public/av_s11_intense.webp",
+      "sourceSha256": "23c78c15778f36bf321f3ca02f65617933f26ff2786e9bfbc1894ef0e18e9b53",
+      "outputSha256": "23c78c15778f36bf321f3ca02f65617933f26ff2786e9bfbc1894ef0e18e9b53"
+    },
+    {
+      "path": "av_s12_base.webp",
+      "sourcePath": "user-app/public/av_s12_base.webp",
+      "sourceSha256": "8d80c62d5d0c53d2b5e9840305474d4763b3f6bdb16c4b3266f6b9942ca8680e",
+      "outputSha256": "8d80c62d5d0c53d2b5e9840305474d4763b3f6bdb16c4b3266f6b9942ca8680e"
+    },
+    {
+      "path": "av_s12_intense.webp",
+      "sourcePath": "user-app/public/av_s12_intense.webp",
+      "sourceSha256": "2fa79342e2c932b76d203f3b347b83737d4d3dd8b33e922253944e0f87a2f5bc",
+      "outputSha256": "2fa79342e2c932b76d203f3b347b83737d4d3dd8b33e922253944e0f87a2f5bc"
+    },
+    {
+      "path": "av_s13_base.webp",
+      "sourcePath": "user-app/public/av_s13_base.webp",
+      "sourceSha256": "aa98835a0b17bf613b3d0c3b1cf6340efb7b50e5c93e13bd6dd70a10eb9476a0",
+      "outputSha256": "aa98835a0b17bf613b3d0c3b1cf6340efb7b50e5c93e13bd6dd70a10eb9476a0"
+    },
+    {
+      "path": "av_s13_intense.webp",
+      "sourcePath": "user-app/public/av_s13_intense.webp",
+      "sourceSha256": "50011c7dbd5a9a29911b96148b229796483de735604866375753de89ca4e2b3d",
+      "outputSha256": "50011c7dbd5a9a29911b96148b229796483de735604866375753de89ca4e2b3d"
+    },
+    {
+      "path": "av_s14_base.webp",
+      "sourcePath": "user-app/public/av_s14_base.webp",
+      "sourceSha256": "5cebfdff4ac153dca8be7797dca8486f301c4adfb7f09cb617f2aee5c09a583a",
+      "outputSha256": "5cebfdff4ac153dca8be7797dca8486f301c4adfb7f09cb617f2aee5c09a583a"
+    },
+    {
+      "path": "av_s14_intense.webp",
+      "sourcePath": "user-app/public/av_s14_intense.webp",
+      "sourceSha256": "0212738fa8f007871ba2499a6c59323be939fef4d8fdc9ad05e22db494512828",
+      "outputSha256": "0212738fa8f007871ba2499a6c59323be939fef4d8fdc9ad05e22db494512828"
+    },
+    {
+      "path": "av_s15_base.webp",
+      "sourcePath": "user-app/public/av_s15_base.webp",
+      "sourceSha256": "a60ed8ad78c13ac317b060e1ad85d4e2557566a07a66afc168ff1d76f58944a1",
+      "outputSha256": "a60ed8ad78c13ac317b060e1ad85d4e2557566a07a66afc168ff1d76f58944a1"
+    },
+    {
+      "path": "av_s15_intense.webp",
+      "sourcePath": "user-app/public/av_s15_intense.webp",
+      "sourceSha256": "ab11a01e76ba65e4c70b5d37d86c1e112b8ac4eebbe0473df4f7cfc328dade5b",
+      "outputSha256": "ab11a01e76ba65e4c70b5d37d86c1e112b8ac4eebbe0473df4f7cfc328dade5b"
+    },
+    {
+      "path": "av_s16_base.webp",
+      "sourcePath": "user-app/public/av_s16_base.webp",
+      "sourceSha256": "9d335726651dedbb967486dc2a39095ee4532145ce7f94cba1dcf5a0db96d0b0",
+      "outputSha256": "9d335726651dedbb967486dc2a39095ee4532145ce7f94cba1dcf5a0db96d0b0"
+    },
+    {
+      "path": "av_s16_intense.webp",
+      "sourcePath": "user-app/public/av_s16_intense.webp",
+      "sourceSha256": "fa6b11278bad2ac9bbacad5a60fa264ddddfb8460016f4f9bf5003bbc38fc456",
+      "outputSha256": "fa6b11278bad2ac9bbacad5a60fa264ddddfb8460016f4f9bf5003bbc38fc456"
+    },
+    {
+      "path": "av_s17_base.webp",
+      "sourcePath": "user-app/public/av_s17_base.webp",
+      "sourceSha256": "a96db7ba7e7ca24925a720d7516e063add2889ac49cdc67a47402d7986036c15",
+      "outputSha256": "a96db7ba7e7ca24925a720d7516e063add2889ac49cdc67a47402d7986036c15"
+    },
+    {
+      "path": "av_s17_intense.webp",
+      "sourcePath": "user-app/public/av_s17_intense.webp",
+      "sourceSha256": "884996d36884d93960b222d509d6472eb4bbb735cc5ff47d7119dc930051be89",
+      "outputSha256": "884996d36884d93960b222d509d6472eb4bbb735cc5ff47d7119dc930051be89"
+    },
+    {
+      "path": "av_s18_base.webp",
+      "sourcePath": "user-app/public/av_s18_base.webp",
+      "sourceSha256": "769bcaa2ddc530c5f6c4952d62029c258cfaeebc302c0917e5f3c7d0a0b22d0a",
+      "outputSha256": "769bcaa2ddc530c5f6c4952d62029c258cfaeebc302c0917e5f3c7d0a0b22d0a"
+    },
+    {
+      "path": "av_s18_intense.webp",
+      "sourcePath": "user-app/public/av_s18_intense.webp",
+      "sourceSha256": "cb80303104b9527f5573ddcdcaf7af70b71d69f61ebfb5f8d78da41536844782",
+      "outputSha256": "cb80303104b9527f5573ddcdcaf7af70b71d69f61ebfb5f8d78da41536844782"
+    },
+    {
+      "path": "av_s19_base.webp",
+      "sourcePath": "user-app/public/av_s19_base.webp",
+      "sourceSha256": "9a6586c2b9afa877d8a4bfad26e999e0be7db60c20c2441788a516fae59b7672",
+      "outputSha256": "9a6586c2b9afa877d8a4bfad26e999e0be7db60c20c2441788a516fae59b7672"
+    },
+    {
+      "path": "av_s19_intense.webp",
+      "sourcePath": "user-app/public/av_s19_intense.webp",
+      "sourceSha256": "26aa9397c2f8aa9cec6e1093b9cb0185ad29e0d172a25d4f3c69b06590a1dbdb",
+      "outputSha256": "26aa9397c2f8aa9cec6e1093b9cb0185ad29e0d172a25d4f3c69b06590a1dbdb"
+    },
+    {
+      "path": "av_s20_base.webp",
+      "sourcePath": "user-app/public/av_s20_base.webp",
+      "sourceSha256": "1c13d8033fbad1bcaaca44c6e0afed271eed86f63ada8f9bc0ba7f427f5cacdf",
+      "outputSha256": "1c13d8033fbad1bcaaca44c6e0afed271eed86f63ada8f9bc0ba7f427f5cacdf"
+    },
+    {
+      "path": "av_s20_intense.webp",
+      "sourcePath": "user-app/public/av_s20_intense.webp",
+      "sourceSha256": "673125ea6a02ce1ef95f22c11787bbffe3ebc0e8ecde29b36fff24ac9fa911a5",
+      "outputSha256": "673125ea6a02ce1ef95f22c11787bbffe3ebc0e8ecde29b36fff24ac9fa911a5"
     }
   ]
 }

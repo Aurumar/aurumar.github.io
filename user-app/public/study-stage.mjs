@@ -1,0 +1,107 @@
+// 공부 단계 아바타 투영 (AV2). 저장 0·서버 쓰기 0·네트워크 0. 시계는 nowIso로 받으므로 같은 입력이면 어느 기기에서나 같은 결과다. 합성 데이터로만 시험한다.
+// 설계: AUTOPILOT\design\STUDY_STAGE_AVATAR_DESIGN.md. 등급은 실제 신분이 아니라 수험 기간 누적 공부 시간에 묶는다.
+// 이 모듈은 어떤 모듈도 불러오지 않는다(화면·시험이 같은 파일을 쓴다).
+
+// 평생 등급 표: 소유자가 바꾸기 쉽게 여기 한 곳에만 둔다. hours = 그 등급이 시작되는 누적 공부 시간. 맨 위는 0, 아래로 갈수록 커야 한다.
+export const STUDY_STAGES=Object.freeze([
+  ['수험생 · 첫 책상',0],['수험생 · 습관',50],['수험생 · 개념',150],['수험생 · 몰입',300],['수험생 · 실전',500],
+  ['수험생 · 파이널',700],['의대 합격',900],['예과 1년',1000],['예과 2년',1150],['본과 1년 (해부학)',1300],
+  ['본과 2년',1450],['본과 3년 (병원 실습)',1600],['본과 4년',1750],['의사 국가시험 합격',1900],['인턴',2050],
+  ['레지던트 1년',2200],['레지던트 2~3년',2400],['치프 레지던트',2600],['전문의',2800],['의사 (금빛 완성형)',3000],
+].map(([name,hours],i)=>Object.freeze({no:i+1,name,hours})));
+export const STAR_EVERY_HOURS=250;   // 마지막 등급 이후 이만큼마다 금빛 별 1개
+// 금 장신구 단계(화면 라벨만, 그림은 따로 맞춘다). fromNo = 그 단계가 시작되는 등급 번호.
+export const GOLD_TIERS=Object.freeze([
+  Object.freeze({name:'수험생',gear:'시계',fromNo:1}),
+  Object.freeze({name:'합격·예과',gear:'시계+타이바',fromNo:7}),
+  Object.freeze({name:'본과·수련',gear:'펜·코트 금테',fromNo:10}),
+  Object.freeze({name:'전문의·의사',gear:'금 청진기·자수',fromNo:19}),
+]);
+export function goldTierOf(no){
+  let tier=GOLD_TIERS[0];
+  for(const t of GOLD_TIERS)if(no>=t.fromNo)tier=t;
+  return tier;
+}
+
+// 오늘의 효과 5겹. fromMin = 오늘 누적 분이 이 값 이상이면 그 겹. art = 쓸 그림(기본·열공). 효과 자체는 CSS·SVG로 그린다(그림 추가 없음).
+export const TODAY_EFFECTS=Object.freeze([
+  Object.freeze({level:1,fromMin:0,art:'base',label:'기본'}),
+  Object.freeze({level:2,fromMin:120,art:'base',label:'펜 끝·안경테 금빛'}),
+  Object.freeze({level:3,fromMin:240,art:'intense',label:'금빛 입자'}),
+  Object.freeze({level:4,fromMin:360,art:'intense',label:'금빛 오라'}),
+  Object.freeze({level:5,fromMin:480,art:'intense',label:'완전 금빛'}),
+]);
+export const FULL_EFFECT_MIN=TODAY_EFFECTS[TODAY_EFFECTS.length-1].fromMin;
+
+// 실제 그림(av_s01_base.webp …). CSP img-src 'self'는 소유자 승인(2026-11-06)으로 열었다. 이 값을 끄면 자리표시 SVG만 그리고 그림 파일을 요청하지 않는다.
+export const AVATAR_ART_READY=true;
+export const artFile=(no,art)=>'av_s'+String(no).padStart(2,'0')+'_'+art+'.webp';
+
+const MAX_DAY_MIN=1440;
+const okMinutes=m=>Number.isInteger(m)&&m>=0&&m<=MAX_DAY_MIN;
+// 카드 한 장의 공부 분: 세션의 확인된 분(confirmedMin)을 모두 더한다. 시작만 한 세션은 0분이다.
+export const cardMinutes=card=>(card?.sessions??[]).reduce((sum,s)=>sum+(okMinutes(s?.confirmedMin)?s.confirmedMin:0),0);
+// 평생 누적: 쌓은(확정된) 공부 카드만 더한다. 날짜별 카드는 한 장이다(같은 날짜가 또 오면 뒤의 값, 성취 엔진과 같음).
+export function lifetimeMinutes(study){
+  const byDate=new Map();
+  for(const d of study?.days??[])byDate.set(d?.date,d?.data);
+  let sum=0;
+  for(const card of byDate.values())sum+=cardMinutes(card);
+  return sum;
+}
+
+export function stageOf(totalMin){
+  const minutes=Number.isFinite(totalMin)&&totalMin>0?Math.floor(totalMin):0;
+  let index=0;
+  for(let i=1;i<STUDY_STAGES.length;i++)if(minutes>=STUDY_STAGES[i].hours*60)index=i;
+  const stage=STUDY_STAGES[index],next=STUDY_STAGES[index+1]??null,from=stage.hours*60;
+  if(next){const span=next.hours*60-from;return {minutes,stage,next,intoMin:minutes-from,spanMin:span,toNextMin:span-(minutes-from),stars:0,toNextStarMin:null};}
+  const every=STAR_EVERY_HOURS*60,over=minutes-from;
+  return {minutes,stage,next:null,intoMin:over%every,spanMin:every,toNextMin:null,stars:Math.floor(over/every),toNextStarMin:every-over%every};
+}
+
+export function todayEffectOf(todayMin){
+  const minutes=Number.isFinite(todayMin)&&todayMin>0?Math.floor(todayMin):0;
+  let index=0;
+  for(let i=1;i<TODAY_EFFECTS.length;i++)if(minutes>=TODAY_EFFECTS[i].fromMin)index=i;
+  const next=TODAY_EFFECTS[index+1]??null;
+  return {...TODAY_EFFECTS[index],minutes,next,toNextMin:next?next.fromMin-minutes:null};
+}
+
+// 진행 중 시간은 1초씩 더하지 않고 언제나 "지금 - 시작 시각"으로 구한다. 화면이 꺼지거나 탭이 멈춰 있어도 다시 계산하면 맞다. 시계가 뒤로 가면 0.
+export function timerElapsedMin(startIso,nowIso){
+  const diff=Date.parse(nowIso)-Date.parse(startIso);
+  return Number.isFinite(diff)?Math.max(0,Math.round(diff/60000)):0;
+}
+// "끝내고 담기"로 저장할 분(1~1440). 버튼을 누른 그 순간의 시각으로 계산해야 한다.
+export const timerRecordMin=(startIso,nowIso)=>Math.min(MAX_DAY_MIN,Math.max(1,timerElapsedMin(startIso,nowIso)));
+
+// 오늘 공부 분 = 오늘 카드(초안이 있으면 초안이 확정본을 포함하므로 초안 하나만) + 진행 중 타이머.
+// draftCard = 오늘 공부 흐름의 카드(초안 또는 확정본). 다른 날짜의 카드가 남아 있으면 쓰지 않는다.
+export function todayMinutes({study=null,date,draftCard=null,timer=null,nowIso}){
+  const card=draftCard&&draftCard.date===date?draftCard:[...(study?.days??[])].reverse().find(d=>d?.date===date)?.data??null;
+  const running=timer?.startIso?Math.min(MAX_DAY_MIN,timerElapsedMin(timer.startIso,nowIso)):0;
+  return {cardMin:cardMinutes(card),timerMin:running,minutes:cardMinutes(card)+running};
+}
+
+const grouped=n=>String(n).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+export const hoursText=min=>grouped(Math.floor(min/60))+'시간';
+export function hmText(min){
+  const h=Math.floor(min/60),m=min%60;
+  return h&&m?grouped(h)+'시간 '+m+'분':h?grouped(h)+'시간':m+'분';
+}
+export const clockText=min=>Math.floor(min/60)+':'+String(min%60).padStart(2,'0');
+
+// 화면이 떠 있는 동안 run을 주기적으로 부른다. 탭이 숨어 있으면 건너뛰고, 다시 보일 때 바로 부른다. node가 화면에서 빠지면 스스로 멈춘다.
+export function liveTick(node,doc,run,everyMs=30000){
+  let id=null;
+  const stop=()=>{if(id!==null){clearInterval(id);id=null;}doc?.removeEventListener?.('visibilitychange',step);};
+  function step(){
+    if(node?.isConnected===false){stop();return;}
+    if(doc?.visibilityState==='hidden')return;
+    run();
+  }
+  id=setInterval(step,everyMs);id?.unref?.();
+  doc?.addEventListener?.('visibilitychange',step);
+  return stop;
+}

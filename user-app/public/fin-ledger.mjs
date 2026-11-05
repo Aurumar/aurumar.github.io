@@ -47,7 +47,7 @@ export const FIN_ERROR_TEXT=Object.freeze({
   INVALID_FIN_RECURRING_TOLERANCE:'정기 결제 허용 오차는 0~50% 정수여야 합니다.',
   DUPLICATE_FIN_RECURRING_RULE:'정기 결제 규칙 ID가 겹칩니다.',
   FIN_RECURRING_LIMIT:'정기 결제는 최대 60개까지 등록할 수 있습니다.',
-  FIN_RECURRING_DUPLICATE:'같은 가맹점의 정기 결제가 이미 등록되어 있습니다.',
+  FIN_RECURRING_DUPLICATE:'같은 가맹점·같은 금액대의 정기 결제가 이미 등록되어 있습니다.',
   FIN_RECURRING_UNKNOWN_RULE:'없는 정기 결제 규칙입니다. 화면을 새로 고쳐 최신 목록을 확인하세요.',
   INVALID_ENTITY_ID:'항목 ID가 올바르지 않습니다.',
   FIN_IMPORT_LOCAL_CAPACITY:'저장할 항목이 이 기기의 로컬 저장 용량(봉인 한 번 약 3.7MB)을 넘을 것으로 예상되어 시작하지 않습니다. 분할 저장(형식 5) 앱으로 업데이트한 뒤 가져오세요.',

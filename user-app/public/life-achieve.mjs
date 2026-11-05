@@ -28,7 +28,7 @@ export const AREAS=Object.freeze(['BODY','HEAD','MONEY','HEART']);
 const MORNING_IDS=Object.freeze(['hb-wake','hb-sun','hb-breakfast']),COMMUTE_IDS=Object.freeze(['hb-in','hb-out']);
 const STUDY_ROUTINE_BRICKS=2,MAX_SPAN_DAYS=4000,UNKNOWN_COLOR='#C9A227';
 // 옛 공부 세션(세션 id에 과목 id가 없는 것)은 STUDY 과목 코드로 과목을 정한다.
-const SUBJECT_BY_CODE=Object.freeze({K:'kor',M:'math',E:'eng',H:'hist',S:'soc',C:'sci'});
+export const SUBJECT_BY_CODE=Object.freeze({K:'kor',M:'math',E:'eng',H:'hist',S:'soc',C:'sci'});
 
 // 성공 횟수/전체로 난이도: 85% 이상 1, 60~85% 2, 35~60% 3, 35% 미만 4. 경계값은 높은 쪽 구간에 들어간다(정수 비교).
 export function difficultyFromRate(done,total){

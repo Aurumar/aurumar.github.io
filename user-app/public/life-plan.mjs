@@ -462,11 +462,13 @@ function csatView(h,ctx,st,data){
 }
 
 // ---------- 하루 계획 편집 시트 ----------
-function openPlanEditor(ctx,st,date){
+// seed = 초안 줄(B61 다음 주 제안, id 없음)을 기존 줄 뒤에 더해 시트만 연다. onSaved = 저장이 끝난 뒤 부른 쪽에 알린다. 기록은 여전히 "저장" 버튼뿐이다.
+function openPlanEditor(ctx,st,date,{seed=[],onSaved=null}={}){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button}=h;
   const whole=ctx.getWhole(),life=whole.life??{plans:[]},defs=lifeDefs(whole.life??null),base=structuredClone(planOf(life,date));
   const subjects=defs.subjects.filter(s=>!s.hidden),draft=structuredClone(base?.items??[]);
   const newId=i=>'p'+ctx.uid().slice(0,10)+(i===undefined?'':i.toString(36));
+  for(const x of seed)draft.push({...x,id:newId(draft.length)});
   const body=el('div',null,'plan-editor'),err=el('p',null,'notice error plan-editor-error');err.hidden=true;
   const showErr=code=>{err.textContent=planErrorText(code);err.hidden=false;};
   const rows=el('div',null,'plan-edit-rows');
@@ -502,7 +504,7 @@ function openPlanEditor(ctx,st,date){
     dlg?.close?.();
     void ctx.perform(async()=>{
       st.message=null;st.error=false;st.notices=[];
-      try{const r=await savePlanDay(ctx,{date,base,mine});st.message=r.status==='SAVED'?'하루 계획을 저장했습니다.':'이미 같은 계획이 저장되어 있습니다.';st.notices=r.notices;}
+      try{const r=await savePlanDay(ctx,{date,base,mine});st.message=r.status==='SAVED'?'하루 계획을 저장했습니다.':'이미 같은 계획이 저장되어 있습니다.';st.notices=r.notices;onSaved?.();}
       catch(e){st.message=planErrorText(e?.code);st.error=true;}
       await ctx.rerender();
     });
