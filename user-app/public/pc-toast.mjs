@@ -2,7 +2,7 @@
 // 잠금 화면에 보일 수 있으므로 금액·가게 이름·규칙 이름·과목을 host로 보내지 않는다. 보내는 것은 종류와 건수(시험은 이름과 남은 날)뿐이고, 화면에 뜨는 글은 host(pc-toast-writer.mjs)가 고정 문구로 만든다.
 // PC 앱(APP_SHELL)이 켜져 있고 잠금이 풀려 있을 때만 돈다: 백그라운드 서비스·작업 스케줄러 등록 없음, 기록·연산 0, 새 외부 통신 0(이 PC가 이미 가진 내용만 읽어 판단한다).
 // 날짜 기준은 Asia/Seoul 고정(UTC+9, 서머타임 없음). 시계·저장소·읽기·보내기·타이머는 주입한다(시험은 가짜를 꽂는다).
-import {rulesOf,ruleStatus,recurringKey,wonOf,within,CANDIDATE_WINDOW_MONTHS} from './fin-recurring.mjs';
+import {rulesOf,ruleStatus,recurringKey,wonOf,within,dueFallback,CANDIDATE_WINDOW_MONTHS} from './fin-recurring.mjs';
 import {shiftMonth} from './fin-ledger.mjs';
 import {nextByMonths} from './fin-plan.mjs';
 import {lifeDefs,dDay,shiftDay} from './life-model.mjs';
@@ -35,13 +35,15 @@ export function billingDay(dates){
   const days=[...new Set(dates)].sort().slice(-BILLING_SAMPLE).map(d=>Number(d.slice(8,10))).sort((a,b)=>a-b);
   return days.length?days[Math.floor(days.length/2)]:null;
 }
+// R33B (HUNT32 D5): 금액대 안 결제가 없으면(결제 전에 잠정 금액을 바꿈) 정기 결제 화면의 예정일과 같은 대체 기준(dueFallback) 결제로 결제일을 정한다.
 function dueTomorrow(rule,lines,today,tomorrow,allRules){
-  const center=BigInt(rule.match.amount),pct=rule.match.tolerancePct,from=shiftMonth(today.slice(0,7),-(CANDIDATE_WINDOW_MONTHS-1)),dates=[];
+  const center=BigInt(rule.match.amount),pct=rule.match.tolerancePct,from=shiftMonth(today.slice(0,7),-(CANDIDATE_WINDOW_MONTHS-1)),dates=[],spare=[];
   for(const l of lines){
     if(typeof l.date!=='string'||l.date>today||l.date.slice(0,7)<from)continue;
-    const a=wonOf(l.net);if(a!==null&&within(a,center,pct))dates.push(l.date);
+    const a=wonOf(l.net);if(a===null)continue;
+    if(within(a,center,pct))dates.push(l.date);else if(l.date.slice(0,7)<today.slice(0,7)&&dueFallback(rule,a,allRules))spare.push(l.date);
   }
-  const day=billingDay(dates);
+  const day=billingDay(dates.length?dates:spare);
   if(day===null||tomorrow!==dueDateIn(tomorrow.slice(0,7),day))return false;
   return ruleStatus(rule,lines,tomorrow,allRules).state==='PENDING';   // 그달에 이미 결제가 보이면(금액이 달라도) 알리지 않는다. 같은 가맹점 형제 규칙의 결제는 빼고 본다(B48C, 정기 결제 화면과 같음)
 }

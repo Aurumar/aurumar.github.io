@@ -1,8 +1,8 @@
-// 상태 화면 (AV2): 아바타(평생 등급 그림 + 오늘 효과) → 오늘 시간 링·다음 효과까지 → 평생 등급 진행 바(20칸) → 탑·우주 입구. 합성 데이터로만 시험한다.
+// 상태 화면 (AV2, AV4C): 아바타(평생 등급 그림 + 오늘 효과) + 그 아래 "어디까지 왔나"(12칸 사다리·다음 단계·의사까지·예상 날짜) → 오늘 시간 링·다음 효과까지 → 금 장신구·전체 단계 → 탑·우주 입구. 합성 데이터로만 시험한다.
 // 읽기만 한다: 쌓인 공부 카드·오늘 초안·진행 중 타이머를 계산해 그릴 뿐 어떤 기록도 쓰지 않는다(새 엔티티·저장 0).
 // 화면 규칙: DOM 생성 함수만 쓴다(innerHTML·인라인 style·외부 라이브러리 없음). 색은 styles.css 토큰, 움직임은 CSS(prefers-reduced-motion이면 멈춘다).
 // ctx = lifeCtx와 같은 document·now·getWhole·rerender + draftCard·timer(오늘 초안·진행 중 타이머), openStudy·openTower·openUniverse(선택), avatarArt(시험용, 없으면 AVATAR_ART_READY).
-import {STUDY_STAGES,GOLD_TIERS,goldTierOf,STAR_EVERY_HOURS,AVATAR_ART_READY,FULL_EFFECT_MIN,artFile,lifetimeMinutes,stageOf,todayEffectOf,todayMinutes,hoursText,hmText,clockText,liveTick} from './study-stage.mjs';
+import {STUDY_STAGES,FINAL_STAGE,GOLD_TIERS,goldTierOf,STAR_EVERY_HOURS,AVATAR_ART_READY,FULL_EFFECT_MIN,RECENT_DAYS,artFile,lifetimeMinutes,recentMinutes,stageOf,progressOf,todayEffectOf,todayMinutes,hoursText,hoursLeftText,perDayText,shortDate,hmText,clockText,liveTick} from './study-stage.mjs';
 import {achieve} from './life-achieve.mjs';
 import {kstDate} from './life-model.mjs';
 import {universeData} from './universe-view.mjs';
@@ -11,7 +11,7 @@ const NS='http://www.w3.org/2000/svg';
 const MAX_STAR_MARKS=12;
 // 입자 자리(뷰박스 240×300). 고정값이라 어느 기기에서나 같게 그려진다.
 const PARTICLES=Object.freeze([[38,206],[62,120],[78,246],[104,66],[132,44],[160,92],[186,224],[204,142],[52,62],[214,74],[28,152],[174,36]]);
-// 그림(624×912) 위 안경테 양끝 자리의 대략값. 등급마다 구도가 조금씩 달라 펜 끝은 공통 자리가 없다(AV2 보고서).
+// 그림 위 안경테 양끝 자리의 대략값(뷰박스 240×351 단위, 그림 1560×2280·옛 624×912와 같은 비율). 등급마다 구도가 조금씩 달라 펜 끝은 공통 자리가 없다(AV2 보고서).
 const ART_GLINTS=Object.freeze([[96,80],[166,77]]);
 
 function maker(doc){
@@ -75,27 +75,44 @@ function todayRing({s},minutes){
 const nextEffectText=fx=>fx.next?'다음 효과까지 '+hmText(fx.toNextMin)+' · '+fx.next.label:'오늘 효과 최고 단계 · '+fx.label;
 const todayBadge=fx=>fx.level===1?'오늘 효과 대기':'오늘 '+fx.label;
 
-function ladderCard(h,proj){
-  const {el,add}=h,{stage,next}=proj,done=stage.no-1;
-  const right=next?'다음: '+next.name+' · '+hmText(proj.toNextMin)+' 남음':'금빛 별 '+proj.stars+'개 · 다음 별까지 '+hmText(proj.toNextStarMin);
-  const out=add(el('section',null,'panel st-ladder'),add(el('div',null,'st-ladder-head'),el('strong',stage.name),el('span',right,'muted small')));
-  const bar=el('progress',null,'lb-xp-bar');bar.max=proj.spanMin;bar.value=proj.intoMin;bar.setAttribute('aria-label',(next?stage.name+'에서 '+next.name+'까지 ':'다음 금빛 별까지 ')+Math.floor(proj.intoMin/proj.spanMin*100)+'%');
-  const cells=el('div',null,'st-cells');cells.setAttribute('role','img');cells.setAttribute('aria-label','평생 등급 '+STUDY_STAGES.length+'단계 중 '+stage.no+'단계');
+// "어디까지 왔나" 문구(AV4C). 수치는 progressOf에서 오고 여기서는 글자만 만든다. today = KST 날짜.
+export function progressLines(p,today){
+  const when=e=>e.date?'약 '+e.days.toLocaleString('en-US')+'일('+shortDate(e.date,today)+')':'100년 넘게';
+  const lead=p.assumed?'최근 '+RECENT_DAYS+'일 기록이 없어 하루 '+perDayText(p.perDayMin)+'(가정)이면':'최근 '+RECENT_DAYS+'일 하루 평균 '+perDayText(p.perDayMin)+'이면';
+  return {
+    head:p.no+'단계 / '+p.total+' · '+p.stage.name,
+    next:p.next?'다음 단계('+p.next.name+')까지 '+hoursLeftText(p.toNextMin):'금빛 별 '+p.stars+'개 · 다음 별까지 '+hoursLeftText(p.toNextMin),
+    final:p.toFinalMin>0?FINAL_STAGE.name+'까지 '+hoursLeftText(p.toFinalMin)+' · 전체 '+p.percent+'%':FINAL_STAGE.name+' 완성 · 전체 100%',
+    eta:lead+' → '+(p.next?'다음 단계 ':'다음 별 ')+when(p.nextEta)+(p.toFinalMin>0?', '+FINAL_STAGE.name+'까지 '+when(p.finalEta):''),
+  };
+}
+// 상태 그림 바로 아래: 몇 단계인지 · 12칸 사다리(지난 단계 금색, 지금 단계 반짝, 남은 단계 아이보리) · 다음 단계까지 막대 · 의사까지 · 예상 날짜.
+function progressBlock(h,p,today){
+  const {el,add}=h,lines=progressLines(p,today),done=p.no-1;
+  const cells=el('div',null,'st-cells');cells.setAttribute('role','img');cells.setAttribute('aria-label','평생 등급 '+p.total+'단계 중 '+p.no+'단계');
   STUDY_STAGES.forEach((row,i)=>{const c=el('span',null,'st-cell '+(i<done?'done':i===done?'now':'todo'));c.title=row.no+'. '+row.name+' · '+row.hours.toLocaleString('en-US')+'시간';add(cells,c);});
+  const bar=el('progress',null,'lb-xp-bar');bar.max=p.spanMin;bar.value=p.intoMin;bar.setAttribute('aria-label',(p.next?p.stage.name+'에서 '+p.next.name+'까지 ':'다음 금빛 별까지 ')+Math.floor(p.intoMin/p.spanMin*100)+'%');
+  return add(el('div',null,'st-progress'),el('strong',lines.head,'st-progress-head'),cells,
+    el('span',lines.next,'st-progress-next'),bar,el('span',lines.final,'muted small st-progress-final'),el('span',lines.eta,'muted small st-progress-eta'));
+}
+
+function ladderCard(h,proj){
+  const {el,add}=h,{stage}=proj;
+  const out=add(el('section',null,'panel st-ladder'),add(el('div',null,'st-ladder-head'),el('strong','금 장신구'),el('span',stage.name,'muted small')));
   const nowTier=goldTierOf(stage.no),tiers=el('ol',null,'st-tiers');
   for(const t of GOLD_TIERS){
     const li=add(el('li',null,'st-tier '+(t===nowTier?'now':t.fromNo<nowTier.fromNo?'done':'todo')),el('strong',t.name),el('span',t.gear));
     if(t===nowTier)li.setAttribute('aria-current','step');
     add(tiers,li);
   }
-  add(out,bar,cells,tiers,el('p',STUDY_STAGES.length+'단계 · 금 장신구는 단계마다 더해져요 · 쌓은 기록만 셉니다','muted small st-ladder-note'));
+  add(out,tiers,el('p',STUDY_STAGES.length+'단계 · 금 장신구는 단계마다 더해져요 · 쌓은 기록만 셉니다','muted small st-ladder-note'));
   if(proj.stars){
     const shown=Math.min(MAX_STAR_MARKS,proj.stars),stars=el('p','★'.repeat(shown)+(proj.stars>shown?' +'+(proj.stars-shown):''),'st-stars');
     stars.setAttribute('aria-label','금빛 별 '+proj.stars+'개, '+STAR_EVERY_HOURS+'시간마다 1개');add(out,stars);
   }
   const list=el('ol',null,'st-stage-list');
   for(const row of STUDY_STAGES)add(list,add(el('li',null,'st-stage-row'+(row.no===stage.no?' now':'')),el('span',row.no+'. '+row.name),el('span',row.hours.toLocaleString('en-US')+'시간','muted small')));
-  add(out,add(el('details',null,'st-stage-all'),el('summary','20단계 전체 보기 · 실제 신분이 아니라 누적 공부 시간 기준'),list));
+  add(out,add(el('details',null,'st-stage-all'),el('summary',STUDY_STAGES.length+'단계 전체 보기 · 실제 신분이 아니라 누적 공부 시간 기준'),list));
   return out;
 }
 
@@ -117,11 +134,12 @@ export function renderStatusView(root,ctx){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add}=h,whole=ctx.getWhole();
   const nowIso=String(ctx.now()),date=kstDate(nowIso);
   const proj=stageOf(lifetimeMinutes(whole.study??null)),useArt=ctx.avatarArt??AVATAR_ART_READY;
+  const prog=progressOf(proj,recentMinutes(whole.study??null,date),date);
   const read=iso=>{const t=todayMinutes({study:whole.study??null,date,draftCard:ctx.draftCard??null,timer:ctx.timer??null,nowIso:iso});return {...t,fx:todayEffectOf(t.minutes)};};
   const out=el('section',null,'st-page');out.id='status-page';
   add(out,add(el('div',null,'st-head'),el('span','나의 상태','eyebrow'),el('span','누적 '+(proj.minutes>=60?hoursText(proj.minutes):hmText(proj.minutes)),'muted small st-total')));
 
-  // 1) 아바타: 뒤 효과(오라) · 등급 그림 · 앞 효과(입자) + 등급·오늘 효과 배지
+  // 1) 아바타: 뒤 효과(오라) · 등급 그림 · 앞 효과(입자) + 등급·오늘 효과 배지, 바로 아래 "어디까지 왔나"(AV4C)
   // FIX31 (D7): 그림을 한 번 못 불러오면 이 화면은 자리표시로 바꾼다: 붙들고 있는 figure, 무대 클래스, 효과 viewBox까지. 그 뒤 단계가 바뀌어도 자리표시로 그린다.
   let today=read(nowIso),art=today.fx.art,artOn=useArt,figure,back=fxBack(h,useArt),front=fxFront(h,useArt),stage=null;
   const artFailed=(img,ph)=>{
@@ -134,17 +152,20 @@ export function renderStatusView(root,ctx){
   figure=figureOf(art);
   stage=add(el('div',null,fxClass(today.fx.level,useArt)),back,figure,front);
   const badgeToday=el('span',todayBadge(today.fx),'st-badge st-badge-today');
-  const avatar=add(el('section',null,'panel st-avatar'),stage,el('span',proj.stage.name,'st-badge st-badge-stage'),badgeToday,useArt?null:el('p','자리표시 그림입니다 · 등급 그림은 준비 중이에요','muted small st-art-note'));
+  const avatar=add(el('section',null,'panel st-avatar'),stage,el('span',proj.stage.name,'st-badge st-badge-stage'),badgeToday,useArt?null:el('p','자리표시 그림입니다 · 등급 그림은 준비 중이에요','muted small st-art-note'),progressBlock(h,prog,date));
 
   // 2) 오늘 시간: 링·오늘 누적·다음 효과까지 (타이머가 돌면 "지금 - 시작"으로 다시 계산)
   const ringSlot=add(el('div',null,'st-ring-slot'),todayRing(h,today.minutes));
   const todayLine=el('strong','오늘 '+hmText(today.minutes),'st-today-time'),nextLine=el('span',nextEffectText(today.fx),'muted small st-today-next');
   const noteLine=el('span',ctx.timer?'진행 중 타이머 포함':'아직 쌓지 않은 초안도 오늘 시간에 들어가요','muted small st-today-note');
+  // B6: PC 집중 측정에서 담을 수 있는 분(앱이 계산해 넘긴다). 오늘 시간·효과에는 더하지 않고 흐린 글씨로만 보인다.
+  const focusMin=Number.isInteger(ctx.focusExtraMin)&&ctx.focusExtraMin>0?ctx.focusExtraMin:0;
+  const focusLine=focusMin?el('span','+'+hmText(focusMin)+' 담기 가능 · PC 집중 측정 (아직 더하지 않음)','muted small st-focus-extra'):null;
   const go=ctx.openStudy?el('button',ctx.timer?'집중 화면 보기':'공부 시작','primary st-today-go'):null;
   if(go){go.type='button';go.dataset.navOnly='1';go.addEventListener('click',()=>ctx.openStudy());}
-  const todayCard=add(el('section',null,'panel st-today'),ringSlot,add(el('div',null,'st-today-text'),todayLine,nextLine,noteLine),go);
+  const todayCard=add(el('section',null,'panel st-today'),ringSlot,add(el('div',null,'st-today-text'),todayLine,nextLine,noteLine,focusLine),go);
 
-  // 3) 평생 등급 진행 바(20칸)  4) 탑·우주 입구
+  // 3) 금 장신구·전체 단계  4) 탑·우주 입구
   const doors=add(el('div',null,'st-doors'),door(h,'탑',towerSub(whole,date),ctx.openTower),door(h,'우주',universeSub(whole,nowIso),ctx.openUniverse));
   add(out,add(el('div',null,'st-body'),avatar,add(el('div',null,'st-side'),todayCard,ladderCard(h,proj),doors)));
 

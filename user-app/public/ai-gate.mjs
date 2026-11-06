@@ -59,7 +59,9 @@ export function reportCard(ctx,r,{title=r.assistant}={}){
     try{
       const res=await ctx.request({name:r.name});
       if(gone())return;
-      body.replaceChildren(...reportNodes(h,res?.text));opened=true;toggle.textContent='접기';
+      // B63: 선택 훅. {head,node,tail}을 돌려주면 head 글 → node → tail 글 순서(파인더 링크 표 자리). 없거나 null이면 지금과 같다.
+      let d=null;try{d=typeof ctx.decorate==='function'?ctx.decorate(r,res?.text):null;}catch{d=null;}
+      body.replaceChildren(...(d?.node?[...reportNodes(h,d.head),d.node,...reportNodes(h,d.tail)]:reportNodes(h,res?.text)));opened=true;toggle.textContent='접기';
     }catch(e){if(!gone())msg.textContent=reportResultText(e?.code);}
     finally{busy=false;}
   },'secondary');
@@ -70,7 +72,7 @@ function htmlNames(h,items){
   return h.add(h.el('details',null,'ai-gate-html'),h.el('summary','HTML 보고 '+items.length+'개 · 이름만 보입니다(앱 안에서 열지 않습니다)'),h.add(h.el('ul',null,'ai-gate-names'),...items.map(r=>h.el('li',r.name))));
 }
 
-// ctx={h:{el,add,button},surface,request(body)=>Promise,gone()=>bool}. 돌려주는 ready는 목록을 다 읽으면 끝나는 Promise이고 절대 거부되지 않는다.
+// ctx={h:{el,add,button},surface,request(body)=>Promise,gone()=>bool,decorate?(r,text)}. 돌려주는 ready는 목록을 다 읽으면 끝나는 Promise이고 절대 거부되지 않는다.
 export function renderAssistants(root,ctx){
   const {h}=ctx,gone=ctx.gone??(()=>false),sec=h.add(h.el('section',null,'panel ai-gate'),h.el('h2','비서','panel-title'));
   h.add(root,sec);

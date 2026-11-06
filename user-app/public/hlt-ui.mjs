@@ -5,7 +5,7 @@
 // 앱을 다시 열면 다시 숨겨진다(저장하지 않음). 숨김 상태에서는 라벨뿐 아니라 횟수·시각·마지막 기록 후 n일·7·30일 횟수·알림 문구에도 나오지 않는다.
 import {HltFlow} from './hlt-flow.mjs';
 import {hltView,hltHomeLine} from './hlt-projection.mjs';
-import {HLT_LIMITS,kstDate,kstMinutes,shiftDay,dateKeyOK,isoOK,UNITS,MEAL_KINDS,MEAL_SIZES,SLEEP_KINDS,CHANGE_KINDS,SYMPTOM_KINDS,MAX_NOTE,MAX_LABEL,MAX_ITEMS,ITEM_TYPES,MAX_STEPS,STEPS_ITEM_ID,nearDate} from './hlt-model.mjs';
+import {HLT_LIMITS,kstDate,kstMinutes,shiftDay,dateKeyOK,isoOK,UNITS,MEAL_KINDS,MEAL_SIZES,SLEEP_KINDS,CHANGE_KINDS,SYMPTOM_KINDS,MAX_NOTE,MAX_LABEL,MAX_ITEMS,ITEM_TYPES,MAX_STEPS,STEPS_ITEM_ID,nearDate,MAX_SLEEP_MS} from './hlt-model.mjs';
 
 const HLT_PROFILE_LIMIT=HLT_LIMITS.HLT_PROFILE;
 export const HLT_SWITCH_KEY='lb.hlt.enabled';
@@ -45,6 +45,36 @@ export function isoFromKst(date,hhmm,dayOffset=0){
   if(!dateKeyOK(date)||typeof hhmm!=='string'||!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(hhmm))return null;
   return new Date(Date.parse(date+'T'+hhmm+':00.000Z')-9*3600000+dayOffset*86400000).toISOString();
 }
+// K1 (4): 직접 입력한 잠든 시각 HH:MM(KST) → 기상(endAt) 전 24시간 안에서 가장 가까운 그 시각. 형식이 틀리면 null.
+export function fellAsleepAt(hhmm,endAt){
+  const day=kstDate(endAt),t=isoFromKst(day,hhmm);
+  return !t?null:Date.parse(t)>Date.parse(endAt)?isoFromKst(day,hhmm,-1):t;
+}
+export const SLEEP_SHIFTS=Object.freeze([[15,'+15분'],[30,'+30분'],[60,'+1시간']]);
+const mmdd=date=>date.slice(5);
+export const SLEEP_TEXT=Object.freeze({
+  saved:p=>'취침 '+hhmmKst(p.item.startAt)+' · '+mmdd(p.date)+' 카드 초안에 적어 두었어요 · 기상을 누르면 수면으로 완성돼요.',
+  tip:'잠 버튼 = 잠자리에 든 시각, 실제 잠든 시각은 기상 때 고칠 수 있어요.',
+  pending:p=>'취침 기록 중 · '+hhmmKst(p.item.startAt)+' (KST) · '+mmdd(p.date)+' 카드 초안 — 기상을 누르면 수면으로 완성돼요.',
+  woke:'기상과 수면을 초안에 넣었습니다.',wakeOnly:'기상을 초안에 넣었습니다(수면은 직접 입력하세요).',
+  moved:m=>mmdd(m.from)+' 카드에 있던 끝나지 않은 수면을 옮겨 왔어요'+(m.restack?' · 그 카드도 다시 쌓아 주세요.':'.'),
+  stale:date=>'끝나지 않은 수면이 '+mmdd(date)+' 카드에 남아 있어요(48시간 넘음) · 그 카드에서 직접 고치세요.',
+  fell:(startAt,how)=>'잠든 시각 '+hhmmKst(startAt)+' ('+how+')',button:'잠 버튼 누른 시각',typed:'직접 입력',watched:'워치 기록',
+  shifted:(button,label)=>'잠 버튼 '+hhmmKst(button)+' '+label,
+  watch:startAt=>'워치 기록: '+hhmmKst(startAt)+' 잠듦 · 이걸로 할까요?',useWatch:'워치 시각으로',
+  typeLabel:'잠든 시각 (KST)',typeApply:'잠든 시각 넣기',badTime:'잠든 시각은 HH:MM(예: 23:40) 형식으로 적어 주세요.',
+  fixed:startAt=>'잠든 시각을 '+hhmmKst(startAt)+'(으)로 고쳐 초안에 넣었어요.',
+  duplicate:'같은 밤 수면이 2개예요 · 하나를 지우세요.',
+  stackOpen:'아직 끝나지 않은 수면이 들어 있어요 · 기상 뒤에 쌓으면 한 번에 정리돼요.',
+});
+// K1 (6): "잠 버튼" 안내는 이 기기에서 처음 1번만 보인다. 표시 여부만 기기 로컬(localStorage)에 둔다(기록 아님). 저장소가 막혀 있으면 이번 실행 동안만.
+export const SLEEP_TIP_KEY='lb.hlt.sleepTip';
+let memorySleepTip=false;
+function takeSleepTip(storage){
+  try{if(storage){if(storage.getItem(SLEEP_TIP_KEY)==='1')return false;storage.setItem(SLEEP_TIP_KEY,'1');return true;}}catch{/* 막힌 저장소: 메모리로 */}
+  if(memorySleepTip)return false;
+  memorySleepTip=true;return true;
+}
 export const itemLabel=Object.freeze({dose:'복용',sleep:'수면',wake:'기상',clarity:'맑아짐',checkin:'체크인',change:'변화',symptom:'증상',meal:'식사',habit:'습관',steps:'걸음'});
 const MEAL_TEXT={BREAKFAST:'아침',LUNCH:'점심',DINNER:'저녁',SNACK:'간식',LATE_NIGHT:'야식'},SIZE_TEXT={LIGHT:'가볍게',NORMAL:'보통',HEAVY:'많이'};
 const KIND_TEXT={fatigue:'피로',depression:'우울·무기력',palpitations:'두근거림',sweating:'땀',other:'기타',main:'주 수면',nap:'낮잠'};
@@ -67,7 +97,7 @@ export function itemSummary(it,labelOf){
 
 // ---- 포트: 앱의 api/기록 함수를 HltFlow가 쓰는 모양으로 ----
 // ctx: {api, mdProfile(), getWhole(), getChanges(), syncForWrite(), hasPending(), reconcile(), uid(), now()}
-export function createPorts(ctx,pendingStore){
+export function createPorts(ctx){
   const memoryDrafts=new Map();let seq=0,cache=null;
   const hlt=()=>ctx.getWhole().hlt;
   const revisionMap=()=>{const rows=ctx.getChanges();if(cache?.rows===rows)return cache.map;const m=new Map();for(const c of rows)if(c.type==='HLT_DAY')m.set(c.revisionId,c.value.data);cache={rows,map:m};return m;};
@@ -88,7 +118,6 @@ export function createPorts(ctx,pendingStore){
     terminal:!journal&&ctx.receipt?async rid=>(await ctx.receipt(rid))?.status!=='NOT_ESTABLISHED':()=>false,
     makeBody:async({requestId,date,data,heads,reason})=>{const fields={entityType:'HLT_DAY',entityId:date,expectedHeads:[...heads],data:structuredClone(data),reason,confirmed:false};return {requestId,commandDigest:await ctx.digest({type:'ENTITY',...fields}),...fields};},
     now:()=>ctx.now(),newId:()=>'i'+Date.now().toString(36)+(++seq).toString(36)+ctx.uid().slice(0,6),newRequestId:()=>ctx.uid(),
-    pendingSleep:pendingStore,
     drafts:journal?{
       // 서버 초안 저널(drafts.lbd, 봉인 저장)을 쓴다. 건강 카드 초안은 draft-list가 본문(내 카드 + base heads)을 함께 돌려준다.
       list:async()=>(await ctx.api('/api/md/draft-list',{})).drafts.filter(d=>d.type==='ENTITY'&&d.body?.entityType==='HLT_DAY'),
@@ -107,7 +136,7 @@ export function createPorts(ctx,pendingStore){
 }
 
 // ---- 화면 상태(모듈 단위, 저장하지 않는다: 앱을 다시 열면 숨김 항목도 다시 숨겨진다) ----
-export function createHealthState(){return {date:null,showPrivate:false,showRemoved:false,notices:[],message:null,error:false,form:null,flowState:null,flow:null,ports:null,pendingSleep:null};}
+export function createHealthState(){return {date:null,showPrivate:false,showRemoved:false,notices:[],message:null,error:false,form:null,flowState:null,flow:null,ports:null,pendingSleep:null,sleepFix:null};}
 const profileMapAll=raw=>new Map(raw.profiles.map(p=>[p.key,p]));
 // 프로필 저장: 다른 기기가 먼저 같은 프로필을 고쳤으면(STALE_HEADS) 최신을 받아 그 위에 방금 저장하려던 값을 그대로 쓴다(B3d: 비공개·삭제는 양방향 자유라 합치는 규칙이 없다).
 // B17 (A8-D03, 통제탑 결정): field를 주면(지금은 '사용 중단/다시 사용' 버튼만) 재시도 때 최신 프로필을 다시 읽어 그 필드 하나만 바꿔 저장한다(버튼의 의도는 한 필드뿐).
@@ -129,14 +158,16 @@ export async function prepareHealth(ctx,st,gone=()=>false){
   st.today=kstDate(ctx.now());
   st.date??=st.today;
   if(!st.flow){
-    const pending={v:null};st.pendingSleep=pending;
-    st.ports=createPorts(ctx,{get:()=>pending.v,set:v=>{pending.v=v;},clear:()=>{pending.v=null;}});
+    st.ports=createPorts(ctx);
     st.flow=new HltFlow(st.ports);
+    st.pendingSleep=st.flow.pending;   // K1: 취침 기록 중 = 카드 초안의 열린 수면(앱을 다시 열어도 초안에서 다시 읽음)
   }
   st.raw=whole.hlt;
-  const flowState=await st.flow.state(st.date);
+  // K1: 초안 목록은 한 번만 읽는다(screen). 화면 시험의 가짜 흐름에는 screen이 없을 수 있어 그때는 state만 읽는다.
+  const view=st.flow.screen?await st.flow.screen(st.date):{state:await st.flow.state(st.date)};
   if(gone())return st;
-  st.flowState=flowState;
+  st.flowState=view.state;
+  if(view.pendingSleep!==undefined)st.pendingSleep.v=view.pendingSleep;
   return st;
 }
 
@@ -300,7 +331,8 @@ export function renderHealth(root,ctx,st){
   // 쌓기가 성공하면 초안이 지워져 has가 거짓이다. 초안을 쓰지 않는 프로필 버튼은 draft:false로 제 결과 문구를 지킨다.
   const boxFailText=()=>{const c=box?.status().failed;return c?box.ERROR_TEXT[c]??T.failed:null;};
   const flagBoxFail=()=>{const b=box?.statusFor('HLT_DAY',st.date);if(b?.has&&b.failed&&!st.error){st.message=box.ERROR_TEXT[b.failed]??T.failed;st.error=true;}};
-  const act=(fn,{draft=true}={})=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;seen();try{await fn();}catch(e){st.message=box?.ERROR_TEXT[e?.code]??hltErrorText(e?.code);st.error=true;}if(draft)flagBoxFail();await prepareHealth(ctx,st);await ctx.rerender();});
+  // K1: 기상 뒤 "잠든 시각" 줄(st.sleepFix)은 다음 동작까지만 보인다. 그 줄의 버튼은 fn 안에서 다시 채운다.
+  const act=(fn,{draft=true}={})=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;st.sleepFix=null;seen();try{await fn();}catch(e){st.message=box?.ERROR_TEXT[e?.code]??hltErrorText(e?.code);st.error=true;}if(draft)flagBoxFail();await prepareHealth(ctx,st);await ctx.rerender();});
   const out=el('div',null,'hlt-view');
 
   // 1) 상태·날짜
@@ -342,13 +374,35 @@ export function renderHealth(root,ctx,st){
   // B17 (H12-N03): 빠른 입력은 언제나 오늘(지금 시각의 KST 날짜) 카드 초안에 들어간다. 다른 날짜를 보고 있었으면 화면을 그 초안의 날짜로 옮기고 한 줄 알린다
   // (확정 버튼은 늘 화면에 보이는 카드의 초안을 확정하므로, 빠른 입력 바로 뒤의 확정이 그 입력을 확정한다).
   const follow=(s,text=null)=>{const d=s?.card?.date,moved=Boolean(d)&&d!==date;if(moved){st.date=d;st.form=null;st.notices=[];}st.message=[text,moved?'빠른 입력은 오늘('+d+') 카드에 들어갑니다 · 화면을 그 날짜로 옮겼습니다.':null].filter(Boolean).join(' · ')||null;};
+  // K1: 기상 문구. 수면을 닫았으면 옮김 안내, 48시간이 넘은 열린 수면은 남아 있다고 알린다.
+  const wakeText=w=>w.withSleep?[SLEEP_TEXT.woke,w.moved?SLEEP_TEXT.moved(w.moved):null].filter(Boolean).join(' · '):w.staleSleep?SLEEP_TEXT.wakeOnly+' · '+SLEEP_TEXT.stale(w.staleSleep):SLEEP_TEXT.wakeOnly;
   const quick=add(el('div',null,'buttons hlt-quick'),
-    button('지금 기상',act(async()=>{const w=await st.flow.quickWake();follow(w,w.withSleep?'기상과 수면을 초안에 넣었습니다.':'기상을 초안에 넣었습니다(수면은 직접 입력하세요).');}),'primary'),
-    button('지금 취침',act(async()=>{st.flow.quickSleep();st.message='취침 시각을 적어 두었습니다 · 이 화면을 닫으면 사라져요. 기상 때 수면으로 합쳐집니다.';})));   // B2C (DEFECT-10 A안): 메모리에만 있다. 기기 보존은 새 레코드가 필요해 통제탑 결정 대기
+    button('지금 기상',act(async()=>{
+      const w=await st.flow.quickWake();follow(w,wakeText(w));
+      if(w.sleep)st.sleepFix={date:w.sleep.date,id:w.sleep.id,button:w.sleep.startAt,startAt:w.sleep.startAt,endAt:w.sleep.endAt,how:SLEEP_TEXT.button,watch:w.watch??null,duplicate:Boolean(w.duplicate),typing:false};
+    }),'primary'),
+    // K1 (DEFECT-10 B안): 취침은 깬 날 카드 초안의 열린 수면이다(PC 저널·브라우저 상자에 남음). 화면은 옮기지 않는다.
+    button('지금 취침',act(async()=>{const r=await st.flow.quickSleep();if(r?.pendingSleep)st.message=SLEEP_TEXT.saved(r.pendingSleep)+(takeSleepTip(ctx.storage??globalThis.localStorage)?' '+SLEEP_TEXT.tip:'');})));
   for(const k of MEAL_KINDS)add(quick,button(MEAL_TEXT[k],act(async()=>{follow(await st.flow.quickMeal(k));})));
   const habitProfiles=view.profiles.filter(p=>p.data.kind==='HABIT'&&p.data.enabled);
   for(const p of habitProfiles)add(quick,button(p.data.label,act(async()=>{follow(await st.flow.quickHabit(p.key,p.data));})));
-  add(q,quick);if(pend)add(q,hint('취침 기록 중 · '+hhmmKst(pend)+' (KST) — 기상을 누르면 수면으로 합쳐집니다 · 이 화면을 닫으면 사라져요.'));
+  add(q,quick);if(pend&&Date.parse(ctx.now())-Date.parse(pend.item.startAt)<=MAX_SLEEP_MS)add(q,hint(SLEEP_TEXT.pending(pend)));   // 48시간이 넘은 열린 수면은 기상이 닫지 않으므로 "기록 중"이라 하지 않는다
+  // K1 (4·5): 기상 직후 잠든 시각 다듬기. 기본은 잠 버튼 시각 그대로이고, 고르면 그 수면의 startAt만 바꾼다(연산 0). +n분은 잠 버튼 시각 기준이며 기상 시각을 넘는 버튼은 숨긴다.
+  const fix=st.sleepFix;
+  if(fix){
+    const fixTo=(startAt,how)=>act(async()=>{st.sleepFix=fix;await st.flow.setSleepStart(fix.date,fix.id,startAt);st.sleepFix={...fix,startAt,how,typing:false};st.message=SLEEP_TEXT.fixed(startAt);});
+    const row1=add(el('div',null,'buttons hlt-sleep-shift'));
+    for(const [m,label] of SLEEP_SHIFTS){const t=new Date(Date.parse(fix.button)+m*60000).toISOString();if(Date.parse(t)<=Date.parse(fix.endAt))add(row1,button(label,fixTo(t,SLEEP_TEXT.shifted(fix.button,label))));}
+    add(row1,button(SLEEP_TEXT.typed,()=>{st.sleepFix={...fix,typing:true};void ctx.rerender();}));
+    const fixEl=add(el('div',null,'hlt-sleep-fix'),el('p',SLEEP_TEXT.fell(fix.startAt,fix.how),'notice hlt-sleep-fell'),row1);
+    if(fix.typing){
+      const hm=input(hhmmKst(fix.startAt),{inputmode:'numeric',placeholder:'HH:MM'});
+      add(fixEl,add(el('div',null,'buttons'),field(SLEEP_TEXT.typeLabel,hm),button(SLEEP_TEXT.typeApply,()=>{const t=fellAsleepAt(hm.value.trim(),fix.endAt);if(t)fixTo(t,SLEEP_TEXT.typed)();else{st.message=SLEEP_TEXT.badTime;st.error=true;void ctx.rerender();}})));
+    }
+    if(fix.watch&&fix.watch!==fix.startAt)add(fixEl,el('p',SLEEP_TEXT.watch(fix.watch),'notice hlt-sleep-watch'),add(el('div',null,'buttons'),button(SLEEP_TEXT.useWatch,fixTo(fix.watch,SLEEP_TEXT.watched))));
+    if(fix.duplicate)add(fixEl,el('p',SLEEP_TEXT.duplicate,'notice hlt-sleep-dup'));   // 결정 2: 둘 다 남기고 알린다(자동 삭제 없음)
+    add(q,fixEl);
+  }
   add(out,q);
 
   // 3) 항목
@@ -392,6 +446,8 @@ export function renderHealth(root,ctx,st){
       else if(r.status==='REJECTED'){st.message=hltErrorText(r.code);st.error=true;}
       else if(['UNKNOWN','SYNC_FAILED','FAILED','STALE'].includes(r.status)){st.message=(r.code&&HLT_ERROR_TEXT[r.code])||STATUS_TEXT[r.status];st.error=true;}
       else st.message=STATUS_TEXT[r.status]??r.status;
+      // K1 결정 3: 끝나지 않은 수면이 든 카드도 막지 않고 쌓되 한 줄 알린다.
+      if(r.status==='CONFIRMED'&&fs.card.items.some(i=>i.type==='sleep'&&i.endAt===null))st.message+=' · '+SLEEP_TEXT.stackOpen;
     });
   add(fin,field('메모 (최대 '+MAX_NOTE+'자)',note),add(el('div',null,'buttons'),
     button('메모를 초안에 넣기',act(async()=>{await st.flow.setNote(date,note.value);})),

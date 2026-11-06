@@ -1258,10 +1258,15 @@ dialog[open]{animation:lb-rise .22s ease-out}
 .st-ladder-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px var(--lb-s-3)}
 .st-ladder-head strong{color:var(--lb-ink-1)}
 .st-ladder-note{margin:0}
-.st-cells{display:grid;grid-template-columns:repeat(20,minmax(0,1fr));gap:3px}
-.st-cell{display:block;height:8px;border-radius:3px;background:var(--lb-heat-0)}
-.st-cell.done{background:var(--lb-gold-3)}
-.st-cell.now{background:var(--lb-gold-bright);outline:1px solid var(--lb-gold-3)}
+/* AV4C: 그림 바로 아래 "어디까지 왔나" — 12칸 사다리(지난 금색 · 지금 반짝 · 남은 아이보리) */
+.st-progress{display:grid;gap:var(--lb-s-1);justify-self:stretch;min-width:0;overflow-wrap:anywhere}
+.st-progress-head{font-size:var(--lb-title);color:var(--lb-ink-1)}
+.st-progress-next{font-weight:600;color:var(--lb-ink-2)}
+.st-progress-final,.st-progress-eta{display:block}
+.st-cells{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:3px}
+.st-cell{display:block;height:12px;border-radius:3px;background:var(--lb-surface-tint);border:1px solid var(--lb-line-soft)}
+.st-cell.done{background:var(--lb-gold-2);border-color:var(--lb-gold-3)}
+.st-cell.now{background:var(--lb-gold-bright);border-color:var(--lb-gold-3);outline:1px solid var(--lb-gold-3);animation:st-breath 2.4s ease-in-out infinite}
 .st-tiers{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--lb-s-1);margin:0;padding:0;list-style:none;min-width:0}
 .st-tier{display:grid;gap:1px;align-content:start;min-width:0;padding:var(--lb-s-1);border:1px solid var(--lb-line-soft);border-radius:var(--lb-r-1);font-size:11px;line-height:1.35;color:var(--lb-ink-3);overflow-wrap:anywhere}
 .st-tier strong{color:var(--lb-ink-2);font-size:var(--lb-caption)}
@@ -1293,3 +1298,18 @@ button.st-door{display:grid;gap:2px;justify-items:start;text-align:left;min-widt
 .fin-analysis-name{min-width:0;overflow-wrap:anywhere}
 .fin-analysis-top small{grid-column:2;text-align:right}
 .fin-analysis-reports{margin-top:var(--lb-s-3)}
+/* ===== 24. 지식 파인더 결과 링크 (B63): 새 색 없음 — 토큰만. 링크는 a가 아니라 단추이고 주소는 글자로만 보인다 ===== */
+.finder-links{display:grid;gap:var(--lb-s-2);min-width:0}
+.finder-links p:empty,.finder-sheet p:empty{display:none}
+button.finder-link{display:grid;gap:2px;justify-items:start;text-align:left;min-width:0;min-height:44px;overflow-wrap:anywhere}
+.finder-link-title{min-width:0;overflow-wrap:anywhere}
+.finder-link-sub{color:var(--lb-ink-3);font-weight:400;font-size:var(--lb-caption);overflow-wrap:anywhere}
+.finder-links-reason{margin:0;color:var(--lb-ink-3);font-weight:600}
+.finder-sheet{display:grid;gap:var(--lb-s-2);min-width:0}
+.finder-sheet p{margin:0}
+.finder-sheet-host{font-size:17px;overflow-wrap:anywhere}
+.finder-sheet-url{white-space:pre-wrap;word-break:break-all;margin:0}
+.finder-sheet-warn{color:var(--lb-bad);background:var(--lb-bad-bg);border:1px solid var(--lb-bad-line);border-radius:var(--lb-r-1);padding:var(--lb-s-2)}
+.finder-trust-list{display:grid;gap:var(--lb-s-1);min-width:0}
+.finder-trust-row{display:flex;justify-content:space-between;align-items:center;gap:var(--lb-s-3)}
+.finder-trust-host{font-family:Consolas,monospace;font-size:13px;min-width:0;overflow-wrap:anywhere}

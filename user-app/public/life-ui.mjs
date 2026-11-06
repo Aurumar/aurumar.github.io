@@ -60,9 +60,10 @@ const int=s=>typeof s==='string'&&/^\d+$/.test(s.trim())?Number(s.trim()):NaN;
 export function createLifeState(){return {today:null,flow:null,ports:null,boxRef:null,flowState:null,studyCard:null,pending:[],subjectId:null,timer:null,message:null,error:false,notices:[],pastDate:null,editing:false,floatXp:null};}
 
 // B2C (DEFECT-6): 상자 쓰기 실패는 save가 던지지 않는다(설계). 버튼이 끝났을 때 오늘 카드·공부 벽돌 초안이 실패 상태면 성공 문구 대신 실패 문구를 보인다. 쌓기가 성공하면 초안이 지워져 has가 거짓이다.
+// R33B (HUNT32 S1): 그 칸 자체의 실패(own)만 본다. 다른 날짜·종류 초안의 실패는 위쪽 상자 전체 빨간 줄이 따로 알린다.
 function flagBoxFail(st,date){
   const box=st.ports?.box;
-  for(const kind of ['LIFE_DAY','STUDY_DAY']){const b=box?.statusFor(kind,date);if(b?.has&&b.failed&&!st.error){st.message=box.ERROR_TEXT[b.failed]??box.TEXT.failed;st.error=true;}}
+  for(const kind of ['LIFE_DAY','STUDY_DAY']){const b=box?.statusFor(kind,date);if(b?.has&&b.own&&!st.error){st.message=box.ERROR_TEXT[b.own]??box.TEXT.failed;st.error=true;}}
 }
 function readTimer(storage){try{const v=JSON.parse(storage?.getItem(TIMER_KEY)??'null');return v&&typeof v.subjectId==='string'&&typeof v.startIso==='string'&&Number.isFinite(Date.parse(v.startIso))?{subjectId:v.subjectId,startIso:v.startIso}:null;}catch{return null;}}
 function writeTimer(storage,t){try{if(t)storage?.setItem(TIMER_KEY,JSON.stringify(t));else storage?.removeItem(TIMER_KEY);}catch{/* 저장소가 막혀 있으면 이번 실행 동안만 */}}
@@ -123,7 +124,7 @@ export function renderLifeToday(root,ctx,st){
   const chipText=()=>{
     const b=box?.statusFor('LIFE_DAY',date);
     if(b?.typing)return T.typing;
-    if(b?.has)return '이 기기에만 있는 입력 · '+(b.dirty?(b.failed?'아직 이 기기에 저장하지 못함':T.typing):T.saved);
+    if(b?.has)return '이 기기에만 있는 입력 · '+(b.dirty?(b.own?'아직 이 기기에 저장하지 못함':T.typing):T.saved);   // R33B (S1): 이 카드 자체의 실패만
     return dirty?'이 기기에만 있는 입력 (아직 쌓지 않음)':fs.status==='CONFIRMED'?'오늘 카드를 쌓았습니다 · 고치면 다시 쌓을 수 있어요':'아직 기록 없음';
   };
   const status=el('div',null,'life-status');add(out,status);
@@ -181,6 +182,14 @@ export function renderLifeToday(root,ctx,st){
 
   // 4) 공부 벽돌
   add(out,renderBricks(ctx,st,h,defs,life,act,ach.goalBricks));
+  // 4-1) PC 집중 측정 카드(B6): PC 앱에서 스위치를 켰을 때만 앱(ctx.focusCard)이 넣어 준다. 담기는 오늘 공부 초안에 세션을 더할 뿐이다(연산 0, "오늘 쌓기"에 합쳐짐).
+  const focus=ctx.focusCard?.({date,card:st.studyCard?.card??null,timer:st.timer,subjects:defs.subjects.filter(s=>!s.hidden).map(s=>({id:s.id,name:s.name})),subjectId:st.timer?.subjectId??st.subjectId,
+    claim:rows=>act(async()=>{
+      const s=await studyFlow(ctx);if(!s)throw Object.assign(new Error('STUDY_OFF'),{code:'STUDY_OFF'});
+      await s.st.flow.edit(date,c=>{c.sessions.push(...rows);});
+      st.message='PC 측정 공부 '+rows.length+'개 · '+rows.reduce((n,r)=>n+r.confirmedMin,0)+'분을 담았습니다 · "오늘 쌓기"를 누르면 함께 쌓입니다';
+    })()});
+  if(focus)add(out,focus);
 
   // 5) 기분 5단계 + 한 줄
   const moodRow=el('div',null,'life-moods');
@@ -266,21 +275,32 @@ function renderBricks(ctx,st,h,defs,life,act,goalBricks){
   const minutes=todayMinutes(st,ctx.getWhole(),date);
   const sum=sumBricks(minutes);
   add(sec,xpBar(sum.value,goalBricks,{label:'오늘 벽돌 (장)'}),hint(sum.bricks+'장'+(sum.pieces?' + 조각 '+sum.pieces:'')+' · 30분 = 1장, 10~29분 = 조각, 9분 이하는 세지 않아요 · 오늘 목표 '+goalBricks+'장'));
-  const recordNow=async(subject,m)=>{
+  // B6: 타이머 "끝내고 담기"만 세션 id에 T 표지(lf_<과목>_T…)를 붙인다 → 구간 [at − 분, at]을 아는 세션. 분 입력은 그대로(구간 모름).
+  // R34B: 타이머는 시작 시각에서 정한 id(lf_<과목>_T<시작 ms 36진>)를 넘긴다(B6 T 표지 + R33B 멱등). id가 없을 때만 표지 + uid로 만든다.
+  const recordNow=async(subject,m,mark='',id=null)=>{
     if(!(Number.isInteger(m)&&m>=1&&m<=1440))throw Object.assign(new Error('INVALID_LIFE_MINUTES'),{code:'INVALID_LIFE_MINUTES'});
     const s=await studyFlow(ctx);if(!s)throw Object.assign(new Error('STUDY_OFF'),{code:'STUDY_OFF'});
     const now=ctx.now();
-    await s.st.flow.addRow(kstDate(now),'sessions',{id:sessionIdFor(subject.id,ctx.uid().slice(0,8)),subject:studyCodeOf(subject.id),state:'COMPLETED',plannedMin:m,confirmedMin:m,restartLocator:'',at:now});
+    await s.st.flow.addRow(kstDate(now),'sessions',{id:id??sessionIdFor(subject.id,mark?mark+ctx.uid().slice(0,7):ctx.uid().slice(0,8)),subject:studyCodeOf(subject.id),state:'COMPLETED',plannedMin:m,confirmedMin:m,restartLocator:'',at:now});
     const b=brickOf(m);st.message=subject.name+' '+m+'분을 담았습니다 · '+(b.bricks?b.bricks+'장':'')+(b.bricks&&b.pieces?' + ':'')+(b.pieces?'조각 1':'')+(!b.bricks&&!b.pieces?'벽돌 0 (10분부터 조각)':'')+' · "오늘 쌓기"를 누르면 함께 쌓입니다';
     return kstDate(now);
   };
   // FIX31 (D1): 타이머는 담기가 저장된 뒤에만 지운다. 거절(읽기 전용·잠김·공부 꺼짐)이나 초안 저장 실패(Quota 등)면 시작 시각을 남겨 집중 시간을 잃지 않는다.
-  const finishTimer=async(subject,m)=>{
+  // R33B (HUNT32 D1·S2): 성공 판정은 그 날 STUDY_DAY 레코드 자체가 디스크에 써졌는가(has&&!dirty)다. 다른 날짜·종류 초안의 STALE·Quota(상자 전체 failed)는 보지 않는다.
+  // 세션 id는 타이머 시작 시각에서 만든다(같은 타이머 = 같은 id). 다시 눌러도 그 세션이 오늘·어제 카드에 이미 있으면 새로 담지 않고,
+  // 지난번 쓰기가 실패해 메모리에만 있으면 한 번 더 써 본다(같은 집중이 두 번 담기지 않음).
+  const finishTimer=async(subject,startIso,m)=>{
     const keep=text=>{st.message=text+' · 집중 타이머는 그대로 두었어요.';st.error=true;},box=st.ports?.box??null;
+    const id=sessionIdFor(subject.id,'T'+Date.parse(startIso).toString(36));
     let day;
-    try{day=await recordNow(subject,m);}catch(e){keep(box?.ERROR_TEXT[e?.code]??lifeErrorText(e?.code));return;}
+    try{
+      const s=await studyFlow(ctx),today=kstDate(ctx.now());
+      for(const d of s?[today,shiftDay(today,-1)]:[])if((await s.st.flow.state(d)).card.sessions.some(x=>x.id===id)){day=d;break;}
+      if(day){await box?.flush().catch(()=>{});st.message=subject.name+' 집중은 이미 담았습니다 · 다시 담지 않았어요.';}
+      else day=await recordNow(subject,m,'T',id);
+    }catch(e){keep(box?.ERROR_TEXT[e?.code]??lifeErrorText(e?.code));return;}
     const b=box?.statusFor('STUDY_DAY',day);
-    if(b?.failed){keep(box.ERROR_TEXT[b.failed]??box.TEXT.failed);return;}
+    if(b?.own||b?.dirty){keep(box.ERROR_TEXT[b.own]??box.TEXT.failed);return;}
     st.timer=null;writeTimer(ctx.storage??globalThis.localStorage,null);
   };
   const subject=subjects.find(s=>s.id===st.subjectId)??null;
@@ -292,7 +312,7 @@ function renderBricks(ctx,st,h,defs,life,act,goalBricks){
     const timerText=()=>'집중 중 · '+(ts?.name??'과목')+' · '+hhmmFromIso(t.startIso)+' 시작 · '+timerElapsedMin(t.startIso,ctx.now())+'분',timerLabel=el('span',timerText(),'life-timer-text');
     liveTick(timerLabel,ctx.document??globalThis.document,()=>{timerLabel.textContent=timerText();});
     add(timerRow,timerLabel,
-      button('끝내고 담기',act(()=>finishTimer(ts??subject,timerRecordMin(t.startIso,ctx.now()))),'primary'),
+      button('끝내고 담기',act(()=>finishTimer(ts??subject,t.startIso,timerRecordMin(t.startIso,ctx.now()))),'primary'),
       button('취소',()=>{st.timer=null;writeTimer(ctx.storage??globalThis.localStorage,null);void ctx.rerender();}));
   }else add(timerRow,button('집중 시작',()=>{st.timer={subjectId:subject.id,startIso:ctx.now()};writeTimer(ctx.storage??globalThis.localStorage,st.timer);void ctx.rerender();},'primary'));
   const min=input('',{inputmode:'numeric',placeholder:'분','aria-label':'공부한 분'});

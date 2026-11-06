@@ -3,19 +3,19 @@
 // 이 모듈은 어떤 모듈도 불러오지 않는다(화면·시험이 같은 파일을 쓴다).
 
 // 평생 등급 표: 소유자가 바꾸기 쉽게 여기 한 곳에만 둔다. hours = 그 등급이 시작되는 누적 공부 시간. 맨 위는 0, 아래로 갈수록 커야 한다.
+// AV4C(2026-11-06 통제탑 결정): 20단계 → 12단계. 단계 번호는 어디에도 저장하지 않고 언제나 누적 분에서 다시 구하므로 옛 20단계 값이 남아 있을 곳이 없다.
 export const STUDY_STAGES=Object.freeze([
-  ['수험생 · 첫 책상',0],['수험생 · 습관',50],['수험생 · 개념',150],['수험생 · 몰입',300],['수험생 · 실전',500],
-  ['수험생 · 파이널',700],['의대 합격',900],['예과 1년',1000],['예과 2년',1150],['본과 1년 (해부학)',1300],
-  ['본과 2년',1450],['본과 3년 (병원 실습)',1600],['본과 4년',1750],['의사 국가시험 합격',1900],['인턴',2050],
-  ['레지던트 1년',2200],['레지던트 2~3년',2400],['치프 레지던트',2600],['전문의',2800],['의사 (금빛 완성형)',3000],
-].map(([name,hours],i)=>Object.freeze({no:i+1,name,hours})));
+  ['첫 책상',0],['습관',100],['몰입',300],['실전',600],['의대 합격',900],['예과',1100],
+  ['첫 흰 가운',1400],['국시 합격',1700],['인턴',2000],['레지던트',2300],['전문의',2600],['의사 (금빛)',3000],
+].map(([name,hours],i)=>Object.freeze({no:i+1,id:'s'+String(i+1).padStart(2,'0'),name,hours})));
+export const FINAL_STAGE=STUDY_STAGES[STUDY_STAGES.length-1];
 export const STAR_EVERY_HOURS=250;   // 마지막 등급 이후 이만큼마다 금빛 별 1개
 // 금 장신구 단계(화면 라벨만, 그림은 따로 맞춘다). fromNo = 그 단계가 시작되는 등급 번호.
 export const GOLD_TIERS=Object.freeze([
   Object.freeze({name:'수험생',gear:'시계',fromNo:1}),
-  Object.freeze({name:'합격·예과',gear:'시계+타이바',fromNo:7}),
-  Object.freeze({name:'본과·수련',gear:'펜·코트 금테',fromNo:10}),
-  Object.freeze({name:'전문의·의사',gear:'금 청진기·자수',fromNo:19}),
+  Object.freeze({name:'합격·예과',gear:'시계+타이바',fromNo:5}),
+  Object.freeze({name:'본과·수련',gear:'펜·코트 금테',fromNo:7}),
+  Object.freeze({name:'전문의·의사',gear:'금 청진기·자수',fromNo:11}),
 ]);
 export function goldTierOf(no){
   let tier=GOLD_TIERS[0];
@@ -60,6 +60,40 @@ export function stageOf(totalMin){
   return {minutes,stage,next:null,intoMin:over%every,spanMin:every,toNextMin:null,stars:Math.floor(over/every),toNextStarMin:every-over%every};
 }
 
+// "어디까지 왔나" (AV4C): 최근 7일(오늘 포함, KST 날짜) 쌓은 카드 분 합계. 날짜별 카드는 한 장(lifetimeMinutes와 같음). today = 'YYYY-MM-DD'(KST).
+export const RECENT_DAYS=7;
+export const ASSUMED_DAY_MIN=240;   // 최근 7일 기록이 없을 때 쓰는 가정값(하루 4시간). 화면에 가정이라고 적는다.
+const MAX_ETA_DAYS=36500;           // 이보다 멀면 날짜 대신 "100년 넘게"
+export function addDays(date,n){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(date));
+  return m?new Date(Date.UTC(Number(m[1]),Number(m[2])-1,Number(m[3])+n)).toISOString().slice(0,10):null;
+}
+export function recentMinutes(study,today,days=RECENT_DAYS){
+  const from=addDays(today,1-days);
+  if(!from)return 0;
+  const byDate=new Map();
+  for(const d of study?.days??[])if(typeof d?.date==='string'&&d.date>=from&&d.date<=today)byDate.set(d.date,d.data);
+  let sum=0;
+  for(const card of byDate.values())sum+=cardMinutes(card);
+  return sum;
+}
+// 남은 분을 하루 평균 분으로 나눈 대략 일수(반올림, 남아 있으면 최소 1일)와 그날(KST). 너무 멀면 date=null.
+function etaOf(leftMin,perDayMin,today){
+  if(!(leftMin>0))return {days:0,date:today};
+  const days=Math.max(1,Math.round(leftMin/perDayMin));
+  return days>MAX_ETA_DAYS?{days,date:null}:{days,date:addDays(today,days)};
+}
+// stageOf 결과 + 최근 7일 분 → 진행 표시 수치. 새 기록·저장 0. 마지막 단계 이후에는 "다음"이 다음 금빛 별이다.
+export function progressOf(proj,recentMin,today){
+  const recent=Number.isFinite(recentMin)&&recentMin>0?recentMin:0,assumed=recent===0;
+  const perDayMin=assumed?ASSUMED_DAY_MIN:recent/RECENT_DAYS;
+  const finalMin=FINAL_STAGE.hours*60,toFinalMin=Math.max(0,finalMin-proj.minutes);
+  const toNextMin=proj.next?proj.toNextMin:proj.toNextStarMin;
+  return {no:proj.stage.no,total:STUDY_STAGES.length,stage:proj.stage,next:proj.next,toNextMin,intoMin:proj.intoMin,spanMin:proj.spanMin,
+    toFinalMin,percent:Math.min(100,Math.floor(proj.minutes/finalMin*100)),stars:proj.stars,
+    assumed,perDayMin,nextEta:etaOf(toNextMin,perDayMin,today),finalEta:etaOf(toFinalMin,perDayMin,today)};
+}
+
 export function todayEffectOf(todayMin){
   const minutes=Number.isFinite(todayMin)&&todayMin>0?Math.floor(todayMin):0;
   let index=0;
@@ -91,6 +125,15 @@ export function hmText(min){
   return h&&m?grouped(h)+'시간 '+m+'분':h?grouped(h)+'시간':m+'분';
 }
 export const clockText=min=>Math.floor(min/60)+':'+String(min%60).padStart(2,'0');
+// 남은 시간은 올려서 시간 단위로(1분 남아도 "1시간"), 하루 평균은 소수 한 자리 시간(1시간 미만이면 분).
+export const hoursLeftText=min=>grouped(Math.ceil(min/60))+'시간';
+export function perDayText(min){
+  if(min<60)return hmText(Math.max(1,Math.round(min)));
+  const h=Math.round(min/6)/10;
+  return (Number.isInteger(h)?String(h):h.toFixed(1))+'시간';
+}
+// 날짜 글자: 올해면 "11/19", 아니면 "2028-03-24".
+export const shortDate=(date,today)=>date.slice(0,4)===String(today).slice(0,4)?Number(date.slice(5,7))+'/'+Number(date.slice(8,10)):date;
 
 // 화면이 떠 있는 동안 run을 주기적으로 부른다. 탭이 숨어 있으면 건너뛰고, 다시 보일 때 바로 부른다. node가 화면에서 빠지면 스스로 멈춘다.
 export function liveTick(node,doc,run,everyMs=30000){

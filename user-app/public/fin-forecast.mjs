@@ -3,7 +3,7 @@
 // 가게 이름·규칙 이름은 예측 결과와 경고 문구에 넣지 않는다(개수와 합계만). 무엇을 해야 하는지 정하는 문장을 만들지 않는다.
 import {formatWon} from './fin-ledger.mjs';
 import {roundDiv} from './fin-charts.mjs';
-import {recurringKey,ruleStatus,dueDay,lineKind,wonOf} from './fin-recurring.mjs';
+import {recurringKey,ruleStatus,dueDay,lineKind,wonOf,canSetAmount} from './fin-recurring.mjs';
 import {latestByAssistant,reportNodes,reportResultText} from './ai-gate.mjs';
 
 const pad=n=>String(n).padStart(2,'0');
@@ -79,6 +79,7 @@ export function fixedDue(lastDate,month,days){
 // state: PLANNED(기록 없음, 예정일이 오늘 이후·오늘이거나 모름) / OVERDUE(기록 없음, 예정일 지남) / PAID(이번 달 결제 있음) / DIFFERENT(이번 달 금액 다름).
 // due = 예정일(PLANNED·OVERDUE, 모르면 null). paidDate = 이번 달 마지막 결제일(PAID·DIFFERENT). provisional = 규칙 금액(잠정). actual = 이번 달 이 규칙에 배정된 결제의 합(PAID·DIFFERENT만, 아래 R32 배정 규칙). 실제가 들어오면 잠정은 더하지 않는다(이중 계산 0).
 // changed = 실제 ≠ 잠정이면 {from,to}. suggest = "다음 달 잠정도 이 금액으로" 1탭에 쓸 금액(원 단위 문자열): PAID는 결제가 1건일 때 그 금액, DIFFERENT는 B48C 가격 변경 규칙(지난 결제 있음, 절반~두 배)대로 마지막 금액 다름 결제의 금액. 없으면 null.
+// blocked = suggest 금액이 같은 가맹점 형제 규칙과 금액대가 겹쳐 setRuleAmount가 받지 않으면 true(R33B, 화면은 1탭 대신 이유). 아니면 false.
 // R32 (HUNT31 D3·D4): 이번 달 결제 줄 하나는 규칙 하나에만 배정한다(두 번 더하지 않음). 판정은 ruleStatus와 같은 lineKind:
 //  1) 자기 금액대의 구독 결제('PAID': 정확히 같은 금액, 또는 금액대 안 + 예정일 ±3일)인 규칙이 있으면 그중 하나(규칙 금액이 가장 가까운 것, 같으면 목록 앞).
 //  2) 없으면 "금액 다름"('OTHER')으로 보는 규칙 중 이번 달 상태가 금액 다름인 규칙 하나(같은 기준으로 고른다).
@@ -95,7 +96,7 @@ export function fixedSchedule(rules,lines,today,days){
   const list=Array.isArray(rules)?rules:[],active=list.filter(r=>!r.hidden),info=new Map(),byMerchant=new Map();
   for(const r of active){
     const mine=byKey.get(r.match.merchant)??[];
-    info.set(r.id,{st:ruleStatus(r,mine,today,list),due:dueDay(r,mine,month),amount:BigInt(r.match.amount),got:[]});
+    info.set(r.id,{st:ruleStatus(r,mine,today,list),due:dueDay(r,mine,month,list),amount:BigInt(r.match.amount),got:[]});
     if(!byMerchant.has(r.match.merchant))byMerchant.set(r.match.merchant,[]);
     byMerchant.get(r.match.merchant).push(r);
   }
@@ -114,16 +115,19 @@ export function fixedSchedule(rules,lines,today,days){
   }
   const out=[];
   for(const r of active){
-    const {st,amount,got}=info.get(r.id),base={rule:r,id:r.id,name:r.name,provisional:amount,actual:null,count:0,paidDate:null,changed:null,suggest:null};
+    const {st,amount,got,due:dueD}=info.get(r.id),base={rule:r,id:r.id,name:r.name,provisional:amount,actual:null,count:0,paidDate:null,changed:null,suggest:null,blocked:false};
     if(st.state==='PENDING'||!got.length){
-      const due=fixedDue(st.lastDate,month,days);
+      // R33B (HUNT32 D5): 금액대 안 구독 결제가 없으면(결제 전에 잠정 금액을 바꿈) 평소 결제일(dueDay, 대체 기준 포함)로 예정일을 정한다.
+      const due=fixedDue(st.lastDate,month,days)??(dueD===null?null:month+'-'+pad(Math.min(dueD,days)));
       out.push({...base,state:due!==null&&due<today?'OVERDUE':'PLANNED',due});
       continue;
     }
     let actual=0n,paidDate=null,last=null;
     for(const x of got){actual+=x.amount;last=x.amount;if(paidDate===null||x.date>paidDate)paidDate=x.date;}
-    const suggest=st.state==='DIFFERENT'?(st.lastDate!==null&&!(last*2n<amount||last>amount*2n)?last.toString():null):got.length===1&&last!==amount?last.toString():null;
-    out.push({...base,state:st.state,due:null,actual,count:got.length,paidDate,changed:actual!==amount?{from:amount,to:actual}:null,suggest:suggest===amount.toString()?null:suggest});
+    const raw=st.state==='DIFFERENT'?(st.lastDate!==null&&!(last*2n<amount||last>amount*2n)?last.toString():null):got.length===1&&last!==amount?last.toString():null;
+    // R33B (HUNT32 D3): setRuleAmount가 받지 않을 금액(형제 규칙과 금액대가 겹침)이면 blocked=true(화면은 1탭 대신 이유를 보인다).
+    const suggest=raw===amount.toString()?null:raw;
+    out.push({...base,state:st.state,due:null,actual,count:got.length,paidDate,changed:actual!==amount?{from:amount,to:actual}:null,suggest,blocked:suggest!==null&&!canSetAmount(list,r.id,suggest)});
   }
   return out;
 }

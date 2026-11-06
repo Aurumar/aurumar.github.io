@@ -90,6 +90,8 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
   const running=new Set(),okGen=new Map(),calls=new Set(),wrote=new Map();
   // B16: owners = 입력 토큰 → 그 실행(owned 콜백만). accepted = 날짜(pfx)별로 받아들여진 저장·삭제 중 가장 새 세대(토큰·직접 호출만 센다).
   const owners=new WeakMap(),accepted=new Map();
+  // R33B (HUNT32 D1): 레코드(id)별 마지막 쓰기 실패 코드. 상자 전체 failure와 달리 그 레코드의 쓰기가 성공하면 지운다(statusFor().own).
+  const recFail=new Map();
   let loaded=null,ready=false,keyCache=null,otherRows=0,failure=null,chain=Promise.resolve(),ver=0,inputGen=0,doneSeq=0;
   // S1c: lock() 뒤 새로 시작하는 list·count·save·discard·commit·flush는 디스크를 읽거나 쓰지 않는다(복호 사본·키 캐시를 다시 만들지 않음).
   // lock() 전에 시작한 호출(ops)은 끝까지 가고, lock은 그것들이 끝난 뒤 메모리 사본을 버린다. 다시 unlocked()가 참이 되면 풀린다.
@@ -254,7 +256,7 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
   }
   async function persistNow(){
     let first=null;const errs=new Map();
-    for(const e of [...mem.values()].filter(x=>x.dirty&&!x.stale)){try{await persistOne(e);}catch(err){first??=err;errs.set(e.id,err);}}
+    for(const e of [...mem.values()].filter(x=>x.dirty&&!x.stale)){try{await persistOne(e);recFail.delete(e.id);}catch(err){first??=err;errs.set(e.id,err);recFail.set(e.id,failCode(err));}}
     if(!first&&[...mem.values()].some(x=>x.stale))first=fail('STALE_DRAFT');   // 아직 저장 못 한 STALE 입력이 있으면 실패 표시 유지
     failure=first?{code:failCode(first)}:null;
     return errs;
@@ -487,7 +489,10 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
     const e=mem.get(scopeId+'|'+kind+'|'+date),has=Boolean(e&&!e.deleted);
     const typing=[...deferred.keys()].some(k=>k.startsWith(kind+'|'+date+'|'));
     const failed=failure?.code??inputFor(kind,date);
-    return {typing,has,saved:has&&!e.dirty&&!failed,dirty:has&&e.dirty,failed,updatedAt:has?e.updatedAt:null,
+    // R33B (HUNT32 D1·S1·S2): own = 이 칸(kind·date) 자체의 실패만. 거부된 입력이거나, 이 레코드가 아직 디스크에 없는데(dirty) 마지막 쓰기가 실패했거나 STALE이면.
+    // failed는 예전 그대로 상자 전체 값(다른 날짜·종류 초안의 STALE·Quota 포함)이다. "이 레코드가 디스크에 써졌는가"는 has&&!dirty로 본다.
+    const own=inputFor(kind,date)??(has&&e.dirty?recFail.get(e.id)??(e.stale?'STALE_DRAFT':null):null);
+    return {typing,has,saved:has&&!e.dirty&&!failed,dirty:has&&e.dirty,failed,own,updatedAt:has?e.updatedAt:null,
       old:has&&Date.parse(now())-Date.parse(e.updatedAt)>OLD_DRAFT_DAYS*86400000};
   }
   return {

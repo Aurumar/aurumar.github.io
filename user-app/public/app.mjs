@@ -1,7 +1,7 @@
 import {PC_ENTITY_REQUEST_LIMIT,buildBudget,monthSpan,finErrorText,finError,formatWon,formatCompact,shiftMonth,shownMerchant,isSensitive,buildAccount,buildTxn,buildRule,monthLines,duplicateGroups,ledgerCsv,rulePreview,checkImportPlan,opBudget,opBudgetNotice,opsAfter,localBudget,capacityNotice,compactionText,holdGuidance,importPermission,finFingerprintInput,housekeepingText} from './fin-ledger.mjs';
 import {PERIODS as PLAN_PERIODS,detectRecurring,recurringGridLayout,costSplit,budgetStatus,budgetFor,budgetBarsLayout,lifeTimeline,timelineLayout,vaultPlan,vaultBudget,vaultFixedItems,vaultBricks,vaultBrickLayout,vaultCashFromSnapshot,vaultOverdraftFromSnapshot,vaultCardUnpaidFromSnapshot,liveNetCash,quickPicks,monthInsight} from './fin-plan.mjs';
 import {prepare,PERIODS,periodRange,aggregate,roundDiv,dataMonths,overview,monthlySeries,barLayout,sankeyData,sankeyLayout,treemapItems,squarify,dailyTotals,heatmapMonths,completeness,todaySpendLine,buildTodayGlance} from './fin-charts.mjs';
-import {RECURRING_ID,RECURRING_TEXT,findCandidates,addRule as addRecurringRule,setRuleHidden as setRecurringHidden,ruleStatus as recurringStatus,monthlyTotal as recurringMonthly,matchDraft as recurringMatchDraft,recurringKey,setRuleAmount as setRecurringAmount,priceChange as recurringPriceChange,ledgerMatch as recurringLedgerMatch,createHiddenBox as createRecurringHiddenBox} from './fin-recurring.mjs';
+import {RECURRING_ID,RECURRING_TEXT,findCandidates,addRule as addRecurringRule,setRuleHidden as setRecurringHidden,ruleStatus as recurringStatus,monthlyTotal as recurringMonthly,matchDraft as recurringMatchDraft,recurringKey,setRuleAmount as setRecurringAmount,canSetAmount as canSetRecurringAmount,priceChange as recurringPriceChange,ledgerMatch as recurringLedgerMatch,createHiddenBox as createRecurringHiddenBox} from './fin-recurring.mjs';
 import {meltNode,monthForecast,forecastNode,renderBudgetReport,fixedSchedule,fixedPlan} from './fin-forecast.mjs';
 const mdBackend=globalThis.LIFE_BRICK_MD_BACKEND??null;
 if(mdBackend&&mdBackend.format!=='LB_MD_UI_BACKEND_1')throw new Error('MD_BACKEND_PROFILE');
@@ -356,6 +356,11 @@ import('./state-export.mjs').then(m=>{stateExportMod=m;if(!$('workspace').hidden
 let aiGateMod=null;
 const aiReports=body=>api('/api/assistant-reports',body);
 import('./ai-gate.mjs').then(m=>{aiGateMod=m;if(!$('workspace').hidden&&view==='MORE')void render();}).catch(()=>{aiGateMod=null;});
+// ---- 지식 파인더 결과 링크(B63): finder 보고의 "찾은 자료" 표만 단추로. 여는 것은 host 경로 하나(웹은 확인창 뒤 기본 브라우저, 내 PC는 폴더에서 보기만, 앱은 화면 이동). 다시 묻지 않기 목록은 이 기기 설정.
+let finderMod=null;
+const openLink=body=>api('/api/open-link',body);
+import('./finder-links.mjs').then(m=>{finderMod=m;if(!$('workspace').hidden&&(view==='MORE'||view==='SETTINGS'))void render();}).catch(()=>{finderMod=null;});
+const finderDecorate=()=>finderMod&&uiKit?(r,text)=>finderMod.decorateFinder(r,text,{h:{el,add,button},kit:uiKit,surface:mdSurface,open:openLink,navigate,storage:globalThis.localStorage}):undefined;
 // ---- 다음 주 제안(B61): 계획 탭의 카드 하나. 기본 진단은 어디서나, 공부 진단 보고는 PC 앱에서만 읽는다. 담기는 메모리 초안이고(잠금 로그아웃이면 버린다) 기록은 계획 시트의 "저장"뿐이다.
 let suggestMod=null,suggestSt=null;
 import('./study-suggest.mjs').then(m=>{suggestMod=m;if(!$('workspace').hidden&&view==='PLANS')void render();}).catch(()=>{suggestMod=null;});
@@ -367,6 +372,13 @@ import('./ics-export.mjs').then(m=>{icsExportMod=m;if(!$('workspace').hidden&&vi
 // ---- PC 앱 Windows 알림(B57): PC 앱(APP_SHELL)이 켜져 있고 잠금이 풀려 있을 때만 1분마다 시각을 본다. 판단이 필요할 때만 투영을 한 번 읽고(화면 상태는 바꾸지 않음) host에 종류와 건수만 보낸다. 기록·연산 0. 다른 표면에서는 첫 틱에 타이머까지 멈춘다.
 let pcToastMod=null,pcToastRun=null;
 import('./pc-toast.mjs').then(m=>{pcToastMod=m;pcToastRun=m.createToastRunner({surface:()=>mdSurface,ready:()=>mdUnlocked,read:()=>api('/api/whole-life'),send:body=>api('/api/pc-toast',body),storage:globalThis.localStorage});pcToastRun.start();if(!$('workspace').hidden&&view==='SETTINGS')void render();}).catch(()=>{pcToastMod=null;pcToastRun=null;});
+// ---- PC 집중 측정(B6): PC 앱(APP_SHELL)에서만 불러오고, 설정 스위치(기본 끔)를 켰을 때만 오늘 화면에 카드가 보인다. host가 ActivityWatch(127.0.0.1:5600)를 GET으로만 읽어 숫자·시각 구간만 돌려준다.
+// 측정값은 어디에도 자동으로 더하지 않는다. "확인하고 담기"를 누를 때만 타이머·기록과 겹치지 않는 구간이 오늘 공부 초안의 세션이 된다(연산 0, "오늘 쌓기"에 합쳐짐).
+let focusMod=null,focusSt=null,focusLoading=false;
+const focusLoad=()=>{if(focusMod||focusLoading||mdSurface!=='APP_SHELL')return;focusLoading=true;import('./focus-card.mjs').then(m=>{focusMod=m;focusSt=m.createFocusState();if(!$('workspace').hidden&&['HOME','STATUS','SETTINGS'].includes(view))void render();}).catch(()=>{focusMod=null;focusLoading=false;});};
+const focusOn=()=>{focusLoad();return focusMod!==null&&uiKit!==null&&mdSurface==='APP_SHELL'&&mdUnlocked&&focusMod.focusEnabled(globalThis.localStorage);};
+const focusCard=args=>focusOn()?focusMod.renderFocusCard({...args,document,kit:uiKit,state:focusSt,request:body=>api('/api/focus-today',body),storage:globalThis.localStorage,now:()=>new Date().toISOString(),uid}):null;
+const focusExtraMin=()=>focusOn()?focusMod.claimableMin(focusSt,{card:lifeSt?.studyCard?.card??null,timer:lifeSt?.timer??null,nowIso:new Date().toISOString()}):0;
 // ---- 카드 초안 상자(B3c): 초안 저널이 없는 표면(브라우저)에서 건강·공부 카드 초안을 이 기기 IndexedDB에 암호문으로 둔다. scope=선택된 프로필의 accountId·vaultId.
 // 상자를 쓸지는 hlt-ui·study-ui의 포트가 정한다(PC 저널이 있으면 부르지도 않음). FIN 쓰기 경로와는 관계없다.
 let cardDraftMod=null,cardBox=null,cardBoxOff=null,mdScope=null;
@@ -382,7 +394,7 @@ globalThis.addEventListener?.('lb:card-drafts-changed',e=>showCardDrafts(documen
 // B16 (K1-02): refreshCore와 같은 세대 검사. 읽는 도중 로그아웃 잠금이 끼었으면(그 뒤 재로그인 포함) 읽은 값을 today·whole·changes에 넣지 않고
 // MD_SIGNED_OUT_ELSEWHERE로 끝낸다(남은 읽기도 하지 않음, 부른 확정·저장 흐름이 옛 값으로 계속하지 않게). 모든 읽기가 끝난 뒤에만 한꺼번에 넣는다.
 async function hltReload(){const lockSeq=mdSignedOutSeq,gone=()=>lockSeq!==mdSignedOutSeq||mdSignedOut;const [nextToday,nextWhole]=await Promise.all([api('/api/today'),api('/api/whole-life')]);if(gone())throw appError('MD_SIGNED_OUT_ELSEWHERE');const nextChanges=(await api('/api/history')).changes;if(gone())throw appError('MD_SIGNED_OUT_ELSEWHERE');today=nextToday;whole=nextWhole;changes=nextChanges;}
-const lifeCtx=()=>({...hltCtx(),storage:globalThis.localStorage,kit:uiKit,study:()=>studyOn()?{ui:studyUi,st:studySt,ctx:hltCtx}:null,exportAfterStack:(st,status)=>stateExportMod?stateExportMod.exportAfterStack({surface:mdSurface,views:stateViews,now:()=>new Date().toISOString(),storage:globalThis.localStorage,send:stateSend},st,status):Promise.resolve({status:'SKIPPED',reason:'MODULE'})});
+const lifeCtx=()=>({...hltCtx(),storage:globalThis.localStorage,kit:uiKit,study:()=>studyOn()?{ui:studyUi,st:studySt,ctx:hltCtx}:null,exportAfterStack:(st,status)=>stateExportMod?stateExportMod.exportAfterStack({surface:mdSurface,views:stateViews,now:()=>new Date().toISOString(),storage:globalThis.localStorage,send:stateSend},st,status):Promise.resolve({status:'SKIPPED',reason:'MODULE'}),focusCard});
 const hltCtx=()=>({document,api,uid,digest:sha,now:()=>new Date().toISOString(),session:()=>mdSignedOutSeq,mdProfile:()=>mdProfile,getWhole:()=>whole,getChanges:()=>changes,
   syncForWrite:async()=>{if(mdProfile&&!mdReady){await mdAutoWrite();if(!mdReady)throw appError(autoWriteFail||'MD_NOT_WRITE_READY');}await hltReload();},
   hasPending:()=>Boolean(mdProduct?.pendingStatus),reconcile:async()=>{await api('/api/md/reconcile',{});await hltReload();},
@@ -650,7 +662,7 @@ function actionCard(a,{home=false}={}){
  add(box,group,edit,amount,add(el('div',null,'save-row'),save,saved));show();return box;
 }
 function renderToday(root){const state=saveState();if(state.tone!=='ok'||problem)add(root,saveStateCard(state));add(root,writeModeNote());if(lifeUi&&lifeSt)lifeUi.renderPastDays(root,lifeCtx(),lifeSt);const grid=el('div',null,'actions-grid');for(const a of today.actions)add(grid,actionCard(a));if(!today.actions.length)add(grid,empty('활성 행동이 없습니다. 설정에서 추가하거나 활성화하세요.'));add(root,grid,hint('화면을 여는 것만으로는 기록되지 않습니다. 기록하지 않은 행동은 "하지 못함"으로 세지 않습니다. 저장하지 않은 입력은 화면을 옮겨도 남고, "저장 후 종료" 때 함께 저장됩니다.'));}
-function renderMore(root,gone=()=>false){const s=saveState();if(s.tone==='alert')add(root,saveStateCard(s));const list=el('div',null,'more-list');for(const [key,title,detail] of [['SETTINGS'],['DEVICES','연결 · 장치 · 복구'],['DEVICES','백업 · 복구','저장 위치 · 백업 · 분실 복구는 연결 · 장치 안에 있습니다'],['ADVANCED']]){const [,label,sub,icon]=NAV.find(n=>n[0]===key),b=el('button',null,'more-item'),mark=el('span',icon,'nav-symbol');b.type='button';b.dataset.navOnly='1';b.dataset.view=key;mark.setAttribute('aria-hidden','true');add(b,mark,add(el('span',null,'more-text'),el('strong',title||label),el('small',detail||sub)));b.addEventListener('click',()=>navigate(key));add(list,b);}add(root,list);if(aiGateMod)aiGateMod.renderAssistants(root,{h:{el,add,button},surface:mdSurface,request:aiReports,gone});}
+function renderMore(root,gone=()=>false){const s=saveState();if(s.tone==='alert')add(root,saveStateCard(s));const list=el('div',null,'more-list');for(const [key,title,detail] of [['SETTINGS'],['DEVICES','연결 · 장치 · 복구'],['DEVICES','백업 · 복구','저장 위치 · 백업 · 분실 복구는 연결 · 장치 안에 있습니다'],['ADVANCED']]){const [,label,sub,icon]=NAV.find(n=>n[0]===key),b=el('button',null,'more-item'),mark=el('span',icon,'nav-symbol');b.type='button';b.dataset.navOnly='1';b.dataset.view=key;mark.setAttribute('aria-hidden','true');add(b,mark,add(el('span',null,'more-text'),el('strong',title||label),el('small',detail||sub)));b.addEventListener('click',()=>navigate(key));add(list,b);}add(root,list);if(aiGateMod)aiGateMod.renderAssistants(root,{h:{el,add,button},surface:mdSurface,request:aiReports,gone,decorate:finderDecorate()});}
 // B40 더보기 > 고급: 남은 저장 용량 한 줄과 기록 권한 버튼들. 버튼은 #md-controls 패널 안에 그대로 있고(잠금·입력 추적 규칙 동일), data-pane으로 이 화면에서는 고급 묶음만, 연결 · 장치에서는 그 밖의 것만 보인다.
 function renderAdvanced(root){add(root,add(section('남은 저장 용량','평소에는 신경 쓰지 않아도 됩니다.'),opsNotice(finOps(),{always:true})));if(mdProfile&&mdPanel){mdHost.hidden=true;mdPanel.dataset.pane='ADVANCED';add(root,mdPanel);}}
 function renderDevices(root){add(root,saveStateCard());if(mdProfile){if(mdPanel){mdHost.hidden=true;mdPanel.dataset.pane='DEVICES';add(root,mdPanel);}renderMDSettings(root,whole.settings);return;}renderLegacyStorage(root);}
@@ -1153,8 +1165,9 @@ function renderFinRecurring(root,fin){
  const list=section('정기 결제 '+shown.length+'개','매달 나가는 돈을 한눈에 봅니다. 이번 달 결제 확인은 같은 가게에서 규칙 금액과 같거나, 평소 결제일 ±3일 안에 규칙 금액 근처(허용 오차 안)로 낸 지출이 있는지 봅니다. 거래 내역의 가게 이름은 이 화면에만 보이고 내보내기에는 넣지 않습니다.');
  const ruleRow=r=>{
   const s=stat.get(r.id),cls=s.state==='PAID'?'src-txn':s.state==='DIFFERENT'?'unknown':'dup',moved=r.hidden||s.state!=='DIFFERENT'?null:recurringPriceChange(r,prep.lines,today,rules);
-  const n=row(r.name,formatWon(r.match.amount)+' · 매달 · 허용 ±'+r.match.tolerancePct+'% · 마지막 결제일 '+(s.lastDate??'없음')+(s.state==='DIFFERENT'?' · 이번 달 낸 금액 '+formatWon(s.otherAmount):'')+(moved?' · '+RECURRING_TEXT.priceChanged:''),
-   add(el('div',null,'buttons'),moved?button(RECURRING_TEXT.priceApply,()=>save(()=>setRecurringAmount(fin.recurring.data,r.id,moved.amount),'정기 결제 금액 변경','"'+r.name+'" 금액을 '+formatWon(moved.amount)+'으로 바꿨습니다.'),'primary'):null,button(r.hidden?'다시 보이기':'목록에서 숨기기',()=>save(()=>setRecurringHidden(fin.recurring.data,r.id,!r.hidden),r.hidden?'정기 결제 다시 보임':'정기 결제 숨김','"'+r.name+'" '+(r.hidden?'다시 보입니다.':'숨겼습니다.')))));
+  const stuck=moved&&!canSetRecurringAmount(rules,r.id,moved.amount);   // R33B (HUNT32 D3): 형제 규칙과 금액대가 겹쳐 저장할 수 없으면 버튼 대신 이유
+  const n=row(r.name,formatWon(r.match.amount)+' · 매달 · 허용 ±'+r.match.tolerancePct+'% · 마지막 결제일 '+(s.lastDate??'없음')+(s.state==='DIFFERENT'?' · 이번 달 낸 금액 '+formatWon(s.otherAmount):'')+(moved?' · '+(stuck?RECURRING_TEXT.overlapAmount:RECURRING_TEXT.priceChanged):''),
+   add(el('div',null,'buttons'),moved&&!stuck?button(RECURRING_TEXT.priceApply,()=>save(()=>setRecurringAmount(fin.recurring.data,r.id,moved.amount),'정기 결제 금액 변경','"'+r.name+'" 금액을 '+formatWon(moved.amount)+'으로 바꿨습니다.'),'primary'):null,button(r.hidden?'다시 보이기':'목록에서 숨기기',()=>save(()=>setRecurringHidden(fin.recurring.data,r.id,!r.hidden),r.hidden?'정기 결제 다시 보임':'정기 결제 숨김','"'+r.name+'" '+(r.hidden?'다시 보입니다.':'숨겼습니다.')))));
   if(!r.hidden)n.querySelector('.row-main strong').after(el('span',RECURRING_TEXT[s.state],'tag '+cls));
   return n;
  };
@@ -1165,9 +1178,9 @@ function renderFinRecurring(root,fin){
  if(recurringHiddenBox.failed())add(pick,hint(RECURRING_TEXT.hideFailed));
  for(const c of cands){
   const sens=prep.lines.some(l=>recurringKey(l.merchant)===c.merchantKey&&isSensitive(l)),name=sens?'가려진 가맹점':String(c.merchant).trim().slice(0,60),display=sens&&finMask?'가려진 가맹점':name;
-  add(pick,row(display,'월 약 '+formatWon(c.amount)+' · 최근 12개월 중 '+c.months+'달에 '+c.count+'번 · 마지막 '+c.lastDate,
+  add(pick,row(display,'월 약 '+formatWon(c.amount)+' · 최근 12개월 중 '+c.months+'달에 '+c.count+'번 · 마지막 '+c.lastDate+(c.overlap?' · '+RECURRING_TEXT.overlapCandidate:''),
    add(el('div',null,'buttons'),
-    button('정기로 등록',()=>save(()=>addRecurringRule(fin.recurring?.data??null,{name,merchant:c.merchant,amount:c.amount},{id:entityId(),now:new Date().toISOString()}),'정기 결제 등록','"'+display+'"을(를) 정기 결제로 등록했습니다.'),'primary'),
+    c.overlap?null:button('정기로 등록',()=>save(()=>addRecurringRule(fin.recurring?.data??null,{name,merchant:c.merchant,amount:c.amount},{id:entityId(),now:new Date().toISOString()}),'정기 결제 등록','"'+display+'"을(를) 정기 결제로 등록했습니다.'),'primary'),
     button('아님',()=>void perform(async()=>{hideRecurringCandidate(globalThis.localStorage,c.key);await recurringHiddenBox.settled();const kept=loadRecurringHidden(globalThis.localStorage).has(c.key);await render();if(kept)status('이 기기에서 "'+display+'" 후보를 숨겼습니다.');else status('이 기기에 숨김을 저장하지 못했습니다 · 저장 공간을 확인한 뒤 다시 눌러 주세요.',true);}),'secondary'))));
  }
  if(!cands.length)add(pick,empty(RECURRING_TEXT.noCandidates));
@@ -1203,8 +1216,8 @@ function renderFixedSchedule(root,fin,{pendingOnly=false}={}){
   add(p,n);
  }
  if(!pendingOnly)for(const it of done){
-  const n=row(it.name,(it.changed?'잠정 '+formatWon(it.changed.from)+' → 실제 '+formatWon(it.changed.to):'실제 '+formatWon(it.actual))+' · '+it.paidDate,
-   it.suggest?add(el('div',null,'buttons'),button('다음 달 잠정도 '+formatWon(it.suggest)+'으로',()=>saveRuleAmount(fin,it.id,it.suggest,'"'+it.name+'" 잠정 금액을 '+formatWon(it.suggest)+'으로 바꿨습니다.'),'primary')):null);
+  const n=row(it.name,(it.changed?'잠정 '+formatWon(it.changed.from)+' → 실제 '+formatWon(it.changed.to):'실제 '+formatWon(it.actual))+' · '+it.paidDate+(it.blocked?' · '+RECURRING_TEXT.overlapAmount:''),
+   it.suggest&&!it.blocked?add(el('div',null,'buttons'),button('다음 달 잠정도 '+formatWon(it.suggest)+'으로',()=>saveRuleAmount(fin,it.id,it.suggest,'"'+it.name+'" 잠정 금액을 '+formatWon(it.suggest)+'으로 바꿨습니다.'),'primary')):null);
   n.querySelector('.row-main strong').after(el('span',FIXED_STATE_TEXT[it.state],'tag '+(it.state==='PAID'?'src-txn':'unknown')));
   add(p,n);
  }
@@ -1703,7 +1716,7 @@ function runFinImport(){
 }
 // B42: 탑 탭. 성취 탑을 맨 위에 그리고, 예전 진행 패널은 접어 둔다(탑 모듈이 없을 때는 그대로 보인다).
 const openProgress=mode=>{if(towerSt)(towerSt.universe??={mode:'tower'}).mode=mode;navigate('PROGRESS');};
-function renderStatus(root){if(!statusView){add(root,hint('상태 화면을 불러오지 못했습니다. 앱을 다시 열어 주세요.'));return;}statusView.renderStatusView(root,{...lifeCtx(),draftCard:lifeSt?.studyCard?.card??null,timer:lifeSt?.timer??null,openStudy:()=>navigate('TODAY'),openTower:()=>openProgress('tower'),openUniverse:()=>openProgress('universe')});}
+function renderStatus(root){if(!statusView){add(root,hint('상태 화면을 불러오지 못했습니다. 앱을 다시 열어 주세요.'));return;}statusView.renderStatusView(root,{...lifeCtx(),draftCard:lifeSt?.studyCard?.card??null,timer:lifeSt?.timer??null,focusExtraMin:focusExtraMin(),openStudy:()=>navigate('TODAY'),openTower:()=>openProgress('tower'),openUniverse:()=>openProgress('universe')});}
 function renderProgress(root){if(!lifeTower){renderProgressPanels(root);return;}const uni=universeView?universeView.createUniverse(root,{...lifeCtx(),sheet:towerSheet,openStudy:studyOn()?()=>navigate('STUDY'):null},towerSt):null;lifeTower.renderTower(root,{...lifeCtx(),sheet:towerSheet},towerSt);const old=add(el('details',null,'panel life-legacy'),el('summary','예전 진행 화면'));add(root,old);renderProgressPanels(old);uni?.sync([root.querySelector('#life-tower'),old]);}
 function renderProgressPanels(root){const p=whole.progress;
  const m=p.measurement,measured=section('실제로 한 양','확인된 원본의 현재 해석입니다. 시간으로 결과나 목표 완료를 추정하지 않습니다. 임시·미확정 저장은 제외됩니다.');
@@ -1746,6 +1759,8 @@ function renderFingerprint(root){
 function timingText(rec){return rec&&Object.keys(rec).length?Object.entries(rec).map(([k,v])=>k+' '+Math.round(v)+'ms').join(' · '):'아직 없음';}
 function renderSettings(root){if(hltUi)add(root,hltUi.renderHealthSwitch({...hltCtx(),storage:globalThis.localStorage,onSwitch:()=>{if(!hltOn()&&view==='HEALTH')view='HOME';void render();}}));if(studyUi)add(root,studyUi.renderStudySwitch({...hltCtx(),storage:globalThis.localStorage,onSwitch:()=>{if(!studyOn()&&view==='STUDY')view='HOME';void render();}}));if(nativeOn())nativeUi.renderNativeSettings(root,{h:{el,add,button},kit:{toggle:uiKit.toggle},br:nativeBr,exams:nativeLife.lifeDefs(whole.life).exams,stackedToday:nativeStacked,bedtime:nativeBedtime,status});if(stateExportMod&&uiKit)stateExportMod.renderStateExport(root,{h:{el,add,button},kit:uiKit,surface:mdSurface,views:stateViews,now:()=>new Date().toISOString(),storage:lifeCtx().storage,send:stateSend});if(statusView)add(root,statusView.renderLadderResetSlot(document));const info=section('앱 정보');add(info,row('앱 버전',whole.version));const ax=whole.runtimeContract,tech=add(el('details'),el('summary','업데이트 기술 정보'));if(ax)add(tech,el('p','STORE '+ax.storeFormatVersion+' · DOMAIN '+ax.domainSchemaVersion+' · SYNC '+ax.syncProtocolVersion,'path'));add(info,tech);
  if(pcToastMod&&uiKit)pcToastMod.renderToastSettings(root,{h:{el,add},kit:uiKit,surface:mdSurface,storage:globalThis.localStorage,issue:()=>pcToastRun?.issue()??null});
+ focusLoad();if(focusMod&&uiKit)focusMod.renderFocusSettings(root,{h:{el,add},kit:uiKit,surface:mdSurface,storage:globalThis.localStorage,onSwitch:()=>{void render();}});
+ if(finderMod)finderMod.renderFinderTrust(root,{h:{el,add,button},surface:mdSurface,storage:globalThis.localStorage});
  const t=whole.settings?.timings,saveRecs=t?.save??[],saveMerged=saveRecs.length?Object.assign({},...saveRecs.slice(-2)):null;
  const diag=add(el('details'),el('summary','진단 · 마지막 열기·저장 단계 시간(ms)'));
  add(diag,el('p','서버 열기(sync) · '+timingText(t?.open?.at(-1)),'path'),el('p','서버 저장(acquire+write) · '+timingText(saveMerged),'path'),
