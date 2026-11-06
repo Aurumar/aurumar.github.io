@@ -41,11 +41,11 @@ function placeholderFigure({s},art){
   if(art==='intense')svg.append(s('path',{class:'st-av-brow',d:'M91 107L111 108'}),s('path',{class:'st-av-brow',d:'M149 107L129 108'}));
   return svg;
 }
-// 등급 그림. 그림을 쓸 수 있으면 평평한 이름의 webp를 쓰고, 못 불러오면 자리표시로 바꾼다.
-function figureNode(h,no,art,useArt){
+// 등급 그림. 그림을 쓸 수 있으면 평평한 이름의 webp를 쓰고, 못 불러오면 자리표시로 바꾼 뒤 onFail(img,자리표시)로 알린다.
+function figureNode(h,no,art,useArt,onFail){
   if(!useArt)return placeholderFigure(h,art);
   const img=h.el('img',null,'st-fig st-fig-art');img.alt='';img.setAttribute('src',artFile(no,art));
-  img.addEventListener('error',()=>{img.replaceWith?.(placeholderFigure(h,art));});
+  img.addEventListener('error',()=>{const ph=placeholderFigure(h,art);img.replaceWith?.(ph);onFail?.(img,ph);});
   return img;
 }
 const viewOf=useArt=>'0 0 240 '+(useArt?351:300);
@@ -122,8 +122,17 @@ export function renderStatusView(root,ctx){
   add(out,add(el('div',null,'st-head'),el('span','나의 상태','eyebrow'),el('span','누적 '+(proj.minutes>=60?hoursText(proj.minutes):hmText(proj.minutes)),'muted small st-total')));
 
   // 1) 아바타: 뒤 효과(오라) · 등급 그림 · 앞 효과(입자) + 등급·오늘 효과 배지
-  let today=read(nowIso),art=today.fx.art,figure=figureNode(h,proj.stage.no,art,useArt);
-  const stage=add(el('div',null,fxClass(today.fx.level,useArt)),fxBack(h,useArt),figure,fxFront(h,useArt));
+  // FIX31 (D7): 그림을 한 번 못 불러오면 이 화면은 자리표시로 바꾼다: 붙들고 있는 figure, 무대 클래스, 효과 viewBox까지. 그 뒤 단계가 바뀌어도 자리표시로 그린다.
+  let today=read(nowIso),art=today.fx.art,artOn=useArt,figure,back=fxBack(h,useArt),front=fxFront(h,useArt),stage=null;
+  const artFailed=(img,ph)=>{
+    if(figure!==img)return;   // 이미 바뀐 옛 그림의 늦은 오류
+    figure=ph;if(!artOn)return;
+    artOn=false;stage.className=fxClass(today.fx.level,false);
+    const b=fxBack(h,false),f=fxFront(h,false);back.replaceWith?.(b);front.replaceWith?.(f);back=b;front=f;
+  };
+  const figureOf=a=>figureNode(h,proj.stage.no,a,artOn,artFailed);
+  figure=figureOf(art);
+  stage=add(el('div',null,fxClass(today.fx.level,useArt)),back,figure,front);
   const badgeToday=el('span',todayBadge(today.fx),'st-badge st-badge-today');
   const avatar=add(el('section',null,'panel st-avatar'),stage,el('span',proj.stage.name,'st-badge st-badge-stage'),badgeToday,useArt?null:el('p','자리표시 그림입니다 · 등급 그림은 준비 중이에요','muted small st-art-note'));
 
@@ -147,8 +156,8 @@ export function renderStatusView(root,ctx){
     today=next;
     ringSlot.replaceChildren(todayRing(h,today.minutes));
     todayLine.textContent='오늘 '+hmText(today.minutes);nextLine.textContent=nextEffectText(today.fx);badgeToday.textContent=todayBadge(today.fx);
-    stage.className=fxClass(today.fx.level,useArt);
-    if(today.fx.art!==art){art=today.fx.art;const fresh=figureNode(h,proj.stage.no,art,useArt);figure.replaceWith?.(fresh);figure=fresh;}
+    stage.className=fxClass(today.fx.level,artOn);
+    if(today.fx.art!==art){art=today.fx.art;const fresh=figureOf(art);figure.replaceWith?.(fresh);figure=fresh;}
   };
   const stop=liveTick(out,doc,paint);
   root.append(out);

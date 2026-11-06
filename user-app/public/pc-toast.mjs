@@ -12,6 +12,7 @@ export const TOAST_AT=Object.freeze({PAY:9*60,EXAM:9*60,LIFE:22*60});   // 그�
 export const EXAM_MARKS=Object.freeze([30,7,1]);
 export const BILLING_SAMPLE=6;                                          // 결제 기준일은 최근 결제 6건으로 정한다(fin-plan detectRecurring의 dates.slice(-6)과 같다)
 export const EXAM_NAME_MAX=20;                                          // life-model MAX_NAME과 같다(시험이 대조)
+export const PAY_MAX=60;                                                // pc-toast-writer.mjs PAY_MAX와 같다(시험이 대조)
 export const TICK_MS=60000,READ_RETRY_MS=5*60000,SEND_RETRY_MS=30*60000,SEND_MAX_TRIES=3;
 export const SETTINGS_KEY='lb.pctoast.settings.v1',FIRED_KEY='lb.pctoast.fired.v1';
 export const TOAST_LABELS=Object.freeze({PAY:'결제일 · 정기 결제 예정일 하루 전 09:00',EXAM:'시험 · D-30, D-7, D-1 09:00',LIFE:'쌓기 잊음 · 22:00까지 오늘 카드를 안 쌓았을 때'});
@@ -34,7 +35,7 @@ export function billingDay(dates){
   const days=[...new Set(dates)].sort().slice(-BILLING_SAMPLE).map(d=>Number(d.slice(8,10))).sort((a,b)=>a-b);
   return days.length?days[Math.floor(days.length/2)]:null;
 }
-function dueTomorrow(rule,lines,today,tomorrow){
+function dueTomorrow(rule,lines,today,tomorrow,allRules){
   const center=BigInt(rule.match.amount),pct=rule.match.tolerancePct,from=shiftMonth(today.slice(0,7),-(CANDIDATE_WINDOW_MONTHS-1)),dates=[];
   for(const l of lines){
     if(typeof l.date!=='string'||l.date>today||l.date.slice(0,7)<from)continue;
@@ -42,11 +43,12 @@ function dueTomorrow(rule,lines,today,tomorrow){
   }
   const day=billingDay(dates);
   if(day===null||tomorrow!==dueDateIn(tomorrow.slice(0,7),day))return false;
-  return ruleStatus(rule,lines,tomorrow).state==='PENDING';   // 그달에 이미 결제가 보이면(금액이 달라도) 알리지 않는다
+  return ruleStatus(rule,lines,tomorrow,allRules).state==='PENDING';   // 그달에 이미 결제가 보이면(금액이 달라도) 알리지 않는다. 같은 가맹점 형제 규칙의 결제는 빼고 본다(B48C, 정기 결제 화면과 같음)
 }
 // 내일 결제 예정인 규칙 수. 숨긴 규칙은 세지 않는다. 금액·이름은 돌려주지 않고 건수만.
+// FIX31 (D5): 형제 규칙 판정에는 화면(app.mjs renderFinRecurring)처럼 숨긴 규칙까지 전체 목록을 넘긴다.
 export function payDueCount(fin,today){
-  const rules=rulesOf(fin?.recurring?.data).filter(r=>r&&!r.hidden);
+  const all=rulesOf(fin?.recurring?.data).filter(Boolean),rules=all.filter(r=>!r.hidden);
   if(!rules.length||!Array.isArray(fin?.lines))return 0;
   const tomorrow=shiftDay(today,1),byKey=new Map(rules.map(r=>[r.match.merchant,[]]));
   for(const l of fin.lines){
@@ -54,7 +56,7 @@ export function payDueCount(fin,today){
     const group=byKey.get(recurringKey(l.merchant));if(group)group.push(l);
   }
   let count=0;
-  for(const r of rules){try{if(dueTomorrow(r,byKey.get(r.match.merchant),today,tomorrow))count++;}catch{/* 모양이 틀린 규칙 하나가 나머지를 막지 않는다 */}}
+  for(const r of rules){try{if(dueTomorrow(r,byKey.get(r.match.merchant),today,tomorrow,all))count++;}catch{/* 모양이 틀린 규칙 하나가 나머지를 막지 않는다 */}}
   return count;
 }
 
@@ -80,7 +82,8 @@ export const stackedToday=(life,today)=>life?.days?.some(d=>d.date===today)===tr
 
 // host로 보낼 값. 울릴 것이 없으면 null.
 export function toastFor(kind,{life,fin,today}){
-  if(kind==='PAY'){const count=payDueCount(fin,today);return count?{kind,count}:null;}
+  // FIX31 (D8): host(pc-toast-writer.mjs PAY_MAX)가 받는 건수는 60까지다. 넘으면 60과 "이상" 표지를 보내 "60건 이상"으로 띄운다.
+  if(kind==='PAY'){const count=payDueCount(fin,today);return !count?null:count>PAY_MAX?{kind,count:PAY_MAX,more:true}:{kind,count};}
   if(!life)return null;   // 투영을 못 읽었으면 알리지 않는다(잘못 울리는 것보다 안 울리는 쪽)
   if(kind==='EXAM'){const e=examDue(lifeDefs(life).exams,today);return e?{kind,name:e.name,days:e.days}:null;}
   if(kind==='LIFE')return stackedToday(life,today)?null:{kind};

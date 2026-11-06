@@ -22,10 +22,13 @@ export const ANALYSIS_TEXT=Object.freeze({
 // 분류 합계는 소비(지출 − 환불) 기준이다. aggregate의 분류 표에서 null 분류는 글자 'null' 키로 들어 있어 되돌린다.
 const catTotals=(prep,month)=>Object.entries(aggregate(prep,{from:month,to:month}).total.byCategory).map(([c,v])=>[c==='null'?null:c,v.total]);
 // 상위 분류: 순지출이 양수인 분류만, 큰 금액부터, 같으면 분류 코드 순. 지난달 소비를 모르면 증감도 null이다(0으로 메우지 않음).
+// FIX31 (D9): 지난달 그 분류에 순액 모름 줄(지출·환불)이 하나라도 있으면 그 분류의 증감도 null("비교할 수 없음").
+const SPEND_KINDS=new Set(['EXPENSE','REFUND']);   // fin-charts.mjs CONSUMPTION과 같다
 export function spendAnalysis(prep,localDate,rules=[]){
   const ov=overview(prep,localDate),known=ov.previous!==null,prev=new Map(known?catTotals(prep,ov.prevMonth):[]);
+  const prevUnknown=new Set(prep.lines.filter(l=>l.month===ov.prevMonth&&SPEND_KINDS.has(l.kind)&&l.net===null).map(l=>l.category));
   const ranked=catTotals(prep,ov.month).filter(([,t])=>t>0n).sort(([a,x],[b,y])=>x>y?-1:x<y?1:String(a).localeCompare(String(b)));
-  const top=ranked.slice(0,TOP_CATEGORIES).map(([category,total])=>({category,total,delta:known?total-(prev.get(category)??0n):null}));
+  const top=ranked.slice(0,TOP_CATEGORIES).map(([category,total])=>({category,total,delta:known&&!prevUnknown.has(category)?total-(prev.get(category)??0n):null}));
   return {month:ov.month,prevMonth:ov.prevMonth,state:ov.currentState,current:ov.current,diff:ov.diff,unknownRows:ov.currentUnknown,top,moreCategories:ranked.length-top.length,
     recurring:{total:monthlyTotal(rules),count:rules.filter(r=>!r.hidden).length}};
 }

@@ -332,7 +332,24 @@ export function vaultPlan({cash,reserve,mode='MONTHS',months=null,untilDate=null
   ];
   if(available<=0n)return {...base,status:'NEGATIVE',reason:'AVAILABLE_NEGATIVE',net,available,monthly:null,shortfall:-available,steps};
   const monthly=available/BigInt(n);   // BigInt 나눗셈은 0 쪽으로 버림 = 양수에서 내림(보수적)
-  return {...base,status:'OK',reason:null,net,available,monthly,shortfall:null,steps:[...steps,{key:'MONTHLY',label:'한 달 쓸 돈 = 위 금액 ÷ '+n+'개월 (원 아래 버림)',sign:'÷',value:monthly}]};
+  return {...base,status:'OK',reason:null,net,available,monthly,shortfall:null,steps:[...steps,{key:'MONTHLY',label:'생활비 · 한 달 쓸 돈 = 위 금액 ÷ '+n+'개월 (원 아래 버림)',sign:'÷',value:monthly}]};
+}
+// F59V: 계산기가 저장하는 이번 달 예산 = 생활비(한 달 쓸 돈) + 고정비(기간 고정비의 한 달 몫). 쓴 돈(budgetStatus)·월말 예측이 고정비를 포함하므로
+// 예산도 고정비를 포함한 "전체"여야 "모자랍니다"가 고정비만큼 부풀지 않는다. 기간 전체로 보면 (생활비 + 고정비) × 개월 = 쓸 수 있는 돈 + 기간 고정비라 돈이 새거나 남지 않는다.
+// 손으로 넣은 예산은 원래부터 "전체"라 이 함수를 거치지 않는다(뜻 변화 없음). FIN_BUDGET 형식은 그대로(total 숫자만 전체 금액). OK가 아니면 null.
+export function vaultBudget(plan){
+  if(plan?.status!=='OK')return null;
+  return {living:plan.monthly,fixed:plan.fixedMonthly,total:plan.monthly+plan.fixedMonthly};
+}
+// F59V: 금고 계산기의 고정비 후보. 정기 결제 규칙(B48, 소유자가 확정한 것)을 먼저 넣고, 반복결제 탐지 항목은 규칙이 없는 가게만 넣는다(같은 가게를 두 번 빼지 않는다).
+// 규칙 월 금액 = 잠정 금액(매달). 숨긴 규칙은 B48 합계처럼 뺀다. 탐지 항목은 주기가 있는 것만, 월 몫 = 연간 ÷ 12(기존 그대로).
+export function vaultFixedItems(detected,rules=[]){
+  const shown=(Array.isArray(rules)?rules:[]).filter(r=>!r.hidden),ruled=new Set(shown.map(r=>r.match.merchant));
+  return [
+    ...shown.map(r=>({key:'rule:'+r.id,label:r.name+' · 정기 결제',monthly:BigInt(r.match.amount),status:'RULE',on:true})),
+    ...detected.items.filter(i=>i.period!==null&&i.annual!==null&&!ruled.has(i.key)).map(i=>({
+      key:i.key,label:i.merchant+' · '+i.periodLabel,monthly:i.annual/12n,status:i.status,on:i.status==='ACTIVE'||i.status==='LATE'})),
+  ];
 }
 
 // F11E1: 재정 스냅샷의 원시 금액(소수 자릿수 0 또는 2)을 더해 원 아래를 버린 정수(BigInt)로 돌려준다.

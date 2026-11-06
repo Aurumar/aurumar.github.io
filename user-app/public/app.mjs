@@ -1,8 +1,8 @@
 import {PC_ENTITY_REQUEST_LIMIT,buildBudget,monthSpan,finErrorText,finError,formatWon,formatCompact,shiftMonth,shownMerchant,isSensitive,buildAccount,buildTxn,buildRule,monthLines,duplicateGroups,ledgerCsv,rulePreview,checkImportPlan,opBudget,opBudgetNotice,opsAfter,localBudget,capacityNotice,compactionText,holdGuidance,importPermission,finFingerprintInput,housekeepingText} from './fin-ledger.mjs';
-import {PERIODS as PLAN_PERIODS,detectRecurring,recurringGridLayout,costSplit,budgetStatus,budgetFor,budgetBarsLayout,lifeTimeline,timelineLayout,vaultPlan,vaultBricks,vaultBrickLayout,vaultCashFromSnapshot,vaultOverdraftFromSnapshot,vaultCardUnpaidFromSnapshot,liveNetCash,quickPicks,monthInsight} from './fin-plan.mjs';
+import {PERIODS as PLAN_PERIODS,detectRecurring,recurringGridLayout,costSplit,budgetStatus,budgetFor,budgetBarsLayout,lifeTimeline,timelineLayout,vaultPlan,vaultBudget,vaultFixedItems,vaultBricks,vaultBrickLayout,vaultCashFromSnapshot,vaultOverdraftFromSnapshot,vaultCardUnpaidFromSnapshot,liveNetCash,quickPicks,monthInsight} from './fin-plan.mjs';
 import {prepare,PERIODS,periodRange,aggregate,roundDiv,dataMonths,overview,monthlySeries,barLayout,sankeyData,sankeyLayout,treemapItems,squarify,dailyTotals,heatmapMonths,completeness,todaySpendLine,buildTodayGlance} from './fin-charts.mjs';
 import {RECURRING_ID,RECURRING_TEXT,findCandidates,addRule as addRecurringRule,setRuleHidden as setRecurringHidden,ruleStatus as recurringStatus,monthlyTotal as recurringMonthly,matchDraft as recurringMatchDraft,recurringKey,setRuleAmount as setRecurringAmount,priceChange as recurringPriceChange,ledgerMatch as recurringLedgerMatch,createHiddenBox as createRecurringHiddenBox} from './fin-recurring.mjs';
-import {meltNode,monthForecast,forecastNode,renderBudgetReport} from './fin-forecast.mjs';
+import {meltNode,monthForecast,forecastNode,renderBudgetReport,fixedSchedule,fixedPlan} from './fin-forecast.mjs';
 const mdBackend=globalThis.LIFE_BRICK_MD_BACKEND??null;
 if(mdBackend&&mdBackend.format!=='LB_MD_UI_BACKEND_1')throw new Error('MD_BACKEND_PROFILE');
 let mdProfile=!!mdBackend,mdReady=false,mdSurface=null,mdRole='NONE',mdUnlockState=null,mdCaps=new Set(),mdProduct=null,mdUnlocked=false,mdDraftReady=false;
@@ -758,6 +758,7 @@ function renderFinCharts(root,fin){
  finLastWidth=innerWidth;
  const prep=prepare(fin),range=periodRange(finPeriod,whole.localDate,finCustom),bar=el('div',null,'fin-toolbar');
  vaultCard(root,fin);   // F11: 금고가 맨 위
+ renderFixedSchedule(root,fin);   // F59V: 이번 달 고정비 예정·확정(규칙에서 투영)
  if(fin.lines.length||fin.residuals.length)renderMonthInsight(root,prep,budgetStatus(prep,fin.budgets,whole.localDate.slice(0,7),whole.localDate));
  finSelect(bar,'기간',finPeriod,PERIODS,v=>void perform(async()=>{finPeriod=v;finTree=[];if(v==='CUSTOM'&&!finCustom.from){finCustom={from:shiftMonth(whole.localDate.slice(0,7),-5),to:whole.localDate.slice(0,7)};}await render();}));
  if(finPeriod==='CUSTOM'){const f=field(bar,'시작 달','month',finCustom.from),t=field(bar,'끝 달','month',finCustom.to);for(const n of [f,t]){n.dataset.navOnly='1';n.max=whole.localDate.slice(0,7);n.addEventListener('change',()=>void perform(async()=>{finCustom={from:f.value,to:t.value};finTree=[];await render();}));}}
@@ -913,6 +914,7 @@ function renderFinTxns(root,fin){
   add(el('span',null,'fin-chip'),el('span','순액 모름'),el('strong',finCount(sum.unknownRows)+'행'))));
  const groups=duplicateGroups(list);
  if(groups.length){const p=section('중복 의심 묶음 '+groups.length+'개','원천 자료에서 같은 결제로 의심되어 묶인 행입니다. 같은 날짜·금액이라고 자동으로 지우지 않습니다. 실제 중복이면 원천을 고친 뒤 계획 파일을 다시 만드세요.');for(const g of groups){add(p,el('h3',g.id+' · '+g.items.length+'건 · 합계 '+formatWon(g.items.reduce((s,l)=>s+(l.net??0n),0n))+(g.items.some(l=>l.net===null)?' + 순액 모름':'')));for(const l of g.items)add(p,finLineRow(l,{showButtons:false}));}add(root,p);}
+ if(finMonth===now)renderFixedSchedule(root,fin,{pendingOnly:true});   // F59V: 이번 달 아직 안 나간 고정비(예정, 거래 기록 아님)
  const p=section(finMonth+' 거래 '+finCount(list.length)+'건',finFilter.accountId||finFilter.category?'필터 적용 중':'');
  add(p,finCsvBar(list));
  for(const l of list)add(p,finLineRow(l));if(!list.length)add(p,empty('이 달에 표시할 거래가 없습니다.'));add(root,p);
@@ -1166,11 +1168,48 @@ function renderFinRecurring(root,fin){
   add(pick,row(display,'월 약 '+formatWon(c.amount)+' · 최근 12개월 중 '+c.months+'달에 '+c.count+'번 · 마지막 '+c.lastDate,
    add(el('div',null,'buttons'),
     button('정기로 등록',()=>save(()=>addRecurringRule(fin.recurring?.data??null,{name,merchant:c.merchant,amount:c.amount},{id:entityId(),now:new Date().toISOString()}),'정기 결제 등록','"'+display+'"을(를) 정기 결제로 등록했습니다.'),'primary'),
-    button('아님',()=>void perform(async()=>{hideRecurringCandidate(globalThis.localStorage,c.key);const kept=loadRecurringHidden(globalThis.localStorage).has(c.key);await render();if(kept)status('이 기기에서 "'+display+'" 후보를 숨겼습니다.');else status('이 기기에 숨김을 저장하지 못했습니다 · 저장 공간을 확인한 뒤 다시 눌러 주세요.',true);}),'secondary'))));
+    button('아님',()=>void perform(async()=>{hideRecurringCandidate(globalThis.localStorage,c.key);await recurringHiddenBox.settled();const kept=loadRecurringHidden(globalThis.localStorage).has(c.key);await render();if(kept)status('이 기기에서 "'+display+'" 후보를 숨겼습니다.');else status('이 기기에 숨김을 저장하지 못했습니다 · 저장 공간을 확인한 뒤 다시 눌러 주세요.',true);}),'secondary'))));
  }
  if(!cands.length)add(pick,empty(RECURRING_TEXT.noCandidates));
  add(root,pick);
  if(folded.length){const old=section('숨긴 정기 결제 '+folded.length+'개');for(const r of folded)add(old,ruleRow(r));add(root,old);}
+}
+
+// ---------- F59V 고정비 예정 ----------
+// 정기 결제 규칙에서 이번 달을 투영한다(기록을 만들지 않는다). 아직 안 나간 규칙 = "예정 · 잠정 N원"(예정일과 함께). 금액 수정 = 규칙 금액 갱신(연산 1, B48C F7과 같은 setRuleAmount).
+// 실제 결제가 들어오면 예정이 사라지고 실제 금액으로 계산한다. 잠정 ≠ 실제면 "잠정 N → 실제 M" 한 줄과 "다음 달 잠정도 M으로" 1탭.
+// 숫자는 월말 예측(fixedPlan)과 같은 fixedSchedule()에서 나온다. pendingOnly = 거래 탭처럼 예정만 보일 때.
+const FIXED_STATE_TEXT={PLANNED:'예정',OVERDUE:'예정일 지남',PAID:'확정',DIFFERENT:'확정 · 금액 다름'};
+function saveRuleAmount(fin,id,amount,message){
+ void perform(async()=>{await entity('FIN_RECURRING',RECURRING_ID,setRecurringAmount(fin.recurring.data,id,amount),fin.recurring?.heads??[],'정기 결제 금액 변경');await refresh();status(savedMessage()+' · '+message);});
+}
+function editProvisional(fin,it){
+ modal('잠정 금액 수정 · '+it.name,root=>{
+  add(root,hint('정기 결제 규칙 금액을 고칩니다(저장 1번). 다음 달부터도 이 금액이 잠정 금액입니다. 실제 결제가 들어오면 실제 금액으로 계산합니다.'));
+  const amount=field(root,'잠정 금액 (원)','text',it.provisional.toString());amount.inputMode='numeric';amount.required=true;
+  return ()=>entity('FIN_RECURRING',RECURRING_ID,setRecurringAmount(fin.recurring.data,it.id,amount.value),fin.recurring?.heads??[],'정기 결제 잠정 금액 수정');
+ },'잠정 금액 저장');
+}
+function renderFixedSchedule(root,fin,{pendingOnly=false}={}){
+ const prep=prepare(fin),today=whole.localDate,all=fixedSchedule(fin.recurring?.data.rules??[],prep.lines,today,daysInMonth(today.slice(0,7)));
+ const pending=all.filter(it=>it.state==='PLANNED'||it.state==='OVERDUE').sort((a,b)=>(a.due??'9').localeCompare(b.due??'9')),done=all.filter(it=>it.state==='PAID'||it.state==='DIFFERENT');
+ if(!all.length||(pendingOnly&&!pending.length))return null;
+ const due=pending.reduce((s,it)=>s+it.provisional,0n),paid=done.reduce((s,it)=>s+it.actual,0n);
+ const p=section('이번 달 고정비 · '+today.slice(0,7),'예정 '+finCount(pending.length)+'건 '+formatWon(due)+(pendingOnly?'':' · 확정 '+finCount(done.length)+'건 '+formatWon(paid))+' · 정기 결제 규칙에서 보여 주는 값이고 거래 기록이 아닙니다. 실제 결제가 들어오면 예정이 사라지고 실제 금액으로 계산합니다(두 번 세지 않음).');
+ p.classList.add('fin-fixed-plan');
+ for(const it of pending){
+  const n=row(it.name,FIXED_STATE_TEXT[it.state]+' · 잠정 '+formatWon(it.provisional)+' · '+(it.due??'예정일 모름'),add(el('div',null,'buttons'),button('금액 수정',()=>editProvisional(fin,it),'secondary')));
+  n.querySelector('.row-main strong').after(el('span',FIXED_STATE_TEXT[it.state],'tag '+(it.state==='OVERDUE'?'unknown':'dup')));
+  add(p,n);
+ }
+ if(!pendingOnly)for(const it of done){
+  const n=row(it.name,(it.changed?'잠정 '+formatWon(it.changed.from)+' → 실제 '+formatWon(it.changed.to):'실제 '+formatWon(it.actual))+' · '+it.paidDate,
+   it.suggest?add(el('div',null,'buttons'),button('다음 달 잠정도 '+formatWon(it.suggest)+'으로',()=>saveRuleAmount(fin,it.id,it.suggest,'"'+it.name+'" 잠정 금액을 '+formatWon(it.suggest)+'으로 바꿨습니다.'),'primary')):null);
+  n.querySelector('.row-main strong').after(el('span',FIXED_STATE_TEXT[it.state],'tag '+(it.state==='PAID'?'src-txn':'unknown')));
+  add(p,n);
+ }
+ add(root,p);
+ return p;
 }
 
 // ---------- F11 이번 달 금고 ----------
@@ -1224,6 +1263,14 @@ function liveNetCashLine(prep){
  return el('p','지금 내 돈(추정) '+formatWon(live.value)+' · 스냅샷 '+live.since+' 당일 기록부터 반영','small muted vault-live-cash');
 }
 const vaultForecast=(prep,s)=>monthForecast({status:s,lines:prep.lines,rules:recurringRules(),today:whole.localDate});   // B59: 정기 결제는 예정일 기준으로 따로 더한다
+// F59V: 아직 안 나간 고정비(예정·잠정)를 금고 카드에 한 줄로. 숫자는 월말 예측과 같은 fixedPlan(). 실제 결제가 들어오면 예정에서 빠지고 쓴 돈에 들어간다(이중 계산 0).
+function vaultFixedLine(prep,s){
+ if(!s.current)return null;
+ const fx=fixedPlan(recurringRules(),prep.lines,whole.localDate,s.days),n=fx.upcomingCount+fx.overdueCount,due=fx.upcoming+fx.overdue,T=s.total;
+ if(!n)return null;
+ const after=T&&s.dataState==='KNOWN'?T.remaining-due:null;
+ return el('p','아직 안 나간 고정비 '+finCount(n)+'건 '+formatWon(due)+' (예정 · 잠정)'+(after===null?'':after<0n?' · 내고 나면 '+formatWon(-after)+' 초과':' · 내고 나면 남는 돈 '+formatWon(after)),'small vault-fixed-due');
+}
 function vaultCard(root,fin,{compact=false}={}){
  const {s,v,prep}=vaultState(fin),T=s.total,fc=compact?null:forecastNode({el,add},vaultForecast(prep,s));
  const p=el('section',null,'panel vault-card'+(compact?' vault-compact':''));
@@ -1232,7 +1279,7 @@ function vaultCard(root,fin,{compact=false}={}){
  add(p,liveNetCashLine(prep),hint('카드 대금 이체는 계산에 영향 없음 · 마통 이자는 금융비용 지출, 파킹 이자는 이자·배당 수입으로 기록'),
   hint('스냅샷은 그날 지출을 기록하기 전에 만드세요 · 먼저 기록한 같은 날 지출은 한 번 더 빠질 수 있음'));
  if(v.state==='NO_BUDGET'){
-  add(p,fc,hint('한 달 쓸 돈을 정하면 금괴 더미로 보여 줍니다. 금괴 한 개 = 월 예산 ÷ 그 달 날수 = 하루 몫.'),
+  add(p,fc,vaultFixedLine(prep,s),hint('한 달 쓸 돈을 정하면 금괴 더미로 보여 줍니다. 금괴 한 개 = 월 예산 ÷ 그 달 날수 = 하루 몫.'),
    add(el('div',null,'button-row'),button('금고 계산기로 한 달 쓸 돈 정하기',()=>openVaultCalculator(fin),'primary')));
   return p;
  }
@@ -1244,7 +1291,7 @@ function vaultCard(root,fin,{compact=false}={}){
   el('strong',big,'vault-amount'),
   el('span',known?'예산 '+formatWon(T.budget)+' · 쓴 돈 '+formatWon(T.actual)
    :v.state==='NO_DATA'?'이 달 소비 자료가 없습니다(0원 아님). 예산 '+formatWon(T.budget)
-   :'순액 모름 줄만 있어 쓴 돈을 알 수 없습니다. 예산 '+formatWon(T.budget),'vault-sub')),fc);
+   :'순액 모름 줄만 있어 쓴 돈을 알 수 없습니다. 예산 '+formatWon(T.budget),'vault-sub')),vaultFixedLine(prep,s),fc);
  const chips=add(el('div',null,'fin-chips vault-chips'),
   vaultChip('오늘 쓸 수 있는 돈',known&&T.perDayLeft!==null?formatWon(T.perDayLeft):'-',
    known&&T.perDayLeft!==null?'남은 '+(s.days-s.elapsed+1)+'일로 나눔':!s.current?'이번 달이 아님':known?'남은 돈 없음':'쓴 돈을 모름'),
@@ -1270,19 +1317,16 @@ function vaultCard(root,fin,{compact=false}={}){
 
 // ---- 금고 계산기 ----
 // 월 사용 가능액 = (현금 − 비상금 − 기간 고정비 합 + 기간 안 확정 수입) ÷ 개월 수. BigInt, 보수적 내림.
+// F59V: 저장하는 예산 = 생활비(위 금액) + 고정비 한 달 몫 = 고정비 포함 전체(fin-plan vaultBudget).
 const VAULT_MODES=[['MONTHS','개월 수로 정하기'],['NEXT_INCOME','다음 수입 날짜까지']];
-function vaultFixedCandidates(prep){
- const rec=detectRecurring(prep,whole.localDate);
- return rec.items.filter(i=>i.period!==null&&i.annual!==null).map(i=>({
-  key:i.key,label:i.merchant+' · '+i.periodLabel,monthly:i.annual/12n,status:i.status,
-  on:i.status==='ACTIVE'||i.status==='LATE'}));
-}
+// F59V: 정기 결제 규칙(잠정 금액)을 먼저, 반복결제 탐지 항목은 규칙이 없는 가게만(fin-plan vaultFixedItems).
+const vaultFixedCandidates=(prep,fin)=>vaultFixedItems(detectRecurring(prep,whole.localDate),fin.recurring?.data.rules??[]);
 function openVaultCalculator(fin){
  const prep=prepare(fin),month=whole.localDate.slice(0,7);
  const own=fin.budgets.find(b=>b.data.effectiveFrom===month)??null,applied=budgetFor(fin.budgets,month);
- const items=vaultFixedCandidates(prep);
+ const items=vaultFixedCandidates(prep,fin);
  modal('금고 계산기 · '+month,root=>{
-  add(root,hint('한 달 쓸 돈을 계산합니다. 입력값은 저장하지 않고, 결과만 '+month+' 예산(전체)으로 저장합니다.'));
+  add(root,hint('한 달 쓸 돈을 계산합니다. 입력값은 저장하지 않고, 결과(생활비 + 고정비)만 '+month+' 예산(전체)으로 저장합니다.'));
   const grid=el('div',null,'field-grid');add(root,grid);
   const cash=field(grid,'지금 쓸 수 있는 현금 (원)','text','');cash.inputMode='numeric';
   const reserve=field(grid,'비상금 · 손대지 않을 금액 (원)','text','0');reserve.inputMode='numeric';
@@ -1298,14 +1342,14 @@ function openVaultCalculator(fin){
   const incomeAmount=field(grid2,'다음 수입 금액 (원, 모르면 비움)','text','');incomeAmount.inputMode='numeric';
   const noIncome=el('label',null,'inline'),noInput=el('input');noInput.type='checkbox';noInput.checked=true;
   add(noIncome,noInput,el('span','다음 수입 없음 (수입을 넣지 않고 계산)'));add(root,noIncome);
-  const fixedBox=section('기간 고정비','반복·고정비 탭에서 찾은 항목입니다. 끄면 그만큼 쓸 돈이 늘어납니다.');
+  const fixedBox=section('기간 고정비','정기 결제 규칙(잠정 금액)과, 규칙이 없는 가게 중 반복·고정비 탭에서 찾은 항목입니다. 켠 항목은 생활비에서 빼고 이번 달 예산에 고정비로 더합니다.');
   const boxes=[];
   for(const it of items){
    const l=el('label',null,'inline vault-fixed'),cb=el('input');cb.type='checkbox';cb.checked=it.on;
    add(l,cb,el('span',it.label+' · 월 '+formatWon(it.monthly)+(it.status==='CANCEL_CANDIDATE'?' · 해지된 듯':'')));
    add(fixedBox,l);boxes.push([it,cb]);
   }
-  if(!items.length)add(fixedBox,empty('반복결제로 찾은 항목이 없습니다. 고정비 없이 계산합니다.'));
+  if(!items.length)add(fixedBox,empty('정기 결제 규칙과 반복결제로 찾은 항목이 없습니다. 고정비 없이 계산합니다.'));
   add(root,fixedBox);
   // F11C: 마이너스통장 — 체크 안 하면 한도·쓴 금액 모두 0(모름 아님). 숫자 자체는 저장하지 않는다.
   const odBox=section('마이너스통장 (선택)','가진 마이너스통장이 있으면 남은 한도만큼 쓸 돈이 늘어납니다. 한도·쓴 금액은 저장하지 않습니다.');
@@ -1372,8 +1416,11 @@ function openVaultCalculator(fin){
     add(out,el('p','이 조건으로는 쓸 돈이 없습니다 · 부족액 '+formatWon(plan.shortfall),'fin-bad'));
     $('editor-save').disabled=true;return;
    }
-   add(out,add(el('p',null,'vault-monthly'),el('span','한 달 쓸 돈'),el('strong',formatWon(plan.monthly))),
-    el('p','하루 몫 약 '+formatWon(plan.monthly/BigInt(daysInMonth(month)))+' · '+month+' '+daysInMonth(month)+'일 기준','small muted'));
+   // F59V: 저장값 = 생활비 + 고정비(전체 예산). 쓴 돈·월말 예측이 고정비를 포함하므로 예산도 전체로 맞춘다. 금괴 한 개 = 이 전체 ÷ 날수.
+   const budget=vaultBudget(plan);
+   add(out,add(el('p',null,'vault-monthly'),el('span','이번 달 예산'),el('strong',formatWon(budget.total))),
+    el('p','생활비 '+formatWon(budget.living)+' + 고정비 '+formatWon(budget.fixed)+' = 이번 달 예산 '+formatWon(budget.total),'vault-budget-split'),
+    el('p','하루 몫 약 '+formatWon(budget.total/BigInt(daysInMonth(month)))+' · '+month+' '+daysInMonth(month)+'일 기준','small muted'));
    // F11E1: 마통 남은 한도는 계산에 넣지 않았다 — 정보로만 보여준다(빌린 돈은 내 돈이 아니다).
    if(plan.overdraft.enabled)add(out,el('p','급할 때 쓸 수 있는 마통 남은 한도 '+formatWon(plan.overdraft.remaining)+' · 계산에 안 넣음 · 빌리면 이자','small muted vault-overdraft-note'));
    $('editor-save').disabled=false;
@@ -1385,8 +1432,8 @@ function openVaultCalculator(fin){
   return ()=>{
    recalc();   // 저장은 지금 화면에 보이는 입력값으로 다시 계산한 결과로만(이벤트를 놓친 옛 plan으로 저장하지 않음)
    if(!plan||plan.status!=='OK')throw finError('FIN_VAULT_NOT_CALCULATED');
-   const base=own?.data??applied?.data??null;
-   const data=buildBudget({effectiveFrom:month,total:String(plan.monthly),categories:Object.fromEntries(Object.entries(base?.categories??{})),note:base?.note??''},{labels:fin.labels});
+   const base=own?.data??applied?.data??null,budget=vaultBudget(plan);
+   const data=buildBudget({effectiveFrom:month,total:String(budget.total),categories:Object.fromEntries(Object.entries(base?.categories??{})),note:base?.note??''},{labels:fin.labels});
    vaultFlash=null;   // 예산을 바꾸면 지난 지출의 차감 피드백은 더 이상 맞지 않는다
    return entity('FIN_BUDGET',own?.id??'budget-'+month,data,own?.heads??[],'금고 계산기로 한 달 쓸 돈 저장');
   };
@@ -1501,6 +1548,7 @@ function renderFinBudget(root,fin){
  const s=budgetStatus(prep,fin.budgets,finBudgetMonth,whole.localDate),applied=fin.budgets.find(b=>b.id===s.budgetId)??null;
  const own=applied&&applied.data.effectiveFrom===finBudgetMonth?applied:null;
  add(root,add(el('div',null,'section-toolbar'),hint('예산은 시작 달부터 다음 예산이 시작하기 전까지 적용됩니다. 실적 = 지출 − 환불(이체·선불 제외). 순액 모름 줄은 실적에 넣지 않고 따로 셉니다.'),add(el('div',null,'button-row'),button('금고 계산기',()=>openVaultCalculator(fin),'secondary'),button(own?'이 달 예산 수정':applied?'이 달부터 새 예산':'예산 정하기',()=>editFinBudget(own,applied,finBudgetMonth),'primary'))),nav);
+ if(finBudgetMonth===now)renderFixedSchedule(root,fin);   // F59V: 이번 달 고정비 예정·확정(예산은 고정비 포함 전체)
  if(!applied){add(root,empty(finBudgetMonth+'에 적용되는 예산이 없습니다. "예산 정하기"로 전체 또는 분류별 월 예산을 입력하세요.'));renderFinBudgetList(root,fin);return;}
  const dayText=s.future?'아직 시작하지 않은 달':s.current?'오늘 '+s.elapsed+'일 / '+s.days+'일':'끝난 달 · '+s.days+'일';
  const known=s.dataState==='KNOWN',stateText={NO_DATA:'자료 없음',UNKNOWN_ONLY:'모름',FUTURE:'-'}[s.dataState];   // 자료 없음·순액 모름을 0원으로 보이지 않는다

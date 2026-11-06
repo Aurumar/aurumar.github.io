@@ -201,10 +201,12 @@ export function renderLifeToday(root,ctx,st){
     const s=studyDirty?await studyFlow(ctx):null;
     const res=await stackDay(date,{life:st.flow,study:s?.st.flow??null});
     if(res.phase==='STUDY_FAILED'){const r=res.study;await reportConfirm(ctx,st,r);st.message='공부 기록을 쌓지 못해 오늘 카드도 쌓지 않았습니다 · '+(st.message??'');st.error=true;return;}
-    const r=res.life;await reportConfirm(ctx,st,r);
+    // FIX31 (S2): 여기까지 왔으면 공부 카드는 확정됐다(stackDay는 공부 확정 뒤에만 오늘 카드로 넘어간다). 오늘 카드가 입력 없음·실패여도 자동 내보내기가 그 확정을 보게 넘긴다.
+    const r=res.study?{...res.life,studyStatus:res.study.status}:res.life;await reportConfirm(ctx,st,r);
     if(res.study){
       await ctx.reload?.();
-      if(r.status==='NOTHING_TO_CONFIRM'){st.message='공부 기록을 쌓았습니다 · 오늘 카드에는 입력이 없어 쌓지 않았어요.';st.error=false;}
+      const i=(st.message??'').indexOf(' · 상태 내보내기 실패'),exportNote=i<0?'':st.message.slice(i);   // 아래에서 문구를 바꿔도 내보내기 실패는 남긴다
+      if(r.status==='NOTHING_TO_CONFIRM'){st.message='공부 기록을 쌓았습니다 · 오늘 카드에는 입력이 없어 쌓지 않았어요.'+exportNote;st.error=false;}
       else if(!STACK_DONE.includes(r.status)){st.message='공부 기록은 쌓았습니다 · 오늘 카드는 쌓지 못했습니다: '+st.message;st.error=true;}
     }
   }),'primary life-stack-btn');
@@ -222,6 +224,8 @@ async function reportConfirm(ctx,st,r){
   else st.message=STATUS_TEXT[r.status]??r.status;
   // B54: 쌓기 성공(STACK_DONE) 직후 사령부 상태 자동 내보내기. 성공 여부·표면(PC 앱)·토글 검사와 실패 문구 덧붙이기는 state-export.mjs의 exportAfterStack 안에 있다.
   // 실패해도 쌓기 결과(status·error)는 바꾸지 않는다.
+  // FIX31 (S2): 같은 쌓기에서 공부 카드가 확정됐으면(r.studyStatus) 오늘 카드 결과가 확정이 아니어도 그 확정으로 내보낸다(호출은 그대로 쌓기마다 1번).
+  if(!STACK_DONE.includes(r.status)&&STACK_DONE.includes(r.studyStatus))r={...r,status:r.studyStatus};
   try{await ctx.exportAfterStack?.(st,r.status);}catch{st.message=(st.message??'')+' · 상태 내보내기 실패: 내보내지 못했습니다.';}
 }
 // 누르면 onTap, 길게(0.5초) 누르면 onHold. 길게 누른 뒤 따라오는 click은 무시한다.
@@ -268,6 +272,16 @@ function renderBricks(ctx,st,h,defs,life,act,goalBricks){
     const now=ctx.now();
     await s.st.flow.addRow(kstDate(now),'sessions',{id:sessionIdFor(subject.id,ctx.uid().slice(0,8)),subject:studyCodeOf(subject.id),state:'COMPLETED',plannedMin:m,confirmedMin:m,restartLocator:'',at:now});
     const b=brickOf(m);st.message=subject.name+' '+m+'분을 담았습니다 · '+(b.bricks?b.bricks+'장':'')+(b.bricks&&b.pieces?' + ':'')+(b.pieces?'조각 1':'')+(!b.bricks&&!b.pieces?'벽돌 0 (10분부터 조각)':'')+' · "오늘 쌓기"를 누르면 함께 쌓입니다';
+    return kstDate(now);
+  };
+  // FIX31 (D1): 타이머는 담기가 저장된 뒤에만 지운다. 거절(읽기 전용·잠김·공부 꺼짐)이나 초안 저장 실패(Quota 등)면 시작 시각을 남겨 집중 시간을 잃지 않는다.
+  const finishTimer=async(subject,m)=>{
+    const keep=text=>{st.message=text+' · 집중 타이머는 그대로 두었어요.';st.error=true;},box=st.ports?.box??null;
+    let day;
+    try{day=await recordNow(subject,m);}catch(e){keep(box?.ERROR_TEXT[e?.code]??lifeErrorText(e?.code));return;}
+    const b=box?.statusFor('STUDY_DAY',day);
+    if(b?.failed){keep(box.ERROR_TEXT[b.failed]??box.TEXT.failed);return;}
+    st.timer=null;writeTimer(ctx.storage??globalThis.localStorage,null);
   };
   const subject=subjects.find(s=>s.id===st.subjectId)??null;
   if(!subject){add(sec,hint('보이는 과목이 없습니다. 습관 편집의 과목에서 추가하세요.'));return sec;}
@@ -278,7 +292,7 @@ function renderBricks(ctx,st,h,defs,life,act,goalBricks){
     const timerText=()=>'집중 중 · '+(ts?.name??'과목')+' · '+hhmmFromIso(t.startIso)+' 시작 · '+timerElapsedMin(t.startIso,ctx.now())+'분',timerLabel=el('span',timerText(),'life-timer-text');
     liveTick(timerLabel,ctx.document??globalThis.document,()=>{timerLabel.textContent=timerText();});
     add(timerRow,timerLabel,
-      button('끝내고 담기',act(async()=>{const m=timerRecordMin(t.startIso,ctx.now());st.timer=null;writeTimer(ctx.storage??globalThis.localStorage,null);await recordNow(ts??subject,m);}),'primary'),
+      button('끝내고 담기',act(()=>finishTimer(ts??subject,timerRecordMin(t.startIso,ctx.now()))),'primary'),
       button('취소',()=>{st.timer=null;writeTimer(ctx.storage??globalThis.localStorage,null);void ctx.rerender();}));
   }else add(timerRow,button('집중 시작',()=>{st.timer={subjectId:subject.id,startIso:ctx.now()};writeTimer(ctx.storage??globalThis.localStorage,st.timer);void ctx.rerender();},'primary'));
   const min=input('',{inputmode:'numeric',placeholder:'분','aria-label':'공부한 분'});

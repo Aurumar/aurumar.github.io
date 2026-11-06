@@ -102,8 +102,9 @@ export function findCandidates(lines,today,{rules=[],hidden=new Set(),toleranceP
 // ---------- 규칙 목록(저장할 한 장) ----------
 export const rulesOf=data=>data?.rules??[];
 const nameOK=n=>typeof n==='string'&&n.isWellFormed()&&n.trim().length>0&&[...n.trim()].length<=60;
-// 금액 a와 규칙 r의 금액대가 겹치는가(가맹점이 같을 때 같은 구독으로 본다).
-const sameBand=(r,a,pct)=>{const c=BigInt(r.match.amount);return within(a,c,r.match.tolerancePct)||within(c,a,pct);};
+// 금액 a(±pct%)와 규칙 r의 금액대가 겹치는가(가맹점이 같을 때 같은 구독으로 본다).
+// R32 (HUNT31 D3): 두 구간이 조금이라도 겹치면(경계 포함) 거부한다. 중심을 서로 품지 않아도(10,000±10%와 11,500±10%) 결제 1건이 두 금액대에 다 들 수 있기 때문.
+const sameBand=(r,a,pct)=>{const c=BigInt(r.match.amount),rp=BigInt(r.match.tolerancePct),p=BigInt(pct);return a*(100n-p)<=c*(100n+rp)&&c*(100n-rp)<=a*(100n+p);};
 // 규칙 하나를 목록에 더한 새 data를 만든다. 같은 가맹점·겹치는 금액대의 규칙이 이미 있으면 거부(후보에서도 빠진다). 반환값은 validateFinData('FIN_RECURRING','recurring',data)를 통과하는 모양.
 export function addRule(data,{name,merchant,amount,tolerancePct=TOLERANCE_DEFAULT},{id,now}){
   const rules=rulesOf(data),key=recurringKey(merchant),won=wonOf(amount);
@@ -146,23 +147,34 @@ function dueDayOf(rule,mine,month){
 }
 // 예정일(앞달·이번 달·다음 달) ±3일 안인가.
 const onSchedule=(date,day)=>{const n=dayNum(date),m=date.slice(0,7);return [shiftMonth(m,-1),m,shiftMonth(m,1)].some(x=>Math.abs(n-dayNum(dueOf(x,day)))<=DUE_WINDOW_DAYS);};
+const mineOf=(rule,lines)=>lines.filter(l=>l.kind==='EXPENSE'&&typeof l.date==='string'&&recurringKey(l.merchant)===rule.match.merchant);
+// R32 (HUNT31 D4): 규칙의 평소 결제일(month 전의 결제에서, 위 dueDayOf). 가맹점이 다른 줄은 걸러서 본다. 지난 결제가 없으면 null.
+export const dueDay=(rule,lines,month)=>dueDayOf(rule,mineOf(rule,lines),month);
+// R32 (HUNT31 D4): 결제 줄 하나(같은 가맹점, 금액 a, 날짜 date)가 이 규칙에 어떻게 보이는가 — ruleStatus와 fixedSchedule(fin-forecast)이 같은 판정을 쓴다.
+// 'PAID' 구독 결제: 규칙 금액과 정확히 같은 금액, 또는 규칙 금액대(±tolerancePct%)이면서 예정일(due) ±3일 안.
+// 'OTHER' 금액 다름: 구독 결제가 아닌데 예정일 밖도 아닌 결제(예정일을 모르면 다른 금액 전부).
+// null 세지 않음: 예정일 밖의 다른 결제(같은 가게 일반 구매), 같은 가맹점 다른 규칙(rules) 금액대의 결제(형제 규칙 몫).
+export function lineKind(rule,a,date,due,rules=[]){
+  const center=BigInt(rule.match.amount),inBand=within(a,center,rule.match.tolerancePct);
+  if(!inBand&&rules.some(r=>r.id!==rule.id&&r.match.merchant===rule.match.merchant&&within(a,BigInt(r.match.amount),r.match.tolerancePct)))return null;
+  const sched=due===null?null:onSchedule(date,due);
+  if(a===center||(inBand&&sched===true))return 'PAID';
+  return sched===false?null:'OTHER';
+}
 // 이번 달 결제 확인. 구독 결제로 치는 것: 규칙 금액과 정확히 같은 결제, 또는 규칙 금액대(±tolerancePct%)이면서 예정일 ±3일 안의 결제.
 // 예정일 밖의 다른 결제(같은 가게 일반 구매)는 세지 않는다. 지난 결제가 없어 예정일을 모르면 정확히 같은 금액만 구독 결제이고, 다른 금액은 "금액 다름"으로 보인다.
 // rules를 주면 같은 가맹점의 다른 규칙 금액대 결제는 이 규칙의 "금액 다름"으로 세지 않는다.
 // lastDate: 구독 결제로 친 가장 최근 결제일(없으면 null).
 export function ruleStatus(rule,lines,today,rules=[]){
-  const key=rule.match.merchant,center=BigInt(rule.match.amount),pct=rule.match.tolerancePct,month=today.slice(0,7);
-  const mine=lines.filter(l=>l.kind==='EXPENSE'&&typeof l.date==='string'&&recurringKey(l.merchant)===key),due=dueDayOf(rule,mine,month);
-  const sibling=a=>rules.some(r=>r.id!==rule.id&&r.match.merchant===key&&within(a,BigInt(r.match.amount),r.match.tolerancePct));
+  const month=today.slice(0,7),mine=mineOf(rule,lines),due=dueDayOf(rule,mine,month);
   let paid=false,other=false,last=null,otherAmount=null;
   for(const l of mine){
     if(l.date>today)continue;
     const a=wonOf(l.net);if(a===null)continue;
-    const inBand=within(a,center,pct);if(!inBand&&sibling(a))continue;
-    const sched=due===null?null:onSchedule(l.date,due),ok=a===center||(inBand&&sched===true);
-    if(ok&&(last===null||l.date>last))last=l.date;
+    const kind=lineKind(rule,a,l.date,due,rules);
+    if(kind==='PAID'&&(last===null||l.date>last))last=l.date;
     if(l.date.slice(0,7)!==month)continue;
-    if(ok)paid=true;else if(sched!==false){other=true;otherAmount=a.toString();}
+    if(kind==='PAID')paid=true;else if(kind==='OTHER'){other=true;otherAmount=a.toString();}
   }
   return {state:paid?'PAID':other?'DIFFERENT':'PENDING',lastDate:last,otherAmount:paid?null:otherAmount};
 }

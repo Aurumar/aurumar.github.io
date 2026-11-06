@@ -3,7 +3,7 @@
 // 가게 이름·규칙 이름은 예측 결과와 경고 문구에 넣지 않는다(개수와 합계만). 무엇을 해야 하는지 정하는 문장을 만들지 않는다.
 import {formatWon} from './fin-ledger.mjs';
 import {roundDiv} from './fin-charts.mjs';
-import {recurringKey,ruleStatus,within,wonOf} from './fin-recurring.mjs';
+import {recurringKey,ruleStatus,dueDay,lineKind,wonOf} from './fin-recurring.mjs';
 import {latestByAssistant,reportNodes,reportResultText} from './ai-gate.mjs';
 
 const pad=n=>String(n).padStart(2,'0');
@@ -74,35 +74,68 @@ export function fixedDue(lastDate,month,days){
   if(typeof lastDate!=='string')return null;
   return month+'-'+pad(Math.min(Number(lastDate.slice(8,10)),days));
 }
-// 이번 달 정기 결제를 셋으로 나눈다(숨긴 규칙은 B48 합계와 같이 뺀다).
-// paid: 이번 달 기록이 있는 규칙의 실제 금액(이미 쓴 돈에 들어 있으므로 일평균에서 뺀다). 금액 다름이면 그 가게의 이번 달 지출 전부.
-// upcoming: 기록이 없고 예정일이 오늘 이후(오늘 포함)이거나 예정일을 모르는 규칙의 금액. overdue: 기록이 없고 예정일이 지난 규칙의 금액.
-export function fixedPlan(rules,lines,today,days){
+// F59V: 이번 달 정기 결제를 규칙마다 한 줄로 투영한다(기록을 만들지 않는다, 숨긴 규칙은 B48 합계와 같이 뺀다).
+// 가계부·예산 화면의 "예정" 목록과 fixedPlan(월말 예측·금고 줄)이 이 목록 하나에서 나오므로 숫자가 서로 어긋나지 않는다.
+// state: PLANNED(기록 없음, 예정일이 오늘 이후·오늘이거나 모름) / OVERDUE(기록 없음, 예정일 지남) / PAID(이번 달 결제 있음) / DIFFERENT(이번 달 금액 다름).
+// due = 예정일(PLANNED·OVERDUE, 모르면 null). paidDate = 이번 달 마지막 결제일(PAID·DIFFERENT). provisional = 규칙 금액(잠정). actual = 이번 달 이 규칙에 배정된 결제의 합(PAID·DIFFERENT만, 아래 R32 배정 규칙). 실제가 들어오면 잠정은 더하지 않는다(이중 계산 0).
+// changed = 실제 ≠ 잠정이면 {from,to}. suggest = "다음 달 잠정도 이 금액으로" 1탭에 쓸 금액(원 단위 문자열): PAID는 결제가 1건일 때 그 금액, DIFFERENT는 B48C 가격 변경 규칙(지난 결제 있음, 절반~두 배)대로 마지막 금액 다름 결제의 금액. 없으면 null.
+// R32 (HUNT31 D3·D4): 이번 달 결제 줄 하나는 규칙 하나에만 배정한다(두 번 더하지 않음). 판정은 ruleStatus와 같은 lineKind:
+//  1) 자기 금액대의 구독 결제('PAID': 정확히 같은 금액, 또는 금액대 안 + 예정일 ±3일)인 규칙이 있으면 그중 하나(규칙 금액이 가장 가까운 것, 같으면 목록 앞).
+//  2) 없으면 "금액 다름"('OTHER')으로 보는 규칙 중 이번 달 상태가 금액 다름인 규칙 하나(같은 기준으로 고른다).
+//  3) 어느 규칙에도 안 맞는 줄(예정일 밖 같은 가게 일반 구매, 어느 금액대에도 없는 결제)은 배정하지 않는다 → 변동 지출에 남아 일평균으로 늘어난다.
+// 기록이 없는 규칙과, 금액 다름 결제가 모두 다른 규칙에 배정돼 자기 몫이 0건인 규칙은 아직 안 나간 돈(PLANNED/OVERDUE, 잠정)으로 둔다.
+export function fixedSchedule(rules,lines,today,days){
   const month=today.slice(0,7),byKey=new Map();
   for(const l of lines){
-    if(l.kind!=='EXPENSE')continue;
+    if(l.kind!=='EXPENSE'||typeof l.date!=='string')continue;
     const key=recurringKey(l.merchant);if(!key)continue;
     if(!byKey.has(key))byKey.set(key,[]);
     byKey.get(key).push(l);
   }
-  const out={paid:0n,paidCount:0,upcoming:0n,upcomingCount:0,overdue:0n,overdueCount:0,undatedCount:0},list=Array.isArray(rules)?rules:[];
-  // R31B: 같은 가맹점에 규칙이 둘 이상이면(B48C) 다른 규칙 금액대의 결제는 이 규칙의 "금액 다름"으로도, 이 규칙이 낸 돈으로도 세지 않는다(두 번 더하지 않음).
-  const sibling=(r,a)=>list.some(o=>o!==r&&o.id!==r.id&&o.match.merchant===r.match.merchant&&within(a,BigInt(o.match.amount),o.match.tolerancePct));
-  for(const r of list){
-    if(r.hidden)continue;
-    const mine=byKey.get(r.match.merchant)??[],st=ruleStatus(r,mine,today,list),amount=BigInt(r.match.amount);
-    if(st.state==='PENDING'){
+  const list=Array.isArray(rules)?rules:[],active=list.filter(r=>!r.hidden),info=new Map(),byMerchant=new Map();
+  for(const r of active){
+    const mine=byKey.get(r.match.merchant)??[];
+    info.set(r.id,{st:ruleStatus(r,mine,today,list),due:dueDay(r,mine,month),amount:BigInt(r.match.amount),got:[]});
+    if(!byMerchant.has(r.match.merchant))byMerchant.set(r.match.merchant,[]);
+    byMerchant.get(r.match.merchant).push(r);
+  }
+  const gap=(r,a)=>{const c=info.get(r.id).amount;return a>c?a-c:c-a;};
+  const closest=(cands,a)=>cands.reduce((best,r)=>best===null||gap(r,a)<gap(best,a)?r:best,null);
+  for(const [key,group] of byMerchant){
+    for(const l of byKey.get(key)??[]){
+      if(l.date.slice(0,7)!==month||l.date>today)continue;
+      const a=wonOf(l.net);if(a===null)continue;
+      const kinds=group.map(r=>[r,lineKind(r,a,l.date,info.get(r.id).due,list)]);
+      const own=kinds.filter(([,k])=>k==='PAID').map(([r])=>r);
+      const other=own.length?[]:kinds.filter(([r,k])=>k==='OTHER'&&info.get(r.id).st.state==='DIFFERENT').map(([r])=>r);
+      const pick=closest(own.length?own:other,a);
+      if(pick)info.get(pick.id).got.push({date:l.date,amount:a});
+    }
+  }
+  const out=[];
+  for(const r of active){
+    const {st,amount,got}=info.get(r.id),base={rule:r,id:r.id,name:r.name,provisional:amount,actual:null,count:0,paidDate:null,changed:null,suggest:null};
+    if(st.state==='PENDING'||!got.length){
       const due=fixedDue(st.lastDate,month,days);
-      if(due!==null&&due<today){out.overdue+=amount;out.overdueCount++;}
-      else{out.upcoming+=amount;out.upcomingCount++;if(due===null)out.undatedCount++;}
+      out.push({...base,state:due!==null&&due<today?'OVERDUE':'PLANNED',due});
       continue;
     }
-    for(const l of mine){
-      if(typeof l.date!=='string'||l.date.slice(0,7)!==month||l.date>today)continue;
-      const a=wonOf(l.net);
-      if(a!==null&&(within(a,amount,r.match.tolerancePct)||(st.state==='DIFFERENT'&&!sibling(r,a))))out.paid+=a;
-    }
-    out.paidCount++;
+    let actual=0n,paidDate=null,last=null;
+    for(const x of got){actual+=x.amount;last=x.amount;if(paidDate===null||x.date>paidDate)paidDate=x.date;}
+    const suggest=st.state==='DIFFERENT'?(st.lastDate!==null&&!(last*2n<amount||last>amount*2n)?last.toString():null):got.length===1&&last!==amount?last.toString():null;
+    out.push({...base,state:st.state,due:null,actual,count:got.length,paidDate,changed:actual!==amount?{from:amount,to:actual}:null,suggest:suggest===amount.toString()?null:suggest});
+  }
+  return out;
+}
+// 이번 달 정기 결제를 셋으로 나눈다(fixedSchedule의 합).
+// paid: 이번 달 기록이 있는 규칙에 배정된 실제 금액(이미 쓴 돈에 들어 있으므로 일평균에서 뺀다). 배정되지 않은 같은 가게 지출(예정일 밖 일반 구매)은 변동 지출이다(R32 D4).
+// upcoming: 기록이 없고 예정일이 오늘 이후(오늘 포함)이거나 예정일을 모르는 규칙의 금액. overdue: 기록이 없고 예정일이 지난 규칙의 금액.
+export function fixedPlan(rules,lines,today,days){
+  const out={paid:0n,paidCount:0,upcoming:0n,upcomingCount:0,overdue:0n,overdueCount:0,undatedCount:0};
+  for(const it of fixedSchedule(rules,lines,today,days)){
+    if(it.state==='OVERDUE'){out.overdue+=it.provisional;out.overdueCount++;}
+    else if(it.state==='PLANNED'){out.upcoming+=it.provisional;out.upcomingCount++;if(it.due===null)out.undatedCount++;}
+    else{out.paid+=it.actual;out.paidCount++;}
   }
   return out;
 }

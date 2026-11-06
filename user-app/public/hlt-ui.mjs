@@ -200,12 +200,14 @@ function itemForm(h,type,ctx,st,existing){
 const spanMinutes=i=>Math.round((Date.parse(i.endAt)-Date.parse(i.startAt))/60000);
 const durationText=m=>{const h=Math.floor(m/60),r=m%60;return h&&r?h+'시간 '+r+'분':h?h+'시간':r+'분';};
 const sleepAmount=items=>'수면 '+items.length+'개('+durationText(items.reduce((s,i)=>s+spanMinutes(i),0))+')';
+const FOLD_ID_PREFIX='hc-',fromFold=i=>typeof i.id==='string'&&i.id.startsWith(FOLD_ID_PREFIX);
 export const FOLD_TEXT=Object.freeze({
   button:'Fold에서 가져오기',none:'Fold에 기록 없음',denied:'권한 꺼짐(Health Connect 설정에서 켤 수 있어요)',kept:'그대로 뒀어요',same:'이미 같은 값이에요',filled:'초안에 넣었어요',nap:'낮잠으로 넣었어요',
   sleepOutside:'수면 기록이 날짜 범위를 벗어나 가져오지 않았어요',stepsBad:'값이 범위를 벗어나 가져오지 않았어요',
   permission:'걸음·수면 권한을 허용한 뒤 다시 눌러 주세요.',notYet:'아직 쌓기 전이에요 · 확인하고 "카드 쌓기"를 누르세요.',signedOut:'로그아웃되어 가져오지 않았어요.',
   // B58C (F3): 지워질 항목 수와 합계 시간을 보여 준다.
-  overwriteSleep:(from,to)=>(from.every(i=>i.id==='hc-sleep')?'Fold에서 가져온 ':'손으로 적은 ')+sleepAmount(from)+'를 Fold '+sleepAmount([to])+'로 바꿀까요? (더하지 않고 교체합니다)',
+  // FIX31 (D2b·D2): 출처는 id 접두 hc-로 본다(낮잠이 hc-sleep을 먼저 차지해도 그 뒤 Fold 수면은 hc-로 시작). 같은 시각 main을 낮잠으로 바꿀 때는 낮잠이라고 말한다.
+  overwriteSleep:(from,to)=>(from.every(fromFold)?'Fold에서 가져온 ':'손으로 적은 ')+sleepAmount(from)+'를 Fold '+(to.kind==='nap'?'낮잠 '+durationText(spanMinutes(to))+'으로 바꿀까요? (같은 시각이라 하나만 남기고, 밤잠 평균에서 뺍니다)':sleepAmount([to])+'로 바꿀까요? (더하지 않고 교체합니다)'),
   overwriteSteps:(from,to)=>'이 카드의 걸음 '+from+'을(를) Fold 값 '+to+'(으)로 바꿀까요?',
   error:Object.freeze({NOT_SUPPORTED:'Android 14 이상의 Fold에서만 가져올 수 있어요.',NOT_AVAILABLE:'이 기기에서 Health Connect를 쓸 수 없어요.',NO_PERMISSION:'걸음·수면 권한이 꺼져 있어요.',BAD_DATE:'날짜 형식이 맞지 않아요.',BAD_RANGE:'오늘부터 30일 전까지의 카드만 가져올 수 있어요.',READ_FAILED:'Health Connect에서 읽지 못했어요. 잠시 뒤 다시 눌러 주세요.',TIMEOUT:'Health Connect 응답이 늦어요. 잠시 뒤 다시 눌러 주세요.'}),
   fail:'Fold 앱과 연결하지 못했어요. 앱을 다시 열어 보세요.',
@@ -219,6 +221,7 @@ export const CHOICE_TEXT=Object.freeze({
   mine:c=>'이 기기 것 남기기 · '+CHOICE_TEXT.amount(c.kind,c.mine),theirs:c=>'다른 기기 것 남기기 · '+CHOICE_TEXT.amount(c.kind,c.theirs),
 });
 const closedMainSleeps=card=>card.items.filter(i=>i.type==='sleep'&&i.kind==='main'&&i.endAt!==null);
+const sameTimeMains=(card,s)=>closedMainSleeps(card).filter(i=>i.startAt===s.startAt&&i.endAt===s.endAt);
 // B58C (F5): 낮·저녁에 시작한 3시간 미만 세션은 낮잠이다(밤잠 평균에 넣지 않는다). 항목 종류는 기존 'nap'을 쓴다.
 export const NAP_MAX_MINUTES=180,NAP_START_FROM=12*60,NAP_START_BEFORE=21*60;
 export function foldSleepKind(sleep){
@@ -234,7 +237,10 @@ export function foldPlan(card,date,{steps,sleep}){
   else if(!nearDate(date,sleep.startAt)||!nearDate(date,sleep.endAt))sleepPlan={action:'OUTSIDE'};   // 카드 날짜 범위 규칙(HLT_TIME_OUTSIDE_CARD_DATE)과 같은 함수
   else if(foldSleepKind(sleep)==='nap'){
     const dup=card.items.some(i=>i.type==='sleep'&&i.kind==='nap'&&i.startAt===sleep.startAt&&i.endAt===sleep.endAt);
-    sleepPlan={action:dup?'SAME':'ADD',kind:'nap',startAt:sleep.startAt,endAt:sleep.endAt};   // 밤잠과 겹쳐 세지 않으므로 교체하지 않는다
+    // FIX31 (D2): 같은 시각의 main(옛 빌드가 Fold 수면을 늘 main hc-sleep으로 넣었다)은 같은 수면이다. 더하지 않고 낮잠으로 바꾸자고 묻는다(확인해야 바뀜).
+    const twin=dup?[]:sameTimeMains(card,sleep);
+    sleepPlan=twin.length?{action:'REPLACE',kind:'nap',startAt:sleep.startAt,endAt:sleep.endAt,from:twin}
+      :{action:dup?'SAME':'ADD',kind:'nap',startAt:sleep.startAt,endAt:sleep.endAt};   // 다른 시각의 밤잠과는 겹쳐 세지 않으므로 교체하지 않는다
   }else{
     const closed=closedMainSleeps(card),one=closed.length===1&&closed[0].startAt===sleep.startAt&&closed[0].endAt===sleep.endAt;
     sleepPlan={action:one?'SAME':closed.length?'REPLACE':'ADD',kind:'main',startAt:sleep.startAt,endAt:sleep.endAt,from:closed};
@@ -250,8 +256,9 @@ export function applyFoldDay(card,date,day,allow,newId){
   const s=p.sleep;
   if(s.action==='ADD')card.items.push({id:card.items.some(i=>i.id==='hc-sleep')?newId():'hc-sleep',type:'sleep',startAt:s.startAt,endAt:s.endAt,kind:s.kind});
   if(s.action==='REPLACE'&&allow.sleep){
-    const [first,...rest]=closedMainSleeps(card),drop=new Set(rest.map(i=>i.id));
-    card.items=card.items.filter(i=>!drop.has(i.id)).map(i=>i.id===first.id?{id:first.id,type:'sleep',startAt:s.startAt,endAt:s.endAt,kind:'main'}:i);
+    // 낮잠 교체(D2)는 같은 시각의 main만 바꾸고 다른 밤잠은 그대로 둔다.
+    const [first,...rest]=s.kind==='nap'?sameTimeMains(card,s):closedMainSleeps(card),drop=new Set(rest.map(i=>i.id));
+    card.items=card.items.filter(i=>!drop.has(i.id)).map(i=>i.id===first.id?{id:first.id,type:'sleep',startAt:s.startAt,endAt:s.endAt,kind:s.kind}:i);
   }
   return card;
 }
@@ -268,13 +275,14 @@ export async function importFromFold({flow,fold,date,confirm,newId,session=()=>n
   const view=await flow.preview(date),plan=foldPlan(view.card,date,day);
   const allow={steps:plan.steps.action==='REPLACE'&&confirm(FOLD_TEXT.overwriteSteps(plan.steps.from,plan.steps.count))===true,sleep:plan.sleep.action==='REPLACE'&&confirm(FOLD_TEXT.overwriteSleep(plan.sleep.from,plan.sleep))===true};
   const line=(name,denied,p,ok,extra)=>name+': '+(denied?FOLD_TEXT.denied:p.action==='NONE'?FOLD_TEXT.none:extra[p.action]??(p.action==='SAME'?FOLD_TEXT.same:p.action==='REPLACE'&&!ok?FOLD_TEXT.kept:FOLD_TEXT.filled));
-  const lines=[line('걸음',hs.steps!=='granted',plan.steps,allow.steps,{BAD:FOLD_TEXT.stepsBad}),line('수면',hs.sleep!=='granted',plan.sleep,allow.sleep,{OUTSIDE:FOLD_TEXT.sleepOutside,...(plan.sleep.kind==='nap'?{ADD:FOLD_TEXT.nap}:{})})];
+  const lines=[line('걸음',hs.steps!=='granted',plan.steps,allow.steps,{BAD:FOLD_TEXT.stepsBad}),line('수면',hs.sleep!=='granted',plan.sleep,allow.sleep,{OUTSIDE:FOLD_TEXT.sleepOutside,...(plan.sleep.kind==='nap'?{ADD:FOLD_TEXT.nap,...(allow.sleep?{REPLACE:FOLD_TEXT.nap}:{})}:{})})];
   const wrote=plan.steps.action==='ADD'||plan.sleep.action==='ADD'||allow.steps||allow.sleep;
   if(!wrote)return {text:lines.join(' · '),error:false};
   // 확인받은 칸·새 칸만 쓴다. 다른 기기 항목을 바꾸는 교체는 초안을 최신 카드 위로 옮겨야 한다. 단 아직 답하지 않은 겹침이 남으면 옮기지 않는다(옮기면 쌓을 때 묻지 못해 조용히 둘 다 남는다).
   const only={steps:plan.steps.action==='ADD'||allow.steps?day.steps:null,sleep:plan.sleep.action==='ADD'||allow.sleep?day.sleep:null};
   const open=view.blocked||view.choices.some(c=>c.kind==='steps'||!allow.sleep),onLatest=view.drift&&(allow.steps||allow.sleep)&&!open;
-  await flow.edit(date,c=>{applyFoldDay(c,date,only,allow,newId);},{onLatest});
+  // FIX31 (D2b): hc-sleep이 이미 쓰였을 때 새로 만드는 Fold 수면 id에도 출처 표지(hc-)를 붙인다(기록 모양은 그대로, id 규칙 안).
+  await flow.edit(date,c=>{applyFoldDay(c,date,only,allow,()=>FOLD_ID_PREFIX+newId());},{onLatest});
   lines.push(FOLD_TEXT.notYet);
   return {text:lines.join(' · '),error:false,notices:onLatest?view.notices:[]};
 }
