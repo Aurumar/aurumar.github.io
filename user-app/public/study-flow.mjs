@@ -3,7 +3,7 @@
 // 초안 = 기존 오프라인 초안 저널(drafts.lbd)의 ENTITY 초안 1건: data=내 카드, expectedHeads=편집을 시작한 시점의 카드 heads(base).
 // 초안 입력은 연산 0, "확정" 1번 = 연산 1. 초안은 확정 성공을 확인한 뒤에만 지운다. 검증 거부·저장 실패·응답 불명이면 초안을 그대로 둔다.
 import {validateStudyData,kstDate,shiftDay} from './study-model.mjs';
-import {rebase,emptyCard,hasChanges,diffCard,stable,LISTS} from './study-rebase.mjs';
+import {rebase,emptyCard,hasChanges,diffCard,stable,LISTS,sessionMark} from './study-rebase.mjs';
 import {defaultReviewDue,suggestNext,reviewHistory} from './study-schedule.mjs';
 
 const codeOf=e=>typeof e?.code==='string'?e.code:(e?.message??'UNKNOWN');
@@ -13,12 +13,14 @@ export const CONFIRM_REASON='공부 카드 확정';
 
 const sameHeads=(a,b)=>a.length===b.length&&a.every((h,i)=>h===b[i]);
 const err=code=>Object.assign(new Error(code),{code});
+// FIX34 (HUNT34 H1): 같은 타이머(같은 시작 시각 = 같은 id)를 두 창이 따로 끝냈으면 같은 집중이다 → 먼저 디스크에 적힌 행을 쓴다(id 충돌로 막지 않음).
+const adoptTimerRows=(mine,disk)=>({...mine,sessions:mine.sessions.map(s=>sessionMark(s.id)==='T'?disk.sessions.find(x=>x.id===s.id)??s:s)});
 
 export class StudyFlow{
   #p;
   // B17: hlt-flow와 같다. 이번 실행에서 확정 결과를 모르게 끝난 requestId(#sent), 결말이 ABORTED·미반영으로 확인된 requestId(#aborted).
   #sent=new Set();#aborted=new Set();
-  constructor(ports){this.#p=ports;}
+  constructor(ports){this.#p=ports;ports.drafts?.mergeWith?.({rebase,ports,prepare:adoptTimerRows});}
   async #draftFor(date){
     const list=(await this.#p.drafts.list()).filter(d=>d.type==='ENTITY'&&d.body?.entityType==='STUDY_DAY'&&d.body.entityId===date);
     if(!list.length)return null;

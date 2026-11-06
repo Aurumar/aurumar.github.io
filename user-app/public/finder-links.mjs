@@ -1,5 +1,6 @@
 // 지식 파인더 결과 링크 (B63, V3 §8 · 설계 AUTOPILOT\design\B63_LINK_CSP_DESIGN.md §5, 소유자 결정 2026-11-06).
-// 비서 이름이 정확히 finder인 보고의 "## 찾은 자료" 표(FINDER_LINK_FORMAT_V1)만 엄격히 읽는다. 한 줄이라도 틀리면 표 전체를 받지 않고 글만 + 이유 한 줄(B61 방식).
+// 비서 이름이 정확히 finder인 보고의 "## 찾은 자료" 표(FINDER_LINK_FORMAT_V1)만 엄격히 읽는다. 표 모양이 틀리거나 맞는 줄이 하나도 없으면 글만 + 이유 한 줄(B61 방식).
+// FIX34 (HUNT34 H18): 틀린 줄이 일부면 그 줄만 글로 두고(이유 한 줄) 나머지 줄의 링크는 살린다.
 // 링크는 <a href>가 아니라 단추다: href·src가 없으니 미리 불러오기·끌어 놓기·주소 복사로 새는 길이 없다. 여는 것은 host(link-opener.mjs) 경로 하나이고 host가 규칙을 다시 검사한다.
 // - 웹: 확인창(도메인 굵게, 전체 주소 그대로, 퓨니코드는 xn-- 원형 그대로) → [열기]. "이 사이트는 다시 묻지 않기"를 켜고 연 사이트(host 이름 정확히 같을 때)는 다음부터 바로 연다.
 //   그 목록은 이 기기 설정(localStorage)에만 둔다: 동기화 기록이 아니고 설정 화면에서 보고 지울 수 있다.
@@ -19,7 +20,7 @@ export const LINK_TEXT=Object.freeze({
   LINK_FORMAT:'찾은 자료 표의 모양이 형식과 달라 링크를 만들지 않았습니다.',
   LINK_COUNT:'찾은 자료가 '+FINDER_MAX_ROWS+'줄을 넘어 링크를 만들지 않았습니다.',
   LINK_KIND:'찾은 자료의 종류가 웹·파일·앱이 아닌 줄이 있어 링크를 만들지 않았습니다.',
-  LINK_TITLE:'찾은 자료의 제목이 비었거나 너무 길어 링크를 만들지 않았습니다.',
+  LINK_TITLE:'찾은 자료의 제목이 비었거나 너무 길거나 보이지 않는 글자가 있어 링크를 만들지 않았습니다.',
   LINK_WEB:'열 수 없는 인터넷 주소가 있어 링크를 만들지 않았습니다(https 도메인 주소만).',
   LINK_FILE:'열 수 없는 파일 위치가 있어 링크를 만들지 않았습니다.',
   LINK_APP:'모르는 앱 화면 이름이 있어 링크를 만들지 않았습니다.',
@@ -38,6 +39,8 @@ export const LINK_TEXT=Object.freeze({
   trustTitle:'인터넷 주소 바로 열기',
   trustAbout:'지식 파인더 결과에서 "다시 묻지 않기"로 한 사이트입니다. 이 사이트 주소는 확인창 없이 기본 브라우저에서 엽니다. (이 기기 설정 · 동기화하지 않음)',
   trustEmpty:'다시 묻지 않기로 한 사이트가 없습니다.',
+  trustUnsaved:'이 기기 저장소에 쓰지 못했습니다. 이 목록은 앱을 닫기 전까지만 적용되고, 다시 열면 전의 목록으로 돌아갈 수 있습니다.',
+  partial:'그 줄만 아래에 글로 남겼습니다.',
 });
 const OPEN_CODES=Object.freeze(['LINK_LOCKED','LINK_NOT_FOUND','LINK_REFUSED','LINK_BUSY','LINK_RATE']);
 export const openResultText=code=>code==='MD_UNLOCK_REQUIRED'?LINK_TEXT.LINK_LOCKED:OPEN_CODES.includes(code)?LINK_TEXT[code]:LINK_TEXT.fail;
@@ -58,21 +61,26 @@ export function webHostOK(url){
   return u.href.length<=WEB_MAX?u.href:null;
 }
 // 내 PC 위치: X:\ 로 시작하는 절대 경로. 폴더 범위 제한은 없고(소유자 결정 3) 안전장치만 둔다:
-// UNC(\\서버)·장치 경로(\\?\ \\.\)·:스트림·..·/·와일드카드·셸 명령 문자·제어문자·끝 공백·점·장치 이름(CON·NUL…) 거부.
-const SHELL_CHARS=/[*?"<>|%^&`$;]/;
+// UNC(\\서버)·장치 경로(\\?\ \\.\)·:스트림·..·/·와일드카드·큰따옴표·제어문자·끝 공백·점·장치 이름(CON·NUL…) 거부.
+// FIX34 (H18): & % $ ; ^ 는 흔한 파일 이름 글자라 받는다(host는 대상을 환경변수로만 넘긴다, link-opener.mjs와 같은 규칙).
+const SHELL_CHARS=/[*?"<>|`]/;
+// FIX34 (S8): 방향·폭 없는 글자(U+202E·U+200B 등)는 경로·제목 표시를 속일 수 있어 거부한다. 그 줄이 글로 남을 때는 보이는 표시로 바꾼다.
+const INVISIBLE=/[\u00AD\u061C\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/,INVISIBLE_ALL=new RegExp(INVISIBLE.source,'g');
+const showInvisible=line=>line.replace(INVISIBLE_ALL,c=>'[U+'+c.codePointAt(0).toString(16).toUpperCase().padStart(4,'0')+']');
 const DEVICE_NAME=/^(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$)(?:\.|$)/i;
 export function filePathOK(path){
-  if(typeof path!=='string'||path.length<4||path.length>FILE_MAX||!path.isWellFormed()||CONTROL.test(path))return false;
+  if(typeof path!=='string'||path.length<4||path.length>FILE_MAX||!path.isWellFormed()||CONTROL.test(path)||INVISIBLE.test(path))return false;
   if(!/^[A-Za-z]:\\/.test(path)||path.includes('/')||path.indexOf(':',2)>=0||path.includes('\\\\')||SHELL_CHARS.test(path))return false;
   const parts=path.slice(3).split('\\');
   return parts.every(p=>p.length>0&&p!=='.'&&p!=='..'&&!/[ .]$/.test(p)&&p.trim()===p&&!DEVICE_NAME.test(p));
 }
-const titleOK=t=>typeof t==='string'&&t.length>0&&[...t].length<=TITLE_MAX&&t.trim()===t&&!CONTROL.test(t)&&t.isWellFormed();
+const titleOK=t=>typeof t==='string'&&t.length>0&&[...t].length<=TITLE_MAX&&t.trim()===t&&!CONTROL.test(t)&&!INVISIBLE.test(t)&&t.isWellFormed();
 const cellsOf=line=>{const t=line.trim();return t.length>=2&&t.startsWith('|')&&t.endsWith('|')?t.slice(1,-1).split('|').map(c=>c.trim()):null;};
 const SEPARATOR=/^:?-{3,}:?$/;
 const fail=code=>({status:'INVALID',code});
 
 // 표 하나를 읽는다. NONE(제목 없음 → 지금처럼 글만) | INVALID(code) | OK(rows, 표가 있는 줄 범위 from..to).
+// FIX34 (H18): OK에 틀린 줄이 섞여 있으면 bad=[{line,code}]와 첫 이유 code가 함께 온다. 맞는 줄이 하나도 없으면 INVALID(첫 이유). 줄 수 초과·머리줄 오류는 표 전체 거부.
 export function parseFinderLinks(text){
   const lines=String(text??'').replace(/\r\n?/g,'\n').split('\n');
   const heads=lines.flatMap((l,i)=>l.trim()===FINDER_HEADING?[i]:[]);
@@ -81,37 +89,48 @@ export function parseFinderLinks(text){
   let i=heads[0]+1;while(i<lines.length&&!lines[i].trim())i++;
   const head=cellsOf(lines[i]??''),sep=cellsOf(lines[i+1]??'');
   if(!head||head.join('|')!==FINDER_HEAD.join('|')||!sep||sep.length!==3||!sep.every(c=>SEPARATOR.test(c)))return fail('LINK_FORMAT');
-  const rows=[],seen=new Set();let k=i+2;
+  const rows=[],bad=[],seen=new Set();let k=i+2;
   for(;k<lines.length&&lines[k].trim().startsWith('|');k++){
-    const c=cellsOf(lines[k]);
-    if(!c||c.length!==3)return fail('LINK_FORMAT');
-    if(rows.length>=FINDER_MAX_ROWS)return fail('LINK_COUNT');
-    const [label,title,where]=c,kind=Object.hasOwn(KINDS,label)?KINDS[label]:null;
-    if(!kind)return fail('LINK_KIND');
-    if(!titleOK(title))return fail('LINK_TITLE');
-    let row;
-    if(kind==='web'){const href=webHostOK(where);if(!href)return fail('LINK_WEB');row={kind,title,target:href,host:new URL(href).hostname};}
-    else if(kind==='file'){if(!filePathOK(where))return fail('LINK_FILE');row={kind,title,target:where,name:where.slice(where.lastIndexOf('\\')+1)};}
-    else{if(!Object.hasOwn(APP_VIEWS,where))return fail('LINK_APP');row={kind,title,target:where,key:APP_VIEWS[where]};}
-    const id=kind+'\n'+(kind==='file'?row.target.toLowerCase():row.target);
-    if(seen.has(id))return fail('LINK_DUPLICATE');
-    seen.add(id);rows.push(row);
+    if(rows.length+bad.length>=FINDER_MAX_ROWS)return fail('LINK_COUNT');
+    const r=rowOf(lines[k],seen);
+    if(r.code)bad.push({line:k,code:r.code});else rows.push(r.row);
   }
-  if(!rows.length)return fail('LINK_FORMAT');
-  return {status:'OK',rows,from:heads[0],to:k};
+  if(!rows.length)return fail(bad[0]?.code??'LINK_FORMAT');
+  return {status:'OK',rows,from:heads[0],to:k,...(bad.length?{bad,code:bad[0].code}:{})};
+}
+// 표 한 줄: {row} 또는 틀린 이유 {code}.
+function rowOf(line,seen){
+  const c=cellsOf(line);
+  if(!c||c.length!==3)return {code:'LINK_FORMAT'};
+  const [label,title,where]=c,kind=Object.hasOwn(KINDS,label)?KINDS[label]:null;
+  if(!kind)return {code:'LINK_KIND'};
+  if(!titleOK(title))return {code:'LINK_TITLE'};
+  let row;
+  if(kind==='web'){const href=webHostOK(where);if(!href)return {code:'LINK_WEB'};row={kind,title,target:href,host:new URL(href).hostname};}
+  else if(kind==='file'){if(!filePathOK(where))return {code:'LINK_FILE'};row={kind,title,target:where,name:where.slice(where.lastIndexOf('\\')+1)};}
+  else{if(!Object.hasOwn(APP_VIEWS,where))return {code:'LINK_APP'};row={kind,title,target:where,key:APP_VIEWS[where]};}
+  const id=kind+'\n'+(kind==='file'?row.target.toLowerCase():row.target);
+  if(seen.has(id))return {code:'LINK_DUPLICATE'};
+  seen.add(id);
+  return {row};
 }
 
 // ---- 다시 묻지 않기 목록: 이 기기 localStorage. 막혀 있으면 이번 실행 동안만 메모리에 둔다 ----
-let memoryTrust=null;
+// FIX34 (HUNT34 H17): 저장에 실패한 목록은 저장소별로 메모리에 두고, 읽을 때 저장소보다 먼저 쓴다(지웠는데 다시 믿는 일이 없게). 다음 저장이 성공하면 버린다. 화면은 trustUnsaved로 알린다.
+const NO_STORE={},memoryTrust=new WeakMap();
+const memKey=storage=>storage??NO_STORE;
+export const trustUnsaved=storage=>memoryTrust.has(memKey(storage));
 export function loadTrust(storage){
-  let t;
-  try{if(!storage)throw new Error('NO_STORAGE');t=storage.getItem(TRUST_KEY);}catch{t=undefined;}
-  let raw=[];
-  if(t===undefined)raw=memoryTrust;                    // 저장소가 없거나 막힘: 이번 실행 동안의 메모리 값
-  else if(t!==null){try{raw=JSON.parse(t);}catch{raw=[];}}   // 깨진 값은 빈 목록(다시 묻는 쪽)
+  let raw=memoryTrust.get(memKey(storage));
+  if(raw===undefined){
+    let t=null;
+    try{t=storage?.getItem(TRUST_KEY)??null;}catch{t=null;}   // 저장소가 없거나 막힘: 빈 목록(다시 묻는 쪽)
+    raw=[];
+    if(t!==null){try{raw=JSON.parse(t);}catch{raw=[];}}       // 깨진 값은 빈 목록(다시 묻는 쪽)
+  }
   return [...new Set(Array.isArray(raw)?raw.filter(hostOK):[])].slice(0,TRUST_MAX);
 }
-function saveTrust(list,storage){try{if(!storage)throw new Error('NO_STORAGE');storage.setItem(TRUST_KEY,JSON.stringify(list));}catch{memoryTrust=list;/* 이번 실행 동안만 */}return list;}
+function saveTrust(list,storage){try{if(!storage)throw new Error('NO_STORAGE');storage.setItem(TRUST_KEY,JSON.stringify(list));memoryTrust.delete(memKey(storage));}catch{memoryTrust.set(memKey(storage),list);/* 이번 실행 동안만 */}return list;}
 export const isTrusted=(host,storage)=>loadTrust(storage).includes(host);
 export function trustHost(host,storage){const cur=loadTrust(storage);if(!hostOK(host)||cur.includes(host)||cur.length>=TRUST_MAX)return cur;return saveTrust([...cur,host].sort(),storage);}
 export const forgetHost=(host,storage)=>saveTrust(loadTrust(storage).filter(h=>h!==host),storage);
@@ -144,7 +163,7 @@ export function renderFinderLinks(rows,ctx){
     const parts=[h.add(h.el('p',null,'finder-sheet-host'),h.el('strong',row.host)),h.el('p',row.target,'path finder-sheet-url')];
     if(row.host.split('.').some(l=>l.startsWith('xn--')))parts.push(h.el('p',LINK_TEXT.puny,'finder-sheet-warn'));
     parts.push(h.el('p',LINK_TEXT.webNote,'muted'),h.add(h.el('div',null,'native-row'),kit.toggle(LINK_TEXT.trust,false,v=>{remember=Boolean(v);})));
-    sheetFor(row.title,parts,async say=>{const done=await send({kind:'web',url:row.target},say);if(done&&remember)trustHost(row.host,ctx.storage);return done;},'열기');
+    sheetFor(row.title,parts,async say=>{const done=await send({kind:'web',url:row.target},say);if(done&&remember){trustHost(row.host,ctx.storage);if(trustUnsaved(ctx.storage))msg.textContent=LINK_TEXT.trustUnsaved;}return done;},'열기');
   };
   const file=row=>sheetFor(row.title,[h.el('p',row.target,'path finder-sheet-url'),h.el('p',LINK_TEXT.fileNote,'muted')],say=>send({kind:'file',path:row.target},say),'폴더에서 보기');
   for(const row of rows){
@@ -163,8 +182,9 @@ export function decorateFinder(r,text,ctx){
   if(p.status==='NONE')return null;
   const {h}=ctx;
   if(p.status==='INVALID')return {head:'',node:h.el('p',LINK_TEXT[p.code]??LINK_TEXT.LINK_FORMAT,'finder-links-reason'),tail:String(text??'')};
-  const lines=String(text??'').replace(/\r\n?/g,'\n').split('\n');
-  return {head:lines.slice(0,p.from+1).join('\n'),node:renderFinderLinks(p.rows,ctx),tail:lines.slice(p.to).join('\n')};
+  const lines=String(text??'').replace(/\r\n?/g,'\n').split('\n'),node=renderFinderLinks(p.rows,ctx),kept=(p.bad??[]).map(b=>showInvisible(lines[b.line]));
+  if(p.bad)h.add(node,h.el('p',(LINK_TEXT[p.code]??LINK_TEXT.LINK_FORMAT)+' '+LINK_TEXT.partial,'finder-links-reason'));
+  return {head:lines.slice(0,p.from+1).join('\n'),node,tail:[...kept,...lines.slice(p.to)].join('\n')};
 }
 
 // ---- 설정 화면: PC 앱에서만. 다시 묻지 않기로 한 사이트 보기·지우기 ----
@@ -176,6 +196,7 @@ export function renderFinderTrust(root,ctx){
     const hosts=loadTrust(ctx.storage);
     list.replaceChildren(...(hosts.length?hosts.map(host=>h.add(h.el('div',null,'native-row finder-trust-row'),h.el('span',host,'finder-trust-host'),h.button('지우기',()=>{forgetHost(host,ctx.storage);draw();},'secondary'))):[h.el('p',LINK_TEXT.trustEmpty,'muted')]));
     if(hosts.length)list.append(h.add(h.el('div',null,'buttons'),h.button('모두 지우기',()=>{forgetAllHosts(ctx.storage);draw();},'secondary')));
+    if(trustUnsaved(ctx.storage))list.append(h.el('p',LINK_TEXT.trustUnsaved,'muted'));
   };
   draw();
   h.add(sec,h.el('p',LINK_TEXT.trustAbout,'muted'),list);

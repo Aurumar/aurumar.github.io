@@ -27,7 +27,7 @@ export class HltFlow{
   #sent=new Set();#aborted=new Set();
   // K1: 화면이 읽는 "취침 기록 중" 값 {date,item}|null. 원본은 카드 초안의 열린 수면이고, 이 칸은 취침·기상 직후 바로 보이게 하는 사본이다(prepareHealth가 다시 채움).
   pending={v:null};
-  constructor(ports){this.#p=ports;}
+  constructor(ports){this.#p=ports;ports.drafts?.mergeWith?.({rebase,ports});}   // FIX34 (HUNT34 H1): STALE 뒤 다음 쓰기는 디스크 초안과 합친다
   async #draftFor(date){
     return this.#draftIn(await this.#p.drafts.list(),date);
   }

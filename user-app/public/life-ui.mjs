@@ -6,6 +6,7 @@ import {chip,toggle,sheet,xpBar,ring} from './ui-kit.mjs';
 import {LifeFlow,createLifePorts,saveDefinitions,collectRows,stackDay,STACK_DONE} from './life-flow.mjs';
 import {achieve,previewAchieve,habitXpToday,multText} from './life-achieve.mjs';
 import {timerElapsedMin,timerRecordMin,liveTick} from './study-stage.mjs';
+import {OVERLAP_NOTICE} from './study-rebase.mjs';
 import {HABIT_KINDS,HABIT_AREAS,DAY_TYPES,MAX_NAME,MAX_NOTE,SUBJECT_COLOR_KEYS,HABIT_HINTS,
   kstDate,shiftDay,dateKeyOK,dayNumber,hhmmFromIso,timeOK,targetTimeOK,lifeIdOK,
   brickOf,sumBricks,entryDone,nearestExam,lifeDefs,weekCount,studyCodeOf,sessionIdFor,subjectOfSession,emptyDay} from './life-model.mjs';
@@ -22,6 +23,7 @@ export const LIFE_ERROR_TEXT=Object.freeze({
   STALE_HEADS:'다른 기기에서 먼저 바뀌었습니다. 다시 받아 합친 뒤 쌓으세요.',
   MD_NOT_WRITE_READY:'지금은 서버에 쌓을 수 없습니다. 입력은 이 기기에 남아 있습니다.',
   ABORTED:'서버가 이 쌓기를 받지 않았습니다(기록되지 않음) · 입력은 그대로 있습니다. 다시 쌓을 수 있습니다.',
+  INVALID_TIMER_END:'끝난 시각은 시작 뒤 24시간 안이고 지금보다 앞이어야 합니다.',
 });
 export const lifeErrorText=code=>LIFE_ERROR_TEXT[code]??(code?'쌓지 못했습니다 ('+code+') · 입력은 그대로 있습니다.':'쌓지 못했습니다.');
 export const LIFE_NOTICE_TEXT=Object.freeze({
@@ -29,13 +31,16 @@ export const LIFE_NOTICE_TEXT=Object.freeze({
   REBASE_CONFLICT_KEPT_LOCAL:'다른 기기에서 지운 습관을 내가 고쳐서 내 수정으로 되살렸습니다.',
   REBASE_VALUE_OVERWRITTEN:'같은 습관을 양쪽에서 고쳤습니다 · 내 값을 썼고 상대 값은 이력에 남아 있습니다.',
   REBASE_SCALAR_OVERWRITTEN:'기분·한 줄·하루 종류를 양쪽에서 고쳤습니다 · 내 값을 썼고 상대 값은 이력에 남아 있습니다.',
+  [OVERLAP_NOTICE]:'PC 측정으로 담은 시간이 타이머 시간과 겹칩니다 · 같은 시간이 두 번 세어질 수 있어요(자동으로 지우지 않았어요) · 공부 화면에서 한쪽을 지울 수 있어요.',
 });
 const STATUS_TEXT=Object.freeze({
   CONFIRMED:'저장 및 동기화 확인됨 · 쌓았습니다.',ALREADY_APPLIED:'이미 반영되어 있습니다 · 새로 저장하지 않았습니다.',NOTHING_TO_CONFIRM:'쌓을 입력이 없습니다.',
   UNKNOWN:'서버 응답을 확인하지 못했습니다 · 입력은 그대로 있습니다. 다시 쌓기를 누르면 결과를 확인한 뒤 이어서 처리합니다(중복 저장 없음).',
   SYNC_FAILED:'서버에서 최신 기록을 받지 못했습니다 · 입력은 그대로 있습니다.',FAILED:'저장하지 못했습니다 · 입력은 그대로 있습니다.',STALE:'다른 기기와 계속 겹쳐 쌓지 못했습니다 · 입력은 그대로 있습니다.',
 });
-export const TIMER_KEY='lb.life.timer';
+export const TIMER_KEY='lb.life.timer',TIMER_END_KEY='lb.life.timer.end';
+const MIN_MS=60000,KST_MS=9*3600000,MAX_TIMER_MS=1440*MIN_MS;
+const TIMER_SUGGEST_MS=3*3600000,TIMER_LOOKBACK_DAYS=400;   // FIX34 (H5): "언제 끝났나요" 기본 제안(시작 + 최대 3시간) · 이미 담았는지 찾아보는 날 수의 상한(깨진 시작 시각에도 끝나게)
 const MOODS=Object.freeze([[1,'😞','많이 힘듦'],[2,'🙁','별로'],[3,'😐','보통'],[4,'🙂','좋음'],[5,'😄','아주 좋음']]);
 const DURATION_CHIPS=Object.freeze([5,10,15,20,30]);
 const KIND_TEXT=Object.freeze({TIME:'시각',CHECK:'체크',DURATION:'분',COUNT:'횟수',RECOVERY:'복구'});
@@ -65,8 +70,17 @@ function flagBoxFail(st,date){
   const box=st.ports?.box;
   for(const kind of ['LIFE_DAY','STUDY_DAY']){const b=box?.statusFor(kind,date);if(b?.has&&b.own&&!st.error){st.message=box.ERROR_TEXT[b.own]??box.TEXT.failed;st.error=true;}}
 }
-function readTimer(storage){try{const v=JSON.parse(storage?.getItem(TIMER_KEY)??'null');return v&&typeof v.subjectId==='string'&&typeof v.startIso==='string'&&Number.isFinite(Date.parse(v.startIso))?{subjectId:v.subjectId,startIso:v.startIso}:null;}catch{return null;}}
-function writeTimer(storage,t){try{if(t)storage?.setItem(TIMER_KEY,JSON.stringify(t));else storage?.removeItem(TIMER_KEY);}catch{/* 저장소가 막혀 있으면 이번 실행 동안만 */}}
+// FIX34 (HUNT34 H4): endIso = 첫 "끝내고 담기"를 누른 시각. 담기가 실패하고 앱을 닫아도 다시 누를 때 이 시각을 쓴다(누른 시각까지 분이 부풀지 않게). 이 기기 저장소 값이고 기록 형식이 아니다.
+// 시작 시각 칸(TIMER_KEY)은 그대로 두고 옆 칸(TIMER_END_KEY)에 어느 타이머의 끝인지 함께 적는다(다른 타이머의 끝 시각을 쓰지 않게).
+function readTimerEnd(storage,startIso){try{const e=JSON.parse(storage?.getItem(TIMER_END_KEY)??'null');return e?.startIso===startIso&&typeof e.endIso==='string'&&Date.parse(e.endIso)>=Date.parse(startIso)?{endIso:e.endIso}:{};}catch{return {};}}
+function readTimer(storage){try{const v=JSON.parse(storage?.getItem(TIMER_KEY)??'null');return v&&typeof v.subjectId==='string'&&typeof v.startIso==='string'&&Number.isFinite(Date.parse(v.startIso))?{subjectId:v.subjectId,startIso:v.startIso,...readTimerEnd(storage,v.startIso)}:null;}catch{return null;}}
+function writeTimer(storage,t){
+  try{
+    if(!t){storage?.removeItem(TIMER_KEY);storage?.removeItem(TIMER_END_KEY);return;}
+    storage?.setItem(TIMER_KEY,JSON.stringify({subjectId:t.subjectId,startIso:t.startIso}));
+    if(t.endIso)storage?.setItem(TIMER_END_KEY,JSON.stringify({startIso:t.startIso,endIso:t.endIso}));else storage?.removeItem(TIMER_END_KEY);
+  }catch{/* 저장소가 막혀 있으면 이번 실행 동안만 */}
+}
 
 // 공부 포트: 앱이 {ui,st,ctx}를 넘긴다(공부 모듈이 꺼져 있으면 null).
 async function studyFlow(ctx){
@@ -211,7 +225,8 @@ export function renderLifeToday(root,ctx,st){
     const res=await stackDay(date,{life:st.flow,study:s?.st.flow??null});
     if(res.phase==='STUDY_FAILED'){const r=res.study;await reportConfirm(ctx,st,r);st.message='공부 기록을 쌓지 못해 오늘 카드도 쌓지 않았습니다 · '+(st.message??'');st.error=true;return;}
     // FIX31 (S2): 여기까지 왔으면 공부 카드는 확정됐다(stackDay는 공부 확정 뒤에만 오늘 카드로 넘어간다). 오늘 카드가 입력 없음·실패여도 자동 내보내기가 그 확정을 보게 넘긴다.
-    const r=res.study?{...res.life,studyStatus:res.study.status}:res.life;await reportConfirm(ctx,st,r);
+    // FIX34 (H6): 공부 카드 확정의 T·A 겹침 알림도 오늘 화면에 보인다(공부 카드의 다른 알림은 공부 화면 몫).
+    const r=res.study?{...res.life,studyStatus:res.study.status,notices:[...(res.study.notices??[]).filter(n=>n.code===OVERLAP_NOTICE),...(res.life?.notices??[])]}:res.life;await reportConfirm(ctx,st,r);
     if(res.study){
       await ctx.reload?.();
       const i=(st.message??'').indexOf(' · 상태 내보내기 실패'),exportNote=i<0?'':st.message.slice(i);   // 아래에서 문구를 바꿔도 내보내기 실패는 남긴다
@@ -280,24 +295,31 @@ function renderBricks(ctx,st,h,defs,life,act,goalBricks){
   const recordNow=async(subject,m,mark='',id=null)=>{
     if(!(Number.isInteger(m)&&m>=1&&m<=1440))throw Object.assign(new Error('INVALID_LIFE_MINUTES'),{code:'INVALID_LIFE_MINUTES'});
     const s=await studyFlow(ctx);if(!s)throw Object.assign(new Error('STUDY_OFF'),{code:'STUDY_OFF'});
-    const now=ctx.now();
+    const now=mark==='T'&&st.timer?.endIso?st.timer.endIso:ctx.now();   // FIX34 (H4·H5): 타이머 세션은 적어 둔 끝 시각으로 기록한다(구간 [at − 분, at]과 카드 날짜가 실제 집중에 맞게)
     await s.st.flow.addRow(kstDate(now),'sessions',{id:id??sessionIdFor(subject.id,mark?mark+ctx.uid().slice(0,7):ctx.uid().slice(0,8)),subject:studyCodeOf(subject.id),state:'COMPLETED',plannedMin:m,confirmedMin:m,restartLocator:'',at:now});
     const b=brickOf(m);st.message=subject.name+' '+m+'분을 담았습니다 · '+(b.bricks?b.bricks+'장':'')+(b.bricks&&b.pieces?' + ':'')+(b.pieces?'조각 1':'')+(!b.bricks&&!b.pieces?'벽돌 0 (10분부터 조각)':'')+' · "오늘 쌓기"를 누르면 함께 쌓입니다';
     return kstDate(now);
   };
   // FIX31 (D1): 타이머는 담기가 저장된 뒤에만 지운다. 거절(읽기 전용·잠김·공부 꺼짐)이나 초안 저장 실패(Quota 등)면 시작 시각을 남겨 집중 시간을 잃지 않는다.
   // R33B (HUNT32 D1·S2): 성공 판정은 그 날 STUDY_DAY 레코드 자체가 디스크에 써졌는가(has&&!dirty)다. 다른 날짜·종류 초안의 STALE·Quota(상자 전체 failed)는 보지 않는다.
-  // 세션 id는 타이머 시작 시각에서 만든다(같은 타이머 = 같은 id). 다시 눌러도 그 세션이 오늘·어제 카드에 이미 있으면 새로 담지 않고,
-  // 지난번 쓰기가 실패해 메모리에만 있으면 한 번 더 써 본다(같은 집중이 두 번 담기지 않음).
-  const finishTimer=async(subject,startIso,m)=>{
+  // 세션 id는 타이머 시작 시각에서 만든다(같은 타이머 = 같은 id). 다시 눌러도 그 세션이 오늘부터 시작일까지의 카드에 이미 있으면 새로 담지 않고,
+  // 지난번 쓰기가 실패해 메모리에만 있으면 한 번 더 써 본다(같은 집중이 두 번 담기지 않음). 다른 창과 부딪혀(STALE) 못 쓴 초안이면 합쳐서 쓴다(FIX34 H1).
+  // FIX34 (H5): 시작이 어제보다 오래된 타이머는 바로 담지 않고 "언제 끝났나요"를 묻는다(confirmed = 그 답을 받은 뒤의 호출).
+  // FIX34 (H4): 새로 담을 때 끝 시각을 타이머 저장소에 먼저 적는다. 담기가 실패하고 앱을 닫아도 다음 누름이 그 시각을 쓴다.
+  const finishTimer=async(subject,startIso,m,confirmed=false)=>{
     const keep=text=>{st.message=text+' · 집중 타이머는 그대로 두었어요.';st.error=true;},box=st.ports?.box??null;
     const id=sessionIdFor(subject.id,'T'+Date.parse(startIso).toString(36));
     let day;
     try{
-      const s=await studyFlow(ctx),today=kstDate(ctx.now());
-      for(const d of s?[today,shiftDay(today,-1)]:[])if((await s.st.flow.state(d)).card.sessions.some(x=>x.id===id)){day=d;break;}
-      if(day){await box?.flush().catch(()=>{});st.message=subject.name+' 집중은 이미 담았습니다 · 다시 담지 않았어요.';}
+      const s=await studyFlow(ctx),today=kstDate(ctx.now()),startDay=kstDate(startIso),old=startDay<shiftDay(today,-1);
+      let d=today;
+      for(let i=0;s&&i<TIMER_LOOKBACK_DAYS&&(i<2||d>=startDay);i++,d=shiftDay(d,-1))if((await s.st.flow.state(d)).card.sessions.some(x=>x.id===id)){day=d;break;}
+      const found=Boolean(day);
+      if(!found&&(!old||confirmed)&&!st.timer?.endIso){st.timer={...st.timer,endIso:ctx.now()};writeTimer(ctx.storage??globalThis.localStorage,st.timer);}
+      if(day){await s.st.ports?.drafts.retryStale?.(day);await box?.flush().catch(()=>{});st.message=subject.name+' 집중은 이미 담았습니다 · 다시 담지 않았어요.';}
+      else if(old&&!confirmed){openTimerEnd(ctx,st,subject,act,finishTimer);return;}
       else day=await recordNow(subject,m,'T',id);
+      if(!found&&day!==today)st.message=subject.name+' '+m+'분을 '+dateLabel(day)+' 공부 카드에 담았습니다 · 그 날짜는 공부 화면에서 쌓을 수 있어요.';
     }catch(e){keep(box?.ERROR_TEXT[e?.code]??lifeErrorText(e?.code));return;}
     const b=box?.statusFor('STUDY_DAY',day);
     if(b?.own||b?.dirty){keep(box.ERROR_TEXT[b.own]??box.TEXT.failed);return;}
@@ -309,16 +331,34 @@ function renderBricks(ctx,st,h,defs,life,act,goalBricks){
   if(st.timer){
     const t=st.timer,ts=subjects.find(s=>s.id===t.subjectId)??defs.subjects.find(s=>s.id===t.subjectId);
     // AV2: 화면을 그린 때의 분을 붙들지 않는다. 글자는 다시 계산해 고치고(화면 꺼짐·탭 정지 뒤 포함), 저장할 분은 누른 순간의 시각으로 구한다.
-    const timerText=()=>'집중 중 · '+(ts?.name??'과목')+' · '+hhmmFromIso(t.startIso)+' 시작 · '+timerElapsedMin(t.startIso,ctx.now())+'분',timerLabel=el('span',timerText(),'life-timer-text');
+    const timerText=()=>(t.endIso?'담기 대기 · ':'집중 중 · ')+(ts?.name??'과목')+' · '+hhmmFromIso(t.startIso)+' 시작 · '+(t.endIso?timerElapsedMin(t.startIso,t.endIso):timerElapsedMin(t.startIso,ctx.now()))+'분',timerLabel=el('span',timerText(),'life-timer-text');
     liveTick(timerLabel,ctx.document??globalThis.document,()=>{timerLabel.textContent=timerText();});
     add(timerRow,timerLabel,
-      button('끝내고 담기',act(()=>finishTimer(ts??subject,t.startIso,timerRecordMin(t.startIso,ctx.now()))),'primary'),
+      button('끝내고 담기',act(()=>finishTimer(ts??subject,t.startIso,t.endIso?timerRecordMin(t.startIso,t.endIso):timerRecordMin(t.startIso,ctx.now()))),'primary'),
       button('취소',()=>{st.timer=null;writeTimer(ctx.storage??globalThis.localStorage,null);void ctx.rerender();}));
   }else add(timerRow,button('집중 시작',()=>{st.timer={subjectId:subject.id,startIso:ctx.now()};writeTimer(ctx.storage??globalThis.localStorage,st.timer);void ctx.rerender();},'primary'));
   const min=input('',{inputmode:'numeric',placeholder:'분','aria-label':'공부한 분'});
   add(timerRow,min,button('분 입력으로 담기',act(async()=>{await recordNow(subject,int(min.value));min.value='';}),'secondary'));
   add(sec,timerRow);
   return sec;
+}
+
+// ---- FIX34 (HUNT34 H5): 오래된 타이머의 "언제 끝났나요" 시트 ----
+// 시작일이 어제보다 오래된 타이머는 지금까지를 공부로 치지 않는다. 끝 시각(KST)을 받아 그 시각으로 담는다. 기본값 = 저장된 끝 시각 또는 시작 + 최대 3시간(지금을 넘지 않음).
+const kstInput=ms=>new Date(ms+KST_MS).toISOString().slice(0,16);
+function openTimerEnd(ctx,st,subject,act,finish){
+  const doc=ctx.document??globalThis.document,{el,add,button,hint,input,field}=maker(doc),t=st.timer,store=ctx.storage??globalThis.localStorage;
+  const start=Date.parse(t.startIso),now=Date.parse(ctx.now()),guess=t.endIso?Date.parse(t.endIso):Math.min(now,start+TIMER_SUGGEST_MS);
+  const end=input(kstInput(guess),{'aria-label':'끝난 시각 (KST)'},'datetime-local'),err=el('p',null,'notice error');err.hidden=true;
+  const body=add(el('div',null,'life-sheet-body'),hint(hhmmFromIso(t.startIso)+'에 시작한 '+subject.name+' 타이머가 '+dateLabel(kstDate(t.startIso))+'부터 켜져 있어요. 지금까지를 공부로 치지 않고, 끝난 시각으로 담습니다.'),field('끝난 시각 (KST)',end),err);
+  const dlg=sheet('언제 끝났나요',body);
+  add(body,add(el('div',null,'buttons'),button('이 시각으로 담기',()=>{
+    const ms=Date.parse(end.value+':00.000+09:00');
+    if(!(ms>start&&ms<=now&&ms-start<=MAX_TIMER_MS)){err.textContent=lifeErrorText('INVALID_TIMER_END');err.hidden=false;return;}
+    dlg.close();
+    const endIso=new Date(ms).toISOString();st.timer={...t,endIso};writeTimer(store,st.timer);
+    act(()=>finish(subject,t.startIso,timerRecordMin(t.startIso,endIso),true))();
+  },'primary')));
 }
 
 // ---- 습관 값 직접 입력 시트(길게 눌러 수정 · 분 직접 · 횟수 수정) ----

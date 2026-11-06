@@ -7,6 +7,8 @@
 // - 쓰기: readwrite + durability 'strict', tx.oncomplete 뒤에만 저장됨. 같은 id는 CAS: 내가 읽은(또는 쓴) 레코드의 rev와 IV가 디스크 원값과
 //   둘 다 같아야 쓴다(다르면 STALE_DRAFT). IV는 쓸 때마다 새 무작위값이라 지우고 다시 만든 rev1(ABA)도 구분된다(B3f, 겉 필드·AAD 불변).
 //   STALE 뒤에는 디스크의 최신 rev·IV를 기억하되 다른 창 초안을 자동으로 덮지 않는다(이 창 입력은 메모리에 두고 실패 표시). 다음 입력이 그 위에 쓴다.
+//   FIX34 (HUNT34 H1): 흐름이 port.mergeWith로 합치는 법을 알려 준 포트는 "그 위에 쓰기" 전에 디스크 초안을 다시 읽어 항목 id 단위로 합친다(다른 창 입력을 지우지 않음).
+//   합칠 수 없으면 쓰지 않고 CARD_DRAFT_MERGE_FAILED로 알린다(디스크 그대로). mergeWith를 부르지 않은 포트(시험의 맨 포트)만 예전처럼 덮어쓴다. 앱의 세 흐름은 모두 부른다.
 // - 열 수 없는 레코드(키 없음·손상)는 UNREADABLE로 보존하고 지우지 않는다. 같은 날짜에 새 초안을 쓰면 옛 암호문은 UNREADABLE|… 로 옮겨 둔다
 //   (옛 rev가 안전한 정수 ≥1이 아니면 새 rev는 1부터).
 // - 한도: 전체 60건, 레코드 암호문 96KB. 넘으면 새 초안을 거부한다(조용히 지우거나 줄이지 않는다). 자동 만료 없음(14일 넘으면 표시만).
@@ -56,6 +58,7 @@ export const CARD_DRAFT_ERROR_TEXT=Object.freeze({
   CARD_DRAFT_READ_ONLY:'이 창은 읽기 전용이라 초안을 저장하지 않아요 · 기록하는 창에서 입력하세요.',
   CARD_DRAFT_LOCKED:'잠겨 있어 초안을 저장하지 않았어요.',
   STALE_DRAFT:'다른 창에서 같은 날짜 초안이 바뀌어 저장하지 못했어요 — 이 화면을 닫으면 사라져요',
+  CARD_DRAFT_MERGE_FAILED:'다른 창의 같은 날짜 초안과 합치지 못해 이 입력을 저장하지 않았어요 · 다른 창 초안은 그대로예요 — 이 화면을 다시 연 뒤 다시 입력해 주세요',
   CARD_DRAFT_STALE_BASE:'그 사이 초안이 바뀌어 이 입력을 저장하지 못했어요 — 다시 입력해 주세요',
   CARD_DRAFT_STALE_INPUT:'이미 끝난 입력이라 저장하지 않았어요 — 다시 입력해 주세요',
 });
@@ -376,7 +379,25 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
   function port(kind,{write}={}){
     if(!CARD_DRAFT_KINDS.includes(kind))throw fail('CARD_DRAFT_KIND');
     const byDraft=id=>live().find(e=>e.kind===kind&&e.draft.draftId===id)??null;
-    return {
+    // FIX34 (H1): 이 창 초안 본문(mine)과 디스크 초안 본문(disk)을 합친 새 본문. 기준(base)은 내 초안의 heads, 명령 서명은 흐름의 makeBody로 다시 만든다(내용이 바뀌므로).
+    // 합칠 수 없으면(REBASE_ID_COLLISION·검증 위반) 던진다. confirmCount는 초안의 값을 그대로 둔다(rebase의 +1은 확정용이다).
+    let mergeRule=null;
+    const mergedBody=async(mine,disk)=>{
+      const {rebase,ports,prepare}=mergeRule,date=mine.entityId,base=mine.expectedHeads.length?ports.revision(date,mine.expectedHeads[0]):null;
+      const r=rebase({date,base,mine:prepare?prepare(mine.data,disk.data):mine.data,latest:disk.data});
+      if(r.status==='REJECTED')throw fail(r.code);
+      const card=r.status==='ALREADY_APPLIED'?disk.data:r.card;
+      return ports.makeBody({requestId:ports.newRequestId(),date,data:Object.hasOwn(mine.data,'confirmCount')?{...card,confirmCount:mine.data.confirmCount}:card,heads:mine.expectedHeads,reason:mine.reason});
+    };
+    const api={
+      mergeWith:rule=>{mergeRule=rule;},
+      // FIX34 (H1): 다시 쓰기만 하는 호출(같은 버튼을 다시 누름): 이 날짜 초안이 STALE이면 같은 내용으로 저장해 합친다. 아니면 아무것도 하지 않는다.
+      retryStale:tracked(async date=>{
+        if(isLocked()||!mergeRule)return;
+        await load();
+        const e=mem.get(scopeId+'|'+kind+'|'+date);
+        if(e?.stale&&!e.deleted)await api.save({type:e.draft.type,body:e.draft.body});
+      }),
       locked:()=>isLocked()||!unlocked(),   // B18 (H13-C05): 흐름이 재적용 회차 전에 로그아웃 잠금을 본다
       list:tracked(async()=>{if(isLocked())return [];await load();if(!unlocked())return [];return live().filter(e=>e.kind===kind).map(e=>structuredClone(e.draft));}),
       // B16: opts.input = defer 토큰(그 실행의 저장), opts.base = 이 카드를 계산한 초안의 draftId(없었으면 null). 둘 다 선택.
@@ -391,6 +412,16 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
           // B14 (R2-D1): 같은 칸의 더 새 입력이 이미 저장됐다 → 이 옛 입력은 mem·디스크를 바꾸지 않는다(가장 마지막에 받은 입력이 이긴다, 실패 아님).
           const superseded=()=>{input.ok();notify();return {draftId:mem.get(id)?.draft?.draftId??null,status:'LOCAL_DRAFT',superseded:true};};
           if(input.stale())return superseded();
+          // FIX34 (H1): 이 창 초안이 STALE이면 디스크를 다시 읽어 합친 본문을 쓴다. CAS 기준은 방금 읽은 레코드다(그 사이 또 바뀌면 다시 STALE이고 덮지 않는다).
+          const was=mem.get(id);let fresh=null;
+          if(was?.stale&&!was.deleted&&mergeRule){
+            try{
+              fresh=await onChain(async()=>{const {row,key}=await readRow(id);return {row,opened:row?await open(row,key):null};});
+              if(fresh.opened?.draft)draft.body=structuredClone(await mergedBody(draft.body,fresh.opened.draft.body));
+            }catch{throw refuse('CARD_DRAFT_MERGE_FAILED');}
+            if(mem.get(id)!==was){input.rebased();throw fail('CARD_DRAFT_STALE_BASE');}   // 합치는 동안 이 창의 다른 입력이 먼저 저장됐다
+            if(input.stale())return superseded();
+          }
           if(enc.encode(JSON.stringify({format:CARD_DRAFT_FORMAT,...draft})).length+16>CARD_DRAFT_LIMITS.recordBytes)throw refuse('CARD_DRAFT_TOO_LARGE');
           const full=()=>!mem.has(id)&&live().length+unreadable.size+otherRows>=CARD_DRAFT_LIMITS.records;   // 옮겨 둔 열 수 없는 초안도 센다
           // 메모리 사본은 다른 창이 지운 것을 모른다: 가득 차 보이면 디스크를 다시 읽어 센다. 늘어나는 쓰기의 최종 판단은 쓰기 트랜잭션 안(persistOne).
@@ -400,7 +431,7 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
           if(hasBase&&(prev&&!prev.deleted?prev.draft.draftId:null)!==opts.base){input.rebased();throw fail('CARD_DRAFT_STALE_BASE');}
           // base 없는 카드 전체 저장(토큰): 그 날짜에 더 새 세대 입력이 이미 받아들여졌다 → 옛 입력은 바꾸지 않는다(입력 순서로 마지막이 이김).
           if(!hasBase&&input.exact&&(accepted.get(kind+'|'+date+'|')??0)>input.gen)return superseded();
-          mem.set(id,{id,kind,date,base:prev?prev.base:aside?unreadable.get(id).base:null,aside:Boolean(prev?.aside)||aside,draft,updatedAt:now(),dirty:true,deleted:false,ver:++ver});
+          mem.set(id,{id,kind,date,base:fresh?baseOf(fresh.row):prev?prev.base:aside?unreadable.get(id).base:null,aside:fresh?Boolean(fresh.row&&!fresh.opened.draft):Boolean(prev?.aside)||aside,draft,updatedAt:now(),dirty:true,deleted:false,ver:++ver});
           input.ok();input.wrote();
           notify();await persist();
           return {draftId:draft.draftId,status:'LOCAL_DRAFT'};
@@ -484,6 +515,7 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
         return locks&&typeof locks.request==='function'?locks.request(name,{mode:'exclusive'},go):localLock(name,go);
       }),
     };
+    return api;
   }
   function statusFor(kind,date){
     const e=mem.get(scopeId+'|'+kind+'|'+date),has=Boolean(e&&!e.deleted);

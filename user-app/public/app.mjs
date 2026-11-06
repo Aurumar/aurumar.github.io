@@ -3,6 +3,10 @@ import {PERIODS as PLAN_PERIODS,detectRecurring,recurringGridLayout,costSplit,bu
 import {prepare,PERIODS,periodRange,aggregate,roundDiv,dataMonths,overview,monthlySeries,barLayout,sankeyData,sankeyLayout,treemapItems,squarify,dailyTotals,heatmapMonths,completeness,todaySpendLine,buildTodayGlance} from './fin-charts.mjs';
 import {RECURRING_ID,RECURRING_TEXT,findCandidates,addRule as addRecurringRule,setRuleHidden as setRecurringHidden,ruleStatus as recurringStatus,monthlyTotal as recurringMonthly,matchDraft as recurringMatchDraft,recurringKey,setRuleAmount as setRecurringAmount,canSetAmount as canSetRecurringAmount,priceChange as recurringPriceChange,ledgerMatch as recurringLedgerMatch,createHiddenBox as createRecurringHiddenBox} from './fin-recurring.mjs';
 import {meltNode,monthForecast,forecastNode,renderBudgetReport,fixedSchedule,fixedPlan} from './fin-forecast.mjs';
+import {readStatementAsync,findHeader,headerAt,guessColumns,guessInstallAmountIsTotal,columnsProblem,normalizeRows,controlCheck,headerSig,bytesSha256,createMappingStore,stmtErrorText,maskCell,normHeader,COLUMN_ROLES,COLUMN_TEXT,REQUIRED_ROLES,ROW_STATUS_TEXT,STMT_LIMITS} from './fin-statement.mjs';
+import {readXlsx,xlsxErrorText,xlsxSupported,XLSX_LIMITS} from './fin-xlsx.mjs';
+import {reconcileStatement,suggestContext,STATUS_TEXT as STMT_STATUS_TEXT,REASON_TEXT as STMT_REASON_TEXT,sameMerchantKeys,coveredByBatches,selectForSave,statementTxnInput,checkStatementSave,runStatementSave,SAVE_MAX} from './fin-reconcile.mjs';
+import {createQuickMemory,renderQuickChips,quickNeedText} from './fin-quick.mjs';
 const mdBackend=globalThis.LIFE_BRICK_MD_BACKEND??null;
 if(mdBackend&&mdBackend.format!=='LB_MD_UI_BACKEND_1')throw new Error('MD_BACKEND_PROFILE');
 let mdProfile=!!mdBackend,mdReady=false,mdSurface=null,mdRole='NONE',mdUnlockState=null,mdCaps=new Set(),mdProduct=null,mdUnlocked=false,mdDraftReady=false;
@@ -113,7 +117,7 @@ const SIGNED_OUT_ELSEWHERE_TEXT='다른 창에서 이 기기 로그아웃을 해
 // 확정 기록의 메모리 사본(today·whole·changes·일정·건강·공부)을 비운다. 편집 창과 카드 입력(drafts, 초안 상자의 미저장 입력)은 그대로 둔다(S1).
 // 다시 잠금해제해 refreshCore가 새로 읽을 때까지 render()는 아무 화면도 그리지 않고, 잠금해제·로그인 칸만 상태 줄 아래에 보인다.
 let mdSignedOut=false,mdSignedOutSeq=0;   // seq: 읽기 도중에 잠긴 refreshCore가 잠금을 되돌리지 않게
-function signedOutLock(){mdSignedOut=true;mdSignedOutSeq++;finImport=null;suggestSt=null;today=null;whole=null;changes=[];calendarState=null;vaultFlash=null;for(const st of [hltSt,studySt])if(st){st.raw=null;st.flowState=null;}$('workspace').hidden=true;$('navigation').hidden=true;if(mdHost&&mdPanel){mdHost.append(mdPanel);mdHost.hidden=false;}$('session-state').textContent='잠김 · 다시 로그인하세요';}
+function signedOutLock(){mdSignedOut=true;mdSignedOutSeq++;finImport=null;finStmt=null;suggestSt=null;today=null;whole=null;changes=[];calendarState=null;vaultFlash=null;for(const st of [hltSt,studySt])if(st){st.raw=null;st.flowState=null;}$('workspace').hidden=true;$('navigation').hidden=true;if(mdHost&&mdPanel){mdHost.append(mdPanel);mdHost.hidden=false;}$('session-state').textContent='잠김 · 다시 로그인하세요';}
 // B32: 새 기기 등록의 자동 마무리(enroll-finish). 서버가 등록을 확정(terminal)하면 enroll-relay-status는 B4_TERMINAL_RELAY(400)로 거절된다
 // (003_b4_lifecycle_v1.sql relay_execute). 예전 코드는 그 오류를 일반 오류로 보고 조용히 폴링을 끝내 enroll-finish가 불리지 않았다.
 // 지금은 그것을 "서버가 확정함"으로 읽고 enroll-finish가 서버 receipt를 다시 검증하게 한다. 멈추거나 실패하면 이유와 다음 한 가지 행동을 화면에 보인다.
@@ -204,7 +208,7 @@ function setupMD(state){
   for(const f of titles)f.addEventListener('input',()=>{reviewed=null;consent.checked=false;});
   panel.append(initial);void inspect().catch(e=>{nativeState.textContent='보류 · '+(e.code||'MD_PRIMARY_HOLD');});
  }
-  if(state.profiles?.length>1){const select=field(unlockBox,state.surface==='BROWSER'?'이 origin의 등록 프로필':'이 앱의 등록 프로필','select',state.selected??state.profiles[0].id,state.profiles.map(p=>p.id));add(unlockBox,button('프로필 선택',doIt(async()=>{await call('select-profile',{id:select.value});finImport=null;})));}
+  if(state.profiles?.length>1){const select=field(unlockBox,state.surface==='BROWSER'?'이 origin의 등록 프로필':'이 앱의 등록 프로필','select',state.selected??state.profiles[0].id,state.profiles.map(p=>p.id));add(unlockBox,button('프로필 선택',doIt(async()=>{await call('select-profile',{id:select.value});finImport=null;finStmt=null;})));}
   const unlock=field(unlockBox,'이 장치의 잠금해제 비밀문구','password','');unlock.minLength=12;unlock.maxLength=1024;
   const unlockOrReopen=doIt(async()=>{try{const s=await api('/api/vault/unlock',{unlockSecret:unlock.value});if(state.surface==='BROWSER'){void globalThis.lbPwaStorage?.afterUnlock?.();await refresh();status('잠금해제됨 · '+saveState().title);out.textContent=s.localRole==='OWNER'?'소유 탭 · 최신 암호화 로컬 기록을 다시 열었습니다. 미확정 intent가 있으면 같은 intent부터 확인하세요.':'읽기 탭 · 로컬 스냅샷만 표시합니다. 동기화·저장·등록은 이 탭에서 차단됩니다.';}else if(state.surface==='APP_SHELL'){await refresh();status('잠금해제됨 · '+saveState().title);out.textContent=s.localRole==='OWNER'?'소유 창 · 암호화 로컬 사본을 열었습니다(OFFLINE_STALE). 동기화 전에는 마지막 검증 기록만 표시합니다. 미확정 intent가 있으면 같은 intent부터 확인하세요.':'읽기 창 · 다른 LIFE BRICK 창이 소유 중입니다. 로컬 스냅샷만 표시하며 동기화·저장·초안은 이 창에서 차단됩니다.';}else out.textContent='잠금해제됨 · 동기화하여 현재 prefix를 확인하세요.';}catch(e){if(e?.code==='MD_ALREADY_UNLOCKED'&&state.surface==='BROWSER'){await refresh();status('잠금해제됨 · '+saveState().title);out.textContent='이 탭의 저장소는 이미 열려 있어 현재 상태를 표시합니다.';}else throw e;}finally{unlock.value='';}});
   add(unlockBox,add(el('div',null,'buttons'),button('로컬 잠금해제',unlockOrReopen,'primary unlock-button'),can('handoff')?button(state.surface==='BROWSER'?'읽기 탭 소유권 인계받기 · 최신 기록 다시 열기':'읽기 창 소유권 인계받기 · 최신 기록 다시 열기',unlockOrReopen):null,can('handoff')?button(state.surface==='BROWSER'?'소유 탭 종료 · 인계':'소유 창 종료 · 인계',doIt(async()=>{stopRequestPoll?.();stopAckPoll?.();stopDraftPoll?.();stopReceiptPoll?.();const r=await api('/api/md/handoff',{});mdReady=false;finImport=null;today=null;whole=null;changes=[];$('view-content').replaceChildren();$('workspace').hidden=true;$('navigation').hidden=true;mdHost.append(panel);mdHost.hidden=false;$('session-state').textContent='소유권 인계 완료';out.textContent=r.handoffStatus==='HOLD'?'로컬 소유권을 내려놓았습니다. 미확정 상태 '+(r.handoffCode||'HOLD')+'를 새 소유 탭에서 같은 intent로 확인하세요.':'로컬 소유권을 내려놓았습니다. 다른 탭에서 보관한 비밀문구로 최신 기록을 다시 여세요.';})):null));add(syncBox,add(el('div',null,'buttons'),button('최신 내용 동기화',doIt(async()=>{await call('sync');await refresh();})),(()=>{const go=button('고급 열기',()=>navigate('ADVANCED'),'secondary nav-link');go.dataset.navOnly='1';return go;})()));add(advBox,add(el('div',null,'buttons'),button('기록 권한 받기',doIt(async()=>{await call('acquire');await refresh();})),button('기록 권한 반납',doIt(async()=>{await call('release');mdReady=false;await refresh();})),button('미확정 저장 결과 확인',doIt(async()=>{await call('reconcile');await refresh();}))));
@@ -711,7 +715,7 @@ function renderFinance(root){const f=whole.finance;add(root,add(el('div',null,'s
 function editFinance(snapshot){const d=snapshot?.data||{snapshotDate:whole.localDate,currency:'KRW',minorUnitDigits:0,notes:'',...Object.fromEntries(FINANCE_FIELDS.map(([k])=>[k,null]))};modal(snapshot?'재정 스냅샷 편집':'새 재정 스냅샷',root=>{const grid=el('div',null,'field-grid');add(root,grid);const date=field(grid,'스냅샷 기준일','date',d.snapshotDate);date.required=true;date.max=whole.localDate;const currency=field(grid,'통화 코드','text',d.currency);currency.required=true;currency.pattern='[A-Z]{3}';currency.maxLength=3;const precision=field(grid,'금액 소수 자릿수','select',String(d.minorUnitDigits),[['0','정수 (KRW 등)'],['2','소수 둘째 자리 (USD 등)']]);const categories=[];for(const [key,label]of FINANCE_FIELDS){const p=section(label),dated=['upcomingPayments','incomeItems'].includes(key),mode=field(p,label+' 입력 상태','select',d[key]===null?'UNKNOWN':d[key].length?'ITEMS':'NONE',[['UNKNOWN','아직 모름 (UNKNOWN)'],['NONE','명시적으로 없음 (0)'],['ITEMS','항목 직접 입력']]),list=el('div',null,'editable-list'),items=[];const addRow=item=>{const row=el('div',null,'edit-row'),label=field(row,'항목 이름','text',item.label),amount=field(row,'금액 (빈칸은 UNKNOWN)','text',item.amount??'');label.maxLength=100;amount.inputMode='decimal';const when=dated?field(row,'납부 / 수입 날짜 (선택)','date',item.date):null;const record={id:item.itemId,label,amount,when};items.push(record);add(row,button('항목 제거',()=>{items.splice(items.indexOf(record),1);row.remove();}));add(list,row);};for(const item of d[key]||[])addRow(item);const plus=button(label+' 항목 추가',()=>{mode.value='ITEMS';sync();if(items.length<50)addRow({itemId:entityId(),label:'',amount:null,date:null});});const sync=()=>{list.hidden=mode.value!=='ITEMS';};mode.addEventListener('change',sync);sync();add(p,list,plus);add(root,p);categories.push({key,mode,items,dated});}const notes=field(root,'재정 메모','textarea',d.notes);return ()=>{const data={snapshotDate:date.value,currency:currency.value,minorUnitDigits:Number(precision.value),notes:notes.value};for(const c of categories){if(c.mode.value==='UNKNOWN')data[c.key]=null;else if(c.mode.value==='NONE')data[c.key]=[];else{if(!c.items.length)throw appError('FINANCE_ITEMS_REQUIRED');data[c.key]=c.items.map(i=>{const raw=i.amount.value.replace(/[,\s]/g,'');return {itemId:i.id,label:i.label.value,amount:raw===''?null:raw,...(c.dated?{date:i.when.value||null}:{})};});}}return entity('FINANCE',snapshot?.entityId||entityId(),data,snapshot?.heads||[]);};});}
 // FIN01 가계부 화면(F2 입력·목록·가져오기·규칙, F3 시각화). 저장은 기존 entity() 경로 하나만 쓴다(엔티티 1개 = 연산 1개).
 // 계산은 fin-charts.mjs·fin-ledger.mjs(순수 함수), 그리기는 SVG createElementNS + styles.css 클래스. 금액은 BigInt, null(모름)은 0이 아니다.
-const FIN_TABS=[['CHARTS','한눈에 · 그래프'],['ANALYSIS','분석'],['TXNS','거래'],['PLAN','반복 · 고정비'],['RECURRING','정기 결제'],['BUDGET','예산'],['ACCOUNTS','계정'],['RULES','규칙'],['IMPORT','과거 이력 가져오기']];
+const FIN_TABS=[['CHARTS','한눈에 · 그래프'],['ANALYSIS','분석'],['TXNS','거래'],['PLAN','반복 · 고정비'],['RECURRING','정기 결제'],['BUDGET','예산'],['ACCOUNTS','계정'],['RULES','규칙'],['STATEMENT','명세서 가져오기'],['IMPORT','과거 이력 가져오기']];
 const FIN_KIND_TEXT={EXPENSE:'지출',INCOME:'수입',REFUND:'환불',TRANSFER:'이체',PREPAID_LOAD:'선불 충전'};
 const FIN_ACCOUNT_TEXT={CARD:'카드',CASH:'현금',BANK:'은행 계좌',EPAY:'간편결제·페이',LOAN:'대출',OTHER:'기타'};
 const FIN_ROW_TEXT={PURCHASE:'승인',FULL_CANCEL:'전액 취소',REFUND:'환불',PARTIAL_UNKNOWN:'부분 취소 · 순액 모름',POSTED:'직접 입력'};
@@ -759,8 +763,9 @@ function renderLedger(root){
  const tabs=el('div',null,'fin-tabs');tabs.setAttribute('role','toolbar');tabs.setAttribute('aria-label','가계부 화면');
  for(const [k,label] of FIN_TABS){const b=button(label,()=>void perform(async()=>{finTab=k;await render();}),'secondary'+(finTab===k?' active':''));b.dataset.navOnly='1';b.setAttribute('aria-pressed',String(finTab===k));add(tabs,b);}
  add(root,opsNotice(finOps()),tabs);
+ if(finTab!=='STATEMENT'&&finStmt&&!finStmt.running)finStmt=null;   // B64: 명세서 파일 내용은 소탭을 떠나면 버린다
  if(fin.incompleteSplits?.length)add(root,el('p','분할 묶음 미완료 · '+fin.incompleteSplits.map(x=>x.chunk+' ('+x.saved.length+'/'+x.count+'조각 저장)').join(', ')+' · 이 달의 합계·그래프는 일부만 반영된 상태입니다. "과거 이력 가져오기"에서 같은 계획 파일로 이어서 가져오세요.','fin-warn'));
- ({CHARTS:renderFinCharts,ANALYSIS:renderFinAnalysis,TXNS:renderFinTxns,PLAN:renderFinPlan,RECURRING:renderFinRecurring,BUDGET:renderFinBudget,ACCOUNTS:renderFinAccounts,RULES:renderFinRules,IMPORT:renderFinImport})[finTab](root,fin);
+ ({CHARTS:renderFinCharts,ANALYSIS:renderFinAnalysis,TXNS:renderFinTxns,PLAN:renderFinPlan,RECURRING:renderFinRecurring,BUDGET:renderFinBudget,ACCOUNTS:renderFinAccounts,RULES:renderFinRules,STATEMENT:renderFinStatement,IMPORT:renderFinImport})[finTab](root,fin);
  if(finTab==='CHARTS'){const seq=mdSignedOutSeq;renderBudgetReport(root,{h:{el,add},surface:mdSurface,request:aiReports,gone:()=>seq!==mdSignedOutSeq});}   // B59: 돈 탭 하단, 사령부 가계부 비서 최신 1장(없으면 카드 없음)
 }
 addEventListener('resize',()=>{if(view!=='LEDGER'||finTab!=='CHARTS'||Math.abs(innerWidth-finLastWidth)<40)return;clearTimeout(finResizeTimer);finResizeTimer=setTimeout(()=>{if(view==='LEDGER'&&finTab==='CHARTS'&&!busy&&!$('editor').open)void perform(render);},400);});
@@ -906,6 +911,7 @@ function finLineRow(l,{showButtons=true}={}){
  if(txn&&showButtons)add(n,add(el('div',null,'buttons'),button('수정',()=>editFinTxn(txn)),button('무효화',()=>voidFinTxn(txn),'danger')));
  return n;
 }
+const finQuick=createQuickMemory(()=>globalThis.localStorage);
 function renderFinTxns(root,fin){
  const prep=prepare(fin),now=whole.localDate.slice(0,7);finMonth??=now;
  const nav=el('div',null,'fin-toolbar'),move=k=>()=>void perform(async()=>{finMonth=shiftMonth(finMonth,k);await render();});
@@ -915,7 +921,8 @@ function renderFinTxns(root,fin){
  finSelect(nav,'계정 필터',finFilter.accountId,[['','모든 계정'],...fin.accounts.map(a=>[a.id,a.data.name+(a.data.active?'':' (비활성)')])],v=>void perform(async()=>{finFilter.accountId=v;await render();}));
  finSelect(nav,'분류 필터',finFilter.category,[['','모든 분류'],['NONE','분류 없음 (이체·선불)'],...Object.entries(fin.labels.expense),...Object.entries(fin.labels.income)],v=>void perform(async()=>{finFilter.category=v;await render();}));
  finCheck(nav,FIN_MASK_LABEL,finMask,v=>void perform(async()=>{finMask=v;await render();}));
- const create=button('거래 입력',()=>editFinTxn(null),'primary');if(!fin.accounts.some(a=>a.data.active))create.disabled=true;
+ const create=button('거래 입력',()=>editFinTxn(null,{onKept:data=>finQuick.saved(data)}),'primary');if(!fin.accounts.some(a=>a.data.active))create.disabled=true;
+ renderQuickChips(root,fin,{h:{el,add,button},memory:finQuick,kindText:FIN_KIND_TEXT,open:(prefill,presetId)=>editFinTxn(null,{...prefill,onKept:data=>finQuick.saved(data,presetId)}),needAccount:need=>void perform(async()=>{finTab='ACCOUNTS';await render();status(quickNeedText(need));})});   // B64C: 칩은 거래 창을 미리 채워 열기만 한다
  add(root,add(el('div',null,'section-toolbar'),hint(fin.accounts.length?'직접 입력한 거래와 가져온 원천 행을 함께 보여 줍니다. 원천 행은 바꿀 수 없고, 분류는 "분류 규칙"으로 바꿉니다.':'먼저 "계정"에서 계정을 추가하세요.'),create),nav);
  const list=monthLines(prep.lines,finMonth,finFilter),sum=aggregate({...prep,lines:list,residuals:[]},{from:null,to:null}).total;
  add(root,add(el('div',null,'fin-chips'),
@@ -946,14 +953,14 @@ function finCsvBar(list){
  b.dataset.navOnly='1';if(blocked||!list.length)b.disabled=true;
  return add(bar,b,hint(blocked?'PC 앱은 보안 설정으로 파일 내려받기를 막아 둡니다. 휴대폰·브라우저에서 내려받으세요.':'이 기기 다운로드 폴더에 암호화되지 않은 파일로 저장됩니다. 보관·공유에 주의하세요.'));
 }
-// prefill = Fold 결제 알림 초안({date,amount,merchant,onSaved,onKept}): 입력칸만 채우고 아무것도 쓰지 않는다. onSaved는 저장이 확정된 뒤에만, onKept는 저장이 받아들여진 뒤(임시 저장 포함) 불린다.
+// prefill = Fold 결제 알림 초안({date,amount,merchant,onSaved,onKept}) 또는 B64C 빠른 입력 칩({kind,category,subcategory,accountId,toAccountId,merchant,memo,onKept}): 입력칸만 채우고 아무것도 쓰지 않는다. onSaved는 저장이 확정된 뒤에만, onKept(저장한 자료)는 저장이 받아들여진 뒤(임시 저장 포함) 불린다.
 function editFinTxn(t,prefill=null){
- const fin=whole.fin,d=t?.data||{date:prefill?.date??whole.localDate,kind:'EXPENSE',amount:prefill?.amount??'',accountId:fin.accounts.find(a=>a.data.active)?.id??'',toAccountId:null,category:'FOOD',subcategory:'',merchant:prefill?.merchant??'',memo:'',tags:[],installments:0,original:null,sourceRefs:[],assetId:null,voided:false};
+ const fin=whole.fin,d=t?.data||{date:prefill?.date??whole.localDate,kind:prefill?.kind??'EXPENSE',amount:prefill?.amount??'',accountId:prefill?.accountId??fin.accounts.find(a=>a.data.active)?.id??'',toAccountId:prefill?.toAccountId??null,category:prefill?.category??'FOOD',subcategory:prefill?.subcategory??'',merchant:prefill?.merchant??'',memo:prefill?.memo??'',tags:[],installments:0,original:null,sourceRefs:[],assetId:null,voided:false};
  modal(t?'거래 수정':'거래 입력',root=>{
   const grid=el('div',null,'field-grid');add(root,grid);
   const date=field(grid,'날짜','date',d.date);date.max=whole.localDate;date.required=true;
   const kind=field(grid,'종류','select',d.kind,Object.entries(FIN_KIND_TEXT));
-  const amount=field(grid,'금액 (원, 정수)','text',d.amount);amount.inputMode='numeric';amount.required=true;
+  const amount=field(grid,'금액 (원, 정수)','text',d.amount);amount.inputMode='numeric';amount.required=true;if(prefill?.kind)amount.autofocus=true;
   const accounts=fin.accounts.filter(a=>a.data.active||a.id===d.accountId||a.id===d.toAccountId).map(a=>[a.id,a.data.name+' · '+FIN_ACCOUNT_TEXT[a.data.type]+(a.data.active?'':' (비활성)')]);
   const account=field(grid,'계정','select',d.accountId,accounts),to=field(grid,'받는 계정 (이체만)','select',d.toAccountId??'',[['','받는 계정 선택'],...accounts]);
   const category=field(grid,'분류','select','',[]),sub=field(grid,'세부 분류 (선택)','text',d.subcategory);sub.maxLength=40;
@@ -978,7 +985,7 @@ function editFinTxn(t,prefill=null){
    const data=buildTxn({date:date.value,kind:kind.value,amount:amount.value,accountId:account.value,toAccountId:to.value,category:category.value,subcategory:sub.value,merchant:merchant.value,memo:memo.value,tags:tags.value,installments:kind.value==='EXPENSE'?inst.value:'',currency:currency.value,originalAmount:original.value},{labels:fin.labels,accounts:fin.accounts,localDate:whole.localDate,old:t?.data??null});
    const r=await entity('FIN_TXN',t?.id??entityId(),data,t?.heads??[],t?'가계부 거래 수정':'가계부 거래 입력');
    if(prefill?.onSaved&&r?.status!=='LOCAL_DRAFT'){try{prefill.onSaved();}catch{/* 처리됨 표시 실패는 저장을 되돌리지 않는다 */}}
-   if(prefill?.onKept){try{prefill.onKept();}catch{/* 같은 이유 */}}
+   if(prefill?.onKept){try{prefill.onKept(data);}catch{/* 같은 이유 */}}
    return r;
   };
  },t?'수정 저장':'거래 저장');
@@ -1627,6 +1634,214 @@ function renderFinTimeline(root,prep){
  },()=>finTable(['해','소비','자료 있는 달','자료 없는 달','선불 전환','미배분 잔액','순액 모름'],tl.years.map(y=>[y.year,y.consumption===null?(y.monthsWithData?'모름':'자료 없음'):formatWon(y.consumption),finCount(y.monthsWithData),finCount(y.monthsNoData),formatWon(y.prepaid),y.residual===null?'-':formatWon(y.residual),y.unknownRows+'행']),[1,2,3,4,5,6]));
 }
 
+// ---------- B64 명세서 가져오기: 카드 명세서 파일 → 장부와 대조 → 빠진 것만 골라 FIN_TXN으로 저장 ----------
+// 파일은 이 화면 메모리에서만 읽는다(저장·로그·전송 없음). 소탭을 떠나거나 "파일 닫기"를 누르면 버린다.
+// 칸 짝은 이 기기 localStorage(lb.fin.stmt.map.v1)에만 기억한다(동기화 기록 아님). 저장은 고른 것만 entity('FIN_TXN', …) 1건 = 연산 1개.
+// 대조 결과는 제안이다: 이미 있음·중복 의심은 저장하지 않는 것이 기본이고, 장부의 거래를 지우거나 무효화하지 않는다.
+let finStmt=null;
+const stmtStore=createMappingStore((()=>{try{return globalThis.localStorage??null;}catch{return null;}})());
+const STMT_FLAG_TEXT={YEAR_GUESSED:'연도 추정',EARLY:'명세서 기간보다 앞 날짜 · 연도 확인',FORMULA:'수식 기호로 시작 · 글자로만 저장',MERCHANT_CUT:'가맹점 120자에서 자름',INSTALL_UNKNOWN:'할부 표기 모름',INSTALL_TOTAL_UNKNOWN:'할부 총액 모름'};
+const STMT_KINDS_POS=[['EXPENSE','지출'],['PREPAID_LOAD','선불 충전'],['NONE','저장 안 함']],STMT_KINDS_NEG=[['REFUND','환불'],['NONE','저장 안 함']];
+async function finStmtOpen(file){
+ const bytes=new Uint8Array(await file.arrayBuffer()),read=await readStatementAsync(bytes,readXlsx),sha=await bytesSha256(bytes);
+ const st={name:file.name,size:file.size,sha12:sha.slice(0,12),read,tableIndex:read.tableIndex,period:{from:shiftMonth(whole.localDate.slice(0,7),-1)+'-01',to:whole.localDate},
+  choice:new Map(),groupSame:true,items:null,done:new Set(),saved:0,error:null,running:false,stop:false,stopped:false,finished:false};
+ await finStmtHeader(st,null);
+ return st;
+}
+// 머리글을 정하고(자동 또는 소유자가 고른 행) 이 기기에 기억한 칸 짝이 있으면 불러온다. 없으면 칸 이름으로 추측해 미리 골라 둔다.
+async function finStmtHeader(st,row){
+ const rows=st.read.tables[st.tableIndex].rows,found=row===null?findHeader(rows):headerAt(rows,row);
+ st.header=found??headerAt(rows,0);st.headerGuessed=row===null&&!!found;st.headerMissing=row===null&&!found;
+ st.sig=await headerSig(st.header.names);
+ const mem=stmtStore.get(st.sig,st.header.names.length),card=whole.fin.accounts.find(a=>a.data.active&&a.data.type==='CARD')?.id??whole.fin.accounts.find(a=>a.data.active)?.id??'';
+ st.remembered=!!mem;
+ const guess=mem?null:guessColumns(st.header.names);st.columns=mem?.columns??Object.fromEntries(COLUMN_ROLES.map(r=>[r,guess[r]??-1]));
+ st.negativeIsCancel=mem?mem.negativeIsCancel:true;st.installAmountIsTotal=mem?mem.installAmountIsTotal:guessInstallAmountIsTotal(st.header.names,st.columns);
+ st.accountId=mem?.accountId&&whole.fin.accounts.some(a=>a.id===mem.accountId)?mem.accountId:card;st.cardAccounts={...(mem?.cardAccounts??{})};st.single=false;
+ st.cancelValues=mem?.cancelValues??(st.columns.cancel>=0?[...new Set(rows.slice(st.header.dataStart).map(r=>normHeader(r[st.columns.cancel])))].filter(v=>v&&/취소/.test(v)).slice(0,10):[]);
+ st.items=null;st.choice=new Map();
+}
+function finStmtNorm(st){
+ return normalizeRows(st.read.tables[st.tableIndex],{columns:st.columns,cancelValues:st.cancelValues,negativeIsCancel:st.negativeIsCancel,installAmountIsTotal:st.installAmountIsTotal,period:st.period,localDate:whole.localDate,dataStart:st.header.dataStart});
+}
+const finStmtAccountFor=(st,tag)=>{if(st.single||!tag)return st.accountId||null;const m=st.cardAccounts[tag];return m==='-'?null:m||st.accountId||null;};
+// 최신 장부로 다시 대조하고, 소유자가 고른 것(저장 여부·종류·분류·그래도 새것으로)을 다시 입힌다.
+function finStmtReconcile(st){
+ if(columnsProblem(st.columns)){st.items=null;return;}
+ const norm=finStmtNorm(st),rows=norm.rows.map(r=>({...r,accountId:finStmtAccountFor(st,r.cardTag)}));
+ st.items=reconcileStatement(rows,whole.fin,{localDate:whole.localDate});st.chips=suggestContext(whole.fin,{localDate:whole.localDate}).chips;st.finRef=whole.fin;
+ for(const it of st.items){
+  const c=st.choice.get(it.key);if(!c||it.status==='FAIL')continue;
+  if(c.forced&&it.forcible)it.forced=true;
+  if(c.kind)it.kind=c.kind;
+  if(c.category!==undefined){it.category=c.category;it.subcategory=c.subcategory??'';}
+  if(it.status==='NEW'||it.forced)it.checked=c.checked??true;
+  if(it.kind==='NONE')it.checked=false;
+  if(it.kind==='PREPAID_LOAD'){it.category=null;it.subcategory='';}else if(!it.category)it.category=st.chips[0]??'OTHER';
+ }
+}
+function renderFinStatement(root,fin){
+ const p=section('카드 명세서 가져오기','카드사에서 내려받은 명세서(CSV, xlsx, 또는 HTML로 된 .xls)를 고르세요. 파일은 이 화면 메모리에서만 읽고 저장하지 않습니다. 장부와 대조해 빠진 거래만 골라 저장합니다(1건 = 저장 1번).');
+ const input=el('input');input.type='file';input.accept='.csv,.tsv,.txt,.xls,.xlsx,.html,.htm,text/csv,text/plain,text/html';input.hidden=true;
+ input.addEventListener('change',async()=>{const file=input.files?.[0];input.value='';if(!file)return;
+  try{if(file.size>Math.max(STMT_LIMITS.fileBytes,XLSX_LIMITS.zipBytes))throw finError('STMT_TOO_BIG');finStmt=await finStmtOpen(file);await perform(render);}
+  catch(e){status(stmtErrorText(e.code)||xlsxErrorText(e.code)||finErrorText(e.code)||'명세서 파일을 읽지 못했습니다.',true);}});
+ const pick=button(finStmt?'다른 명세서 고르기':'명세서 파일 고르기',()=>input.click(),finStmt?'secondary':'primary');pick.dataset.navOnly='1';
+ add(p,input,add(el('div',null,'buttons'),pick,finStmt&&!finStmt.running?button('파일 닫기',()=>void perform(async()=>{finStmt=null;await render();})):null));
+ add(p,hint(xlsxSupported()?'옛 엑셀(.xls 이진 파일)은 엑셀·한셀·구글 시트에서 "다른 이름으로 저장 → Excel 통합 문서(xlsx) 또는 CSV(UTF-8)"로 바꿔 넣어 주세요.':'이 기기의 브라우저는 xlsx를 풀지 못합니다. 옛 엑셀(.xls 이진 파일)과 xlsx는 엑셀·한셀·구글 시트에서 "다른 이름으로 저장 → CSV(UTF-8)"로 바꿔 넣어 주세요.'));add(root,p);
+ if(!finStmt)return;
+ const st=finStmt,table=st.read.tables[st.tableIndex],names=st.header.names,norm=finStmtNorm(st),bad=columnsProblem(st.columns);
+ // ② 표 미리보기 + 칸 고르기
+ const c=section('② 칸 고르기',(st.remembered?'이 기기에 기억한 칸 짝을 불러왔습니다. ':st.headerGuessed?'머리글 이름으로 칸을 추측해 미리 골라 두었습니다. ':'')+'날짜·가맹점·금액은 꼭 골라야 합니다. 고른 칸 짝은 이 기기에만 기억합니다(행 내용은 기억하지 않음).');
+ add(c,el('p',st.name+' · '+(st.read.kind==='HTML'?'HTML 표':st.read.kind==='XLSX'?'xlsx':'CSV')+' · '+st.read.encoding+' · 표 행 '+finCount(table.rows.length)+'개'+(table.cut.size?' · 200자 넘는 칸 '+table.cut.size+'개는 잘라 읽음':''),'small'));
+ if(st.headerMissing)add(c,el('p',stmtErrorText('STMT_NO_HEADER'),'fin-bad'));
+ const bar=el('div',null,'fin-toolbar');add(c,bar);
+ if(st.read.tables.length>1)finSelect(bar,'표',String(st.tableIndex),st.read.tables.map((t,i)=>[String(i),(i+1)+'번째 '+(t.name?'시트 '+t.name+(t.hidden?'(숨김)':''):'표')+' · '+t.rows.length+'행']),v=>void perform(async()=>{st.tableIndex=Number(v);await finStmtHeader(st,null);await render();}));
+ finSelect(bar,'머리글 행',String(st.header.headerRow),table.rows.slice(0,STMT_LIMITS.headerScan).map((r,i)=>[String(i),(i+1)+'행 · '+maskCell(r.filter(Boolean).slice(0,3).join(' | ')).slice(0,40)]),v=>void perform(async()=>{await finStmtHeader(st,Number(v));await render();}));
+ const grid=el('div',null,'field-grid');add(c,grid);
+ const colOpts=[['-1','없음'],...names.map((n,i)=>[String(i),(i+1)+'열 · '+(n||'(이름 없음)')])];
+ for(const role of COLUMN_ROLES)finSelect(grid,COLUMN_TEXT[role]+(REQUIRED_ROLES.includes(role)?' *':''),String(st.columns[role]??-1),colOpts,v=>void perform(async()=>{st.columns[role]=Number(v);st.items=null;await render();}));
+ if(bad)add(c,el('p',stmtErrorText(bad),'fin-bad'));
+ const opts=el('div',null,'fin-toolbar');add(c,opts);
+ const fromEl=field(opts,'명세서 기간 시작','date',st.period.from),toEl=field(opts,'명세서 기간 끝','date',st.period.to);
+ for(const [k,n] of Object.entries({from:fromEl,to:toEl})){n.dataset.navOnly='1';n.addEventListener('change',()=>{if(/^\d{4}-\d{2}-\d{2}$/.test(n.value))void perform(async()=>{st.period={...st.period,[k]:n.value};st.items=null;await render();});});}
+ finCheck(opts,'금액이 음수인 행은 취소',st.negativeIsCancel,v=>void perform(async()=>{st.negativeIsCancel=v;st.items=null;await render();}));
+ if(st.columns.installments>=0&&st.columns.total<0)finCheck(opts,'할부 행의 금액이 원거래 총액임(월 금액이 아님)',st.installAmountIsTotal,v=>void perform(async()=>{st.installAmountIsTotal=v;st.items=null;await render();}));
+ add(c,hint('연도 없는 날짜(예: 10/14)는 명세서 기간의 해로 읽습니다. 할부는 원거래 1건(이용일·전액)으로 저장하고, 매달 나오는 회차 행은 새 소비로 세지 않습니다.'));
+ if(st.columns.cancel>=0){
+  const vals=[...new Set(table.rows.slice(st.header.dataStart).map(r=>normHeader(r[st.columns.cancel])).filter(Boolean))].slice(0,12),box=el('div',null,'fin-toolbar');
+  add(c,el('p','취소 칸에서 "취소"로 볼 값','small'),box);
+  for(const v of vals)finCheck(box,v,st.cancelValues.includes(v),on=>void perform(async()=>{st.cancelValues=on?[...st.cancelValues,v]:st.cancelValues.filter(x=>x!==v);st.items=null;await render();}));
+ }
+ const roleOf=i=>COLUMN_ROLES.filter(r=>st.columns[r]===i).map(r=>COLUMN_TEXT[r].split('(')[0]);
+ const shown=table.rows.slice(st.header.dataStart,st.header.dataStart+STMT_LIMITS.preview);
+ add(c,finTable(names.map((n,i)=>(n||(i+1)+'열')+(roleOf(i).length?' ['+roleOf(i).join('·')+']':'')),shown.map(r=>names.map((_,i)=>maskCell(r[i]??'')))));
+ add(c,hint('미리보기는 처음 '+STMT_LIMITS.preview+'행입니다. 카드번호처럼 보이는 글자는 끝 4자리만 보입니다.'));
+ add(root,c);
+ if(bad)return;
+ // 해석 결과 + 합계(통제값)
+ const ok=norm.rows.filter(r=>!r.problem),fails=norm.rows.length-ok.length,ctrl=controlCheck(norm),sk=norm.skipped;
+ const s=section('해석 결과');
+ add(s,el('p','거래 행 '+finCount(norm.rows.length)+' · 날짜 해석 '+finCount(norm.rows.filter(r=>r.date).length)+'/'+finCount(norm.rows.length)+' · 금액 해석 '+finCount(norm.rows.filter(r=>r.amount!==null).length)+'/'+finCount(norm.rows.length)+' · 취소 '+finCount(norm.rows.filter(r=>r.cancel||r.amount?.startsWith('-')).length)+'행'+(fails?' · 해석 실패 '+fails+'행':''),'small'));
+ add(s,el('p','건너뛴 행: 합계 '+sk.total+' · 소계 '+sk.subtotal+' · 카드 구분 '+sk.card+' · 상세정보 등 보조 '+sk.aux+' · 빈 행 '+sk.blank,'small muted'));
+ if(st.remembered&&norm.rows.length&&fails*10>norm.rows.length)add(s,el('p','기억한 칸 짝으로 해석 실패가 10%를 넘습니다 · 카드사 파일 모양이 바뀌었을 수 있으니 칸을 다시 확인하세요.','fin-bad'));
+ add(s,el('p',ctrl.state==='MATCH'?'✓ 파일 합계 '+formatWon(ctrl.matched)+' = 가져올 행 합계':ctrl.state==='NONE'?'파일에 합계 행이 없어 통제값 대조를 하지 않았습니다.':'✗ 파일 합계('+ctrl.fileTotals.map(formatWon).join(', ')+')와 가져올 행 합계('+formatWon(ctrl.sums[0])+')가 다릅니다 · 차이 '+formatWon(ctrl.diff)+' · '+ctrl.reasons.join(' · '),ctrl.state==='MATCH'?'fin-ok':ctrl.state==='NONE'?'muted small':'fin-bad'));
+ add(root,s);
+ // ③ 계정 고르기(카드 구분 행·카드 칸이 있으면 카드별로)
+ const a=section('③ 계정 고르기','카드 구분이 있는 명세서는 카드마다 계정을 고릅니다. 카드 칸이 없거나 한 계정으로 넣으려면 "파일 전체를 계정 하나로"를 켜세요.');
+ const accts=fin.accounts.filter(x=>x.data.active).sort((x,y)=>Number(y.data.type==='CARD')-Number(x.data.type==='CARD')).map(x=>[x.id,x.data.name+' · '+FIN_ACCOUNT_TEXT[x.data.type]]);
+ if(!accts.length){add(a,empty('활성 계정이 없습니다. "계정"에서 카드 계정을 먼저 추가하세요.'));add(root,a);return;}
+ const abar=el('div',null,'fin-toolbar');add(a,abar);
+ finSelect(abar,norm.cards.length&&!st.single?'기본 계정(카드 구분 없는 행)':'계정',st.accountId,[['','계정 선택'],...accts],v=>void perform(async()=>{st.accountId=v;st.items=null;await render();}));
+ if(norm.cards.length){
+  finCheck(abar,'파일 전체를 계정 하나로',st.single,v=>void perform(async()=>{st.single=v;st.items=null;await render();}));
+  if(!st.single){const cg=el('div',null,'field-grid');add(a,cg);for(const tag of norm.cards)finSelect(cg,'카드 '+tag,st.cardAccounts[tag]??'',[['','기본 계정'],['-','가져오지 않음'],...accts],v=>void perform(async()=>{st.cardAccounts={...st.cardAccounts,[tag]:v};st.items=null;await render();}));}
+ }
+ const go=button(st.items?'다시 대조하기':'칸 짝 기억하고 장부와 대조하기',()=>void perform(async()=>{
+  const kept=stmtStore.set(st.sig,{columns:st.columns,cancelValues:st.cancelValues,negativeIsCancel:st.negativeIsCancel,installAmountIsTotal:st.installAmountIsTotal,accountId:st.accountId,cardAccounts:st.cardAccounts,savedAt:new Date().toISOString()});
+  st.remembered=true;finStmtReconcile(st);await render();status(kept?'칸 짝을 이 기기에 기억했습니다 · 대조 결과를 확인하세요.':'이 기기 저장소에 칸 짝을 기억하지 못했습니다(이번 실행 동안만 기억) · 대조 결과를 확인하세요.');
+ }),'primary');go.disabled=!st.accountId&&(st.single||!norm.cards.length);
+ add(a,add(el('div',null,'buttons'),go));add(root,a);
+ // 장부가 새로 고쳐졌으면(저장 뒤·다른 기기 동기화 뒤) 고른 것은 그대로 두고 다시 대조한다: 방금 저장한 거래는 "이미 있음"이 된다.
+ if(st.items&&st.finRef!==whole.fin&&!st.running)finStmtReconcile(st);
+ if(st.items)finStmtResults(root,st,fin);
+}
+function finStmtResults(root,st,fin){
+ const items=st.items,count=s=>items.filter(i=>i.status===s).length,cov=coveredByBatches(items,fin);
+ const r=section('④ 대조 결과','같은 계정·같은 금액·날짜 ±1일·가맹점 비슷함이면 "이미 있음"입니다. 모든 판정은 제안이고, 장부의 거래를 지우거나 바꾸지 않습니다.');
+ add(r,add(el('div',null,'fin-chips'),...['NEW','SAME','SUSPECT','PAIR','SKIP','FAIL'].map(k=>add(el('span',null,'fin-chip'),el('span',STMT_STATUS_TEXT[k]),el('strong',finCount(count(k))+'건')))));
+ if(cov.rows)add(r,el('p',cov.months.join(', ')+'은(는) 과거 이력 묶음이 덮고 있어 대부분 "이미 있음"으로 뜹니다(해당 '+finCount(cov.rows)+'행).','fin-warn'));
+ add(root,r);
+ const perm=importPermission({mdProfile,mdReady,autoOK:mdAutoOK(),role:mdRole,unlocked:mdUnlocked});
+ const paints=new Map(),summary=el('p',null,'small'),errs=el('div'),save=button('',()=>runFinStmtSave(),'primary');
+ const refreshSave=()=>{
+  const sel=selectForSave(items),ops=finOps(),chk=checkStatementSave(sel.queue.length,{ops,local:finLocal(),txnCount:fin.txns.length,txnLimit:fin.limits?.FIN_TXN??8000});
+  summary.textContent='이번에 저장 '+finCount(sel.queue.length)+'개 · '+(ops.known?'남은 저장 횟수 '+finCount(ops.remaining)+'개 · '+opsAfter({known:true,remaining:ops.remaining,need:sel.queue.length}).text:'남은 저장 횟수 확인 불가(서버가 최종 판정)')+(sel.later?' · 한 번에 '+SAVE_MAX+'건까지라 '+finCount(sel.later)+'건은 다음 번에':'');
+  errs.replaceChildren(...chk.errors.filter(e=>e!=='FIN_IMPORT_NOTHING').map(e=>el('p',finErrorText(e)||e,'fin-bad')));
+  const resume=st.saved||st.error||st.stopped;save.textContent=(resume?'이어서 저장':'고른 거래 저장')+' ('+sel.queue.length+'건)';save.disabled=!chk.ok||st.running||perm.state==='BLOCKED';return chk;
+ };
+ const setChoice=(keys,patch)=>{for(const k of keys){st.choice.set(k,{...st.choice.get(k),...patch});const it=items.find(x=>x.key===k);if(!it)continue;Object.assign(it,patch.category!==undefined?{category:patch.category,subcategory:''}:{},patch.kind?{kind:patch.kind}:{},patch.checked!==undefined?{checked:patch.checked}:{});
+  if(it.kind==='NONE')it.checked=false;if(it.kind==='PREPAID_LOAD')it.category=null;else if(!it.category)it.category=st.chips[0]??'OTHER';paints.get(k)?.();}refreshSave();};
+ // ⑤ 새것: 체크 + 종류 칩 + 분류 칩 1탭(같은 가맹점 함께)
+ const n=section('⑤ 새것 고르기 · 분류','분류 칩은 같은 가맹점의 지난 분류 → 분류 규칙 → 최근 6개월 많이 쓴 분류 순으로 미리 눌러 두었습니다. 카드대금 납부는 "저장 안 함", 상품권·충전은 "선불 충전"을 제안합니다.');
+ finCheck(n,'같은 가맹점 함께 바꾸기',st.groupSame,v=>{st.groupSame=v;});
+ const picks=items.filter(it=>it.status==='NEW'||it.forced);
+ for(const it of picks)add(n,finStmtItem(st,it,fin,{paints,setChoice}));
+ if(!picks.length)add(n,empty('새로 저장할 거래가 없습니다. 이 명세서의 거래는 모두 장부에 있거나 확인이 필요한 것입니다.'));
+ add(root,n);
+ for(const [k,label] of [['SUSPECT','중복 의심'],['SAME','이미 있음'],['PAIR','파일 안 취소 짝'],['SKIP','건너뜀'],['FAIL','해석 실패']]){
+  const list=items.filter(it=>it.status===k&&!it.forced);if(!list.length)continue;
+  lazyDetails(root,'stmt-'+k,label+' '+list.length+'건 · 펼쳐서 비교'+(k==='FAIL'?'':' · "그래도 새것으로"로 고를 수 있음'),d=>{for(const it of list)add(d,finStmtItem(st,it,fin,{paints,setChoice}));});
+ }
+ // ⑥ 저장
+ const w=section('⑥ 저장','고른 거래만 날짜순으로 1건씩 저장합니다(1건 = 저장 1번). 멈추면 저장된 것은 그대로 두고 "이어서 저장"으로 남은 것만 저장합니다. 같은 파일을 다시 넣어도 저장한 거래는 "이미 있음"이 되어 두 번 저장되지 않습니다.');
+ if(perm.text){const why=el('p',perm.text,perm.state==='BLOCKED'?'fin-bad':'small');why.dataset.state=perm.state;add(w,why);}
+ if(st.finished)add(w,el('p','저장 완료 · 이번에 '+st.saved+'건 저장','fin-ok'));
+ if(st.error)add(w,el('p','중단됨 · '+(finErrorText(st.error)||st.error)+' · 저장된 거래는 그대로이고 "이어서 저장"으로 남은 것만 저장합니다.','fin-bad'));
+ if(st.stopped&&!st.error)add(w,el('p','사용자가 중단함 · "이어서 저장"으로 남은 것을 저장할 수 있습니다.','muted'));
+ const prog=el('progress',null,'fin-progress');prog.id='fin-stmt-bar';prog.max=1;prog.value=0;const line=el('p','','small');line.id='fin-stmt-line';
+ const stop=button('중단',()=>{st.stop=true;stop.disabled=true;$('fin-stmt-line').textContent+=' · 지금 저장 중인 거래까지 마치고 멈춥니다';},'danger');stop.id='fin-stmt-stop';stop.hidden=true;
+ save.id='fin-stmt-save';save.dataset.permission=perm.state;
+ add(w,summary,errs,prog,line,add(el('div',null,'buttons'),save,stop));add(root,w);
+ refreshSave();
+}
+function finStmtItem(st,it,fin,{paints,setChoice}){
+ const r=it.row,n=el('div',null,'fin-line stmt-item'),meta=el('div',null,'meta'),flags=[...new Set(r.flags)].filter(f=>STMT_FLAG_TEXT[f]);
+ add(meta,el('span',STMT_STATUS_TEXT[it.status]+(it.forced?' → 새것으로':''),'tag stmt-'+String(it.status).toLowerCase()),r.accountId?el('span',finAccountName(r.accountId)):null,r.cardTag?el('span',r.cardTag):null,
+  it.reason?el('span',STMT_REASON_TEXT[it.reason]):null,it.status==='FAIL'&&r.problem?el('span',ROW_STATUS_TEXT[r.problem]??r.problem,'tag unknown'):null,
+  (r.months??0)>=2?el('span','할부 '+r.months+'개월'+(r.round?' · 명세서 '+r.round+'회차':'')):null,r.transit?el('span','교통 묶음 '+r.transit+'건'):null,
+  r.foreign?el('span','해외 '+r.foreign.amount+(r.foreign.currency?' '+r.foreign.currency:'')):null,r.fee?el('span','수수료 '+formatWon(r.fee)):null,...flags.map(f=>el('span',STMT_FLAG_TEXT[f],'tag'+(f==='FORMULA'?' dup':''))),
+  it.match?el('span','장부: '+it.match.date+' · '+(it.match.merchant||'가맹점 없음')+' · '+formatWon(it.match.net)+(it.match.source==='BATCH'?' (가져온 원천)':it.match.source==='VOIDED'?' (무효화됨)':' (직접 입력)')):null);
+ add(n,add(el('div',null,'main'),el('strong',(r.date??'날짜 모름')+' · '+(r.merchant||'가맹점 없음')),meta),el('div',r.amount===null?'모름':formatWon(r.amount),'amount'+(r.amount?.startsWith('-')?' neg':'')));
+ if(it.status==='FAIL')return n;
+ const ctl=el('div',null,'stmt-controls');add(n,ctl);
+ if(it.forcible&&!it.forced){add(ctl,button('그래도 새것으로',()=>void perform(async()=>{st.choice.set(it.key,{...st.choice.get(it.key),forced:true,checked:true});finStmtReconcile(st);await render();}),'secondary'));return n;}
+ if(it.forced)add(ctl,button('새것으로 고른 것 취소',()=>void perform(async()=>{st.choice.set(it.key,{...st.choice.get(it.key),forced:false,checked:false});finStmtReconcile(st);await render();}),'secondary'));
+ const keys=()=>st.groupSame?sameMerchantKeys(st.items,it.key):[it.key];
+ const save=finCheck(ctl,'저장',it.checked,v=>setChoice([it.key],{checked:v}));
+ const kindRow=el('div',null,'quick-row');kindRow.setAttribute('role','toolbar');kindRow.setAttribute('aria-label','종류');add(ctl,kindRow);
+ const kindBtns=(r.amount?.startsWith('-')?STMT_KINDS_NEG:STMT_KINDS_POS).map(([k,label])=>{const b=button(label,()=>setChoice(keys(),{kind:k,checked:k!=='NONE'}),'secondary quick-pick');b.dataset.navOnly='1';b.dataset.kind=k;add(kindRow,b);return b;});
+ const catRow=el('div',null,'quick-row');catRow.setAttribute('role','toolbar');catRow.setAttribute('aria-label','분류');add(ctl,catRow);
+ const catBtns=st.chips.map(c=>{const b=button(fin.labels.expense[c]??c,()=>setChoice(keys(),{category:c}),'secondary quick-pick');b.dataset.navOnly='1';b.dataset.category=c;add(catRow,b);return b;});
+ const other=finSelect(catRow,'그 외 분류',it.category??'',Object.entries(fin.labels.expense),v=>setChoice(keys(),{category:v}));
+ const paint=()=>{save.checked=it.checked;save.disabled=it.kind==='NONE';
+  for(const b of kindBtns){const on=b.dataset.kind===it.kind;b.classList.toggle('active',on);b.setAttribute('aria-pressed',String(on));}
+  const spend=it.kind==='EXPENSE'||it.kind==='REFUND';catRow.hidden=!spend;
+  for(const b of catBtns){const on=b.dataset.category===it.category;b.classList.toggle('active',on);b.setAttribute('aria-pressed',String(on));}
+  if(spend&&it.category)other.value=it.category;};
+ paints.set(it.key,paint);paint();
+ return n;
+}
+function runFinStmtSave(){
+ const st=finStmt;if(!st||st.running||!st.items)return;
+ void perform(async()=>{try{
+  if(mdProfile&&!mdReady&&mdAutoOK()){if(!(await mdAutoWrite()))throw finError('FIN_IMPORT_WRITE_PERMISSION');autoLeaseHeld=true;clearTimeout(autoLeaseTimer);}
+  if(mdDraftMode())throw finError('FIN_IMPORT_DRAFT_MODE');
+  // 다른 기기가 그사이 넣은 거래가 "이미 있음"이 되도록 최신 기록으로 다시 대조한 뒤 시작한다.
+  await refresh();lock(true);finStmtReconcile(st);
+  const fin=whole.fin,{queue}=selectForSave(st.items),chk=checkStatementSave(queue.length,{ops:finOps(),local:finLocal(),txnCount:fin.txns.length,txnLimit:fin.limits?.FIN_TXN??8000});
+  if(!chk.ok)throw finError(chk.errors[0]);
+  const bar=$('fin-stmt-bar'),line=$('fin-stmt-line'),stop=$('fin-stmt-stop'),reason='명세서 가져오기 · '+st.sha12,monthTag=st.period.to.slice(0,7);
+  st.running=true;st.error=null;st.stop=false;st.stopped=false;st.finished=false;
+  stop.hidden=false;stop.disabled=false;delete stop.dataset.busyLock;bar.max=Math.max(1,queue.length);bar.value=0;
+  try{
+   const res=await runStatementSave({queue:queue.map(it=>({key:st.sha12+':'+it.key,it})),done:st.done,shouldStop:()=>st.stop,
+    onProgress:k=>{bar.value=k;line.textContent='진행: '+k+' / '+queue.length;},
+    save:async q=>{
+     if(mdDraftMode())throw finError('FIN_IMPORT_DRAFT_MODE');if(autoLeaseHeld)clearTimeout(autoLeaseTimer);
+     line.textContent='저장 중: '+q.it.row.date+' · '+(bar.value+1)+' / '+queue.length;
+     const data=buildTxn(statementTxnInput(q.it,{sha12:st.sha12,monthTag}),{labels:fin.labels,accounts:fin.accounts,localDate:whole.localDate,old:null});
+     const r=await entity('FIN_TXN',entityId(),data,[],reason);if(r.status==='LOCAL_DRAFT')throw finError('FIN_IMPORT_DRAFT_MODE');st.saved++;
+    }});
+   st.stopped=res.stopped;if(!res.stopped)st.finished=true;
+  }catch(e){st.error=e.code||'HOLD_CONNECTION';throw e;}
+  finally{st.running=false;stop.hidden=true;try{await refresh();}catch{}}   // refresh가 다시 그리면서 새 장부로 다시 대조한다(renderFinStatement)
+  status(st.finished?savedMessage()+' · 명세서 가져오기 저장 '+st.saved+'건':'저장을 중단했습니다 · 저장 '+st.saved+'건 · 이어서 저장할 수 있습니다.');
+ }finally{
+  if(autoLeaseHeld){clearTimeout(autoLeaseTimer);autoLeaseTimer=setTimeout(()=>{void mdReleaseNow();},20000);}
+ }});
+}
 // ---------- F2 과거 이력 가져오기 ----------
 // 계획 파일은 화면 메모리에만 있다(저장·로그·전송 없음). 확정하면 계정 → 월 묶음 순서로 entity()를 하나씩 부른다.
 // 중단돼도 같은 파일을 다시 고르면 이미 저장된 엔티티는 건너뛰고 이어서 저장한다.

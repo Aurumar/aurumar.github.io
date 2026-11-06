@@ -114,7 +114,7 @@ export const timerRecordMin=(startIso,nowIso)=>Math.min(MAX_DAY_MIN,Math.max(1,t
 // draftCard = 오늘 공부 흐름의 카드(초안 또는 확정본). 다른 날짜의 카드가 남아 있으면 쓰지 않는다.
 export function todayMinutes({study=null,date,draftCard=null,timer=null,nowIso}){
   const card=draftCard&&draftCard.date===date?draftCard:[...(study?.days??[])].reverse().find(d=>d?.date===date)?.data??null;
-  const running=timer?.startIso?Math.min(MAX_DAY_MIN,timerElapsedMin(timer.startIso,nowIso)):0;
+  const running=timer?.startIso?Math.min(MAX_DAY_MIN,timerElapsedMin(timer.startIso,timer.endIso??nowIso)):0;   // FIX34 (H4): 끝 시각이 적힌 타이머는 더 늘지 않는다
   return {cardMin:cardMinutes(card),timerMin:running,minutes:cardMinutes(card)+running};
 }
 

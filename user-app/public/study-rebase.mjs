@@ -62,6 +62,20 @@ function mergeList(list,base,mine,latest,notices){
   return {items:order.filter(id=>keep.has(id)).map(id=>keep.get(id))};
 }
 
+// 세션 id 표지: 'T'(타이머) · 'A'(PC 측정 담기) · null(분 입력·공부 모듈·옛 세션). focus-card도 이 함수를 쓴다.
+export function sessionMark(id){const m=/^lf_[A-Za-z0-9-]{1,30}_([TA])/.exec(typeof id==='string'?id:'');return m?m[1]:null;}
+// FIX34 (HUNT34 H6): 다른 기기 타이머(T)와 PC 측정 담기(A)가 같은 시간을 두 번 셀 수 있다. 자동으로 지우지 않고 확정 때 알리기만 한다.
+// 타이머 분은 반올림이라 구간 끝이 30초까지 어긋난다 → 1분 이상 겹칠 때만 겹침으로 본다.
+export const OVERLAP_NOTICE='REBASE_TIMER_CLAIM_OVERLAP';
+const MIN_MS=60000;
+const spanOf=s=>{const at=Date.parse(s?.at);return Number.isFinite(at)&&Number.isInteger(s?.confirmedMin)&&s.confirmedMin>0?[at-s.confirmedMin*MIN_MS,at]:null;};
+export function timerClaimOverlap(sessions){
+  const of=mark=>sessions.filter(s=>sessionMark(s?.id)===mark).map(s=>({id:s.id,span:spanOf(s)})).filter(x=>x.span),timers=of('T');
+  let ms=0,itemId=null;
+  for(const a of of('A'))for(const t of timers){const o=Math.min(a.span[1],t.span[1])-Math.max(a.span[0],t.span[0]);if(o>0){ms+=o;itemId??=a.id;}}
+  return ms>=MIN_MS?{code:OVERLAP_NOTICE,list:'sessions',itemId,min:Math.round(ms/MIN_MS)}:null;
+}
+
 export function rebase({date,base,mine,latest}){
   const notices=[],merged={date};
   for(const list of LISTS){
@@ -73,5 +87,6 @@ export function rebase({date,base,mine,latest}){
   if(latest?sameContent(merged,latest):LISTS.every(l=>!merged[l].length))return {status:'ALREADY_APPLIED',notices};
   try{validateStudyData('STUDY_DAY',date,merged);}
   catch(e){return {status:'REJECTED',code:e.code??'STUDY_REBASE_INVALID',notices,detail:Object.fromEntries(LISTS.map(l=>[l,merged[l].length]))};}
+  const overlap=timerClaimOverlap(merged.sessions);if(overlap)notices.push(overlap);
   return {status:'MERGED',card:merged,notices};
 }

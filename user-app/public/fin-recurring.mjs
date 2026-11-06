@@ -112,7 +112,8 @@ const sameBand=(r,a,pct)=>{const c=BigInt(r.match.amount),rp=BigInt(r.match.tole
 // r31까지의 겹침 기준: 한쪽 금액대가 다른 쪽 중심 금액을 품는가. r31이 받아 준 겹친 금액대 규칙 쌍은 이 기준으로는 안 겹친다.
 const centerBand=(r,a,pct)=>{const c=BigInt(r.match.amount);return within(a,c,r.match.tolerancePct)||within(c,a,pct);};
 // R33B (HUNT32 D2): addRule이 겹침으로 거부할 금액인가(후보 목록이 등록 버튼을 낼지 같은 판정으로 정한다).
-const addBlocked=(rules,key,won,pct)=>rules.some(r=>r.match.merchant===key&&sameBand(r,won,pct));
+// FIX34 (HUNT34 H9): 숨긴 규칙은 겹침 검사에 넣지 않는다(amountBlocked와 같은 기준으로 통일). 대신 다시 보이기 때 겹침을 검사한다(setRuleHidden).
+const addBlocked=(rules,key,won,pct)=>rules.some(r=>!r.hidden&&r.match.merchant===key&&sameBand(r,won,pct));
 // 규칙 하나를 목록에 더한 새 data를 만든다. 같은 가맹점·겹치는 금액대의 규칙이 이미 있으면 거부(후보에는 overlap:true로 보인다). 반환값은 validateFinData('FIN_RECURRING','recurring',data)를 통과하는 모양.
 export function addRule(data,{name,merchant,amount,tolerancePct=TOLERANCE_DEFAULT},{id,now}){
   const rules=rulesOf(data),key=recurringKey(merchant),won=wonOf(amount);
@@ -123,9 +124,12 @@ export function addRule(data,{name,merchant,amount,tolerancePct=TOLERANCE_DEFAUL
   if(addBlocked(rules,key,won,tolerancePct))throw finError('FIN_RECURRING_DUPLICATE');
   return {rules:[...structuredClone(rules),{id,name:name.trim(),match:{merchant:key,amount:won.toString(),tolerancePct},cycle:'MONTHLY',hidden:false,createdAt:now}]};
 }
+// FIX34 (H9): 숨긴 규칙을 다시 보이면 겹치는가 = 같은 가맹점의 보이는 규칙과 금액대가 조금이라도 겹치는가(addRule과 같은 기준). 겹치면 저장하지 않는다(이유는 FIN_ERROR_TEXT).
+export const canReveal=(rules,id)=>{const rule=(rules??[]).find(r=>r.id===id);return Boolean(rule)&&!rules.some(r=>r.id!==id&&!r.hidden&&r.match.merchant===rule.match.merchant&&sameBand(r,BigInt(rule.match.amount),rule.match.tolerancePct));};
 export function setRuleHidden(data,id,hidden){
-  const rules=rulesOf(data);
-  if(!rules.some(r=>r.id===id))throw finError('FIN_RECURRING_UNKNOWN_RULE');
+  const rules=rulesOf(data),rule=rules.find(r=>r.id===id);
+  if(!rule)throw finError('FIN_RECURRING_UNKNOWN_RULE');
+  if(rule.hidden&&!hidden&&!canReveal(rules,id))throw finError('FIN_RECURRING_REVEAL_OVERLAP');
   return {rules:rules.map(r=>({...structuredClone(r),hidden:r.id===id?Boolean(hidden):r.hidden}))};
 }
 // R33B (HUNT32 D3·S5): 규칙 rule의 금액을 won으로 바꾸면 같은 가맹점 형제 규칙과 겹치는가. 자기 규칙과 숨긴 규칙은 보지 않는다. 금액이 그대로면 늘 받는다.
@@ -155,21 +159,47 @@ const dayNum=d=>Date.UTC(Number(d.slice(0,4)),Number(d.slice(5,7))-1,Number(d.sl
 const dueOf=(month,day)=>{const y=Number(month.slice(0,4)),m=Number(month.slice(5,7)),last=(Date.UTC(y,m,1)-Date.UTC(y,m-1,1))/86400000;return month+'-'+String(Math.min(day,last)).padStart(2,'0');};
 // R33B (HUNT32 D5): 결제일의 대체 기준. 규칙 금액대에 지난 결제가 하나도 없을 때(실제 결제 전에 잠정 금액을 바꿈)만 쓴다.
 // 이 규칙의 지난 결제로 볼 것: B48C 가격 변경 범위(규칙 금액의 절반~두 배) 안이고 같은 가맹점 다른 규칙(rules)의 금액대 밖. 예정일만 정하고 금액대 판정(lineKind)에는 쓰지 않는다.
-export const dueFallback=(rule,a,rules=[])=>{const c=BigInt(rule.match.amount);return a*2n>=c&&a<=c*2n&&!rules.some(r=>r.id!==rule.id&&r.match.merchant===rule.match.merchant&&within(a,BigInt(r.match.amount),r.match.tolerancePct));};
-// 평소 결제일: 이번 달 전의 규칙 금액 결제(정확히 같은 금액이 있으면 그것만)에서 가장 많이 나온 날(동률은 최근). 금액대 안 지난 결제가 없으면 dueFallback 결제로, 그것도 없으면 null.
+// FIX34 (HUNT34 H10): 절반~두 배 안이어도 규칙 금액이 더 가까운 같은 가맹점 형제 규칙이 있으면 그 형제의 옛 결제로 본다(둘 다 결제 전에 금액을 고쳐도 서로 섞이지 않게).
+export const dueFallback=(rule,a,rules=[])=>{
+  const c=BigInt(rule.match.amount),gap=x=>a>x?a-x:x-a;
+  if(a*2n<c||a>c*2n)return false;
+  return !rules.some(r=>{if(r.id===rule.id||r.match.merchant!==rule.match.merchant)return false;const o=BigInt(r.match.amount);return within(a,o,r.match.tolerancePct)||(a*2n>=o&&a<=o*2n&&gap(o)<gap(c));});
+};
+const FALLBACK_MIN_MONTHS=2;
+// 가장 많이 나온 날(동률은 최근).
+function usualDay(list){
+  const count=new Map();
+  for(const x of list){const d=Number(x.date.slice(8,10));count.set(d,(count.get(d)??0)+1);}
+  let best=null,bestN=0;
+  for(const x of [...list].sort((p,q)=>q.date.localeCompare(p.date))){const d=Number(x.date.slice(8,10)),n=count.get(d);if(n>bestN){best=d;bestN=n;}}
+  return best;
+}
+// FIX34 (HUNT34 H8·H13): 대체 결제일. 화면(dueDayOf)과 PC 알림(pc-toast)이 이 함수 하나를 쓴다. 후보는 같은 금액대로 묶여 서로 다른 달에 2번 이상 되풀이된 결제뿐이다(한 번 산 일반 구매로 정하지 않는다).
+// 묶음이 여럿이면 결제가 많은 묶음(동률은 최근 결제가 있는 묶음). 한 묶음 안에서는 규칙 금액에 가장 가까운 금액의 결제일을 본다(같은 금액대의 일반 구매에 흔들리지 않게). 그 금액이 한 달뿐이면 묶음 전체를 본다.
+function fallbackDayOf(rule,mine,month,rules){
+  const center=BigInt(rule.match.amount),spare=[];
+  for(const l of mine){
+    if(l.date.slice(0,7)>=month)continue;
+    const a=wonOf(l.net);if(a===null)continue;
+    if(!within(a,center,rule.match.tolerancePct)&&dueFallback(rule,a,rules))spare.push({date:l.date,amount:a});
+  }
+  const bands=splitBands(spare,rule.match.tolerancePct).filter(b=>b.months.size>=FALLBACK_MIN_MONTHS);
+  if(!bands.length)return null;
+  const band=bands.reduce((p,q)=>q.members.length>p.members.length||(q.members.length===p.members.length&&q.last>p.last)?q:p);
+  const gap=a=>a>center?a-center:center-a,byGap=[...new Set(band.members.map(x=>x.amount))].sort((p,q)=>gap(p)<gap(q)?-1:gap(p)>gap(q)?1:0);
+  const same=byGap.map(a=>band.members.filter(x=>x.amount===a)).find(list=>new Set(list.map(x=>x.date.slice(0,7))).size>=FALLBACK_MIN_MONTHS);
+  return usualDay(same??band.members);
+}
+// 평소 결제일: 이번 달 전의 규칙 금액 결제(정확히 같은 금액이 있으면 그것만)에서 가장 많이 나온 날(동률은 최근). 금액대 안 지난 결제가 없으면 대체 결제일(fallbackDayOf), 그것도 없으면 null.
 function dueDayOf(rule,mine,month,rules=[]){
-  const center=BigInt(rule.match.amount),past=[],spare=[];
+  const center=BigInt(rule.match.amount),past=[];
   for(const l of mine){
     if(l.date.slice(0,7)>=month)continue;
     const a=wonOf(l.net);if(a===null)continue;
     if(within(a,center,rule.match.tolerancePct))past.push({date:l.date,exact:a===center});
-    else if(dueFallback(rule,a,rules))spare.push({date:l.date,exact:false});
   }
-  const use=past.some(x=>x.exact)?past.filter(x=>x.exact):past.length?past:spare,count=new Map();
-  for(const x of use){const d=Number(x.date.slice(8,10));count.set(d,(count.get(d)??0)+1);}
-  let best=null,bestN=0;
-  for(const x of [...use].sort((p,q)=>q.date.localeCompare(p.date))){const d=Number(x.date.slice(8,10)),n=count.get(d);if(n>bestN){best=d;bestN=n;}}
-  return best;
+  if(!past.length)return fallbackDayOf(rule,mine,month,rules);
+  return usualDay(past.some(x=>x.exact)?past.filter(x=>x.exact):past);
 }
 // 예정일(앞달·이번 달·다음 달) ±3일 안인가.
 const onSchedule=(date,day)=>{const n=dayNum(date),m=date.slice(0,7);return [shiftMonth(m,-1),m,shiftMonth(m,1)].some(x=>Math.abs(n-dayNum(dueOf(x,day)))<=DUE_WINDOW_DAYS);};
@@ -177,6 +207,7 @@ const mineOf=(rule,lines)=>lines.filter(l=>l.kind==='EXPENSE'&&typeof l.date==='
 // R32 (HUNT31 D4): 규칙의 평소 결제일(month 전의 결제에서, 위 dueDayOf). 가맹점이 다른 줄은 걸러서 본다. 지난 결제가 없으면 null.
 // R33B: rules(같은 가맹점 형제 규칙 포함 전체 목록)를 주면 대체 기준에서 형제 금액대 결제를 뺀다.
 export const dueDay=(rule,lines,month,rules=[])=>dueDayOf(rule,mineOf(rule,lines),month,rules);
+export const fallbackDay=(rule,lines,month,rules=[])=>fallbackDayOf(rule,mineOf(rule,lines),month,rules);
 // R32 (HUNT31 D4): 결제 줄 하나(같은 가맹점, 금액 a, 날짜 date)가 이 규칙에 어떻게 보이는가 — ruleStatus와 fixedSchedule(fin-forecast)이 같은 판정을 쓴다.
 // 'PAID' 구독 결제: 규칙 금액과 정확히 같은 금액, 또는 규칙 금액대(±tolerancePct%)이면서 예정일(due) ±3일 안.
 // 'OTHER' 금액 다름: 구독 결제가 아닌데 예정일 밖도 아닌 결제(예정일을 모르면 다른 금액 전부).

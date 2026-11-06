@@ -17,7 +17,7 @@ const sameHeads=(a,b)=>a.length===b.length&&a.every((h,i)=>h===b[i]);
 export class LifeFlow{
   #p;
   #sent=new Set();#aborted=new Set();
-  constructor(ports){this.#p=ports;}
+  constructor(ports){this.#p=ports;ports.drafts?.mergeWith?.({rebase,ports});}   // FIX34 (HUNT34 H1): STALE 뒤 다음 쓰기는 디스크 초안과 합친다
   async #drafts(){
     return (await this.#p.drafts.list()).filter(d=>d.type==='ENTITY'&&d.body?.entityType==='LIFE_DAY');
   }

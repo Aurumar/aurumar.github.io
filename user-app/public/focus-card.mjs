@@ -6,7 +6,9 @@
 // 이 모듈은 시계·저장소·요청·DOM을 ctx로 받는다(시험은 가짜를 꽂는다). host(focus-reader.mjs)도 규칙 검사(rulesOK)를 여기서 가져다 쓴다.
 import {kstDate,hhmmFromIso,sessionIdFor,studyCodeOf} from './life-model.mjs';
 import {MAX_SESSIONS} from './study-model.mjs';
+import {sessionMark} from './study-rebase.mjs';
 import {hmText,liveTick} from './study-stage.mjs';
+export {sessionMark};
 
 export const FOCUS_ROUTE='/api/focus-today';
 export const FOCUS_ON_KEY='lb.focus.on',FOCUS_RULES_KEY='lb.focus.rules',FOCUS_AUDIBLE_KEY='lb.focus.audible';
@@ -71,9 +73,7 @@ export function saveRules(storage,rules){
 export function resetRules(storage){try{storage?.removeItem(FOCUS_RULES_KEY);}catch{/* 이번 실행 동안만 */}}
 
 // ---- 담을 수 있는 구간(§4.3). 시각은 ms, 결과의 시각은 ISO(Z) ----
-// 세션 id 표지: 'T'(타이머) · 'A'(여기서 담음) · null(분 입력·공부 모듈·옛 세션).
-export function sessionMark(id){const m=/^lf_[A-Za-z0-9-]{1,30}_([TA])/.exec(typeof id==='string'?id:'');return m?m[1]:null;}
-// 구간을 아는 것: 표지 세션 [at − 분, at], 진행 중 타이머 [시작, 지금], 공부 모듈에서 시작만 한 세션 [at(시작), 지금].
+// 구간을 아는 것: 표지 세션 [at − 분, at], 진행 중 타이머 [시작, 지금(끝 시각이 적혀 있으면 그 시각)], 공부 모듈에서 시작만 한 세션 [at(시작), 지금].
 export function knownSpans(card,timer,nowIso){
   const now=Date.parse(nowIso),out=[];
   for(const s of card?.sessions??[]){
@@ -81,8 +81,8 @@ export function knownSpans(card,timer,nowIso){
     if(sessionMark(s.id)){if(Number.isInteger(s.confirmedMin)&&s.confirmedMin>0)out.push([at-s.confirmedMin*MIN_MS,at]);}
     else if(s.state==='STARTED'&&now>at)out.push([at,now]);
   }
-  const t=Date.parse(timer?.startIso);
-  if(Number.isFinite(t)&&now>t)out.push([t,now]);
+  const t=Date.parse(timer?.startIso),end=Date.parse(timer?.endIso);
+  if(Number.isFinite(t)&&now>t)out.push([t,Number.isFinite(end)?Math.min(end,now):now]);
   return out;
 }
 // 구간을 모르는 분: 표지 없는 세션의 확인된 분 합.
@@ -159,6 +159,7 @@ export const FOCUS_TEXT=Object.freeze({
   noAfk:'자리 비움 감시가 없어 창이 켜져 있던 시간을 모두 활동으로 봤어요.',
   loading:'ActivityWatch에서 오늘 측정값을 읽는 중…',
   privacy:'앱 이름·사이트 도메인으로만 나눕니다 · 창 제목·주소 경로는 읽자마자 버리고 저장하지 않아요.',
+  otherDevice:'다른 기기 타이머는 빠지지 않아요 · 아직 이 기기에 오지 않은 타이머와 겹치면 쌓을 때 알려 드려요(자동으로 지우지 않아요).',
 });
 export const focusErrorText=code=>FOCUS_TEXT[code]??'측정값을 불러오지 못했어요 ('+code+')';
 
@@ -238,7 +239,7 @@ function openClaim(ctx,h,plan){
   }
   const subjects=ctx.subjects,pick=select(subjects.map(s=>[s.id,s.name]),subjects.some(s=>s.id===ctx.subjectId)?ctx.subjectId:subjects[0].id);
   pick.setAttribute('aria-label','과목');
-  add(body,add(el('label','과목'),pick),hint('담으면 오늘 공부 기록 초안에 들어가요(이 기기에만) · "오늘 쌓기"를 누르면 함께 쌓입니다.'));
+  add(body,add(el('label','과목'),pick),hint('담으면 오늘 공부 기록 초안에 들어가요(이 기기에만) · "오늘 쌓기"를 누르면 함께 쌓입니다.'),hint(FOCUS_TEXT.otherDevice));
   let dlg=null;
   add(body,add(el('div',null,'buttons'),button('담기',()=>{
     const chosen=checks.filter(([,b])=>b.checked).map(([p])=>p);if(!chosen.length)return;

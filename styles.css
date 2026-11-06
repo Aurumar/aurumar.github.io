@@ -525,6 +525,11 @@ dialog[open]{animation:lb-rise .22s ease-out}
 .fin-chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 18px}
 .fin-chip{display:inline-flex;flex-wrap:wrap;gap:2px 6px;align-items:baseline;padding:6px 10px;border:1px solid var(--lb-line);border-radius:var(--lb-r-1);background:var(--lb-gold-soft);font-size:var(--lb-caption);color:var(--lb-ink-3)}
 .fin-chip strong{font-size:13px;color:var(--lb-ink-1);font-variant-numeric:tabular-nums}
+.fin-quick{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 14px}
+.fin-quick-label{font-size:var(--lb-caption);color:var(--lb-ink-3)}
+button.fin-quick-chip{padding:6px 10px;font-size:var(--lb-caption);font-weight:600;background:var(--lb-gold-soft);color:var(--lb-ink-2);border-color:var(--lb-line);box-shadow:none}
+button.fin-quick-chip:hover{background:var(--lb-surface-solid);border-color:var(--lb-gold-2)}
+button.fin-quick-need{background:transparent;color:var(--lb-ink-3)}
 .fin-chart{margin-bottom:18px}
 .fin-chart-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:4px}
 .fin-chart-head h2{font-size:17px;margin:0}
@@ -842,7 +847,7 @@ dialog[open]{animation:lb-rise .22s ease-out}
   .fin-toolbar{gap:8px}
   .fin-toolbar label:not(.inline){flex:1 1 140px}
   .fin-toolbar select,.fin-toolbar input:not([type=checkbox]){width:100%}
-  .fin-toolbar button{min-height:44px}
+  .fin-toolbar button,button.fin-quick-chip{min-height:44px}
   .fin-toolbar .fin-month-nav label:not(.inline){flex:1 1 0}
   .fin-metrics .metric-value{font-size:18px}
   .fin-chart-head h2{font-size:15px}
@@ -1267,6 +1272,32 @@ dialog[open]{animation:lb-rise .22s ease-out}
 .st-cell{display:block;height:12px;border-radius:3px;background:var(--lb-surface-tint);border:1px solid var(--lb-line-soft)}
 .st-cell.done{background:var(--lb-gold-2);border-color:var(--lb-gold-3)}
 .st-cell.now{background:var(--lb-gold-bright);border-color:var(--lb-gold-3);outline:1px solid var(--lb-gold-3);animation:st-breath 2.4s ease-in-out infinite}
+/* B65: 진행 표시 밑 12칸 미리보기 줄 — 좁은 화면 가로 스크롤, 펼침 한 줄 12칸, PC(좌우 칸) 2줄 6칸. 잠긴 칸만 흐리게(실루엣), 크게 보기는 선명 */
+.st-gal{display:flex;gap:var(--lb-s-1);margin:var(--lb-s-2) 0 0;padding:2px 2px var(--lb-s-1);list-style:none;min-width:0;overflow-x:auto;scroll-snap-type:x proximity}
+.st-gal-item{flex:0 0 68px;min-width:0;scroll-snap-align:start}
+@media(min-width:701px){.st-gal{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));overflow-x:visible}}
+@media(min-width:1000px){.st-gal{grid-template-columns:repeat(6,minmax(0,1fr))}}
+button.st-gal-thumb{position:relative;display:block;width:100%;min-width:0;min-height:44px;padding:0;background:var(--lb-surface-tint);border:1px solid var(--lb-line-soft);border-radius:var(--lb-r-1);box-shadow:none;color:var(--lb-ink-2);overflow:hidden}
+button.st-gal-thumb:hover{background:var(--lb-surface-tint);border-color:var(--lb-gold-2)}
+button.st-gal-thumb.next{border-color:var(--lb-gold-2)}
+button.st-gal-thumb.now{border-color:var(--lb-gold-3);outline:2px solid var(--lb-gold-3);outline-offset:-2px}
+.st-gal-frame{position:relative;display:block;aspect-ratio:13/19}
+.st-gal-fig{position:absolute;inset:0;display:block;width:100%;height:100%}
+.st-gal-fig-art{object-fit:cover}
+.st-gal-thumb.locked .st-gal-fig{filter:grayscale(1) brightness(.45) blur(1.5px)}
+.st-gal-no{position:absolute;top:2px;left:2px;min-width:18px;padding:0 3px;border-radius:var(--lb-r-1);background:var(--lb-surface-solid);color:var(--lb-ink-1);font-size:11px;font-weight:700;line-height:1.5;text-align:center}
+.st-gal-tags{position:absolute;right:2px;bottom:2px;left:2px;display:flex;flex-wrap:wrap;justify-content:center;gap:2px}
+.st-gal-tag{padding:0 4px;border-radius:var(--lb-r-1);background:var(--lb-surface-solid);border:1px solid var(--lb-line-soft);color:var(--lb-ink-2);font-size:10px;font-weight:700;line-height:1.5;overflow-wrap:anywhere}
+.st-gal-tag-next,.st-gal-tag-final{background:var(--lb-gold-2);border-color:var(--lb-gold-3);color:var(--lb-on-gold)}
+.st-gal-box{width:min(440px,calc(100vw - 24px))}
+.st-gal-inner{display:grid;gap:var(--lb-s-2);padding:var(--lb-s-3);min-width:0}
+.st-gal-head{display:flex;justify-content:space-between;align-items:center;gap:var(--lb-s-3);min-width:0}
+.st-gal-title{margin:0;font-size:var(--lb-title);min-width:0;overflow-wrap:anywhere}
+.st-gal-close,.st-gal-toggle{min-height:44px}
+.st-gal-notes{display:flex;flex-wrap:wrap;align-items:center;gap:var(--lb-s-1);min-width:0;min-height:22px}
+.st-gal-notes .st-gal-tag{font-size:var(--lb-caption);padding:1px 8px}
+.st-gal-left{font-weight:600;color:var(--lb-ink-2);overflow-wrap:anywhere}
+.st-gal-big{position:relative;justify-self:center;width:min(100%,calc(58vh*13/19));aspect-ratio:13/19;border-radius:var(--lb-r-2);overflow:hidden;background:var(--lb-surface-tint)}
 .st-tiers{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--lb-s-1);margin:0;padding:0;list-style:none;min-width:0}
 .st-tier{display:grid;gap:1px;align-content:start;min-width:0;padding:var(--lb-s-1);border:1px solid var(--lb-line-soft);border-radius:var(--lb-r-1);font-size:11px;line-height:1.35;color:var(--lb-ink-3);overflow-wrap:anywhere}
 .st-tier strong{color:var(--lb-ink-2);font-size:var(--lb-caption)}
@@ -1313,3 +1344,11 @@ button.finder-link{display:grid;gap:2px;justify-items:start;text-align:left;min-
 .finder-trust-list{display:grid;gap:var(--lb-s-1);min-width:0}
 .finder-trust-row{display:flex;justify-content:space-between;align-items:center;gap:var(--lb-s-3)}
 .finder-trust-host{font-family:Consolas,monospace;font-size:13px;min-width:0;overflow-wrap:anywhere}
+/* ===== 25. 명세서 가져오기 (B64): 새 색 없음 — 토큰만. 판정 표지(새것·이미 있음·중복 의심…)와 고르기 칩 줄 ===== */
+.stmt-item{align-items:start}
+.stmt-controls{grid-column:1 / -1;display:grid;gap:var(--lb-s-2);min-width:0}
+.tag.stmt-new{background:var(--lb-ok-bg);color:var(--lb-ok)}
+.tag.stmt-same{background:var(--lb-info-bg);color:var(--lb-ink-3)}
+.tag.stmt-suspect,.tag.stmt-pair{background:var(--lb-warn-bg);color:var(--lb-warn)}
+.tag.stmt-skip{background:var(--lb-gold-soft);color:var(--lb-ink-3)}
+.tag.stmt-fail{background:var(--lb-bad-bg);color:var(--lb-bad)}
