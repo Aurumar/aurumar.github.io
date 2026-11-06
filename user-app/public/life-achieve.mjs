@@ -25,8 +25,22 @@ export const GOAL_MIN=2,GOAL_MAX=16,GOAL_WINDOW=14,RAMP_DAYS=5,NOLATE_DAYS=5;
 export const AUTO_WINDOW=28,AUTO_MIN_DAYS=7,AUTO_DEFAULT=2;
 export const STREAK_STEP=7,STREAK_MAX_MULT10=20;
 export const AREAS=Object.freeze(['BODY','HEAD','MONEY','HEART']);
+export const RECENT_MAX=5;
 const MORNING_IDS=Object.freeze(['hb-wake','hb-sun','hb-breakfast']),COMMUTE_IDS=Object.freeze(['hb-in','hb-out']);
 const STUDY_ROUTINE_BRICKS=2,MAX_SPAN_DAYS=4000,UNKNOWN_COLOR='#C9A227';
+// 퀘스트·보너스 벽돌 (Q1A, 설계 Q1D §4·§6). 새 XP·보너스는 QUEST_EPOCH(첫 배포 주 월요일) 이후 날짜에만 붙고, 그 전 날짜의 XP는 그대로다. 업적 판정(life-achv)은 전체 기록을 본다.
+// 보너스 벽돌은 week.bonus·bonusTotal에만 있다. bricks·value·목표·아바타·상태 내보내기·공부 제안에 섞지 않는다.
+export const QUEST_EPOCH='2026-11-09';
+export const QUEST_XP=Object.freeze({DAILY:10,MONTH:300,BOSS_KILL:100});
+export const QUEST_BONUS=Object.freeze({WEEK:1,MONTH:3,BOSS:5});
+export const MY_QUEST_ID='uq-1';
+export const DAILY_WINDOW=14,DAILY_MIN_RECORDS=7,DAILY_RATE_LOW=30,DAILY_RATE_HIGH=80,EXAM_REVIEW_DAYS=7;
+export const BOSS_MISTAKES=5,BOSS_AFTER_DAYS=7,BOSS_PREP_DAYS=28;
+const REST_DAY_TYPES=Object.freeze(['REST','DETOX']);
+// 동률 고르기: 날짜+id의 FNV-1a. 난수가 아니라 어느 기기에서나 같다.
+const tieHash=s=>{let h=0x811c9dc5;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,0x01000193);}return h>>>0;};
+const daysInMonth=ym=>new Date(Date.UTC(Number(ym.slice(0,4)),Number(ym.slice(5,7)),0)).getUTCDate();
+const prevMonthOf=ym=>new Date(Date.UTC(Number(ym.slice(0,4)),Number(ym.slice(5,7))-2,1)).toISOString().slice(0,7);
 // 옛 공부 세션(세션 id에 과목 id가 없는 것)은 STUDY 과목 코드로 과목을 정한다.
 export const SUBJECT_BY_CODE=Object.freeze({K:'kor',M:'math',E:'eng',H:'hist',S:'soc',C:'sci'});
 
@@ -48,7 +62,7 @@ export function levelOf(xp){
 const mondayOf=date=>shiftDay(date,-((new Date(date+'T12:00:00Z').getUTCDay()+6)%7));
 const roundXp=(raw,mult10)=>Math.round(raw*mult10/10);
 
-function compute(life,study,today){
+function compute(life,study,today,money=null){
   const defs=lifeDefs(life),visible=defs.habits.filter(h=>!h.hidden);
   // 완벽한 날·연속 50% 판정의 분모(B43, 통제탑 결정): 매일 하는 습관만. 복구 종류와 주 단위 목표 습관(운동 등)은 뺀다(해 냈으면 XP는 그대로).
   const core=visible.filter(h=>h.kind!=='RECOVERY'&&h.target.per!=='WEEK');
@@ -68,7 +82,7 @@ function compute(life,study,today){
 
   // 하루별 벽돌·카드 준비
   const parsed=new Array(n);
-  const valuePrefix=new Int32Array(n+1),stackedPrefix=new Int32Array(n+1);   // valuePrefix는 반 칸 단위(조각 1 = 1, 벽돌 1 = 2)
+  const valuePrefix=new Int32Array(n+1),stackedPrefix=new Int32Array(n+1),gemPrefix=new Int32Array(n+1);   // valuePrefix는 반 칸 단위(조각 1 = 1, 벽돌 1 = 2)
   for(let i=0;i<n;i++){
     const date=dates[i],list=sessionsOf(date).map(s=>({s,at:s.at??'￿'})).sort((a,b)=>a.at<b.at?-1:a.at>b.at?1:a.s.id<b.s.id?-1:a.s.id>b.s.id?1:0).map(x=>x.s);
     let bricks=0,pieces=0,gold=0,brickXp=0,ignite=0;const items=[],parts=[];
@@ -86,8 +100,9 @@ function compute(life,study,today){
       parts.push({subjectId:sid,name:sub?.name??'기타',color,bridge:Boolean(sub?.bridge),bricks:b.bricks,pieces:b.pieces});
     }
     const gems=(studyDays.get(date)?.reviews??[]).filter(r=>r.result==='RECALLED').length;   // 보석 = 오답 복습에 성공한 건(A2의 VERIFIED. 복습 결과 값은 RECALLED·PARTIAL·FAILED뿐이다)
-    const card=cards.get(date)??null,value2=bricks*2+pieces;
-    parsed[i]={date,card,bricks,pieces,gold,gems,brickXp,ignite,items,parts,value2};
+    const card=cards.get(date)??null,value2=bricks*2+pieces,reviews=studyDays.get(date)?.reviews?.length??0,mistakes=studyDays.get(date)?.mistakes?.length??0;
+    parsed[i]={date,card,bricks,pieces,gold,gems,brickXp,ignite,items,parts,value2,reviews,mistakes};
+    gemPrefix[i+1]=gemPrefix[i]+gems;
     valuePrefix[i+1]=valuePrefix[i]+value2;
     stackedPrefix[i+1]=stackedPrefix[i]+(card||value2?1:0);
   }
@@ -144,12 +159,56 @@ function compute(life,study,today){
 
   // 하루 XP와 주간 묶음
   const exams=new Set((defs.exams?.items??[]).map(x=>x.date));
-  const workout=defs.habits.find(h=>h.id==='hb-workout'&&!h.hidden)??defs.habits.find(h=>h.kind==='COUNT'&&h.target.per==='WEEK'&&!h.hidden)??null;
+  const workout=defs.habits.find(h=>h.id==='hb-workout'&&!h.hidden)??defs.habits.find(h=>h.kind==='COUNT'&&h.target.per==='WEEK'&&!h.hidden&&h.id!==MY_QUEST_ID)??null;
   const nolate=defs.habits.find(h=>h.id==='hb-nolate'&&!h.hidden)??null;
   const byId=new Map(defs.habits.map(h=>[h.id,h]));
   const areaXp={BODY:0,HEAD:0,MONEY:0,HEART:0};
+  // 영역별 최근 성취(A1A, 탑 탭 시트). areaXp를 더하는 곳마다 함께 적고 영역마다 마지막 5개만 남긴다. 저장 0.
+  const recent={BODY:[],HEAD:[],MONEY:[],HEART:[]};
+  const note=(area,date,text,xp)=>{const r=recent[area];if(!r)return;r.push({date,text,xp});if(r.length>RECENT_MAX)r.shift();};
   const days=new Array(n),weeks=[];
   let week=null,totalXp=0;
+  // 일간 퀘스트: 그날 이전 기록과 날짜만 보고 고른다(쌓은 그날 카드의 하루 종류만 예외). 쉬는 날은 벽돌을 내지 않는다.
+  const examDays=(defs.exams?.items??[]).map(x=>dayNumber(x.date));
+  const stOf=new Map(hStat.map(st=>[st.h.id,st]));
+  const pickHabit=i=>{
+    if(!core.length)return null;
+    const span=Math.min(DAILY_WINDOW,i);
+    if(stackedPrefix[i]-stackedPrefix[i-span]<DAILY_MIN_RECORDS)return core.find(h=>h.id===WAKE_ID)??core[0];
+    const doneIn=h=>{const st=stOf.get(h.id);return st.prefix[i]-st.prefix[i-span];};
+    const band=core.filter(h=>{const d=doneIn(h);return d*100>=DAILY_RATE_LOW*span&&d*100<=DAILY_RATE_HIGH*span;}),list=band.length?band:core;
+    let best=null,bestDone=0,bestHash=0;
+    for(const h of list){
+      const d=doneIn(h);if(best&&d>bestDone)continue;
+      const hash=tieHash(dates[i]+'|'+h.id);
+      if(!best||d<bestDone||hash<bestHash){best=h;bestDone=d;bestHash=hash;}
+    }
+    return best;
+  };
+  const dailyAt=i=>{
+    const p=parsed[i],xp=dates[i]>=QUEST_EPOCH?QUEST_XP.DAILY:0,list=[];
+    if(!REST_DAY_TYPES.includes(p.card?.dayType)){
+      const target=Math.max(1,Math.ceil(goalAt(i)/2)),value=p.value2/2;
+      list.push({id:'bricks',label:'벽돌 '+target+'장',value,target,unit:'장',done:value>=target,xp,area:'HEAD'});
+    }
+    const no=dayNumber(dates[i]);
+    if(examDays.some(d=>d-no>=1&&d-no<=EXAM_REVIEW_DAYS))list.push({id:'review',label:'오답 복습 1건',value:p.reviews,target:1,unit:'건',done:p.reviews>=1,xp,area:'HEAD'});
+    else{const h=pickHabit(i);if(h){const done=doneOf(i,h);list.push({id:'habit',habitId:h.id,label:h.name,value:done?1:0,target:1,unit:'',done,xp,area:h.area});}}
+    return list;
+  };
+  // 월간 퀘스트: 예산이 있으면 이달 예산 지키기(달이 끝난 다음 날 판정, 돈 영역), 없으면 이달의 벽돌(머리 영역). 금액은 받지 않는다(money.months = 지킨 달 여부와 사용률뿐).
+  const months=[],bonusTotals={weekly:0,month:0,boss:0};
+  let month=null;
+  const indexOfDay=date=>Math.max(0,Math.min(n,dayNumber(date)-firstNo));
+  const openMonth=ym=>{
+    const fact=money?.months?.[ym];
+    if(fact?.budget){const used=fact.usedPermille;return {month:ym,kind:'BUDGET',label:'이달 예산 지키기',value:used===null?null:Math.round(used/10),target:100,unit:'%',area:'MONEY',done:false,doneDate:null,xp:0,bonus:0,current:false,value2:0};}
+    const from=ym+'-01',prev=prevMonthOf(ym)+'-01',prev2=valuePrefix[indexOfDay(from)]-valuePrefix[indexOfDay(prev)];
+    const target=Math.min(GOAL_MAX*daysInMonth(ym),Math.max(goalAt(dayNumber(from)-firstNo)*20,Math.ceil(prev2*11/20)));
+    return {month:ym,kind:'BRICKS',label:'이달의 벽돌 '+target+'장',value:0,target,unit:'장',area:'HEAD',done:false,doneDate:null,xp:0,bonus:0,current:false,value2:0};
+  };
+  // 시즌 보스: 시험일에 카드를 쌓고(기존 +200) 시험일부터 7일 안에 오답 기록 5건 이상이면 처치.
+  const bosses=(defs.exams?.items??[]).map(x=>({id:x.id,name:x.name,date:x.date,status:x.status,no:dayNumber(x.date)-firstNo,card:false,mistakes:0,done:false,doneDate:null,xp:0,bonus:0}));
   const openWeek=i=>{
     const monday=mondayOf(dates[i]),idx=weekOf(i);
     const mondayIdx=dayNumber(monday)-firstNo,goal=goalAt(mondayIdx);
@@ -158,33 +217,40 @@ function compute(life,study,today){
     quests.push({id:'bricks',label:'벽돌 '+goal*7+'장',value:0,target:goal*7,unit:'장',done:false,doneDate:null,xp:XP.QUEST,area:'HEAD'});
     if(nolate)quests.push({id:'nolate',label:nolate.name+' '+NOLATE_DAYS+'일',value:0,target:NOLATE_DAYS,unit:'일',done:false,doneDate:null,xp:XP.QUEST,area:nolate.area});
     return {index:idx+1,monday,current:false,goal,brickTarget:goal*7,days:Array.from({length:7},(_,k)=>({date:shiftDay(monday,k),items:[],perfect:false,gems:0,xp:0,card:false})),
-      bricks:0,pieces:0,value:0,gold:0,gems:0,windows:0,xp:0,perfect:0,subjects:new Map(),bridgeValue2:0,value2:0,quests,cum:new Map()};
+      bricks:0,pieces:0,value:0,gold:0,gems:0,windows:0,xp:0,perfect:0,subjects:new Map(),bridgeValue2:0,value2:0,quests,cum:new Map(),bonus:{weekly:0,month:0,boss:0,total:0}};
   };
   for(let i=0;i<n;i++){
     const p=parsed[i],date=p.date,wk=weekOf(i);
     if(!week||weeks.length<=wk){week=openWeek(i);weeks.push(week);}
     let habitXp=0,bonusXp=0;const earned=[];
+    const addBonus=(kind,count)=>{week.bonus[kind]+=count;week.bonus.total+=count;bonusTotals[kind]+=count;};
+    const payMonth=(m,date)=>{
+      m.done=true;m.doneDate=date;
+      if(date<QUEST_EPOCH)return;
+      m.xp=QUEST_XP.MONTH;m.bonus=QUEST_BONUS.MONTH;bonusXp+=m.xp;areaXp[m.area]+=m.xp;addBonus('month',m.bonus);earned.push('MONTH:'+m.kind);
+    };
     if(p.card)for(const st of hStat){
       if(!doneOf(i,st.h))continue;
       const entry=p.card.habits[st.h.id];
       const timely=onTimeBonus(st.h,entry)||(st.h.id===SUN_ID&&st.h.kind==='DURATION'&&sunBonus(Object.hasOwn(p.card.habits,WAKE_ID)?p.card.habits[WAKE_ID]:null,entry));
       if(timely)earned.push('TIME_BONUS:'+st.h.id);
-      const x=XP.HABIT_UNIT*difficultyAt(st,i)*(timely?XP.TIME_MULT:1);habitXp+=x;areaXp[st.h.area]+=x;
+      const x=XP.HABIT_UNIT*difficultyAt(st,i)*(timely?XP.TIME_MULT:1);habitXp+=x;areaXp[st.h.area]+=x;note(st.h.area,date,st.h.name,x);
       if(st.weekly){
         const before=week.cum.get(st.h.id)??0,e=p.card.habits[st.h.id],after=before+e.count;week.cum.set(st.h.id,after);
-        if(before<st.h.target.count&&after>=st.h.target.count){bonusXp+=XP.WEEK_TARGET;areaXp[st.h.area]+=XP.WEEK_TARGET;earned.push('WEEK_TARGET');}
+        if(before<st.h.target.count&&after>=st.h.target.count){bonusXp+=XP.WEEK_TARGET;areaXp[st.h.area]+=XP.WEEK_TARGET;note(st.h.area,date,st.h.name+' 주간 목표 달성',XP.WEEK_TARGET);earned.push('WEEK_TARGET');}
       }
     }
     const allDone=ids=>ids.every(id=>{const h=byId.get(id);return Boolean(h&&doneOf(i,h));});
     let comboXp=0;
     const morning=allDone(MORNING_IDS),studyRoutine=allDone(COMMUTE_IDS)&&p.bricks>=STUDY_ROUTINE_BRICKS,perfect=Boolean(p.card)&&core.length>0&&visibleDone[i]===core.length;
-    if(morning){comboXp+=XP.COMBO_MORNING;areaXp.BODY+=XP.COMBO_MORNING;}
-    if(studyRoutine){comboXp+=XP.COMBO_STUDY;areaXp.HEAD+=XP.COMBO_STUDY;}
+    if(morning){comboXp+=XP.COMBO_MORNING;areaXp.BODY+=XP.COMBO_MORNING;note('BODY',date,'아침 콤보',XP.COMBO_MORNING);}
+    if(studyRoutine){comboXp+=XP.COMBO_STUDY;areaXp.HEAD+=XP.COMBO_STUDY;note('HEAD',date,'공부 루틴 콤보',XP.COMBO_STUDY);}
     if(perfect)comboXp+=XP.COMBO_PERFECT;                                // 완벽한 날은 특정 영역 소속이 아니다(하루 XP에만 더한다)
     areaXp.HEAD+=p.brickXp+p.ignite;
+    if(p.brickXp+p.ignite>0)note('HEAD',date,p.bricks?'벽돌 '+p.bricks+'장'+(p.pieces?' + 조각 '+p.pieces:''):'조각 '+p.pieces,p.brickXp+p.ignite);
     bonusXp+=p.ignite;
     const boss=Boolean(p.card)&&exams.has(date);
-    if(boss){bonusXp+=XP.BOSS;areaXp.HEAD+=XP.BOSS;}
+    if(boss){bonusXp+=XP.BOSS;areaXp.HEAD+=XP.BOSS;note('HEAD',date,'보스 시험일',XP.BOSS);}
     // 주간 퀘스트: 그 주 안에서 처음 달성한 날에 +50과 창문 1개
     week.value2+=p.value2;
     for(const pt of p.parts)if(pt.bridge)week.bridgeValue2+=pt.bricks*2+pt.pieces;
@@ -192,7 +258,25 @@ function compute(life,study,today){
       if(q.id==='workout'&&p.card&&workout&&doneOf(i,workout))q.value+=p.card.habits[workout.id].count??0;
       else if(q.id==='bricks')q.value=week.value2/2;
       else if(q.id==='nolate'&&nolate&&doneOf(i,nolate))q.value+=1;
-      if(!q.done&&q.value>=q.target){q.done=true;q.doneDate=date;bonusXp+=q.xp;areaXp[q.area]+=q.xp;week.windows++;earned.push('QUEST:'+q.id);}
+      if(!q.done&&q.value>=q.target){q.done=true;q.doneDate=date;bonusXp+=q.xp;areaXp[q.area]+=q.xp;note(q.area,date,'퀘스트 '+q.label+' 달성',q.xp);week.windows++;earned.push('QUEST:'+q.id);if(date>=QUEST_EPOCH)addBonus('weekly',QUEST_BONUS.WEEK);}
+    }
+    // Q1A 일간·월간·보스: QUEST_EPOCH 전 날짜에는 XP·보너스가 0이다(판정만 남아 업적이 읽는다). 오늘 줄이 비지 않게 오늘은 EPOCH 전이어도 일간을 고른다.
+    const daily=date>=QUEST_EPOCH||i===n-1?dailyAt(i):[];
+    for(const q of daily)if(q.done&&q.xp){bonusXp+=q.xp;areaXp[q.area]+=q.xp;earned.push('DAILY:'+q.id);}
+    const ym=date.slice(0,7);
+    if(month?.month!==ym){
+      if(month?.kind==='BUDGET'&&money?.months?.[month.month]?.kept)payMonth(month,date);
+      month=openMonth(ym);months.push(month);
+    }
+    if(month.kind==='BRICKS'){month.value2+=p.value2;month.value=month.value2/2;if(!month.done&&month.value>=month.target)payMonth(month,date);}
+    for(const b of bosses){
+      if(b.done||i<b.no||i>b.no+BOSS_AFTER_DAYS)continue;
+      if(i===b.no)b.card=Boolean(p.card);
+      b.mistakes+=p.mistakes;
+      if(b.card&&b.mistakes>=BOSS_MISTAKES){
+        b.done=true;b.doneDate=date;
+        if(date>=QUEST_EPOCH){b.xp=QUEST_XP.BOSS_KILL;b.bonus=QUEST_BONUS.BOSS;bonusXp+=b.xp;areaXp.HEAD+=b.xp;addBonus('boss',b.bonus);earned.push('BOSS_KILL:'+b.id);}
+      }
     }
     const raw=habitXp+p.brickXp+comboXp+bonusXp,mult10=streakMult10(streakAt[i]),xp=roundXp(raw,mult10);
     totalXp+=xp;
@@ -204,8 +288,13 @@ function compute(life,study,today){
       s.bricks+=pt.bricks;s.pieces+=pt.pieces;week.subjects.set(key,s);
     }
     days[i]={date,card:Boolean(p.card),habitXp,brickXp:p.brickXp,comboXp,bonusXp,ignite:p.ignite,boss,morning,studyRoutine,perfect,raw,mult10,xp,streak:streakAt[i],bridged:bridged[i],qualified:qualified[i],
-      bricks:p.bricks,pieces:p.pieces,gold:p.gold,gems:p.gems,value:p.value2/2,visibleDone:visibleDone[i],visibleTotal:core.length,goal:goalAt(i),earned};
+      bricks:p.bricks,pieces:p.pieces,gold:p.gold,gems:p.gems,value:p.value2/2,visibleDone:visibleDone[i],visibleTotal:core.length,goal:goalAt(i),earned,daily,parts:p.parts,reviews:p.reviews,mistakes:p.mistakes};
   }
+  if(months.length)months[months.length-1].current=true;
+  const outBosses=bosses.map(({no,...b})=>{
+    const dDay=dayNumber(b.date)-dayNumber(today),prepFrom=indexOfDay(shiftDay(b.date,-BOSS_PREP_DAYS)),prepTo=indexOfDay(b.date);
+    return {...b,dDay,state:b.done?'DONE':dDay>BOSS_PREP_DAYS?'UPCOMING':dDay>0?'PREP':dDay>=-BOSS_AFTER_DAYS?'OPEN':'PAST',prep:{value:(valuePrefix[prepTo]-valuePrefix[prepFrom])/2,gems:gemPrefix[prepTo]-gemPrefix[prepFrom]}};
+  }).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:a.id<b.id?-1:1);
   const hasRecords=parsed.some(p=>p.card||p.value2>0);
   const outWeeks=weeks.map(w=>{
     const {subjects,cum,bridgeValue2,value2,...rest}=w;
@@ -218,25 +307,51 @@ function compute(life,study,today){
   const todayDifficulty=Object.fromEntries(hStat.map(st=>[st.h.id,difficultyAt(st,n-1)]));
   return {
     today,hasRecords,totalXp,days,weeks:outWeeks,levels,topArea:top,
+    recent:Object.fromEntries(AREAS.map(a=>[a,[...recent[a]].reverse()])),
     streak:{days:streak,mult10:streakMult10(streak)},
     goalBricks,goalXp,todayXp:last.xp,todayDay:last,todayDifficulty,
     currentWeek:outWeeks[outWeeks.length-1],
+    months:months.map(({value2,...m})=>m),bosses:outBosses,bonusTotal:bonusTotals.weekly+bonusTotals.month+bonusTotals.boss,bonusBy:bonusTotals,
   };
 }
 
-// 같은 입력(같은 객체와 같은 날짜)이면 다시 계산하지 않는다. 화면이 기록을 다시 읽으면 객체가 바뀌어 새로 계산한다.
-let memo=null;
-export function achieve({life=null,study=null,today}){
-  if(memo&&memo.life===life&&memo.study===study&&memo.today===today)return memo.result;
-  const result=compute(life,study,today);
-  memo={life,study,today,result};
-  return result;
+// 돈 XP (A1C, V4 결정 M1D 2): 직접 입력한 지출이 있는 날 하루 1번, 습관 한 칸만큼 돈 영역 XP. 가져오기 묶음(BATCH)과 명세서 가져오기(태그 '명세서:')는 넣지 않는다.
+// 돈 영역 레벨에만 더한다. 하루 XP·연속·퀘스트는 그대로다. 금액·가게 이름은 읽지 않는다. fin을 넘기지 않으면 예전과 같은 결과다.
+// FIX36 (H36-M5): 태그는 편집 칸에서 지울 수 있으므로 메모의 명세서 표지(fin-reconcile statementTxnInput: `명세서 <sha12> · [표 N · ]행 N`)도 본다. 투영 줄에는 메모가 없어 fin.txns에서 읽는다(줄 key = 'T:' + 거래 id).
+export const MONEY_DAY_XP=XP.HABIT_UNIT*AUTO_DEFAULT;
+const STATEMENT_TAG='명세서:',STATEMENT_MEMO=/^명세서 [0-9a-f]{12}(?: · 표 \d+)? · 행 \d+/;
+export function moneyEntryDays(fin,today){
+  const oldest=shiftDay(today,-MAX_SPAN_DAYS),dates=new Set(),fromStatement=new Set();
+  for(const t of fin?.txns??[])if(typeof t?.data?.memo==='string'&&STATEMENT_MEMO.test(t.data.memo))fromStatement.add('T:'+t.id);
+  for(const l of fin?.lines??[]){
+    if(l.source!=='TXN'||l.kind!=='EXPENSE'||typeof l.date!=='string'||l.date>today||l.date<oldest)continue;
+    if(fromStatement.has(l.key)||(typeof l.memo==='string'&&STATEMENT_MEMO.test(l.memo)))continue;
+    if(!(l.tags??[]).some(t=>typeof t==='string'&&t.startsWith(STATEMENT_TAG)))dates.add(l.date);
+  }
+  return [...dates].sort();
+}
+function withMoney(base,fin,today){
+  const dates=moneyEntryDays(fin,today);
+  if(!dates.length)return base;
+  const levels={...base.levels,MONEY:{area:'MONEY',...levelOf(base.levels.MONEY.xp+dates.length*MONEY_DAY_XP)}};
+  const entries=dates.slice(-RECENT_MAX).reverse().map(date=>({date,text:'지출 기록',xp:MONEY_DAY_XP}));
+  const money=[...entries,...base.recent.MONEY].sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0).slice(0,RECENT_MAX);
+  return {...base,levels,topArea:AREAS.reduce((a,b)=>levels[b].xp>levels[a].xp?b:a,AREAS[0]),recent:{...base.recent,MONEY:money}};
+}
+// 같은 입력(같은 객체와 같은 날짜)이면 다시 계산하지 않는다. 화면이 기록을 다시 읽으면 객체가 바뀌어 새로 계산한다. 돈 XP는 그 위에 얹으므로 fin을 안 넘기는 화면과 번갈아 불러도 다시 계산하지 않는다.
+// R36: Q1A 돈 사실(money: 지킨 달·사용률, 월간 퀘스트 판정)은 엔진 입력이라 memo 열쇠에 넣고, M1A 돈 XP(fin: 직접 입력한 지출 날)는 그 위에 얹는다.
+let memo=null,moneyMemo=null;
+export function achieve({life=null,study=null,fin=null,today,money=null}){
+  if(!(memo&&memo.life===life&&memo.study===study&&memo.today===today&&memo.money===money))memo={life,study,today,money,result:compute(life,study,today,money)};
+  if(!fin)return memo.result;
+  if(!(moneyMemo&&moneyMemo.base===memo.result&&moneyMemo.fin===fin))moneyMemo={base:memo.result,fin,result:withMoney(memo.result,fin,today)};
+  return moneyMemo.result;
 }
 // 쌓기 전 예상: 오늘 화면의 입력(카드·공부 초안)을 쌓았다고 치고 계산한다. 아무것도 저장하지 않고 입력 객체도 바꾸지 않는다.
-export function previewAchieve({life=null,study=null,today,card=null,studyCard=null}){
+export function previewAchieve({life=null,study=null,today,card=null,studyCard=null,money=null}){
   const l=card?{...(life??{habits:[],subjects:[],exams:null}),days:[{date:today,data:card,heads:[]},...(life?.days??[]).filter(d=>d.date!==today)]}:life;
   const s=studyCard?{days:[{date:today,data:studyCard,heads:[]},...(study?.days??[]).filter(d=>d.date!==today)]}:study;
-  return compute(l,s,today);
+  return compute(l,s,today,money);
 }
 // 칸 하나를 완료할 때 오르는 습관 XP(난이도만, 콤보·배수 제외). 칸 위에 잠깐 보이는 값.
 export const habitXpToday=(ach,habitId)=>XP.HABIT_UNIT*(ach.todayDifficulty[habitId]??AUTO_DEFAULT);

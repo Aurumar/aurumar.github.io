@@ -216,7 +216,17 @@ export function nearestExam(exams,today){
 }
 // 습관·과목 목록 정리: 저장된 정의가 하나라도 있으면 저장본(숨김 포함), 없으면 코드 상수.
 export const sortByOrder=list=>[...list].sort((a,b)=>a.order-b.order||(a.id<b.id?-1:a.id>b.id?1:0));
-export function effectiveList(stored,defaults){return sortByOrder(stored.length?stored:defaults);}
+// 첫 저장은 줄마다 따로 써서 중간에 끊길 수 있다(H37-Q1). 저장본의 id·순서가 기본 목록의 앞부분과 정확히 같고 뒤가 빠졌으면 끊긴 첫 저장이다(삭제 길이 없어 소유자가 만들 수 없는 모양). 이때는 빠진 기본값을 함께 보여 준다.
+export function cutFirstSave(stored,defaults){
+  if(!stored.length||stored.length>=defaults.length)return false;   // 흔한 경우(저장 전·온전한 저장본)는 정렬하지 않는다
+  return sortByOrder(stored).every((x,i)=>x.id===defaults[i].id&&x.order===i);
+}
+export function effectiveList(stored,defaults){
+  if(!stored.length)return sortByOrder(defaults);
+  if(!cutFirstSave(stored,defaults))return sortByOrder(stored);
+  const have=new Set(stored.map(x=>x.id));
+  return sortByOrder([...stored,...defaults.filter(d=>!have.has(d.id))]);
+}
 // 공부 모듈(STUDY_DAY) 세션과의 연결. STUDY 과목 코드는 6개로 고정이라(저장 형식 변경 금지) 새 과목은 가장 가까운 코드를 쓰고,
 // 과목 id는 세션 id에 넣는다: lf_<과목id>_<난수>. 과목 id에는 밑줄이 없다(만들 때 막는다).
 export const STUDY_CODE_BY_SUBJECT=Object.freeze({kor:'K',math:'M',eng:'E',hist:'H',soc:'S',sci:'C',bio:'C'});
@@ -243,21 +253,21 @@ export function lifeRawView(entities){
 }
 export const EMPTY_LIFE_VIEW=Object.freeze({habits:[],days:[],subjects:[],exams:null,plans:[]});
 
-// 화면이 쓰는 유효 정의: 저장된 정의가 있으면 저장본(숨김 포함), 없으면 코드 상수. usingDefaults = 아직 저장 전인 종류.
+// 화면이 쓰는 유효 정의: 저장된 정의가 있으면 저장본(숨김 포함), 없으면 코드 상수. usingDefaults = 아직 저장 전인 종류(끊긴 첫 저장 포함).
 export function lifeDefs(life){
-  const v=life??EMPTY_LIFE_VIEW;
+  const v=life??EMPTY_LIFE_VIEW,habits=v.habits.map(x=>x.data),subjects=v.subjects.map(x=>x.data);
   return {
-    habits:effectiveList(v.habits.map(x=>x.data),DEFAULT_HABITS),
-    subjects:effectiveList(v.subjects.map(x=>x.data),DEFAULT_SUBJECTS),
+    habits:effectiveList(habits,DEFAULT_HABITS),
+    subjects:effectiveList(subjects,DEFAULT_SUBJECTS),
     exams:v.exams?v.exams.data:DEFAULT_EXAMS,
-    usingDefaults:{habits:!v.habits.length,subjects:!v.subjects.length,exams:!v.exams},
+    usingDefaults:{habits:!habits.length||cutFirstSave(habits,DEFAULT_HABITS),subjects:!subjects.length||cutFirstSave(subjects,DEFAULT_SUBJECTS),exams:!v.exams},
   };
 }
-// COUNT 습관의 이번 주(월~일) 합계. days = 쌓은 카드 목록([{date,data}]), todayCard = 오늘 화면의 카드(임시 입력 포함, 있으면 오늘 값으로 쓴다).
+// COUNT 습관의 이번 주(월~일) 합계. days = 쌓은 카드 목록([{date,data}]), todayCard = 오늘 화면의 카드(임시 입력 포함, 있으면 오늘 값으로 쓴다. 없으면 쌓은 오늘 카드를 센다).
 export function weekCount(habitId,today,days,todayCard){
   const wd=(new Date(today+'T12:00:00Z').getUTCDay()+6)%7,monday=shiftDay(today,-wd);
   let sum=0;
-  for(const d of days)if(d.date>=monday&&d.date<today&&Object.hasOwn(d.data.habits,habitId))sum+=d.data.habits[habitId].count??0;
+  for(const d of days)if(d.date>=monday&&(d.date<today||!todayCard&&d.date===today)&&Object.hasOwn(d.data.habits,habitId))sum+=d.data.habits[habitId].count??0;
   const t=todayCard&&Object.hasOwn(todayCard.habits,habitId)?todayCard.habits[habitId].count??0:0;
   return sum+t;
 }

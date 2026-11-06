@@ -31,6 +31,7 @@ export const NOTICE_TEXT=Object.freeze({
   REBASE_CONFLICT_KEPT_LOCAL:'다른 기기에서 지운 항목을 내가 고쳐서 내 수정으로 되살렸습니다.',
   REBASE_VALUE_OVERWRITTEN:'같은 항목을 양쪽에서 고쳤습니다 · 내 값을 썼고 상대 값은 이력에 남아 있습니다.',
   REBASE_TIMER_CLAIM_OVERLAP:'PC 측정으로 담은 시간이 타이머 시간과 겹칩니다 · 같은 시간이 두 번 세어질 수 있어요(자동으로 지우지 않았어요) · 필요하면 한쪽을 지우세요.',
+  REBASE_TIMER_TIMER_OVERLAP:'두 기기의 타이머 시간이 서로 겹칩니다 · 같은 시간이 두 번 세어질 수 있어요(자동으로 지우지 않았어요) · 필요하면 한쪽을 지우세요.',
 });
 const STATUS_TEXT=Object.freeze({
   CONFIRMED:'저장 및 동기화 확인됨 · 쌓았습니다.',ALREADY_APPLIED:'이미 반영되어 있습니다 · 새로 저장하지 않았습니다.',NOTHING_TO_CONFIRM:'쌓을 초안이 없습니다.',
@@ -198,7 +199,7 @@ export function renderStudy(root,ctx,st){
   }
   if(fs.latestConfirmCount+1>=3&&fs.status==='LOCAL_DRAFT')add(head,hint('이 카드는 이번이 '+(fs.latestConfirmCount+1)+'번째 쌓기입니다. 막지는 않지만, 모아서 한 번에 쌓는 편이 좋습니다.'));
   if(st.message&&st.message!==boxFailText())add(head,el('p',st.message,st.error?'notice error study-message':'notice study-message'));   // 위 빨간 줄과 같은 문구는 두 번 보이지 않는다
-  if(st.notices.some(n=>n.code!=='REBASE_TIMER_CLAIM_OVERLAP'))add(head,el('p','다른 기기에서 바뀐 내용이 있어 합쳤어요.','notice study-merged'));   // FIX34 (H6): 겹침 알림만 있으면 합친 것이 아니다
+  if(st.notices.some(n=>n.code!=='REBASE_TIMER_CLAIM_OVERLAP')&&st.notices.some(n=>n.code!=='REBASE_TIMER_TIMER_OVERLAP'&&n.code!=='REBASE_TIMER_CLAIM_OVERLAP'))add(head,el('p','다른 기기에서 바뀐 내용이 있어 합쳤어요.','notice study-merged'));   // FIX34 (H6): 겹침 알림만 있으면 합친 것이 아니다
   for(const n of st.notices)add(head,el('p',NOTICE_TEXT[n.code]??n.code,'notice study-notice'));
   add(out,head);
 

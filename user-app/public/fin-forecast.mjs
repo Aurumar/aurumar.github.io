@@ -18,12 +18,14 @@ export const MELT_STAGES=Object.freeze([
 ]);
 const MELT_GONE=Object.freeze({key:'GONE',label:'다 녹음',minPct:null,drips:0,wave:0});
 const permilleOf=(left,budget)=>left<=0n?0:left>=budget?1000:Number(left*1000n/budget);
-export function meltStage(s){
+// M1B: due(아직 안 나간 고정비)를 넘기면 단계·비율은 "남은 돈 − due"로 정해 칩·진단 카드와 기준을 맞추고, 빼기 전 비율과의 차이를 reservedPermille로 함께 돌려준다. due가 없거나 0이면 결과는 예전과 같다.
+export function meltStage(s,{due=null}={}){
   const T=s?.total;
   if(!T||s.dataState!=='KNOWN')return null;
-  if(T.budget<=0n||T.remaining<=0n)return {...MELT_GONE,permille:0};
-  const hit=MELT_STAGES.find(m=>T.remaining*100n>=T.budget*m.minPct);   // 곱셈으로 비교해 경계에서 버림 오차가 없다. 남은 돈이 1원이라도 있으면 GONE이 아니다.
-  return {...hit,permille:permilleOf(T.remaining,T.budget)};
+  const held=typeof due==='bigint'&&due>0n&&T.budget>0n&&T.remaining>0n,left=held?T.remaining-due:T.remaining;
+  if(T.budget<=0n||left<=0n)return held?{...MELT_GONE,permille:0,reservedPermille:Math.max(1,permilleOf(T.remaining,T.budget))}:{...MELT_GONE,permille:0};
+  const hit=MELT_STAGES.find(m=>left*100n>=T.budget*m.minPct),permille=permilleOf(left,T.budget);   // 곱셈으로 비교해 경계에서 버림 오차가 없다. 남은 돈이 1원이라도 있으면 GONE이 아니다.
+  return held?{...hit,permille,reservedPermille:permilleOf(T.remaining,T.budget)-permille}:{...hit,permille};
 }
 // 방금 쓴 돈(won)까지 더한 비율. 녹아 사라지는 조각의 높이에만 쓴다. 예산을 넘겨 쓴 뒤라도 더한 값이 0 이하면 조각이 없다.
 export function meltFrom(s,won){
@@ -33,33 +35,44 @@ export function meltFrom(s,won){
 }
 const fix=v=>+v.toFixed(1);
 // 금괴 좌표(SVG). 비율만큼 높이가 줄고, 단계가 올라갈수록 윗면이 일렁이며, 웅덩이가 넓어진다. fromPermille이 지금보다 크면 그 차이만큼 조각을 얹는다.
-export function meltLayout(stage,{width=320,height=92,fromPermille=null}={}){
-  const base=height-14,fullH=height-26,W=Math.min(width*0.5,180),x0=(width-W)/2,ratio=stage.permille/1000;
+// M1B: reservedPermille이 있으면 금괴 전체 높이는 고정비를 빼기 전 비율이고, 그 윗부분(곧 나갈 고정비)을 reserved 경로로 덮는다. 없으면 좌표는 예전과 같다.
+export function meltLayout(stage,{width=320,height=92,fromPermille=null,reservedPermille=null}={}){
+  const base=height-14,fullH=height-26,W=Math.min(width*0.5,180),x0=(width-W)/2,ratio=stage.permille/1000,held=reservedPermille>0?reservedPermille:0;
   const hOf=r=>Math.max(3,fullH*r),insetOf=h=>W*0.11*(h/fullH);   // 1원이라도 남으면(비율이 0으로 버려져도) 금괴가 보인다
-  const h=stage.key==='GONE'?0:hOf(ratio),top=base-h,inset=insetOf(h),L=x0+inset,R=x0+W-inset;
-  let ingot=null;
+  const solid=stage.key==='GONE'?0:hOf(ratio),h=held?hOf((stage.permille+held)/1000):solid,top=base-h,inset=insetOf(h),L=x0+inset,R=x0+W-inset;
+  let ingot=null,reserved=null;
   if(h>0){
-    const w=stage.wave,mid=(L+R)/2,q=(R-L)/4;
-    ingot='M'+fix(x0)+' '+base+' L'+fix(L)+' '+fix(top)+(w?' Q'+fix(L+q)+' '+fix(top-w)+' '+fix(mid)+' '+fix(top)+' Q'+fix(mid+q)+' '+fix(top+w)+' '+fix(R)+' '+fix(top):' L'+fix(R)+' '+fix(top))+' L'+fix(x0+W)+' '+base+' Z';
+    const w=stage.wave,mid=(L+R)/2,q=(R-L)/4,surface=w?' Q'+fix(L+q)+' '+fix(top-w)+' '+fix(mid)+' '+fix(top)+' Q'+fix(mid+q)+' '+fix(top+w)+' '+fix(R)+' '+fix(top):' L'+fix(R)+' '+fix(top);
+    ingot='M'+fix(x0)+' '+base+' L'+fix(L)+' '+fix(top)+surface+' L'+fix(x0+W)+' '+base+' Z';
+    if(held&&h>solid){const y=base-solid,side=insetOf(solid);reserved={d:'M'+fix(x0+side)+' '+fix(y)+' L'+fix(L)+' '+fix(top)+surface+' L'+fix(x0+W-side)+' '+fix(y)+' Z',top:fix(top),bottom:fix(y)};}
   }
   const puddle=stage.key==='FULL'?null:{cx:fix(width/2),cy:base+1,rx:fix(Math.min(width/2-2,W*0.5*(0.62+0.8*(1-ratio)))),ry:fix(2.5+5*(1-ratio))};
   const short=h<20;   // 금괴가 낮으면 방울도 낮은 데서 짧게 떨어진다(금괴 위 공중에 뜨지 않게)
   const drips=[0.24,0.72,0.48].slice(0,stage.drips).map((f,i)=>({cx:fix(x0+W*f),cy:short?base-2:base-13,r:2.4,cls:'d'+(i+1)+(short?' short':'')}));
   let chunk=null;
-  if(fromPermille!==null&&fromPermille>stage.permille){
+  if(fromPermille!==null&&fromPermille>stage.permille+held){
     const hOld=hOf(fromPermille/1000),inOld=insetOf(hOld);
     chunk={x:fix(x0+inOld),y:fix(base-hOld),width:fix(W-2*inOld),height:fix(hOld-h)};
   }
-  return {width,height,base,top:fix(top),ingot,puddle,drips,chunk,shine:h>10?{x1:fix(L+W*0.08),y1:fix(top+4),x2:fix(L+W*0.3),y2:fix(top+4)}:null};
+  return {width,height,base,top:fix(top),ingot,reserved,puddle,drips,chunk,shine:h>10&&!reserved?{x1:fix(L+W*0.08),y1:fix(top+4),x2:fix(L+W*0.3),y2:fix(top+4)}:null};
 }
-export const meltCaption=stage=>'남은 예산 '+(stage.key!=='GONE'&&stage.permille<10?'1% 미만':Math.floor(stage.permille/10)+'%')+' · '+stage.label;
-// h={el,add,svgEl,svgRoot}. 그릴 수 없으면(자료 없음·모름·예산 없음) null.
-export function meltNode(h,s,{justSpent=null}={}){
-  const stage=meltStage(s);
+export const meltCaption=stage=>(stage.reservedPermille>0?'고정비 예정 뺀 남은 예산 ':'남은 예산 ')+(stage.key!=='GONE'&&stage.permille<10?'1% 미만':Math.floor(stage.permille/10)+'%')+' · '+stage.label+(stage.reservedPermille>0?' · 빗금은 곧 나갈 고정비':'');
+const HATCH_ID='vault-melt-hatch';
+// 빗금은 SVG 패턴으로 그린다(인라인 style 없음, fill 속성만). 금괴는 한 화면에 하나다.
+function hatchDefs(h){
+  const p=h.svgEl('pattern',{id:HATCH_ID,patternUnits:'userSpaceOnUse',width:6,height:6,patternTransform:'rotate(45)'});
+  p.append(h.svgEl('rect',{width:6,height:6},'vault-melt-hatch-bg'),h.svgEl('line',{x1:0,y1:0,x2:0,y2:6},'vault-melt-hatch-line'));
+  const d=h.svgEl('defs');d.append(p);
+  return d;
+}
+// h={el,add,svgEl,svgRoot}. 그릴 수 없으면(자료 없음·모름·예산 없음) null. due = 아직 안 나간 고정비(M1B, 없으면 예전 모양).
+export function meltNode(h,s,{justSpent=null,due=null}={}){
+  const stage=meltStage(s,{due});
   if(!stage)return null;
-  const L=meltLayout(stage,{fromPermille:meltFrom(s,justSpent)}),cap=meltCaption(stage),svg=h.svgRoot(L.width,L.height,'이번 달 금괴 · '+cap);
+  const L=meltLayout(stage,{fromPermille:meltFrom(s,justSpent),reservedPermille:stage.reservedPermille??null}),cap=meltCaption(stage),svg=h.svgRoot(L.width,L.height,'이번 달 금괴 · '+cap);
   if(L.puddle)svg.append(h.svgEl('ellipse',L.puddle,'vault-melt-puddle'));
   if(L.ingot)svg.append(h.svgEl('path',{d:L.ingot},'vault-melt-ingot'));
+  if(L.reserved)svg.append(hatchDefs(h),h.svgEl('path',{d:L.reserved.d,fill:'url(#'+HATCH_ID+')'},'vault-melt-reserved'));
   if(L.shine)svg.append(h.svgEl('line',L.shine,'vault-melt-shine'));
   if(L.chunk)svg.append(h.svgEl('rect',{...L.chunk,rx:1.5},'vault-melt-chunk'));
   for(const d of L.drips)svg.append(h.svgEl('circle',{cx:d.cx,cy:d.cy,r:d.r},'vault-melt-drip '+d.cls));
@@ -85,6 +98,8 @@ export function fixedDue(lastDate,month,days){
 //  2) 없으면 "금액 다름"('OTHER')으로 보는 규칙 중 이번 달 상태가 금액 다름인 규칙 하나(같은 기준으로 고른다).
 //  3) 어느 규칙에도 안 맞는 줄(예정일 밖 같은 가게 일반 구매, 어느 금액대에도 없는 결제)은 배정하지 않는다 → 변동 지출에 남아 일평균으로 늘어난다.
 // 기록이 없는 규칙과, 금액 다름 결제가 모두 다른 규칙에 배정돼 자기 몫이 0건인 규칙은 아직 안 나간 돈(PLANNED/OVERDUE, 잠정)으로 둔다.
+// FIX36 (HUNT35 H8·F13): 예정일은 평소 결제일(dueDay, PC 알림과 같은 함수)이 먼저이고, 그것을 모를 때만 마지막 결제일이다. 예정일 ±3일 안의 결제가 있는 달에는 예정일 밖의 같은 금액 결제를 배정하지 않는다(구독은 한 달에 한 번, 나머지는 변동 지출).
+// FIX36 (HUNT36 M6): state PREPAID = 지난달 마지막 며칠에 이번 달 몫을 미리 냄(paidDate = 그 날짜). 그 돈은 지난달 지출이라 이번 달 낸 돈(actual)에도 예정에도 더하지 않는다.
 export function fixedSchedule(rules,lines,today,days){
   const month=today.slice(0,7),byKey=new Map();
   for(const l of lines){
@@ -103,22 +118,26 @@ export function fixedSchedule(rules,lines,today,days){
   const gap=(r,a)=>{const c=info.get(r.id).amount;return a>c?a-c:c-a;};
   const closest=(cands,a)=>cands.reduce((best,r)=>best===null||gap(r,a)<gap(best,a)?r:best,null);
   for(const [key,group] of byMerchant){
+    const thisMonth=[];
     for(const l of byKey.get(key)??[]){
       if(l.date.slice(0,7)!==month||l.date>today)continue;
-      const a=wonOf(l.net);if(a===null)continue;
-      const kinds=group.map(r=>[r,lineKind(r,a,l.date,info.get(r.id).due,list)]);
+      const a=wonOf(l.net);if(a!==null)thisMonth.push({date:l.date,a});
+    }
+    for(const {date,a} of thisMonth){
+      const kinds=group.map(r=>[r,lineKind(r,a,date,info.get(r.id).due,list,thisMonth)]);
       const own=kinds.filter(([,k])=>k==='PAID').map(([r])=>r);
       const other=own.length?[]:kinds.filter(([r,k])=>k==='OTHER'&&info.get(r.id).st.state==='DIFFERENT').map(([r])=>r);
       const pick=closest(own.length?own:other,a);
-      if(pick)info.get(pick.id).got.push({date:l.date,amount:a});
+      if(pick)info.get(pick.id).got.push({date,amount:a});
     }
   }
   const out=[];
   for(const r of active){
     const {st,amount,got,due:dueD}=info.get(r.id),base={rule:r,id:r.id,name:r.name,provisional:amount,actual:null,count:0,paidDate:null,changed:null,suggest:null,blocked:false};
+    if(st.prepaid&&!got.length){out.push({...base,state:'PREPAID',due:null,paidDate:st.prepaid});continue;}
     if(st.state==='PENDING'||!got.length){
       // R33B (HUNT32 D5): 금액대 안 구독 결제가 없으면(결제 전에 잠정 금액을 바꿈) 평소 결제일(dueDay, 대체 기준 포함)로 예정일을 정한다.
-      const due=fixedDue(st.lastDate,month,days)??(dueD===null?null:month+'-'+pad(Math.min(dueD,days)));
+      const due=dueD===null?fixedDue(st.lastDate,month,days):month+'-'+pad(Math.min(dueD,days));
       out.push({...base,state:due!==null&&due<today?'OVERDUE':'PLANNED',due});
       continue;
     }
@@ -137,6 +156,7 @@ export function fixedSchedule(rules,lines,today,days){
 export function fixedPlan(rules,lines,today,days){
   const out={paid:0n,paidCount:0,upcoming:0n,upcomingCount:0,overdue:0n,overdueCount:0,undatedCount:0};
   for(const it of fixedSchedule(rules,lines,today,days)){
+    if(it.state==='PREPAID')continue;   // FIX36: 지난달 지출에 이미 들어 있다
     if(it.state==='OVERDUE'){out.overdue+=it.provisional;out.overdueCount++;}
     else if(it.state==='PLANNED'){out.upcoming+=it.provisional;out.upcomingCount++;if(it.due===null)out.undatedCount++;}
     else{out.paid+=it.actual;out.paidCount++;}
@@ -157,19 +177,21 @@ export function monthForecast({status:s,lines,rules=[],today}){
   if(s.dataState!=='KNOWN')return {...empty,state:s.dataState};
   const fixed=fixedPlan(rules,lines,today,s.days),spent=s.actualTotal,raw=spent-fixed.paid,variable=raw>0n?raw:0n;   // 환불이 더 크면 일평균은 0이다
   const elapsed=BigInt(s.elapsed),perDay=roundDiv(variable,elapsed),projectedVariable=roundDiv(variable*BigInt(s.days),elapsed);
-  const projected=fixed.paid+projectedVariable+fixed.upcoming+fixed.overdue,budget=s.total?s.total.budget:null,left=budget===null?null:budget-projected;
-  return {...empty,state:budget===null?'NO_BUDGET':'OK',budget,spent,variable,perDay,projectedVariable,fixed,projected,left,level:budget===null?null:forecastLevel(left,budget),early:s.elapsed<EARLY_DAYS};
+  // FIX37C (H37-M1): 환불이 변동 지출보다 크면 그 남은 환불(raw<0)이 월말 값에서 사라지지 않게 projectedNet에서 뺀다. 남는 돈·단계·문장은 이 값을 쓴다(마지막 날이면 쓴 돈 + 아직 안 나간 고정비와 같다). projected는 환불을 빼기 전 칸이다.
+  const refundOver=raw<0n?-raw:0n,projected=fixed.paid+projectedVariable+fixed.upcoming+fixed.overdue,projectedNet=projected-refundOver,budget=s.total?s.total.budget:null,left=budget===null?null:budget-projectedNet;
+  return {...empty,state:budget===null?'NO_BUDGET':'OK',budget,spent,variable,perDay,projectedVariable,fixed,projected,projectedNet,left,level:budget===null?null:forecastLevel(left,budget),early:s.elapsed<EARLY_DAYS,...(refundOver?{refundOver}:{})};
 }
 // 경고 문구. 입력은 숫자뿐이라 가게 이름이 들어갈 수 없다.
 export function forecastText(f){
   if(f.state!=='OK'&&f.state!=='NO_BUDGET')return null;
-  const message=f.state==='NO_BUDGET'?'이대로면 이번 달 지출은 '+formatWon(f.projected)+'입니다. 예산을 정하면 남는 돈도 계산합니다.'
+  const net=f.projectedNet??f.projected,message=f.state==='NO_BUDGET'?'이대로면 이번 달 지출은 '+formatWon(net)+'입니다. 예산을 정하면 남는 돈도 계산합니다.'
     :f.level==='OVER'?'이대로면 월말에 '+formatWon(-f.left)+' 모자랍니다.'
     :f.left===0n?'이대로면 월말에 남는 돈이 없습니다.'
     :f.level==='TIGHT'?'이대로면 월말에 '+formatWon(f.left)+'만 남습니다.'
     :'이대로면 월말에 '+formatWon(f.left)+' 남습니다.';
   const fx=f.fixed,fixedCount=fx.paidCount+fx.upcomingCount+fx.overdueCount,notes=[];
-  notes.push('월말 예상 지출 '+formatWon(f.projected)+' · 하루 '+formatWon(f.perDay)+' 속도로 '+formatWon(f.projectedVariable)+(fixedCount?' + 정기 결제 '+formatWon(fx.paid+fx.upcoming+fx.overdue):''));
+  notes.push('월말 예상 지출 '+formatWon(net)+' · 하루 '+formatWon(f.perDay)+' 속도로 '+formatWon(f.projectedVariable)+(fixedCount?' + 정기 결제 '+formatWon(fx.paid+fx.upcoming+fx.overdue):''));
+  if(f.refundOver)notes.push('변동 지출보다 큰 환불 '+formatWon(f.refundOver)+'을 뺐습니다.');
   if(fx.upcomingCount)notes.push('아직 안 나간 정기 결제 '+fx.upcomingCount+'건 '+formatWon(fx.upcoming)+'을 더했습니다.');
   if(fx.overdueCount)notes.push('예정일이 지났는데 기록이 없는 정기 결제 '+fx.overdueCount+'건 '+formatWon(fx.overdue)+'도 나갈 돈으로 더했습니다.');
   if(f.early)notes.push('이번 달 '+f.elapsed+'일치 기록으로 계산해 크게 달라질 수 있습니다.');

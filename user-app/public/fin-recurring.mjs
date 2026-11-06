@@ -176,16 +176,44 @@ function usualDay(list){
 }
 // FIX34 (HUNT34 H8·H13): 대체 결제일. 화면(dueDayOf)과 PC 알림(pc-toast)이 이 함수 하나를 쓴다. 후보는 같은 금액대로 묶여 서로 다른 달에 2번 이상 되풀이된 결제뿐이다(한 번 산 일반 구매로 정하지 않는다).
 // 묶음이 여럿이면 결제가 많은 묶음(동률은 최근 결제가 있는 묶음). 한 묶음 안에서는 규칙 금액에 가장 가까운 금액의 결제일을 본다(같은 금액대의 일반 구매에 흔들리지 않게). 그 금액이 한 달뿐이면 묶음 전체를 본다.
-function fallbackDayOf(rule,mine,month,rules){
-  const center=BigInt(rule.match.amount),spare=[];
-  for(const l of mine){
-    if(l.date.slice(0,7)>=month)continue;
-    const a=wonOf(l.net);if(a===null)continue;
-    if(!within(a,center,rule.match.tolerancePct)&&dueFallback(rule,a,rules))spare.push({date:l.date,amount:a});
+// FIX35 (HUNT35 F10): 같은 가맹점 규칙 여럿이 모두 대체 결제일을 찾을 때(금액대 안 지난 결제 없음) 후보 묶음을 규칙과 1:1로 짝짓는다.
+// 규칙마다 묶음을 예전 순서(결제 많은 묶음, 동률은 최근)로 고르되, 한 묶음(결제가 겹치는 묶음)을 두 규칙이 원하면 규칙 금액에 비율로 더 가까운 규칙이 가져가고
+// 진 규칙은 다음 묶음을 고른다(형제 금액이 중간점을 넘어도 이력이 섞이지 않게). 대체 결제일을 쓰지 않는 형제는 예전처럼 더 가까운 결제를 자기 몫으로 뺀다(dueFallback).
+const usesFallback=(r,mine,month)=>{const c=BigInt(r.match.amount);return !mine.some(l=>{if(l.date.slice(0,7)>=month)return false;const a=wonOf(l.net);return a!==null&&within(a,c,r.match.tolerancePct);});};
+function fallbackBands(rule,mine,month,sibs,racing){
+  const center=BigInt(rule.match.amount),gap=(a,x)=>a>x?a-x:x-a,spare=[];
+  mine.forEach((l,i)=>{
+    if(l.date.slice(0,7)>=month)return;
+    const a=wonOf(l.net);if(a===null||within(a,center,rule.match.tolerancePct)||a*2n<center||a>center*2n)return;
+    if(sibs.some(o=>{if(o.id===rule.id)return false;const c=BigInt(o.match.amount);return within(a,c,o.match.tolerancePct)||!racing.has(o.id)&&a*2n>=c&&a<=c*2n&&gap(a,c)<gap(a,center);}))return;
+    spare.push({date:l.date,amount:a,i});
+  });
+  return splitBands(spare,rule.match.tolerancePct).filter(b=>b.months.size>=FALLBACK_MIN_MONTHS).sort((p,q)=>q.members.length-p.members.length||(q.last>p.last?1:q.last<p.last?-1:0));
+}
+function pickFallbackBand(rule,mine,month,rules){
+  const sibs=[rule,...rules.filter(r=>r.id!==rule.id&&r.match.merchant===rule.match.merchant)],racing=new Set(sibs.filter(r=>usesFallback(r,mine,month)).map(r=>r.id));
+  racing.add(rule.id);
+  const prefs=new Map(sibs.filter(r=>racing.has(r.id)).map(r=>[r.id,{rule:r,list:fallbackBands(r,mine,month,sibs,racing),next:0}]));
+  if(prefs.size===1)return prefs.get(rule.id).list[0]??null;
+  const ids=b=>new Set(b.members.map(x=>x.i)),overlap=(p,q)=>{const s=ids(p);return q.members.some(x=>s.has(x.i));};
+  // 비율 거리 |묶음 금액 - 규칙 금액| / 규칙 금액 (BigInt 교차 곱으로 비교). 같으면 먼저 가진 규칙이 그대로 가진다.
+  const dist=(r,b)=>{const c=BigInt(r.match.amount);return {n:b.amount>c?b.amount-c:c-b.amount,d:c};},closer=(x,y)=>x.n*y.d<y.n*x.d;
+  const held=new Map(),free=[...prefs.keys()];
+  while(free.length){
+    const p=prefs.get(free.shift());
+    while(p.next<p.list.length){
+      const b=p.list[p.next++],rivals=[...held].filter(([,o])=>overlap(o,b));
+      if(!rivals.every(([id,o])=>closer(dist(p.rule,b),dist(prefs.get(id).rule,o))))continue;
+      for(const [id] of rivals){held.delete(id);free.push(id);}
+      held.set(p.rule.id,b);break;
+    }
   }
-  const bands=splitBands(spare,rule.match.tolerancePct).filter(b=>b.months.size>=FALLBACK_MIN_MONTHS);
-  if(!bands.length)return null;
-  const band=bands.reduce((p,q)=>q.members.length>p.members.length||(q.members.length===p.members.length&&q.last>p.last)?q:p);
+  return held.get(rule.id)??null;
+}
+function fallbackDayOf(rule,mine,month,rules){
+  const center=BigInt(rule.match.amount);
+  const band=pickFallbackBand(rule,mine,month,rules);
+  if(!band)return null;
   const gap=a=>a>center?a-center:center-a,byGap=[...new Set(band.members.map(x=>x.amount))].sort((p,q)=>gap(p)<gap(q)?-1:gap(p)>gap(q)?1:0);
   const same=byGap.map(a=>band.members.filter(x=>x.amount===a)).find(list=>new Set(list.map(x=>x.date.slice(0,7))).size>=FALLBACK_MIN_MONTHS);
   return usualDay(same??band.members);
@@ -203,6 +231,8 @@ function dueDayOf(rule,mine,month,rules=[]){
 }
 // 예정일(앞달·이번 달·다음 달) ±3일 안인가.
 const onSchedule=(date,day)=>{const n=dayNum(date),m=date.slice(0,7);return [shiftMonth(m,-1),m,shiftMonth(m,1)].some(x=>Math.abs(n-dayNum(dueOf(x,day)))<=DUE_WINDOW_DAYS);};
+// FIX36 (HUNT35 H8·HUNT36 M6): 지난달 마지막 며칠(이번 달 예정일 3일 전까지)의 결제는 이번 달 몫을 미리 낸 것이다.
+const prepaidLine=(date,day,month)=>day!==null&&date.slice(0,7)===shiftMonth(month,-1)&&dayNum(dueOf(month,day))-dayNum(date)<=DUE_WINDOW_DAYS;
 const mineOf=(rule,lines)=>lines.filter(l=>l.kind==='EXPENSE'&&typeof l.date==='string'&&recurringKey(l.merchant)===rule.match.merchant);
 // R32 (HUNT31 D4): 규칙의 평소 결제일(month 전의 결제에서, 위 dueDayOf). 가맹점이 다른 줄은 걸러서 본다. 지난 결제가 없으면 null.
 // R33B: rules(같은 가맹점 형제 규칙 포함 전체 목록)를 주면 대체 기준에서 형제 금액대 결제를 뺀다.
@@ -212,10 +242,12 @@ export const fallbackDay=(rule,lines,month,rules=[])=>fallbackDayOf(rule,mineOf(
 // 'PAID' 구독 결제: 규칙 금액과 정확히 같은 금액, 또는 규칙 금액대(±tolerancePct%)이면서 예정일(due) ±3일 안.
 // 'OTHER' 금액 다름: 구독 결제가 아닌데 예정일 밖도 아닌 결제(예정일을 모르면 다른 금액 전부).
 // null 세지 않음: 예정일 밖의 다른 결제(같은 가게 일반 구매), 같은 가맹점 다른 규칙(rules) 금액대의 결제(형제 규칙 몫).
-export function lineKind(rule,a,date,due,rules=[]){
+// FIX36 (HUNT35 H8): monthLines(그 달 결제 [{date,a}])를 주면 구독은 한 달에 한 번으로 본다. 그 달에 예정일 ±3일 안의 구독 결제가 있으면 예정일 밖 같은 금액 결제도 null(같은 가게 일반 구매)이다. fixedSchedule이 쓴다.
+export function lineKind(rule,a,date,due,rules=[],monthLines=null){
   const center=BigInt(rule.match.amount),inBand=within(a,center,rule.match.tolerancePct);
   if(!inBand&&rules.some(r=>r.id!==rule.id&&r.match.merchant===rule.match.merchant&&within(a,BigInt(r.match.amount),r.match.tolerancePct)))return null;
   const sched=due===null?null:onSchedule(date,due);
+  if(sched===false&&monthLines?.some(x=>onSchedule(x.date,due)&&lineKind(rule,x.a,x.date,due,rules)==='PAID'))return null;
   if(a===center||(inBand&&sched===true))return 'PAID';
   return sched===false?null:'OTHER';
 }
@@ -223,17 +255,22 @@ export function lineKind(rule,a,date,due,rules=[]){
 // 예정일 밖의 다른 결제(같은 가게 일반 구매)는 세지 않는다. 지난 결제가 없어 예정일을 모르면 정확히 같은 금액만 구독 결제이고, 다른 금액은 "금액 다름"으로 보인다.
 // rules를 주면 같은 가맹점의 다른 규칙 금액대 결제는 이 규칙의 "금액 다름"으로 세지 않는다.
 // lastDate: 구독 결제로 친 가장 최근 결제일(없으면 null).
+// FIX35 (HUNT35 H8): 구독은 한 달에 한 번이다. 예정일 ±3일 안의 구독 결제가 있는 달에는 그 달의 예정일 밖 같은 금액 결제(같은 가게 일반 구매)를 마지막 결제일로 치지 않는다
+// (다음 예정일이 그 구매일로 밀리지 않게). 그 달에 그것뿐이면(주말 등으로 결제일이 밀림) 예전처럼 구독 결제다.
+// FIX36 (HUNT35 H8·HUNT36 M6): 이번 달에 구독 결제가 없어도 지난달 마지막 며칠에 미리 낸 결제가 있으면 PAID이고 prepaid(그 날짜)를 함께 돌려준다(없으면 칸이 없다).
 export function ruleStatus(rule,lines,today,rules=[]){
   const month=today.slice(0,7),mine=mineOf(rule,lines),due=dueDayOf(rule,mine,month,rules);
-  let paid=false,other=false,last=null,otherAmount=null;
+  let paid=false,other=false,otherAmount=null,prepaid=null;const paidLines=[],onTimeMonths=new Set();
   for(const l of mine){
     if(l.date>today)continue;
     const a=wonOf(l.net);if(a===null)continue;
     const kind=lineKind(rule,a,l.date,due,rules);
-    if(kind==='PAID'&&(last===null||l.date>last))last=l.date;
+    if(kind==='PAID'){const onTime=due===null||onSchedule(l.date,due);paidLines.push({date:l.date,onTime});if(onTime)onTimeMonths.add(l.date.slice(0,7));if(prepaidLine(l.date,due,month)&&(prepaid===null||l.date>prepaid))prepaid=l.date;}
     if(l.date.slice(0,7)!==month)continue;
     if(kind==='PAID')paid=true;else if(kind==='OTHER'){other=true;otherAmount=a.toString();}
   }
+  const last=paidLines.filter(p=>p.onTime||!onTimeMonths.has(p.date.slice(0,7))).reduce((m,p)=>m===null||p.date>m?p.date:m,null);
+  if(!paid&&prepaid!==null)return {state:'PAID',lastDate:last,otherAmount:null,prepaid};
   return {state:paid?'PAID':other?'DIFFERENT':'PENDING',lastDate:last,otherAmount:paid?null:otherAmount};
 }
 // 가격 변경 제안: 이번 달 예정일쯤 다른 금액을 냈고, 지난 결제가 있고, 금액이 절반~두 배 안이면 {amount}. 아니면 null(일반 구매로 본다). 자동으로 바꾸지 않는다.

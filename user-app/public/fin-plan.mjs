@@ -483,16 +483,18 @@ export function monthInsight(prep,s,recurring,{months=3}={}){
   // 월 합계끼리 비교하면 매달 같은 날 나가는 고정비가 달 초에 급증으로 보인다. 끝난 달·미래 달은 월 합계 그대로.
   const toDate=s.current&&s.elapsed>0;
   const cutoff=m=>toDate?Math.min(s.elapsed,daysIn(m)):null;
-  const cats=[];
+  const cats=[],fresh=[];
   if(known&&withData.length){
     const cur=catTotalsUpTo(prep,month,toDate?s.elapsed:null);
     const past=withData.map(m=>catTotalsUpTo(prep,m,cutoff(m)));
     for(const [c,pace] of cur){
       const avg=past.reduce((a,t)=>a+(t.get(c)??0n),0n)/BigInt(past.length);
+      if(avg<=0n&&pace>0n)fresh.push({category:c,pace});   // FIX37C (H37-M5): 비교 달에 없던 분류. 배수를 말할 수 없어 따로 둔다
       if(avg<=0n||pace<=avg)continue;
       cats.push({category:c,average:avg,pace,delta:pace-avg,permille:roundDiv((pace-avg)*1000n,avg)});
     }
     cats.sort((a,b)=>bigSort(b.delta,a.delta));
+    fresh.sort((a,b)=>bigSort(b.pace,a.pace));
   }
   const split=recurring?costSplit(prep,{from:month,to:month},recurring,s.month+'-01'):null;
   const row=split?.months.find(m=>m.month===month)??null;
@@ -500,7 +502,7 @@ export function monthInsight(prep,s,recurring,{months=3}={}){
   const spendTotal=fixed===null||variable===null?null:fixed+variable;
   return {month,known,comparedMonths:[...withData],
     comparison:toDate?'TO_DATE':'MONTH_TOTAL',comparedThroughDay:toDate?s.elapsed:null,
-    risingCategories:cats.slice(0,3),
+    risingCategories:cats.slice(0,3),newCategories:fresh.slice(0,3),
     fixed,variable,fixedPermille:spendTotal!==null&&spendTotal>0n?roundDiv(fixed*1000n,spendTotal):null,
     perDay:known&&s.elapsed>0?s.actualTotal/BigInt(s.elapsed):null,
     projected:s.total?.projected??null,   // 월말 예상은 기존 budgetStatus 값 그대로

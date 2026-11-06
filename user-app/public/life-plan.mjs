@@ -7,7 +7,9 @@ import {achieve} from './life-achieve.mjs';
 import {stable} from './life-rebase.mjs';
 import {lifeDefs,dDay,dayNumber,shiftDay,kstDate,validateLifeData,PLAN_BLOCKS,MAX_PLAN_ITEMS,MAX_PLAN_TITLE,MAX_PLAN_BRICKS} from './life-model.mjs';
 
-export const VIEWS=Object.freeze([['DAY','일'],['WEEK','주'],['MONTH','월'],['YEAR','연'],['CSAT','수능까지']]);
+// 보기는 5개(저장 lb.plan.view 값도 그대로), 머리 칩은 4개(P1A·D36-3): 오늘 · 주 · 월 · 멀리. 멀리를 고르면 그 아래 연 · 수능까지 칩 줄이 열린다.
+export const VIEWS=Object.freeze([['DAY','오늘'],['WEEK','주'],['MONTH','월'],['YEAR','연'],['CSAT','수능까지']]);
+export const VIEW_CHIPS=Object.freeze([['DAY','오늘'],['WEEK','주'],['MONTH','월'],['FAR','멀리']]),FAR_VIEWS=Object.freeze(['YEAR','CSAT']);
 export const VIEW_KEY='lb.plan.view',TIMER_KEY='lb.life.timer';
 export const PHASES=Object.freeze(['기본기','실력','실전','파이널']);
 export const BLOCK_TEXT=Object.freeze({M:'오전',A:'오후',E:'저녁',N:'밤'});
@@ -20,9 +22,14 @@ export const PLAN_ERROR_TEXT=Object.freeze({
   INVALID_LIFE_TEXT:'할 일은 1~'+MAX_PLAN_TITLE+'자로 적어 주세요.',APP_ENTITY_LIMIT:'개수 한도에 닿았습니다.',
   STALE_HEADS:'다른 기기에서 먼저 바뀌어 합치지 못했습니다. 입력은 그대로 있습니다. 다시 저장해 주세요.',
   MD_NOT_WRITE_READY:'지금은 서버에 저장할 수 없습니다. 입력은 이 화면에 남아 있습니다.',
+  MD_PENDING_RECONCILE_REQUIRED:'이 저장이 서버에 반영됐는지 아직 모릅니다. 새로 저장하지 말고 더보기 > 고급에서 "미확정 저장 결과 확인"을 누르세요.',
+  HOLD_UNKNOWN_SAVE:'저장 결과가 불명확합니다. 새로 저장하지 말고 먼저 확인하세요.',
 });
 export const planErrorText=code=>PLAN_ERROR_TEXT[code]??(code?'저장하지 못했습니다 ('+code+')':'저장하지 못했습니다.');
+// 결과를 모르는 오류: 다음 저장을 이어 가면 안 된다(H37-P3).
+export const unknownOutcome=code=>typeof code==='string'&&(code==='MD_PENDING_RECONCILE_REQUIRED'||code.startsWith('HOLD_'));
 export const PLAN_NOTICE_TEXT=Object.freeze({
+  PLAN_LOCAL_DRAFT:'이 기기에 임시 저장됨 · 아직 동기화 전이라 계획표에는 보이지 않습니다 · 연결한 뒤 연결 · 장치의 임시 저장 목록에서 "승인하고 쌓기"를 누르세요.',
   PLAN_VALUE_OVERWRITTEN:'같은 계획 줄을 양쪽에서 고쳐서 내 값을 썼습니다 · 상대 값은 이력에 남아 있습니다.',
   PLAN_CONFLICT_KEPT_REMOTE:'내가 지운 줄을 다른 기기에서 고쳐서 상대 수정을 남겼습니다.',
   PLAN_CONFLICT_KEPT_LOCAL:'다른 기기에서 지운 줄을 내가 고쳐서 내 수정으로 되살렸습니다.',
@@ -134,6 +141,7 @@ export function rebasePlan({date,base,mine,latest}){
 }
 // 저장: 계획 시트의 "저장" 버튼만 부른다. 최신이 내가 편집을 시작한 때와 같으면 내 초안 그대로, 다르면 합친 결과를 엔티티 1개로 쓴다.
 // 겹침(STALE_HEADS)이면 최신을 받아 다시 합쳐 한 번 더 시도한다(쓰기는 성공한 1번만 일어난다).
+// 임시 저장 모드에서는 봉인 초안으로만 들어가 계획표에 안 보인다: sealed:true와 PLAN_LOCAL_DRAFT 알림을 함께 돌려준다(H37-P1). 부른 쪽은 sealed면 성공으로 말하지 말고 초안을 남긴다.
 export async function savePlanDay(ctx,{date,base,mine}){
   validateLifeData('PLAN_DAY',date,mine);
   for(let attempt=1;attempt<=3;attempt++){
@@ -145,8 +153,10 @@ export async function savePlanDay(ctx,{date,base,mine}){
       if(rb.status==='ALREADY_APPLIED')return {status:'ALREADY_APPLIED',notices:rb.notices};
       data=rb.plan;notices=rb.notices;
     }else if(latest&&stable(latest)===stable(mine))return {status:'ALREADY_APPLIED',notices:[]};
-    try{await ctx.entity('PLAN_DAY',date,data,row?[...row.heads]:[],'하루 계획 저장');}
+    let w;
+    try{w=await ctx.entity('PLAN_DAY',date,data,row?[...row.heads]:[],'하루 계획 저장');}
     catch(e){if(e?.code==='STALE_HEADS'&&attempt<3&&ctx.reload){await ctx.reload();continue;}throw e;}
+    if(w?.status==='LOCAL_DRAFT')return {status:'SAVED',sealed:true,notices:[...notices,{code:'PLAN_LOCAL_DRAFT'}],plan:data};
     return {status:'SAVED',notices,plan:data};
   }
   throw Object.assign(new Error('STALE_HEADS'),{code:'STALE_HEADS'});
@@ -209,7 +219,7 @@ export const barsText=v=>(Number.isInteger(v)?String(v):v.toFixed(1))+'장';
 
 // ---------- 화면 ----------
 const SVGNS='http://www.w3.org/2000/svg';
-function maker(doc){
+export function maker(doc){
   const el=(tag,text,cls)=>{const n=doc.createElement(tag);if(text!==undefined&&text!==null)n.textContent=String(text);if(cls)n.className=cls;return n;};
   const add=(p,...ns)=>{p.append(...ns.filter(Boolean));return p;};
   const button=(text,fn,cls='secondary')=>{const n=el('button',text,cls);n.type='button';n.addEventListener('click',fn);return n;};
@@ -218,7 +228,7 @@ function maker(doc){
 }
 export function createPlanState(storage=null){
   let view='DAY';try{const v=storage?.getItem(VIEW_KEY);if(VIEWS.some(x=>x[0]===v))view=v;}catch{/* 저장소가 막혀 있으면 기본 보기 */}
-  return {view,date:null,monday:null,month:null,year:null,message:null,error:false,notices:[]};
+  return {view,date:null,monday:null,month:null,year:null,message:null,error:false,notices:[],far:FAR_VIEWS.includes(view)?view:null,examsOpen:false,week:null};
 }
 function setView(st,ctx,view){
   st.view=view;
@@ -234,14 +244,22 @@ function tag(h,subjects,id,{dashed=false}={}){
   const dot=h.svg('svg',{class:'life-dot',width:10,height:10,viewBox:'0 0 10 10','aria-hidden':'true'});dot.append(h.svg('circle',{cx:5,cy:5,r:5,fill:s.color}));
   n.dataset.subjectId=id;n.append(dot,h.el('span',s.name+(s.bridge?' · 징검다리':'')));return n;
 }
-function viewChips(h,ctx,st){
-  const row=h.el('div',null,'plan-views');row.setAttribute('role','toolbar');row.setAttribute('aria-label','계획 보기');
-  for(const [key,label] of VIEWS){
-    const pick=()=>{setView(st,ctx,key);void ctx.rerender();};
-    const b=ctx.kit?.chip?ctx.kit.chip(label,{selected:st.view===key,onClick:pick}):h.button(label,pick,'lb-chip'+(st.view===key?' selected':''));
-    b.setAttribute('aria-pressed',String(st.view===key));b.dataset.view=key;row.append(b);
-  }
-  return row;
+// 칩 4개. '오늘'은 날짜도 오늘로 되돌린다. '멀리'는 마지막에 본 먼 보기(없으면 연)로 가고, 고른 동안 아래에 연·수능까지 칩 줄을 연다.
+function viewChips(h,ctx,st,today){
+  const far=FAR_VIEWS.includes(st.view),rows=[];
+  const line=(list,label,cls)=>{
+    const row=h.el('div',null,cls);row.setAttribute('role','toolbar');row.setAttribute('aria-label',label);
+    for(const [key,text] of list){
+      const on=key==='FAR'?far:st.view===key;
+      const pick=()=>{if(key==='DAY')st.date=today;setView(st,ctx,key==='FAR'?(far?st.view:st.far??FAR_VIEWS[0]):key);if(FAR_VIEWS.includes(st.view))st.far=st.view;void ctx.rerender();};
+      const b=ctx.kit?.chip?ctx.kit.chip(text,{selected:on,onClick:pick}):h.button(text,pick,'lb-chip'+(on?' selected':''));
+      b.setAttribute('aria-pressed',String(on));b.dataset.view=key;row.append(b);
+    }
+    rows.push(row);
+  };
+  line(VIEW_CHIPS,'계획 보기','plan-views');
+  if(far)line(VIEWS.filter(([k])=>FAR_VIEWS.includes(k)),'멀리 보기','plan-views plan-far');
+  return rows;
 }
 // 머리 시험 카드 4칸: 오늘 이후 시험을 앞에서부터 4개(모자라면 지난 시험으로 채움). 가장 가까운 시험은 강조, 수능은 금빛, 지난 시험은 "끝".
 export function examCards(exams,today){
@@ -260,15 +278,33 @@ function examRow(h,exams,today){
   if(!row.children.length)row.append(h.el('p','시험 일정이 없습니다. 오늘 탭의 습관 편집에서 추가하세요.','muted small'));
   return row;
 }
-function navRow(h,label,onPrev,onNext,onNow,nowText='오늘'){
-  return h.add(h.el('div',null,'plan-nav'),h.button('◀',onPrev,'secondary'),h.el('strong',label,'plan-nav-label'),h.button('▶',onNext,'secondary'),h.button(nowText,onNow,'secondary'));
+// 시험 한 줄(P1A·D36-3): 수능 + 가장 가까운 다른 시험만 글자로("수능 D-379 · 다음 3평 D-139"). 누르면 아래에 4칸 카드가 펼쳐진다(다시 누르면 접힘).
+const ddayText=x=>x.dDay===0?'D-DAY':'D-'+x.dDay;
+export function examLineText(exams,today){
+  const cards=examCards(exams,today),csat=cards.find(x=>x.csat&&!x.ended)??null,next=cards.find(x=>x.nearest&&!x.csat)??null,name=x=>x.name.replace(/\(.*\)/,'');
+  const parts=[csat?name(csat)+' '+ddayText(csat):null,next?'다음 '+name(next)+' '+ddayText(next):null].filter(Boolean);
+  return parts.length?parts.join(' · '):cards.length?'지난 시험 '+cards.length+'개':null;
+}
+function examLine(h,ctx,st,exams,today){
+  const text=examLineText(exams,today);
+  if(text===null)return examRow(h,exams,today);   // 시험 일정이 없으면 안내 문구 그대로
+  const b=h.button(text,()=>{st.examsOpen=!st.examsOpen;void ctx.rerender();},'plan-exam-line');
+  b.setAttribute('aria-expanded',String(Boolean(st.examsOpen)));b.setAttribute('aria-label','시험 일정 '+(st.examsOpen?'접기':'펼치기')+' · '+text);
+  return h.add(h.el('div',null,'plan-exam-wrap'),b,st.examsOpen?examRow(h,exams,today):null);
+}
+// here = 이미 지금(오늘·이번 주·이번 달·올해)을 보고 있음 → 되돌아가기 단추를 그리지 않는다(같은 글자가 두 번 보이지 않게, P1A).
+function navRow(h,label,onPrev,onNext,onNow,nowText='오늘',here=false){
+  return h.add(h.el('div',null,'plan-nav'),h.button('◀',onPrev,'secondary'),h.el('strong',label,'plan-nav-label'),h.button('▶',onNext,'secondary'),here?null:h.button(nowText,onNow,'secondary'));
 }
 
 // ----- 일 보기 -----
 function dayView(h,ctx,st,ctxData){
   const {life,ach,today,subjects}=ctxData,date=st.date??=today,sum=daySummary(life,ach,date),timer=date===today?readTimerSubject(ctx):null;
   const out=h.el('section',null,'plan-card plan-day');
-  h.add(out,navRow(h,dateLabel(date)+(date===today?' · 오늘':''),()=>{st.date=shiftDay(date,-1);void ctx.rerender();},()=>{st.date=shiftDay(date,1);void ctx.rerender();},()=>{st.date=today;void ctx.rerender();}));
+  h.add(out,navRow(h,dateLabel(date)+(date===today?' · 오늘':''),()=>{st.date=shiftDay(date,-1);void ctx.rerender();},()=>{st.date=shiftDay(date,1);void ctx.rerender();},()=>{st.date=today;void ctx.rerender();},'오늘',date===today));
+  // P1B: 앱이 ctx.todayPlan을 넘겨 주면 오늘 화면과 같은 "오늘 계획" 카드(plan-today.mjs의 같은 함수)를 그린다. 줄이 곧 계획 vs 실제라 아래 표는 그리지 않는다. 못 받으면 아래 옛 보기.
+  const card=ctx.todayPlan?.({date,today})??null;
+  if(card){h.add(out,card,h.add(h.el('div',null,'button-row'),h.button('계획 편집',()=>openPlanEditor(ctx,st,date),'secondary')));return out;}
   const blocksUsed=[...new Set(sum.items.map(x=>x.block))];
   h.add(out,h.el('h3','계획 · '+(blocksUsed.length?blocksUsed.join(' '):'-')+' 블록 / SUM '+barsText(sum.planned)));
   if(!sum.items.length)h.add(out,h.el('p','이 날의 계획이 없습니다. "계획 편집"에서 줄을 추가하세요.','muted small'));
@@ -308,12 +344,22 @@ function weekBars(h,sum,goal){
   s.append(h.svg('line',{class:'plan-bar-base',x1:0,y1:base,x2:W,y2:base}));
   return s;
 }
+// 달성률 분모 = 오늘까지의 계획(P1A): 오늘보다 뒤 날의 계획은 빼고 "남은 계획"으로 따로 센다.
+export function weekToDate(sum,today){
+  let planned=0,achieved=0,later=0;
+  for(const d of sum.days){if(d.date<=today){planned+=d.planned;achieved+=d.achieved;}else later+=d.planned;}
+  return {planned,achieved,later,rate:planned>0?achieved/planned:null};
+}
 function weekView(h,ctx,st,data){
-  const {life,ach,today,subjects}=data,monday=st.monday??=mondayOf(today),sum=weekSummary(life,ach,monday);
+  const {life,ach,today,subjects}=data,monday=st.monday??=mondayOf(today);
+  // P1A: 앱이 ctx.planWeek를 넘겨 주면 7열 × 4블록 격자(plan-week.mjs)를 그린다. 못 받으면 아래 옛 막대 보기.
+  const grid=ctx.planWeek?.(st,{today})??null;
+  if(grid)return grid;
+  const sum=weekSummary(life,ach,monday),upto=weekToDate(sum,today);
   const out=h.el('section',null,'plan-card plan-week');
-  h.add(out,navRow(h,short(monday)+' ~ '+short(shiftDay(monday,6))+(monday===mondayOf(today)?' · 이번 주':''),()=>{st.monday=shiftDay(monday,-7);void ctx.rerender();},()=>{st.monday=shiftDay(monday,7);void ctx.rerender();},()=>{st.monday=mondayOf(today);void ctx.rerender();},'이번 주'));
+  h.add(out,navRow(h,short(monday)+' ~ '+short(shiftDay(monday,6))+(monday===mondayOf(today)?' · 이번 주':''),()=>{st.monday=shiftDay(monday,-7);void ctx.rerender();},()=>{st.monday=shiftDay(monday,7);void ctx.rerender();},()=>{st.monday=mondayOf(today);void ctx.rerender();},'이번 주',monday===mondayOf(today)));
   h.add(out,weekBars(h,sum,ach.goalBricks));
-  h.add(out,h.el('p','계획 '+barsText(sum.planned)+' · 실제 '+barsText(sum.actual)+(sum.rate!==null?' · 계획 달성 '+rateText(sum.rate):' · 이 주 계획 없음'),'plan-sum'));
+  h.add(out,h.el('p','계획 '+barsText(sum.planned)+' · 실제 '+barsText(sum.actual)+(upto.rate!==null?' · 계획 달성 '+rateText(upto.rate)+(upto.later>0?' · 남은 계획 '+barsText(upto.later):''):sum.planned>0?' · 남은 계획 '+barsText(upto.later):' · 이 주 계획 없음'),'plan-sum'));
   if(sum.rows.length){
     const t=h.el('div',null,'plan-compare');
     for(const r of sum.rows)h.add(t,h.add(h.el('div',null,'plan-compare-row'),tag(h,subjects,r.subjectId),h.el('span','계획 '+barsText(r.planned)+' · 실제 '+barsText(r.actual),'muted small'),h.el('strong',rateText(r.rate))));
@@ -337,25 +383,73 @@ export function heatLevel(value,goal){
   return r<0.5?1:r<1?2:r<1.5?3:4;
 }
 function monthView(h,ctx,st,data){
-  const {life,ach,today,exams,subjects}=data,ym=st.month??=today.slice(0,7),first=ym+'-01',n=daysInMonth(ym),lead=(sunday0(first)+6)%7;
-  const examDays=new Map();for(const x of exams.items){examDays.set(x.date,[...(examDays.get(x.date)??[]),x.name]);}
-  const weeks=weekIndex(ach);
+  const {today}=data,ym=st.month??=today.slice(0,7);
   const out=h.el('section',null,'plan-card plan-month');
-  h.add(out,navRow(h,ym.slice(0,4)+'년 '+Number(ym.slice(5,7))+'월',()=>{st.month=shiftMonth(ym,-1);void ctx.rerender();},()=>{st.month=shiftMonth(ym,1);void ctx.rerender();},()=>{st.month=today.slice(0,7);void ctx.rerender();},'이번 달'));
+  h.add(out,navRow(h,ym.slice(0,4)+'년 '+Number(ym.slice(5,7))+'월',()=>{st.month=shiftMonth(ym,-1);void ctx.rerender();},()=>{st.month=shiftMonth(ym,1);void ctx.rerender();},()=>{st.month=today.slice(0,7);void ctx.rerender();},'이번 달',ym===today.slice(0,7)));
+  // P1C: 앱이 ctx.planMonth를 넘겨 주면 과목 × 주차 표(plan-month.mjs)를 그리고, 날짜 달력은 그 안의 "날짜로 보기"로 들어간다. 못 받으면 아래 날짜 달력 그대로.
+  const table=ctx.planMonth?.(st,{data,ym,dateGrid:()=>dateGrid(h,ctx,st,data,ym),goWeek:monday=>{st.monday=monday;setView(st,ctx,'WEEK');void ctx.rerender();}})??null;
+  h.add(out,...(table?[table]:dateGrid(h,ctx,st,data,ym)));
+  return out;
+}
+function dateGrid(h,ctx,st,data,ym){
+  const {life,ach,today,exams,subjects}=data,first=ym+'-01',n=daysInMonth(ym),lead=(sunday0(first)+6)%7;
+  const examDays=new Map();for(const x of exams.items){examDays.set(x.date,[...(examDays.get(x.date)??[]),x.name]);}
+  const eventDays=new Map();for(const e of ctx.planCal?.events??[])eventDays.set(e.date,(eventDays.get(e.date)??0)+1);
+  const weeks=weekIndex(ach);
   const grid=h.el('div',null,'plan-cal');
   for(const w of ['월','화','수','목','금','토','일'])grid.append(h.el('span',w,'plan-cal-head'));
   for(let i=0;i<lead;i++)grid.append(h.el('span',null,'plan-cal-blank'));
   for(let d=1;d<=n;d++){
-    const date=ym+'-'+String(d).padStart(2,'0'),act=actualOf(weeks,date),ex=examDays.get(date)??[],hasPlan=Boolean(planOf(life,date)?.items.length);
+    const date=ym+'-'+String(d).padStart(2,'0'),act=actualOf(weeks,date),ex=examDays.get(date)??[],hasPlan=Boolean(planOf(life,date)?.items.length),evs=eventDays.get(date)??0,outs=ctx.planCal?.outer?.on(date).length??0;
     const b=h.button(null,()=>{openDaySheet(ctx,st,data,date);},'plan-day-cell plan-heat-'+heatLevel(act.total,ach.goalBricks)+(date===today?' today':'')+(ex.length?' exam':'')+(hasPlan?' has-plan':''));
-    b.dataset.date=date;b.setAttribute('aria-label',dateLabel(date)+' 벽돌 '+barsText(act.total)+(ex.length?' · '+ex.join(', '):'')+(hasPlan?' · 계획 있음':''));
+    b.dataset.date=date;b.setAttribute('aria-label',dateLabel(date)+' 벽돌 '+barsText(act.total)+(ex.length?' · '+ex.join(', '):'')+(evs?' · 일정 '+evs+'개':'')+(outs?' · 바깥 일정 '+outs+'개':'')+(hasPlan?' · 계획 있음':''));
     b.append(h.el('span',String(d),'plan-cal-num'));
     const subs=[...act.bySubject.keys()].slice(0,3);
     if(subs.length){const dots=h.svg('svg',{class:'plan-dots',viewBox:'0 0 30 8',width:'100%','aria-hidden':'true'});subs.forEach((id,k)=>dots.append(h.svg('circle',{cx:5+k*10,cy:4,r:3.5,fill:subjectOf(subjects,id).color})));b.append(dots);}
     if(ex.length)b.append(h.el('span',ex.length>1?ex.length+'개':ex[0].replace(/\(.*\)/,''),'plan-cal-exam'));
+    if(evs)b.append(h.el('span','●'+evs,'plan-cal-events'));
+    if(outs)b.append(h.el('span','○'+outs,'plan-cal-events ics-outer-mark'));
     grid.append(b);
   }
-  h.add(out,grid,h.el('p','날짜를 누르면 그날 요약이 열립니다 · 색이 진할수록 벽돌이 많고 점은 쌓은 과목입니다.','muted small'));
+  return [grid,h.el('p','날짜를 누르면 그날 요약이 열립니다 · 색이 진할수록 벽돌이 많고 점은 쌓은 과목입니다.','muted small')];
+}
+// ----- 일정 줄 (P1C: '달력' 화면을 계획 탭에 합침): 앱이 읽어 준 일정(ctx.planCal)과 시험을 보여 주기만 한다. 일정 추가·고치기는 앱의 일정 시트(planCal.add·open) ------
+// 앱이 이 보기를 그리기 전에 읽을 범위(/api/calendar-view 요청 그대로). 먼 보기(연·수능까지)는 읽지 않는다.
+export function eventQuery(st,nowIso){
+  const today=kstDate(nowIso);
+  if(st.view==='DAY')return {mode:'TODAY',date:st.date??today};
+  if(st.view==='WEEK')return {mode:'7_DAY',date:st.monday??mondayOf(today)};
+  if(st.view==='MONTH')return {mode:'MONTH',date:(st.month??today.slice(0,7))+'-01'};
+  return null;
+}
+// from~to 안의 시험과 일정을 날짜 순서로(같은 날은 시험 먼저, 그다음 종일, 시각 순).
+export function scheduleItems(exams,events,from,to,today){
+  const out=[];
+  for(const x of exams?.items??[])if(x.date>=from&&x.date<=to){const d=dDay(today,x.date);out.push({date:x.date,time:'',title:x.name.replace(/\(.*\)/,'')+(x.status==='잠정'?' (잠정)':''),note:d<0?'끝':d===0?'D-DAY':'D-'+d,exam:x,event:null});}
+  for(const e of events??[])if(e.date>=from&&e.date<=to)out.push({date:e.date,time:e.time??'',title:e.title,note:null,exam:null,event:e});
+  return out.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:Number(!a.exam)-Number(!b.exam)||(a.time<b.time?-1:a.time>b.time?1:0));
+}
+// ctx.planCal이 없으면(옛 경로) 그리지 않는다. 비어 있으면 "+ 일정" 하나만(빈칸을 0이나 안내 글로 채우지 않는다). limit이 있으면 그 수까지 보이고 나머지는 "더 보기".
+export function scheduleBox(h,ctx,st,data,from,to,{addDate=null,limit=0,withDate=true,before=null}={}){
+  const cal=ctx.planCal??null;if(!cal)return null;
+  const {el,add,button}=h,items=scheduleItems(data.exams,cal.events,from,to,data.today),show=limit&&st.schedAll!==from?items.slice(0,limit):items;
+  // R37: 달력이 계획 탭으로 합쳐졌으므로 바깥 일정(.ics, P1E)도 앱이 넘겨 준 cal.outer로 여기 흐리게 겹친다. 보기만 한다.
+  const outer=[];if(cal.outer)for(let d=from;d<=to;d=shiftDay(d,1))for(const o of cal.outer.on(d))outer.push({date:d,o});
+  const outerShow=limit&&st.schedAll!==from?outer.slice(0,limit):outer;
+  const out=el('div',null,'plan-sched'),head=el('div',null,'plan-sched-head');
+  if(items.length||outer.length)add(head,el('h3','일정'));
+  if(addDate)add(head,button('+ 일정',()=>{before?.();cal.add(addDate);},'secondary plan-sched-add'));
+  add(out,head);
+  if(cal.failed)add(out,el('p','일정을 불러오지 못했습니다 · 시험 일정만 보입니다.','muted small plan-sched-failed'));
+  for(const x of show){
+    const when=[withDate?dateLabel(x.date):null,x.exam?null:x.time||'종일'].filter(Boolean).join(' ');
+    const row=x.event?button(null,()=>{before?.();cal.open(x.event);},'plan-sched-row'):el('div',null,'plan-sched-row exam');
+    row.dataset.date=x.date;if(x.event)row.dataset.kind=x.event.kind;
+    add(out,add(row,when?el('span',when,'plan-sched-when'):null,el('span',x.title,'plan-sched-title'),x.note?el('strong',x.note,'plan-sched-note'):null));
+  }
+  if(outerShow.length){const list=el('div',null,'ics-outer-list plan-sched-outer');for(const x of outerShow)add(list,el('span',withDate?dateLabel(x.date):null,'muted small'),cal.outer.chip(x.o));add(out,list);}
+  const rest=items.length-show.length+outer.length-outerShow.length;
+  if(rest>0){const more=button('일정 '+rest+'개 더 보기',()=>{st.schedAll=from;void ctx.rerender();},'secondary plan-sched-more');more.dataset.navOnly='1';add(out,more);}
   return out;
 }
 function openDaySheet(ctx,st,data,date){
@@ -367,6 +461,8 @@ function openDaySheet(ctx,st,data,date){
   if(!sum.rows.length)h.add(body,h.el('p','이 날은 쌓은 벽돌도 계획도 없습니다.','muted small'));
   for(const x of sum.items)h.add(body,h.add(h.el('div',null,'plan-row'),tag(h,subjects,x.subjectId),h.el('span',BLOCK_TEXT[x.block]+' · '+x.title+' · '+barsText(x.bricks),'plan-title')));
   let dlg=null;
+  // P1C: 그 날 일정(시험은 위 문장에 이미 있어 뺀다)과 "+ 일정". 시트를 닫고 앱의 일정 시트를 연다.
+  h.add(body,scheduleBox(h,ctx,st,{...data,exams:null},date,date,{addDate:date,withDate:false,before:()=>dlg?.close?.()}));
   h.add(body,h.add(h.el('div',null,'button-row'),h.button('이 날 계획 편집',()=>{dlg?.close?.();openPlanEditor(ctx,st,date);},'primary')));
   dlg=ctx.sheet?.(dateLabel(date),body)??null;
   return body;
@@ -376,7 +472,7 @@ function openDaySheet(ctx,st,data,date){
 function yearView(h,ctx,st,data){
   const {ach,today,exams}=data,year=st.year??=Number(today.slice(0,4)),weeks=weekIndex(ach);
   const out=h.el('section',null,'plan-card plan-year');
-  h.add(out,navRow(h,year+'년',()=>{st.year=year-1;void ctx.rerender();},()=>{st.year=year+1;void ctx.rerender();},()=>{st.year=Number(today.slice(0,4));void ctx.rerender();},'올해'));
+  h.add(out,navRow(h,year+'년',()=>{st.year=year-1;void ctx.rerender();},()=>{st.year=year+1;void ctx.rerender();},()=>{st.year=Number(today.slice(0,4));void ctx.rerender();},'올해',year===Number(today.slice(0,4))));
   const examWeeks=new Map();for(const x of exams.items)examWeeks.set(mondayOf(x.date),[...(examWeeks.get(mondayOf(x.date))??[]),x.name]);
   const months=Array.from({length:12},()=>[]);
   for(let m=mondayOf(year+'-01-01');m<=year+'-12-31';m=shiftDay(m,7)){
@@ -469,7 +565,7 @@ function openPlanEditor(ctx,st,date,{seed=[],onSaved=null}={}){
   const subjects=defs.subjects.filter(s=>!s.hidden),draft=structuredClone(base?.items??[]);
   const newId=i=>'p'+ctx.uid().slice(0,10)+(i===undefined?'':i.toString(36));
   for(const x of seed)draft.push({...x,id:newId(draft.length)});
-  const body=el('div',null,'plan-editor'),err=el('p',null,'notice error plan-editor-error');err.hidden=true;
+  const body=el('div',null,'plan-editor'),err=el('p',null,'notice error plan-editor-error'),note=el('p',PLAN_NOTICE_TEXT.PLAN_LOCAL_DRAFT,'notice plan-editor-note');err.hidden=true;note.hidden=true;
   const showErr=code=>{err.textContent=planErrorText(code);err.hidden=false;};
   const rows=el('div',null,'plan-edit-rows');
   const select=(options,value,label)=>{const n=el('select');for(const [v,t] of options){const o=el('option',t);o.value=String(v);n.append(o);}n.value=String(value);n.setAttribute('aria-label',label);return n;};
@@ -497,21 +593,31 @@ function openPlanEditor(ctx,st,date,{seed=[],onSaved=null}={}){
     draft.splice(0,draft.length,...copyPlan(prev,date,i=>newId(i)).items);err.hidden=true;draw();   // 초안만 바꾼다. 저장은 "저장" 버튼
   };
   draw();
-  let dlg=null;
+  let dlg=null,sealedAs=null;
   const save=()=>{
     const mine={date,items:draft.map(x=>({id:x.id,subjectId:x.subjectId,title:String(x.title).trim(),bricks:Number(x.bricks),block:x.block}))};
     try{validateLifeData('PLAN_DAY',date,mine);}catch(e){showErr(e?.code);return;}
     dlg?.close?.();
     void ctx.perform(async()=>{
       st.message=null;st.error=false;st.notices=[];
-      try{const r=await savePlanDay(ctx,{date,base,mine});st.message=r.status==='SAVED'?'하루 계획을 저장했습니다.':'이미 같은 계획이 저장되어 있습니다.';st.notices=r.notices;onSaved?.();}
+      let sealed=false;
+      try{
+        if(sealedAs===stable(mine)&&await ctx.draftMode?.())sealed=true;   // 같은 내용을 봉인 초안으로 또 쌓지 않는다
+        else{
+          const r=await savePlanDay(ctx,{date,base,mine});
+          if(r.sealed){sealed=true;sealedAs=stable(mine);st.notices=r.notices.filter(n=>n.code!=='PLAN_LOCAL_DRAFT');}
+          else{st.message=r.status==='SAVED'?'하루 계획을 저장했습니다.':'이미 같은 계획이 저장되어 있습니다.';st.notices=r.notices;onSaved?.();}
+        }
+        if(sealed)st.message=PLAN_NOTICE_TEXT.PLAN_LOCAL_DRAFT;
+      }
       catch(e){st.message=planErrorText(e?.code);st.error=true;}
       await ctx.rerender();
+      if(sealed){note.hidden=false;dlg=ctx.sheet?.('하루 계획 편집',body)??null;}   // 임시 저장은 성공이 아니다: 시트와 입력을 그대로 다시 연다(H37-P1)
     });
   };
   // 단추는 줄 목록 위에 둔다(줄이 많아 시트가 스크롤돼도 "저장"이 보인다).
   add(body,el('p',dateLabel(date)+' 계획 · 줄 하나 = 과목 + 할 일 + 목표 벽돌(30분 = 1장)','muted small'),
-    add(el('div',null,'buttons'),button('줄 추가',addRow,'secondary'),button('어제 계획 복사',copyYesterday,'secondary'),button('저장',save,'primary')),err,rows);
+    add(el('div',null,'buttons'),button('줄 추가',addRow,'secondary'),button('어제 계획 복사',copyYesterday,'secondary'),button('저장',save,'primary')),err,note,rows);
   dlg=ctx.sheet?.('하루 계획 편집',body)??null;
   return {body,draft,save,addRow,copyYesterday};
 }
@@ -522,11 +628,14 @@ export function renderPlan(root,ctx,st){
   const whole=ctx.getWhole(),life=whole.life??null,today=kstDate(ctx.now()),defs=lifeDefs(life),ach=achieve({life,study:whole.study??null,today});
   const data={life,ach,today,exams:defs.exams,subjects:subjectMap(defs)};
   const out=add(el('section',null,'panel plan-panel'),add(el('div',null,'plan-head'),el('span','PLAN','eyebrow'),el('h2','계획표','panel-title')));out.id='life-plan';
-  add(out,viewChips(h,ctx,st),examRow(h,defs.exams,today));
+  add(out,...viewChips(h,ctx,st,today),examLine(h,ctx,st,defs.exams,today));
   if(st.message)add(out,el('p',st.message,st.error?'notice error plan-message':'notice plan-message'));
   for(const n of st.notices??[])add(out,el('p',PLAN_NOTICE_TEXT[n.code]??n.code,'notice plan-notice'));
   const view={DAY:dayView,WEEK:weekView,MONTH:monthView,YEAR:yearView,CSAT:csatView}[st.view]??dayView;
   add(out,view(h,ctx,st,data));
+  // P1C: 옛 '달력' 화면의 하루·7일 목록 = 오늘·주 보기 아래 일정 줄(달 보기는 plan-month 안에).
+  if(st.view==='DAY')add(out,scheduleBox(h,ctx,st,data,st.date,st.date,{addDate:st.date,withDate:false}));
+  if(st.view==='WEEK'){const end=shiftDay(st.monday,6);add(out,scheduleBox(h,ctx,st,data,st.monday,end,{addDate:today>=st.monday&&today<=end?today:st.monday}));}
   root.append(out);
   return out;
 }

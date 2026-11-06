@@ -314,7 +314,8 @@ export async function readXlsx(bytes,opts={}){
   for(const s of list){
     const text=await xml(s.path);if(text===null)continue;
     const t=parseSheet(text,ctx,fmtKinds,shared,wb.date1904);
-    if(t.rows.length)tables.push({...t,name:s.name,hidden:s.hidden});
+    // FIX35 (HUNT35 D9): 1904 날짜 체계는 표에도 적는다 → normalizeRows가 "일반" 서식 날짜 숫자를 1904 기준으로 읽는다(app 배선 없이도).
+    if(t.rows.length)tables.push({...t,name:s.name,hidden:s.hidden,...(wb.date1904?{date1904:true}:{})});
   }
   if(!tables.length)throw fail('STMT_NO_TABLE');
   const shown=tables.findIndex(t=>!t.hidden);

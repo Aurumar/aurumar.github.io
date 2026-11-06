@@ -130,12 +130,14 @@ function reportNodesOf(h,ctx,st,redraw,gone,today){
   if(st.parsed.status!=='OK')out.push(h.el('p',SUGGEST_TEXT[st.parsed.status==='NONE'?'NONE':st.parsed.code],'muted'));
   else if(!st.draft){
     const monday=shiftDay(mondayOf(today),7);
-    out.push(h.el('p','표 '+st.parsed.rows.length+'줄 · 담는 주 '+weekText(monday),'muted small'),h.add(h.el('div',null,'buttons'),h.button('이 제안을 다음 주 계획에 담기',()=>{st.draft=draftFromRows(st.parsed.rows,today);redraw();},'primary')));
+    // P1A: 주간 격자의 "다음 주 채우기" 시트에서 열렸으면(ctx.fillWeek) 초안을 격자에 넘긴다(격자 메모리만, 연산 0 — 저장은 격자의 "저장" 단추). 아니면 예전처럼 날짜별 초안.
+    const load=()=>{const d=draftFromRows(st.parsed.rows,today);if(ctx.fillWeek){ctx.fillWeek({monday:d.monday,days:d.days.map(day=>({date:day.date,items:seedItems(day)}))});return;}st.draft=d;redraw();};
+    out.push(h.el('p','표 '+st.parsed.rows.length+'줄 · 담는 주 '+weekText(monday),'muted small'),h.add(h.el('div',null,'buttons'),h.button('이 제안을 다음 주 계획에 담기',load,'primary')));
   }
   return out;
 }
 
-// ctx = lifeCtx()에 {h:{el,add,button},surface,request(body)=>Promise,planSt,sheet}를 더한 것. st = createSuggestState(). 돌려주는 ready는 목록을 다 읽으면 끝나고 절대 거부되지 않는다.
+// ctx = lifeCtx()에 {h:{el,add,button},surface,request(body)=>Promise,planSt,sheet,fillWeek?}를 더한 것(P1A: 계획 탭 아래가 아니라 주 보기의 "다음 주 채우기" 시트 안에 그린다). st = createSuggestState(). 돌려주는 ready는 목록을 다 읽으면 끝나고 절대 거부되지 않는다.
 export function renderSuggest(root,ctx,st){
   const {h}=ctx,seq=ctx.session?.(),gone=()=>ctx.session?.()!==seq,today=kstDate(ctx.now()),whole=ctx.getWhole();
   if(st.draft&&st.draft.monday<=mondayOf(today))st.draft=null;   // 그 주가 시작되면 "다음 주" 초안이 아니다

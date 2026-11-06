@@ -6,9 +6,9 @@
 // 형식 정본: AUTOPILOT\design\STATE_FORMAT_V1.md (8·9절 범위는 작업 B47 지시서가 정한다).
 import {lifeDefs,entryDone,nearestExam,dDay,shiftDay,kstDate,hhmmFromIso,subjectOfSession} from './life-model.mjs';
 import {achieve,SUBJECT_BY_CODE} from './life-achieve.mjs';
+import {moneyFacts} from './life-money-facts.mjs';
 import {csatTarget} from './life-plan.mjs';
-import {prepare} from './fin-charts.mjs';
-import {budgetStatus} from './fin-plan.mjs';
+import {feelOfFin,feelExport,feelExportText} from './fin-feel.mjs';
 import {STACK_DONE} from './life-flow.mjs';
 import {projectStudy} from './study-projection.mjs';
 import {rhythmSummary} from './hlt-projection.mjs';
@@ -89,12 +89,13 @@ function streakInfo(ach){
 // 이번 주 변화 = 지금 레벨 − 지난 일요일 끝 기준 레벨(같은 계산을 지난 일요일 날짜로 한 번 더 한다).
 const lastSunday=today=>shiftDay(today,-((new Date(today+'T12:00:00Z').getUTCDay()+6)%7)-1);
 const levelInfo=(ach,before)=>AREA_ORDER.map(a=>({area:AREA_TEXT[a],level:ach.levels[a].level,delta:ach.levels[a].level-before.levels[a].level}));
+// M1C: 월말 값·상태·진단은 돈 탭 카드와 같은 계산(fin-feel.mjs)에서 받는다. 첫 주 + 이력 없음이면 카드처럼 월말을 단정하지 않는다(UNKNOWN). 진단 줄에는 단계·비율·날짜만 넣는다.
 function vaultInfo(fin,today){
   if(!fin)return null;
-  const s=budgetStatus(prepare(fin),fin.budgets,today.slice(0,7),today),T=s.total;
+  const {status:s,feel:x}=feelOfFin(fin,today),T=s.total;
   if(!T)return null;
   const known=s.dataState==='KNOWN';
-  return {budget:T.budget.toString(),spent:known?s.actualTotal.toString():null,projected:known&&T.projected!==null?T.projected.toString():null,fast:known&&T.status==='FAST'};
+  return {budget:T.budget.toString(),spent:known?s.actualTotal.toString():null,projected:known&&x.left!==null?(T.budget-x.left).toString():null,fast:x.level==='DANGER'||x.level==='CAUTION',feel:feelExport(x)};
 }
 function examInfo(life,today){
   if(!life)return null;
@@ -139,8 +140,8 @@ function healthSummaryOf(hlt,today){
 export function snapshotFromViews({life=null,study=null,fin=null,hlt=null,now,includeLine=false,includeStudy=false,includeHealth=false,deviceName=DEVICE_NAME}){
   const today=kstDate(now);
   // 지난 일요일 기준 계산을 먼저 하고 오늘 기준 계산을 마지막에 해, achieve의 마지막 결과 보관이 오늘 값으로 남게 한다(화면 계산을 다시 하지 않게).
-  const before=life?guard(()=>achieve({life,study,today:lastSunday(today)})):null;
-  const ach=life?guard(()=>achieve({life,study,today})):null;
+  const before=life?guard(()=>achieve({life,study,fin,today:lastSunday(today),money:moneyFacts(fin,lastSunday(today))})):null;
+  const ach=life?guard(()=>achieve({life,study,fin,today,money:moneyFacts(fin,today)})):null;
   return {today,exportedAt:today+' '+hhmmFromIso(now),device:clean(deviceName),
     habits:guard(()=>habitWindow(life,today)),
     bricks:ach?guard(()=>brickWeeks(ach,study)):null,
@@ -188,9 +189,10 @@ function sectionVault(s){
   const budget=BigInt(v.budget);
   if(!moneyOK(v.spent))return ['- 이번 달 예산: '+budget+'원 / 쓴 돈: UNKNOWN / 남은 돈: UNKNOWN','- 이대로면 월말: UNKNOWN'];
   const spent=BigInt(v.spent),left=budget-spent,line1='- 이번 달 예산: '+budget+'원 / 쓴 돈: '+spent+'원 / 남은 돈: '+left+'원';   // 남은 돈은 항상 예산 − 쓴 돈에서 다시 계산한다
-  if(!moneyOK(v.projected))return [line1,'- 이대로면 월말: UNKNOWN'];
+  const said=feelExportText(v.feel),diagnosis=said?['- 돈 진단: '+said]:[];   // 진단이 없으면 줄도 없다
+  if(!moneyOK(v.projected))return [line1,'- 이대로면 월말: UNKNOWN',...diagnosis];
   const projected=BigInt(v.projected),status=spent>budget?'초과 중':projected>budget||v.fast===true?'빠듯':'여유';
-  return [line1,'- 이대로면 월말: 남은 돈 '+(budget-projected)+'원 (상태: '+status+')'];
+  return [line1,'- 이대로면 월말: 남은 돈 '+(budget-projected)+'원 (상태: '+status+')',...diagnosis];
 }
 function sectionExams(s){
   const e=s.exams;

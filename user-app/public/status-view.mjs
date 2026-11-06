@@ -178,10 +178,19 @@ function door(h,word,sub,onClick){
   b.type='button';b.dataset.navOnly='1';if(onClick)b.addEventListener('click',onClick);else b.disabled=true;
   return b;
 }
-function towerSub(whole,date){
-  try{const ach=achieve({life:whole.life??null,study:whole.study??null,today:date}),bricks=ach.weeks.reduce((n,w)=>n+w.bricks,0);return '나의 집 · 벽돌 '+bricks.toLocaleString('en-US')+'장';}
+function towerSub(whole,date,money){
+  try{const ach=achieve({life:whole.life??null,study:whole.study??null,today:date,money}),bricks=ach.weeks.reduce((n,w)=>n+w.bricks,0);return '나의 집 · 벽돌 '+bricks.toLocaleString('en-US')+'장';}
   catch{return '나의 집';}
 }
+// Q1C: 칭호 칩. 돈 업적 칭호도 오늘·탑과 같게 보이도록 같은 입력(돈 사실 포함)으로 계산한다. 앱이 ctx.achvTitle을 넘길 때만 돈다. 칭호 때문에 상태 화면이 깨지지 않게 실패하면 칸을 비운다.
+function titleRow({el,add},ctx,whole,date,money){
+  if(!ctx.achvTitle)return null;
+  try{
+    const life=whole.life??null,ach=achieve({life,study:whole.study??null,fin:whole.fin??null,today:date,money}),t=ctx.achvTitle({doc:ctx.document??globalThis.document,ach,life,money,storage:ctx.storage});
+    return t?add(el('div',null,'st-title'),t.node):null;
+  }catch{return null;}
+}
+function moneyOf(ctx,date){try{return ctx.money?.(date)??null;}catch{return null;}}
 function universeSub(whole,nowIso){
   try{return '지식 우주 · 별 '+universeData(whole.study??null,nowIso).total.toLocaleString('en-US')+'개';}
   catch{return '지식 우주';}
@@ -211,7 +220,8 @@ export function renderStatusView(root,ctx){
   figure=figureOf(art);
   stage=add(el('div',null,fxClass(today.fx.level,useArt)),back,figure,front);
   const badgeToday=el('span',todayBadge(today.fx),'st-badge st-badge-today');
-  const avatar=add(el('section',null,'panel st-avatar'),stage,el('span',proj.stage.name,'st-badge st-badge-stage'),badgeToday,useArt?null:el('p','자리표시 그림입니다 · 등급 그림은 준비 중이에요','muted small st-art-note'),progressBlock(h,prog,date,gallery.row));
+  const money=moneyOf(ctx,date);
+  const avatar=add(el('section',null,'panel st-avatar'),titleRow(h,ctx,whole,date,money),stage,el('span',proj.stage.name,'st-badge st-badge-stage'),badgeToday,useArt?null:el('p','자리표시 그림입니다 · 등급 그림은 준비 중이에요','muted small st-art-note'),progressBlock(h,prog,date,gallery.row));
 
   // 2) 오늘 시간: 링·오늘 누적·다음 효과까지 (타이머가 돌면 "지금 - 시작"으로 다시 계산)
   const ringSlot=add(el('div',null,'st-ring-slot'),todayRing(h,today.minutes));
@@ -225,7 +235,7 @@ export function renderStatusView(root,ctx){
   const todayCard=add(el('section',null,'panel st-today'),ringSlot,add(el('div',null,'st-today-text'),todayLine,nextLine,noteLine,focusLine),go);
 
   // 3) 금 장신구·전체 단계  4) 탑·우주 입구
-  const doors=add(el('div',null,'st-doors'),door(h,'탑',towerSub(whole,date),ctx.openTower),door(h,'우주',universeSub(whole,nowIso),ctx.openUniverse));
+  const doors=add(el('div',null,'st-doors'),door(h,'탑',towerSub(whole,date,money),ctx.openTower),door(h,'우주',universeSub(whole,nowIso),ctx.openUniverse));
   add(out,add(el('div',null,'st-body'),avatar,add(el('div',null,'st-side'),todayCard,ladderCard(h,proj),doors)));
 
   const paint=()=>{

@@ -3,7 +3,8 @@
 // 지원: CSV/TSV(UTF-8·EUC-KR/CP949·UTF-16 BOM), HTML 표형 .xls, xlsx(B64A2: readStatementAsync + fin-xlsx.mjs). 진짜 옛 엑셀(BIFF)은 "xlsx 또는 CSV로 저장해서 넣어 주세요" 안내.
 // 모든 칸은 글자로만 다룬다. 수식(= + - @로 시작)은 평가하지 않고 표지만 붙인다. 금액은 원 단위 정수 문자열(부호 포함), 계산은 BigInt.
 
-export const STMT_LIMITS=Object.freeze({fileBytes:20_000_000,rows:20000,cell:200,headerScan:20,preview:30,merchant:120});
+// FIX35 (HUNT35 D4·D5·D6): cols = CSV·HTML 표의 칸 상한(xlsx와 같은 256, 넘는 칸은 버리고 dropped로 셈), quoteLines = 따옴표 안 줄바꿈 상한, ms = CSV·HTML 읽기 시간 상한.
+export const STMT_LIMITS=Object.freeze({fileBytes:20_000_000,rows:20000,cell:200,headerScan:20,preview:30,merchant:120,cols:256,quoteLines:20,ms:20000});
 export const STMT_ERROR_TEXT=Object.freeze({
   STMT_EMPTY:'빈 파일입니다. 카드사에서 받은 명세서 파일을 고르세요.',
   STMT_TOO_BIG:'파일이 너무 큽니다(20MB 초과). 기간을 나눠 내려받으세요.',
@@ -14,6 +15,9 @@ export const STMT_ERROR_TEXT=Object.freeze({
   STMT_NO_TABLE:'표를 찾지 못했습니다. 카드사 명세서(이용내역) 파일인지 확인하세요.',
   STMT_NO_HEADER:'머리글 행(날짜·가맹점·금액)을 찾지 못했습니다. 아래 표에서 칸을 직접 고르세요.',
   STMT_COLUMNS:'날짜·가맹점·금액 칸을 서로 다른 칸으로 골라야 합니다.',
+  STMT_UNCLOSED_QUOTE:'CSV의 따옴표(")가 짝이 맞지 않아 뒤 행이 한 칸으로 합쳐집니다. 이 파일은 읽지 않았습니다 · 엑셀에서 열어 "다른 이름으로 저장 → CSV(UTF-8)"로 다시 저장해 주세요.',
+  STMT_UNCLOSED_HTML:'HTML 명세서의 주석·스타일·스크립트가 닫히지 않아 뒤 거래가 빠집니다. 이 파일은 읽지 않았습니다 · 엑셀에서 열어 "다른 이름으로 저장 → CSV(UTF-8)"로 다시 저장해 주세요.',
+  STMT_TIMEOUT:'명세서를 읽는 데 너무 오래 걸려 멈췄습니다. 기간을 나눠 내려받거나 xlsx·CSV(UTF-8)로 저장해서 넣어 주세요.',
 });
 export const stmtErrorText=code=>typeof code==='string'&&Object.hasOwn(STMT_ERROR_TEXT,code)?STMT_ERROR_TEXT[code]:null;
 const fail=code=>Object.assign(new Error(code),{code,finLocal:true});
@@ -53,18 +57,38 @@ export function detectDelimiter(text){
   }
   return best;
 }
-export function parseCsv(text,delimiter=detectDelimiter(text)){
-  const table={rows:[],cut:new Set()};let row=[],cell='',q=false,i=0;
-  const endCell=()=>{row.push(clip(table,cell,table.rows.length,row.length));cell='';};
-  const endRow=()=>{endCell();if(row.some(c=>c!==''))table.rows.push(row);else if(table.rows.length)table.rows.push(row);row=[];if(table.rows.length>STMT_LIMITS.rows)throw fail('STMT_TOO_MANY_ROWS');};
+// FIX35 (HUNT35 D5): CSV·HTML 읽기 시간 상한(xlsx의 STMT_XLSX_TIMEOUT과 같은 20초). 이 모듈은 시계를 쓰지 않는다: 시계는 부르는 쪽이 opts.now로 넣는다(앱 배선은 FIX35 보고 참고 · 아직 없음).
+// opts.now가 없으면 상한 없음(예전과 같음). opts.ms는 시험용.
+const deadlineOf=opts=>{if(typeof opts?.now!=='function')return ()=>{};const now=opts.now,end=now()+(Number.isFinite(opts.ms)?opts.ms:STMT_LIMITS.ms);return ()=>{if(now()>end)throw fail('STMT_TIMEOUT');};};
+// FIX35 (HUNT35 D4): 따옴표가 파일 끝까지 닫히지 않거나 따옴표 안 줄바꿈이 quoteLines를 넘으면 STMT_UNCLOSED_QUOTE로 거절한다(뒤 거래·합계 행을 한 칸으로 조용히 삼키지 않게).
+// D6: 한 행에서 cols(256)를 넘는 칸은 버리고 table.dropped로 센다.
+// FIX37A (HUNT37 F1): 짝 없는 따옴표가 여러 개면 닫는 따옴표가 다른 행에 걸려 사이 행을 삼킨다. 셋 다 거절한다: ① 닫는 따옴표 뒤가 구분자·줄끝이 아님,
+// ② 줄바꿈과 구분자가 함께 든 칸(다른 행의 조각), ③ 줄바꿈이 든 칸이 있는 행이 표 폭보다 넓어짐. 구분자 없는 여러 줄 칸(가맹점 2줄 등)은 그대로 읽는다.
+// 표 폭은 앞선 행의 가장 넓은 값이다. 폭이 3칸(날짜·가맹점·금액)보다 좁으면 표 앞 안내문일 수 있어 ②③을 보지 않는다(안내문 안의 줄바꿈, 안내문 뒤 여러 줄 머리글).
+export function parseCsv(text,delimiter=detectDelimiter(text),opts={}){
+  const table={rows:[],cut:new Set(),dropped:0},tick=deadlineOf(opts);let row=[],cell='',q=false,qLines=0,qDelims=0,rowBreak=false,wide=0,i=0;
+  const endCell=()=>{if(row.length<STMT_LIMITS.cols)row.push(clip(table,cell,table.rows.length,row.length));else table.dropped++;cell='';};
+  const endRow=()=>{endCell();if(rowBreak&&wide>=3&&row.length>wide)throw fail('STMT_UNCLOSED_QUOTE');rowBreak=false;wide=Math.max(wide,row.length);if(row.some(c=>c!==''))table.rows.push(row);else if(table.rows.length)table.rows.push(row);row=[];if(table.rows.length>STMT_LIMITS.rows)throw fail('STMT_TOO_MANY_ROWS');};
   for(;i<text.length;i++){
+    if((i&0xFFFF)===0)tick();
     const ch=text[i];
-    if(q){if(ch==='"'){if(text[i+1]==='"'){cell+='"';i++;}else q=false;}else cell+=ch;continue;}
-    if(ch==='"'&&cell==='')q=true;
+    if(q){
+      if(ch==='"'){
+        if(text[i+1]==='"'){cell+='"';i++;continue;}
+        q=false;
+        let j=i+1;while(text[j]===' '||text[j]==='\t'&&delimiter!=='\t')j++;
+        if(j<text.length&&text[j]!==delimiter&&text[j]!=='\n'&&text[j]!=='\r')throw fail('STMT_UNCLOSED_QUOTE');
+        if(qLines){if(wide>=3&&qDelims)throw fail('STMT_UNCLOSED_QUOTE');rowBreak=true;}
+      }
+      else{if(ch===delimiter)qDelims++;if((ch==='\n'||ch==='\r'&&text[i+1]!=='\n')&&++qLines>STMT_LIMITS.quoteLines)throw fail('STMT_UNCLOSED_QUOTE');cell+=ch;}
+      continue;
+    }
+    if(ch==='"'&&cell===''){q=true;qLines=0;qDelims=0;}
     else if(ch===delimiter)endCell();
     else if(ch==='\r'||ch==='\n'){if(ch==='\r'&&text[i+1]==='\n')i++;endRow();}
     else cell+=ch;
   }
+  if(q)throw fail('STMT_UNCLOSED_QUOTE');
   if(cell!==''||row.length)endRow();
   while(table.rows.length&&table.rows.at(-1).every(c=>c===''))table.rows.pop();
   return table;
@@ -78,48 +102,59 @@ export function decodeEntities(s){
     return Object.hasOwn(ENTITY,e.toLowerCase())?ENTITY[e.toLowerCase()]:m;
   });
 }
-export function parseHtmlTables(text){
-  const tables=[],stack=[];let i=0;
+// FIX35 (HUNT35 D5): <script>·<style>의 닫는 태그는 대소문자 무시 정규식(lastIndex)으로 찾는다(태그마다 문서 전체를 소문자로 바꾸지 않음 → 선형 시간). 시간 상한 opts.ms.
+// D6: 한 행에서 cols(256)를 넘는 칸(colspan으로 늘어난 칸 포함)은 버리고 표의 dropped로 센다.
+// FIX37A (HUNT37 F2): 닫히지 않은 <!--·<script>·<style> 뒤에 표 태그가 남아 있으면 거래를 삼키므로 STMT_UNCLOSED_HTML로 거절한다(남은 것이 없으면 삼킨 것도 없어 그대로 끝낸다).
+// F3: 태그 이름으로 시작하지 않는 "<"는 ">"를 찾지 않고 글자로 넘긴다("<"마다 끝까지 찾으면 제곱 시간).
+export function parseHtmlTables(text,opts={}){
+  const tables=[],stack=[],tick=deadlineOf(opts),endTag={script:/<\/script/gi,style:/<\/style/gi},COLS=STMT_LIMITS.cols,tagStart=/\/?[a-zA-Z]/y;let i=0,turns=0;
   const cur=()=>stack.at(-1)??null;
+  const unclosedEnd=from=>{if(/<\/?(?:table|tr|td|th)\b/i.test(text.slice(from)))throw fail('STMT_UNCLOSED_HTML');return text.length;};
   // rowspan: 위 행에서 내려오는 칸은 빈칸으로 채워 아래 행의 칸 번호가 밀리지 않게 한다(2줄 머리글의 하위 머리글).
   const fillSpans=t=>{while(t.pending.has(t.row.length)){const c=t.row.length,n=t.pending.get(c);t.row.push('');if(n<=1)t.pending.delete(c);else t.pending.set(c,n-1);}};
-  const closeCell=t=>{if(t?.cell!==null&&t?.cell!==undefined){if(!t.row)t.row=[];const v=decodeEntities(t.cell).replace(/[\s ]+/g,' ').trim(),start=t.row.length;t.row.push(clip(t,v,t.rows.length,start));for(let k=1;k<t.span;k++)t.row.push('');if(t.rspan>1)for(let k=start;k<start+t.span;k++)t.pending.set(k,t.rspan-1);t.cell=null;}};
+  const closeCell=t=>{if(t?.cell!==null&&t?.cell!==undefined){if(!t.row)t.row=[];const v=decodeEntities(t.cell).replace(/[\s ]+/g,' ').trim(),start=t.row.length;
+    if(start<COLS){t.row.push(clip(t,v,t.rows.length,start));const end=Math.min(start+t.span,COLS);while(t.row.length<end)t.row.push('');t.dropped+=start+t.span-end;if(t.rspan>1)for(let k=start;k<end;k++)t.pending.set(k,t.rspan-1);}
+    else t.dropped+=t.span;
+    t.cell=null;}};
   const closeRow=t=>{if(!t)return;closeCell(t);if(t.row){fillSpans(t);t.rows.push(t.row);if(t.rows.length>STMT_LIMITS.rows)throw fail('STMT_TOO_MANY_ROWS');}t.row=null;};
   while(i<text.length){
+    if((++turns&0x3FF)===0)tick();
     const lt=text.indexOf('<',i);
     const chunk=text.slice(i,lt<0?text.length:lt);if(cur()&&cur().cell!==null)cur().cell+=chunk;
     if(lt<0)break;
-    if(text.startsWith('<!--',lt)){const e=text.indexOf('-->',lt+4);i=e<0?text.length:e+3;continue;}
+    if(text.startsWith('<!--',lt)){const e=text.indexOf('-->',lt+4);i=e<0?unclosedEnd(lt+4):e+3;continue;}
+    tagStart.lastIndex=lt+1;
+    if(!tagStart.test(text)){if(cur()&&cur().cell!==null)cur().cell+='<';i=lt+1;continue;}
     const gt=text.indexOf('>',lt);if(gt<0)break;
     const tag=text.slice(lt+1,gt),m=/^(\/?)([a-zA-Z][a-zA-Z0-9]*)/.exec(tag);i=gt+1;
-    if(!m){if(cur()&&cur().cell!==null)cur().cell+='<';i=lt+1;continue;}
     const close=m[1]==='/',name=m[2].toLowerCase();
-    if(!close&&(name==='script'||name==='style')){const e=text.toLowerCase().indexOf('</'+name,i);i=e<0?text.length:text.indexOf('>',e)+1||text.length;continue;}
-    if(name==='table'){if(close){const t=stack.pop();if(t){closeRow(t);tables.push({rows:t.rows,cut:t.cut});}}else stack.push({rows:[],row:null,cell:null,span:1,rspan:1,pending:new Map(),cut:new Set()});continue;}
+    if(!close&&(name==='script'||name==='style')){const re=endTag[name];re.lastIndex=i;const e=re.exec(text)?.index??-1;i=e<0?unclosedEnd(i):text.indexOf('>',e)+1||text.length;continue;}
+    if(name==='table'){if(close){const t=stack.pop();if(t){closeRow(t);tables.push({rows:t.rows,cut:t.cut,dropped:t.dropped});}}else stack.push({rows:[],row:null,cell:null,span:1,rspan:1,pending:new Map(),cut:new Set(),dropped:0});continue;}
     const t=cur();if(!t)continue;
     if(name==='tr'){closeRow(t);if(!close)t.row=[];}
     else if(name==='td'||name==='th'){closeCell(t);if(!close){if(!t.row)t.row=[];fillSpans(t);const sp=/colspan\s*=\s*["']?(\d{1,3})/i.exec(tag),rs=/rowspan\s*=\s*["']?(\d{1,3})/i.exec(tag);t.span=sp?Math.max(1,Math.min(50,Number(sp[1]))):1;t.rspan=rs?Math.max(1,Math.min(200,Number(rs[1]))):1;t.cell='';}}
     else if(name==='br'&&t.cell!==null)t.cell+=' ';
   }
-  while(stack.length){const t=stack.pop();closeRow(t);tables.push({rows:t.rows,cut:t.cut});}
-  return tables.map(t=>({rows:t.rows.filter(r=>r.some(c=>c!=='')),cut:t.cut})).filter(t=>t.rows.length);
+  while(stack.length){const t=stack.pop();closeRow(t);tables.push({rows:t.rows,cut:t.cut,dropped:t.dropped});}
+  return tables.map(t=>({rows:t.rows.filter(r=>r.some(c=>c!=='')),cut:t.cut,dropped:t.dropped})).filter(t=>t.rows.length);
 }
 
 // 파일 → 표 목록. 표가 여럿이면 행이 가장 많은 표가 기본(tableIndex).
-export function readStatement(bytes){
+export function readStatement(bytes,opts={}){
   const kind=sniffStatement(bytes);
   if(kind==='EMPTY')throw fail('STMT_EMPTY');if(kind==='TOO_BIG')throw fail('STMT_TOO_BIG');
   if(kind==='BIFF')throw fail('STMT_XLS_BINARY');if(kind==='XLSX')throw fail('STMT_XLSX_LATER');
   const {text,encoding}=decodeStatement(bytes);
-  const tables=kind==='HTML'?parseHtmlTables(text):[parseCsv(text)].filter(t=>t.rows.length);
+  const tables=kind==='HTML'?parseHtmlTables(text,opts):[parseCsv(text,undefined,opts)].filter(t=>t.rows.length);
   if(!tables.length)throw fail('STMT_NO_TABLE');
   const tableIndex=tables.reduce((best,t,i)=>t.rows.length>tables[best].rows.length?i:best,0);
   return {kind,encoding,tables,tableIndex};
 }
 // B64A2: zip(PK)과 OLE2(암호 걸린 xlsx일 수 있음)는 넘겨받은 readXlsx(fin-xlsx.mjs)가 읽거나 거절한다. 압축 풀기가 비동기라 따로 두고, 이 모듈은 import 없이 둔다.
-export async function readStatementAsync(bytes,readXlsx){
+// FIX35: opts(시계·시간 상한)는 CSV·HTML 경로에 넘긴다(xlsx는 fin-xlsx가 자기 상한을 쓴다).
+export async function readStatementAsync(bytes,readXlsx,opts={}){
   const b=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes??[]);
-  return typeof readXlsx==='function'&&(b[0]===0x50&&b[1]===0x4B||sniffStatement(b)==='BIFF')?readXlsx(b):readStatement(b);
+  return typeof readXlsx==='function'&&(b[0]===0x50&&b[1]===0x4B||sniffStatement(b)==='BIFF')?readXlsx(b):readStatement(b,opts);
 }
 
 // ---------- 4. 머리글 찾기(2줄 머리글 합치기)·칸 추측 ----------
@@ -179,15 +214,29 @@ export function columnsProblem(cols){
 
 // ---------- 5. 칸 해석 ----------
 const okDate=(y,m,d)=>{const s=String(y).padStart(4,'0')+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');const t=new Date(s+'T12:00:00Z');return Number.isFinite(t.getTime())&&t.toISOString().slice(0,10)===s?s:null;};
-// 결과: {date, noYear:{month,day}} 중 하나 또는 null. 시각이 붙어 있으면 날짜만 본다. 엑셀 일련번호(1900 체계)도 받는다.
-export function parseDateCell(v){
+// 결과: {date, noYear:{month,day}} 중 하나 또는 null. 시각이 붙어 있으면 날짜만 본다. 엑셀 일련번호(1900 체계, opts.date1904면 1904 체계)도 받는다.
+// FIX35 (HUNT35 D8): 두 자리 연도(aa/bb/cc)는 YY/MM/DD가 기본이고, MM/DD/YY·DD/MM/YY로도 올바른 날짜가 되면 alts에 함께 돌려준다(고르기는 normalizeRows가 명세서 기간으로).
+// YY/MM/DD로는 날짜가 안 되고 다른 순서로만 되면 {date:null, alts}다.
+// D9: 1904 체계 일련번호 n = 1900 체계 n+1462.
+export function parseDateCell(v,{date1904=false}={}){
   const s=String(v??'').trim().replace(/\s+\d{1,2}:\d{2}(:\d{2})?$/,'');if(!s)return null;
   let m=/^(\d{4})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})일?\.?$/.exec(s);if(m){const d=okDate(m[1],m[2],m[3]);return d?{date:d}:null;}
   m=/^(\d{4})(\d{2})(\d{2})$/.exec(s);if(m){const d=okDate(m[1],m[2],m[3]);return d?{date:d}:null;}
-  m=/^(\d{2})[.\-/](\d{1,2})[.\-/](\d{1,2})$/.exec(s);if(m){const d=okDate(2000+Number(m[1]),m[2],m[3]);return d?{date:d}:null;}
+  m=/^(\d{2})[.\-/](\d{1,2})[.\-/](\d{1,2})$/.exec(s);if(m){
+    const d=okDate(2000+Number(m[1]),m[2],m[3]),alts=[...new Set([okDate(2000+Number(m[3]),m[1],m[2]),okDate(2000+Number(m[3]),m[2],m[1])])].filter(x=>x&&x!==d);
+    return d||alts.length?alts.length?{date:d,alts}:{date:d}:null;
+  }
   m=/^(\d{1,2})[.\-/월]\s*(\d{1,2})일?$/.exec(s);if(m){const mo=Number(m[1]),da=Number(m[2]);return mo>=1&&mo<=12&&da>=1&&da<=31&&okDate(2024,mo,da)?{noYear:{month:mo,day:da}}:null;}
-  m=/^(\d{5})(\.0+)?$/.exec(s);if(m){const n=Number(m[1]);if(n>=20000&&n<=80000){const t=new Date(Date.UTC(1899,11,30)+n*86400000);return {date:t.toISOString().slice(0,10)};}}
+  m=/^(\d{5})(\.0+)?$/.exec(s);if(m){const n=Number(m[1])+(date1904?1462:0);if(n>=20000&&n<=80000){const t=new Date(Date.UTC(1899,11,30)+n*86400000);return {date:t.toISOString().slice(0,10)};}}
   return null;
+}
+// FIX35 (HUNT35 D8): 두 자리 연도 고르기. YY/MM/DD가 기간 안(또는 기간을 모름)이면 그대로. 아니면 다른 순서 중 기간 안의 날짜를 쓰고 DATE_AMBIGUOUS(확인 필요, 기본 체크 안 함).
+// 기간 안의 것이 없으면 YY/MM/DD(되면), 안 되면 다른 순서의 첫 날짜. FIX37A (HUNT37 F4): 기간 밖이어도 다른 해석이 있으면 모두 DATE_AMBIGUOUS다(옛 명세서의 05/03/26).
+export function pickTwoDigitDate(parsed,period){
+  const inPeriod=d=>!!d&&(!period?.from||d>=period.from)&&(!period?.to||d<=period.to);
+  if(!parsed?.alts?.length)return parsed?.date?{date:parsed.date,ambiguous:false}:null;
+  if(parsed.date&&(inPeriod(parsed.date)||!period?.from&&!period?.to))return {date:parsed.date,ambiguous:false};
+  return {date:parsed.alts.find(inPeriod)??parsed.date??parsed.alts[0],ambiguous:true};
 }
 // 연도 없는 날짜(MM/DD): 명세서 기간의 끝 날짜 해를 붙이고, 끝보다 뒤면 한 해 앞. 기간보다 앞이면 "확인 필요"(할부 원거래는 예외).
 export function resolveYear(noYear,period){
@@ -199,7 +248,8 @@ export function resolveYear(noYear,period){
 // 금액: 쉼표·공백·원·₩ 제거, (1,000)은 음수, 소수는 해석 실패(null). 결과는 부호 있는 원 단위 정수 문자열.
 export function parseWonCell(v){
   let s=String(v??'').replace(/[\s, 원₩￦]/g,'');if(!s)return null;
-  let neg=false;if(/^\(.*\)$/.test(s)){neg=true;s=s.slice(1,-1);}
+  // FIX35 (HUNT35 D7): 괄호와 부호가 함께 있으면("(-1,000)") 이중 부호라 뜻이 모호하다 → 해석 실패(null).
+  let neg=false;if(/^\(.*\)$/.test(s)){neg=true;s=s.slice(1,-1);if(/^[-−+]/.test(s))return null;}
   if(/^[-−]/.test(s)){neg=!neg;s=s.slice(1);}else if(s[0]==='+')s=s.slice(1);
   if(!/^\d{1,14}$/.test(s))return null;
   const n=BigInt(s);return (neg&&n>0n?'-':'')+n.toString();
@@ -261,7 +311,7 @@ export function normalizeRows(table,opts){
   for(let r=opts.dataStart??0;r<table.rows.length;r++){
     const row=table.rows[r],texts=row.map(x=>String(x??'').trim()),first=normHeader(texts.find(Boolean)??'');
     if(!texts.some(Boolean)){out.skipped.blank++;continue;}
-    const dateText=cell(row,'date'),parsedDate=parseDateCell(dateText);
+    const dateText=cell(row,'date'),parsedDate=parseDateCell(dateText,{date1904:(opts.date1904??table.date1904)===true});
     if(!parsedDate&&(TOTAL_ROW.test(first)||texts.some(t=>TOTAL_ROW.test(normHeader(t))&&!SUBTOTAL_ROW.test(t)))){
       out.skipped.total++;for(const t of texts){const w=parseWonCell(t);if(w!==null&&!TOTAL_ROW.test(normHeader(t)))out.controls.push(w);}continue;
     }
@@ -282,7 +332,8 @@ export function normalizeRows(table,opts){
     // 날짜
     const inst=parseInstallmentCell(cell(row,'installments'),cell(row,'round'));item.months=inst.months;item.round=inst.round;item.installUnknown=inst.unknown;if(inst.unknown)item.flags.push('INSTALL_UNKNOWN');
     // 날짜(연도 없으면 명세서 기간으로 보정. 기간보다 앞이면 "연도 확인" 표지, 단 할부 원거래는 몇 달 전 날짜가 정상)
-    if(parsedDate?.date)item.date=parsedDate.date;
+    // FIX35 (HUNT35 D8): 연도 있는 날짜도 기간보다 앞이면 EARLY. 두 자리 연도 순서가 모호하면 DATE_AMBIGUOUS(대조에서 기본 체크 안 함).
+    if(parsedDate?.date||parsedDate?.alts){const p=pickTwoDigitDate(parsedDate,opts.period);item.date=p.date;if(p.ambiguous)item.flags.push('DATE_AMBIGUOUS');if(opts.period?.from&&p.date<opts.period.from&&!((inst.months??0)>=2))item.flags.push('EARLY');}
     else if(parsedDate?.noYear){const y=resolveYear(parsedDate.noYear,opts.period);if(y){item.date=y.date;item.flags.push('YEAR_GUESSED');if(y.early&&!((inst.months??0)>=2))item.flags.push('EARLY');}else item.problem='YEAR';}
     else item.problem='DATE';
     // 외화·수수료
@@ -321,7 +372,8 @@ export function controlCheck(norm){
 }
 
 // ---------- 6. 칸 짝 기억(이 기기 localStorage, 동기화 기록 아님) ----------
-// 키 lb.fin.stmt.map.v1 = {[headerSig]: {columns, cancelValues, negativeIsCancel, installAmountIsTotal, accountId, cardAccounts, savedAt}}.
+// 키 lb.fin.stmt.map.v1 = {[headerSig]: {columns, cancelValues, negativeIsCancel, installAmountIsTotal, accountId, cardAccounts, accountSig, savedAt}}.
+// FIX35: accountSig가 없는 옛 기억(빈칸)은 계정을 미리 고르지 않는다(rememberedAccount).
 // headerSig = 정규화한 머리글을 '|'로 이은 글자의 SHA-256 앞 16자. 칸 이름·순서가 바뀌면 서명이 달라져 다시 고르기가 된다.
 // 행 내용·금액·가맹점은 넣지 않는다. 저장소가 막혀 있으면 이번 실행 동안만 메모리에 둔다.
 export const MAP_KEY='lb.fin.stmt.map.v1',MAP_MAX=30;
@@ -329,6 +381,12 @@ export async function headerSig(names){
   const d=await globalThis.crypto.subtle.digest('SHA-256',new TextEncoder().encode(names.map(normHeader).join('|')));
   return Array.from(new Uint8Array(d),b=>b.toString(16).padStart(2,'0')).join('').slice(0,16);
 }
+// FIX35 (HUNT35 D3): 머리글이 같은 다른 카드사 파일에 계정이 번지지 않게, 기억한 계정은 "파일 이름 모양 + 카드 구분" 서명(accountSig)이 같을 때만 미리 고른다.
+// 파일 이름 모양 = 확장자를 빼고 숫자를 #으로 바꾼 것(기간만 다른 같은 카드사 파일은 같음). 저장소에는 SHA-256 앞 16자만 둔다(파일 이름 글자는 두지 않음).
+export const fileNameShape=name=>String(name??'').normalize('NFC').toLowerCase().replace(/\.[a-z0-9]{1,5}$/,'').replace(/\d+/g,'#').replace(/[\s_\-()[\].]+/g,' ').trim();
+export const accountSig=(fileName,cards=[])=>headerSig(['file:'+fileNameShape(fileName),...[...cards].map(String).sort()]);
+// 기억(get 결과)에서 미리 고를 계정: 서명이 같으면 {accountId, cardAccounts}, 아니면 null(계정은 다시 고른다). 칸 짝·취소 값은 그대로 쓴다.
+export const rememberedAccount=(mem,sig)=>mem&&mem.accountSig&&mem.accountSig===sig?{accountId:mem.accountId,cardAccounts:{...mem.cardAccounts}}:null;
 export async function bytesSha256(bytes){
   const d=await globalThis.crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(d),b=>b.toString(16).padStart(2,'0')).join('');
 }
@@ -339,7 +397,8 @@ function cleanEntry(e,width=Infinity){
   if(columnsProblem(columns))return null;
   const cardAccounts={};for(const [k,v] of Object.entries(e.cardAccounts??{}).slice(0,20))if(typeof k==='string'&&k.length<=20&&(v===''||idOK(v)))cardAccounts[k]=v;
   return {columns,cancelValues:(Array.isArray(e.cancelValues)?e.cancelValues:[]).filter(v=>typeof v==='string'&&v.length<=20).slice(0,10),
-    negativeIsCancel:e.negativeIsCancel===true,installAmountIsTotal:e.installAmountIsTotal===true,accountId:idOK(e.accountId)?e.accountId:'',cardAccounts,savedAt:typeof e.savedAt==='string'?e.savedAt.slice(0,24):''};
+    negativeIsCancel:e.negativeIsCancel===true,installAmountIsTotal:e.installAmountIsTotal===true,accountId:idOK(e.accountId)?e.accountId:'',cardAccounts,
+    ...(typeof e.accountSig==='string'&&/^[a-f0-9]{16}$/.test(e.accountSig)?{accountSig:e.accountSig}:{}),savedAt:typeof e.savedAt==='string'?e.savedAt.slice(0,24):''};
 }
 export function createMappingStore(storage){
   const memory=new Map();let persisted=true;

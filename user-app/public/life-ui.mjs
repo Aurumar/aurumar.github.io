@@ -5,8 +5,11 @@
 import {chip,toggle,sheet,xpBar,ring} from './ui-kit.mjs';
 import {LifeFlow,createLifePorts,saveDefinitions,collectRows,stackDay,STACK_DONE} from './life-flow.mjs';
 import {achieve,previewAchieve,habitXpToday,multText} from './life-achieve.mjs';
+import {todayQuestLine} from './life-quest.mjs';
 import {timerElapsedMin,timerRecordMin,liveTick} from './study-stage.mjs';
-import {OVERLAP_NOTICE} from './study-rebase.mjs';
+import {OVERLAP_NOTICE,TIMER_OVERLAP_NOTICE} from './study-rebase.mjs';
+import {renderLive,liveRecordMin,liveElapsedMin,liveSettings,REST_SPLIT_MS} from './study-live.mjs';
+import {dayRoomCard,CELEBRATED_KEY} from './study-room.mjs';
 import {HABIT_KINDS,HABIT_AREAS,DAY_TYPES,MAX_NAME,MAX_NOTE,SUBJECT_COLOR_KEYS,HABIT_HINTS,
   kstDate,shiftDay,dateKeyOK,dayNumber,hhmmFromIso,timeOK,targetTimeOK,lifeIdOK,
   brickOf,sumBricks,entryDone,nearestExam,lifeDefs,weekCount,studyCodeOf,sessionIdFor,subjectOfSession,emptyDay} from './life-model.mjs';
@@ -24,6 +27,7 @@ export const LIFE_ERROR_TEXT=Object.freeze({
   MD_NOT_WRITE_READY:'지금은 서버에 쌓을 수 없습니다. 입력은 이 기기에 남아 있습니다.',
   ABORTED:'서버가 이 쌓기를 받지 않았습니다(기록되지 않음) · 입력은 그대로 있습니다. 다시 쌓을 수 있습니다.',
   INVALID_TIMER_END:'끝난 시각은 시작 뒤 24시간 안이고 지금보다 앞이어야 합니다.',
+  INVALID_TIMER_END_REST:'끝난 시각은 휴식을 시작한 시각보다 늦을 수 없습니다.',
 });
 export const lifeErrorText=code=>LIFE_ERROR_TEXT[code]??(code?'쌓지 못했습니다 ('+code+') · 입력은 그대로 있습니다.':'쌓지 못했습니다.');
 export const LIFE_NOTICE_TEXT=Object.freeze({
@@ -32,13 +36,14 @@ export const LIFE_NOTICE_TEXT=Object.freeze({
   REBASE_VALUE_OVERWRITTEN:'같은 습관을 양쪽에서 고쳤습니다 · 내 값을 썼고 상대 값은 이력에 남아 있습니다.',
   REBASE_SCALAR_OVERWRITTEN:'기분·한 줄·하루 종류를 양쪽에서 고쳤습니다 · 내 값을 썼고 상대 값은 이력에 남아 있습니다.',
   [OVERLAP_NOTICE]:'PC 측정으로 담은 시간이 타이머 시간과 겹칩니다 · 같은 시간이 두 번 세어질 수 있어요(자동으로 지우지 않았어요) · 공부 화면에서 한쪽을 지울 수 있어요.',
+  [TIMER_OVERLAP_NOTICE]:'두 기기의 타이머 시간이 서로 겹칩니다 · 같은 시간이 두 번 세어질 수 있어요(자동으로 지우지 않았어요) · 공부 화면에서 한쪽을 지울 수 있어요.',
 });
 const STATUS_TEXT=Object.freeze({
   CONFIRMED:'저장 및 동기화 확인됨 · 쌓았습니다.',ALREADY_APPLIED:'이미 반영되어 있습니다 · 새로 저장하지 않았습니다.',NOTHING_TO_CONFIRM:'쌓을 입력이 없습니다.',
   UNKNOWN:'서버 응답을 확인하지 못했습니다 · 입력은 그대로 있습니다. 다시 쌓기를 누르면 결과를 확인한 뒤 이어서 처리합니다(중복 저장 없음).',
   SYNC_FAILED:'서버에서 최신 기록을 받지 못했습니다 · 입력은 그대로 있습니다.',FAILED:'저장하지 못했습니다 · 입력은 그대로 있습니다.',STALE:'다른 기기와 계속 겹쳐 쌓지 못했습니다 · 입력은 그대로 있습니다.',
 });
-export const TIMER_KEY='lb.life.timer',TIMER_END_KEY='lb.life.timer.end';
+export const TIMER_KEY='lb.life.timer',TIMER_END_KEY='lb.life.timer.end',TIMER_REST_KEY='lb.life.timer.rest';
 const MIN_MS=60000,KST_MS=9*3600000,MAX_TIMER_MS=1440*MIN_MS;
 const TIMER_SUGGEST_MS=3*3600000,TIMER_LOOKBACK_DAYS=400;   // FIX34 (H5): "언제 끝났나요" 기본 제안(시작 + 최대 3시간) · 이미 담았는지 찾아보는 날 수의 상한(깨진 시작 시각에도 끝나게)
 const MOODS=Object.freeze([[1,'😞','많이 힘듦'],[2,'🙁','별로'],[3,'😐','보통'],[4,'🙂','좋음'],[5,'😄','아주 좋음']]);
@@ -62,7 +67,7 @@ function maker(doc){
 }
 const int=s=>typeof s==='string'&&/^\d+$/.test(s.trim())?Number(s.trim()):NaN;
 
-export function createLifeState(){return {today:null,flow:null,ports:null,boxRef:null,flowState:null,studyCard:null,pending:[],subjectId:null,timer:null,message:null,error:false,notices:[],pastDate:null,editing:false,floatXp:null};}
+export function createLifeState(){return {today:null,flow:null,ports:null,boxRef:null,flowState:null,studyCard:null,pending:[],subjectId:null,timer:null,message:null,error:false,notices:[],pastDate:null,editing:false,floatXp:null,liveOpen:false};}
 
 // B2C (DEFECT-6): 상자 쓰기 실패는 save가 던지지 않는다(설계). 버튼이 끝났을 때 오늘 카드·공부 벽돌 초안이 실패 상태면 성공 문구 대신 실패 문구를 보인다. 쌓기가 성공하면 초안이 지워져 has가 거짓이다.
 // R33B (HUNT32 S1): 그 칸 자체의 실패(own)만 본다. 다른 날짜·종류 초안의 실패는 위쪽 상자 전체 빨간 줄이 따로 알린다.
@@ -73,13 +78,32 @@ function flagBoxFail(st,date){
 // FIX34 (HUNT34 H4): endIso = 첫 "끝내고 담기"를 누른 시각. 담기가 실패하고 앱을 닫아도 다시 누를 때 이 시각을 쓴다(누른 시각까지 분이 부풀지 않게). 이 기기 저장소 값이고 기록 형식이 아니다.
 // 시작 시각 칸(TIMER_KEY)은 그대로 두고 옆 칸(TIMER_END_KEY)에 어느 타이머의 끝인지 함께 적는다(다른 타이머의 끝 시각을 쓰지 않게).
 function readTimerEnd(storage,startIso){try{const e=JSON.parse(storage?.getItem(TIMER_END_KEY)??'null');return e?.startIso===startIso&&typeof e.endIso==='string'&&Date.parse(e.endIso)>=Date.parse(startIso)?{endIso:e.endIso}:{};}catch{return {};}}
-function readTimer(storage){try{const v=JSON.parse(storage?.getItem(TIMER_KEY)??'null');return v&&typeof v.subjectId==='string'&&typeof v.startIso==='string'&&Number.isFinite(Date.parse(v.startIso))?{subjectId:v.subjectId,startIso:v.startIso,...readTimerEnd(storage,v.startIso)}:null;}catch{return null;}}
+// S1A: 휴식 칸 = {startIso, restMs(지난 휴식 합), pausedAt(지금 휴식의 시작, 없으면 null)}. 끝 시각 칸처럼 startIso로 묶어 다른 타이머 값을 쓰지 않는다. 기록 형식이 아니다(어디에도 기록하지 않음).
+function readTimerRest(storage,startIso){
+  try{
+    const r=JSON.parse(storage?.getItem(TIMER_REST_KEY)??'null');if(r?.startIso!==startIso)return {};
+    const restMs=Number.isInteger(r.restMs)&&r.restMs>0&&r.restMs<=MAX_TIMER_MS?r.restMs:0,p=typeof r.pausedAt==='string'?Date.parse(r.pausedAt):NaN;
+    return {...(restMs?{restMs}:{}),...(Number.isFinite(p)&&p>=Date.parse(startIso)?{pausedAt:r.pausedAt}:{})};
+  }catch{return {};}
+}
+// P1B: 오늘 계획 카드의 [▶ 집중]으로 시작한 타이머는 어느 줄인지(itemId)도 함께 적는다(기기 저장소 화면 값, 기록 아님). 없으면 예전 모양 그대로.
+const itemIdOf=v=>typeof v?.itemId==='string'&&v.itemId?{itemId:v.itemId}:{};
+// FIX37C (H37-S3): 저장소에 있다고 확인한 타이머 값. 이런 값은 저장소가 기준이다(다른 탭이 끝내거나 취소하면 저장소에서 사라진다). 쓰기가 막혀 메모리에만 있는 값은 여기 없으므로 지워지지 않는다(FIX31 D1).
+const onDisk=new WeakSet();
+function readTimer(storage){try{const v=JSON.parse(storage?.getItem(TIMER_KEY)??'null');if(!(v&&typeof v.subjectId==='string'&&typeof v.startIso==='string'&&Number.isFinite(Date.parse(v.startIso))))return null;const t={subjectId:v.subjectId,startIso:v.startIso,...itemIdOf(v),...readTimerEnd(storage,v.startIso),...readTimerRest(storage,v.startIso)};onDisk.add(t);return t;}catch{return null;}}
 function writeTimer(storage,t){
   try{
-    if(!t){storage?.removeItem(TIMER_KEY);storage?.removeItem(TIMER_END_KEY);return;}
-    storage?.setItem(TIMER_KEY,JSON.stringify({subjectId:t.subjectId,startIso:t.startIso}));
+    if(!t){storage?.removeItem(TIMER_KEY);storage?.removeItem(TIMER_END_KEY);storage?.removeItem(TIMER_REST_KEY);storage?.removeItem(CELEBRATED_KEY);return;}   // S1B: 끝내거나 취소하면 축하 칸도 지운다
+    storage?.setItem(TIMER_KEY,JSON.stringify({subjectId:t.subjectId,startIso:t.startIso,...itemIdOf(t)}));
     if(t.endIso)storage?.setItem(TIMER_END_KEY,JSON.stringify({startIso:t.startIso,endIso:t.endIso}));else storage?.removeItem(TIMER_END_KEY);
+    if(t.restMs||t.pausedAt)storage?.setItem(TIMER_REST_KEY,JSON.stringify({startIso:t.startIso,restMs:t.restMs??0,pausedAt:t.pausedAt??null}));else storage?.removeItem(TIMER_REST_KEY);
+    if(storage)onDisk.add(t);
   }catch{/* 저장소가 막혀 있으면 이번 실행 동안만 */}
+}
+// 메모리 타이머를 저장소에 맞춘다(다시 읽을 때·타이머 칸을 쓰기 전).
+function currentTimer(st,storage){
+  if(!st.timer||onDisk.has(st.timer))st.timer=readTimer(storage);
+  return st.timer;
 }
 
 // 공부 포트: 앱이 {ui,st,ctx}를 넘긴다(공부 모듈이 꺼져 있으면 null).
@@ -90,6 +114,7 @@ async function studyFlow(ctx){
 }
 // gone() = 준비를 시작한 뒤 로그아웃 세대가 바뀌었다(참이면 늦게 끝난 상태를 공유 st에 넣지 않는다).
 export async function prepareLife(ctx,st,gone=()=>false){
+  if(ctx.locked?.())return st;   // FIX37C (H37-S2): 잠긴 동안 끝난 담기 등이 lockLife가 비운 값을 다시 채우지 않게
   st.today=kstDate(ctx.now());
   const box=ctx.cardDraftBox?.()??null;
   if(!st.flow||st.boxRef!==box){st.boxRef=box;st.ports=createLifePorts(ctx);st.flow=new LifeFlow(st.ports);}
@@ -99,8 +124,14 @@ export async function prepareLife(ctx,st,gone=()=>false){
   if(gone())return st;
   st.flowState=flowState;st.studyCard=studyCard;
   st.pending=dates.filter(d=>d<st.today).slice(-3);
-  st.timer??=readTimer(ctx.storage??globalThis.localStorage);
+  currentTimer(st,ctx.storage??globalThis.localStorage);
   return st;
+}
+// FIX37C (H37-S2): 잠금·로그아웃. 덮개 째깍·벽돌 사건을 멈추고 메모리 값을 비운다. 저장소는 쓰지 않는다(타이머 칸은 그대로라 잠금을 풀면 prepareLife가 다시 읽는다).
+export function lockLife(st){
+  if(!st)return;
+  st.liveStop?.();st.liveStop=null;st.endSheet=null;
+  st.timer=null;st.liveOpen=false;st.flowState=null;st.studyCard=null;st.pending=[];st.message=null;st.error=false;st.focusNote=null;
 }
 
 function entryFor(h,{now,minutes,count}={}){
@@ -117,6 +148,16 @@ function habitValueText(h,e,week){
   return '했음';
 }
 
+const QUEST_MARK=Object.freeze({done:'✓ ',pending:'◐ ',todo:'○ '});
+// Q1B: 줄 전체가 단추다. 누르면 오늘 퀘스트 시트(앱이 ctx.questSheet로 넘긴다).
+function renderQuestLine({el,add,button},slot,line,open){
+  if(!line.total){slot.hidden=true;return;}
+  const go=button(null,open,'life-quest-open');go.dataset.navOnly='1';go.setAttribute('aria-haspopup','dialog');go.setAttribute('aria-label','오늘 퀘스트 '+line.done+' / '+line.total+' · 자세히 보기');
+  add(go,el('strong','오늘 퀘스트 '+line.done+'/'+line.total,'life-quest-count'));
+  for(const q of line.items)add(go,el('span',QUEST_MARK[q.state]+q.label+(q.state==='pending'?' · 쌓으면 완료':''),'life-quest-chip '+q.state));
+  add(slot,add(go,el('span','›','life-quest-more')));
+}
+
 export function renderLifeToday(root,ctx,st){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,hint,input}=h;
   const whole=ctx.getWhole(),life=whole.life??{habits:[],days:[],subjects:[],exams:null};
@@ -127,11 +168,17 @@ export function renderLifeToday(root,ctx,st){
   // 1) 머리: 날짜, 가장 가까운 시험 D-day(잠정 배지), 오늘 XP 링(쌓은 기록 기준), 연속·레벨 칩
   const exam=nearestExam(defs.exams,date);
   const examLine=exam?add(el('div',null,'life-exam'),el('strong',exam.name+' '+(exam.dDay===0?'D-DAY':'D-'+exam.dDay),'life-dday'),exam.status==='잠정'?el('span','잠정','life-badge'):null,el('span',exam.date,'muted small')):hint('시험 일정이 없습니다. 습관 편집에서 추가하세요.');
-  const ach=achieve({life:whole.life??null,study:whole.study??null,today:date}),topLevel=ach.levels[ach.topArea];
+  const money=ctx.money?.(date)??null,ach=achieve({life:whole.life??null,study:whole.study??null,fin:whole.fin??null,today:date,money}),topLevel=ach.levels[ach.topArea];
   const xpSlot=add(el('div',null,'life-xp-slot'),ring(ach.todayXp,ach.goalXp,{size:64}));xpSlot.id='xp-slot';xpSlot.setAttribute('aria-label','오늘 XP '+ach.todayXp+' / '+ach.goalXp);
   const chips=add(el('div',null,'life-chips'),el('span',ach.todayXp+' / '+ach.goalXp+' XP','life-xp-text'),(()=>{const n=el('span','연속 '+ach.streak.days+'일 '+multText(ach.streak.mult10),'life-chip-slot');n.id='streak-chip';return n;})(),(()=>{const n=el('span',AREA_TEXT[ach.topArea]+' Lv '+topLevel.level,'life-chip-slot');n.id='level-chip';return n;})());
-  add(out,add(el('div',null,'life-head'),add(el('div',null,'life-head-main'),el('span','TODAY','eyebrow'),el('h2',dateLabel(date),'panel-title'),examLine),add(el('div',null,'life-head-side'),xpSlot,chips)),
+  const title=ctx.achvTitle?.({doc,ach,life:whole.life??null,money,storage:ctx.storage});   // Q1C: 칭호 칩(앱이 넘긴다, 표시만)
+  add(out,add(el('div',null,'life-head'),add(el('div',null,'life-head-main'),el('span','TODAY','eyebrow'),el('h2',dateLabel(date),'panel-title'),title?.node,examLine),add(el('div',null,'life-head-side'),xpSlot,chips)),
     add(el('div',null,'button-row'),button('습관 편집',()=>openEditor(ctx,st),'secondary')));
+  // 1-1) S1A: 집중 타이머가 돌면 맨 위에 작은 STUDY LIVE 카드(펼치면 덮개). 채우는 것은 아래 공부 벽돌 칸이 한다(타이머 동작이 그곳에 있다).
+  const liveSlot=el('div',null,'live-slot');add(out,liveSlot);
+  // Q1B: 달성 알림. 쌓기가 성공해 다시 읽은 뒤와 앱을 처음 열 때 이 화면이 그려지며 새 달성을 찾는다(쌓은 기록 기준, ach). 없으면 빈칸이다.
+  const momentSlot=el('div',null,'achv-moment-slot');ctx.achvMoment?.(momentSlot,{doc,ach,today:date,life:whole.life??null,money,storage:ctx.storage});
+  const questSlot=el('div',null,'life-quest-slot');add(out,momentSlot,questSlot);   // Q1A: 오늘 퀘스트 줄(쌓기 전 예상을 함께 봐야 해서 아래에서 채운다)
 
   // 2) 상태 줄
   const dirty=fs.status==='LOCAL_DRAFT';
@@ -194,8 +241,12 @@ export function renderLifeToday(root,ctx,st){
   }
   add(out,grid);
 
-  // 4) 공부 벽돌
-  add(out,renderBricks(ctx,st,h,defs,life,act,ach.goalBricks));
+  // 4) 오늘 계획(P1B): 앱이 ctx.todayPlan으로 넘겨 준 카드(계획 탭 '일' 보기와 같은 함수). [▶ 집중]은 아래 공부 벽돌과 같은 타이머·담기를 쓴다(focusPort, 기록 쓰기 0).
+  const planCard=ctx.todayPlan?.({date,today:date,focus:ctx.study?.()?focusPort(ctx,st,act):null,draft:st.studyCard?.status==='LOCAL_DRAFT'?st.studyCard.card:null})??null;
+  st.planLinked=Boolean(planCard?.dataset?.focusItem);
+  if(planCard)add(out,planCard);
+  // 4-0) 공부 벽돌
+  add(out,renderBricks(ctx,st,h,defs,life,act,ach.goalBricks,liveSlot));
   // 4-1) PC 집중 측정 카드(B6): PC 앱에서 스위치를 켰을 때만 앱(ctx.focusCard)이 넣어 준다. 담기는 오늘 공부 초안에 세션을 더할 뿐이다(연산 0, "오늘 쌓기"에 합쳐짐).
   const focus=ctx.focusCard?.({date,card:st.studyCard?.card??null,timer:st.timer,subjects:defs.subjects.filter(s=>!s.hidden).map(s=>({id:s.id,name:s.name})),subjectId:st.timer?.subjectId??st.subjectId,
     claim:rows=>act(async()=>{
@@ -226,7 +277,7 @@ export function renderLifeToday(root,ctx,st){
     if(res.phase==='STUDY_FAILED'){const r=res.study;await reportConfirm(ctx,st,r);st.message='공부 기록을 쌓지 못해 오늘 카드도 쌓지 않았습니다 · '+(st.message??'');st.error=true;return;}
     // FIX31 (S2): 여기까지 왔으면 공부 카드는 확정됐다(stackDay는 공부 확정 뒤에만 오늘 카드로 넘어간다). 오늘 카드가 입력 없음·실패여도 자동 내보내기가 그 확정을 보게 넘긴다.
     // FIX34 (H6): 공부 카드 확정의 T·A 겹침 알림도 오늘 화면에 보인다(공부 카드의 다른 알림은 공부 화면 몫).
-    const r=res.study?{...res.life,studyStatus:res.study.status,notices:[...(res.study.notices??[]).filter(n=>n.code===OVERLAP_NOTICE),...(res.life?.notices??[])]}:res.life;await reportConfirm(ctx,st,r);
+    const r=res.study?{...res.life,studyStatus:res.study.status,notices:[...(res.study.notices??[]).filter(n=>n.code===OVERLAP_NOTICE||n.code===TIMER_OVERLAP_NOTICE),...(res.life?.notices??[])]}:res.life;await reportConfirm(ctx,st,r);
     if(res.study){
       await ctx.reload?.();
       const i=(st.message??'').indexOf(' · 상태 내보내기 실패'),exportNote=i<0?'':st.message.slice(i);   // 아래에서 문구를 바꿔도 내보내기 실패는 남긴다
@@ -234,7 +285,9 @@ export function renderLifeToday(root,ctx,st){
       else if(!STACK_DONE.includes(r.status)){st.message='공부 기록은 쌓았습니다 · 오늘 카드는 쌓지 못했습니다: '+st.message;st.error=true;}
     }
   }),'primary life-stack-btn');
-  const stackXp=(dirty||studyDirty)?previewAchieve({life:whole.life??null,study:whole.study??null,today:date,card:dirty?card:null,studyCard:studyDirty?st.studyCard.card:null}).todayXp-ach.todayXp:0;
+  const preview=(dirty||studyDirty)?previewAchieve({life:whole.life??null,study:whole.study??null,today:date,card:dirty?card:null,studyCard:studyDirty?st.studyCard.card:null,money}):null;
+  renderQuestLine(h,questSlot,todayQuestLine(ach,preview),()=>ctx.questSheet?.({doc,ach,preview,today:date,life:whole.life??null,money,kit:ctx.kit,sheet,ctx}));
+  const stackXp=preview?preview.todayXp-ach.todayXp:0;
   if(stackXp>0){stackBtn.setAttribute('aria-label','오늘 쌓기, 예상 +'+stackXp+' XP');add(stackBtn,el('span','+'+stackXp+' XP','life-stack-xp'));}
   add(out,add(el('div',null,'life-stack-bar'),stackBtn,el('span',dirty||studyDirty?'변경 있음':fs.status==='CONFIRMED'?'쌓음':'','muted small life-stack-note')));
   root.append(out);
@@ -274,7 +327,7 @@ function todayMinutes(st,whole,date){
   const card=st.studyCard?.card??whole.study?.days?.find(d=>d.date===date)?.data??null;
   return (card?.sessions??[]).map(s=>s.confirmedMin).filter(m=>m>0);
 }
-function renderBricks(ctx,st,h,defs,life,act,goalBricks){
+function renderBricks(ctx,st,h,defs,life,act,goalBricks,liveSlot=null){
   const {el,add,button,hint,input}=h,date=st.today;
   const sec=add(el('div',null,'life-bricks'),el('h3','공부 벽돌'));
   const subjects=defs.subjects.filter(s=>!s.hidden);
@@ -290,6 +343,11 @@ function renderBricks(ctx,st,h,defs,life,act,goalBricks){
   const minutes=todayMinutes(st,ctx.getWhole(),date);
   const sum=sumBricks(minutes);
   add(sec,xpBar(sum.value,goalBricks,{label:'오늘 벽돌 (장)'}),hint(sum.bricks+'장'+(sum.pieces?' + 조각 '+sum.pieces:'')+' · 30분 = 1장, 10~29분 = 조각, 9분 이하는 세지 않아요 · 오늘 목표 '+goalBricks+'장'));
+  const {recordNow,finishTimer}=timerOps(ctx,st,act);
+  return bricksTimer(ctx,st,h,defs,subjects,sec,act,recordNow,finishTimer,goalBricks,liveSlot);
+}
+// P1B: 담기 함수는 공부 벽돌 카드와 오늘 계획 카드(focusPort)가 같이 쓴다(본문은 B6·R33B·R34B·FIX31·FIX34 그대로, 자리만 renderBricks 밖으로).
+function timerOps(ctx,st,act){
   // B6: 타이머 "끝내고 담기"만 세션 id에 T 표지(lf_<과목>_T…)를 붙인다 → 구간 [at − 분, at]을 아는 세션. 분 입력은 그대로(구간 모름).
   // R34B: 타이머는 시작 시각에서 정한 id(lf_<과목>_T<시작 ms 36진>)를 넘긴다(B6 T 표지 + R33B 멱등). id가 없을 때만 표지 + uid로 만든다.
   const recordNow=async(subject,m,mark='',id=null)=>{
@@ -315,7 +373,11 @@ function renderBricks(ctx,st,h,defs,life,act,goalBricks){
       let d=today;
       for(let i=0;s&&i<TIMER_LOOKBACK_DAYS&&(i<2||d>=startDay);i++,d=shiftDay(d,-1))if((await s.st.flow.state(d)).card.sessions.some(x=>x.id===id)){day=d;break;}
       const found=Boolean(day);
-      if(!found&&(!old||confirmed)&&!st.timer?.endIso){st.timer={...st.timer,endIso:ctx.now()};writeTimer(ctx.storage??globalThis.localStorage,st.timer);}
+      if(ctx.locked?.())return;   // FIX37C (H37-S2): 찾는 사이 잠겼다. 타이머 칸은 그대로 둔다
+      // FIX37C (H37-S3): 담긴 적이 없는데 저장소에 없으면 다른 탭에서 취소한 타이머다. 취소한 시간을 담지 않는다.
+      if(!found&&currentTimer(st,ctx.storage??globalThis.localStorage)?.startIso!==startIso){st.message='다른 탭에서 이미 끝내거나 취소한 타이머예요 · 담지 않았어요.';return;}
+      // S1A: 휴식 중에 처음 누르면 끝 시각은 누른 시각이 아니라 휴식 시작 시각이다(공부가 멈춘 순간이 끝).
+      if(!found&&(!old||confirmed)&&!st.timer?.endIso){st.timer={...st.timer,endIso:st.timer?.pausedAt??ctx.now()};writeTimer(ctx.storage??globalThis.localStorage,st.timer);}
       if(day){await s.st.ports?.drafts.retryStale?.(day);await box?.flush().catch(()=>{});st.message=subject.name+' 집중은 이미 담았습니다 · 다시 담지 않았어요.';}
       else if(old&&!confirmed){openTimerEnd(ctx,st,subject,act,finishTimer);return;}
       else day=await recordNow(subject,m,'T',id);
@@ -325,39 +387,98 @@ function renderBricks(ctx,st,h,defs,life,act,goalBricks){
     if(b?.own||b?.dirty){keep(box.ERROR_TEXT[b.own]??box.TEXT.failed);return;}
     st.timer=null;writeTimer(ctx.storage??globalThis.localStorage,null);
   };
+  return {recordNow,finishTimer};
+}
+function bricksTimer(ctx,st,h,defs,subjects,sec,act,recordNow,finishTimer,goalBricks,liveSlot=null){
+  const {el,add,button,hint,input}=h;
   const subject=subjects.find(s=>s.id===st.subjectId)??null;
   if(!subject){add(sec,hint('보이는 과목이 없습니다. 습관 편집의 과목에서 추가하세요.'));return sec;}
-  const timerRow=el('div',null,'life-timer');
-  if(st.timer){
+  const timerRow=el('div',null,'life-timer'),store=ctx.storage??globalThis.localStorage;
+  if(!st.timer)st.liveOpen=false;
+  if(st.timer&&st.planLinked)add(timerRow,el('span','집중 중 · 위 "오늘 계획" 카드에서 끝내고 담을 수 있어요','life-timer-text'));   // P1B: 같은 타이머의 단추가 두 곳에 나오지 않게
+  else if(st.timer){
     const t=st.timer,ts=subjects.find(s=>s.id===t.subjectId)??defs.subjects.find(s=>s.id===t.subjectId);
     // AV2: 화면을 그린 때의 분을 붙들지 않는다. 글자는 다시 계산해 고치고(화면 꺼짐·탭 정지 뒤 포함), 저장할 분은 누른 순간의 시각으로 구한다.
-    const timerText=()=>(t.endIso?'담기 대기 · ':'집중 중 · ')+(ts?.name??'과목')+' · '+hhmmFromIso(t.startIso)+' 시작 · '+(t.endIso?timerElapsedMin(t.startIso,t.endIso):timerElapsedMin(t.startIso,ctx.now()))+'분',timerLabel=el('span',timerText(),'life-timer-text');
+    // S1A: 끝 시각·휴식이 있으면 liveElapsedMin/liveRecordMin(끝 시각 ?? 휴식 시작 ?? 지금 − 시작 − 휴식 합).
+    const rested=Boolean(t.endIso||t.pausedAt||t.restMs);
+    const timerText=()=>(t.endIso?'담기 대기 · ':t.pausedAt?'휴식 중 · ':'집중 중 · ')+(ts?.name??'과목')+' · '+hhmmFromIso(t.startIso)+' 시작 · '+(rested?liveElapsedMin(t,ctx.now()):timerElapsedMin(t.startIso,ctx.now()))+'분',timerLabel=el('span',timerText(),'life-timer-text');
     liveTick(timerLabel,ctx.document??globalThis.document,()=>{timerLabel.textContent=timerText();});
     add(timerRow,timerLabel,
-      button('끝내고 담기',act(()=>finishTimer(ts??subject,t.startIso,t.endIso?timerRecordMin(t.startIso,t.endIso):timerRecordMin(t.startIso,ctx.now()))),'primary'),
-      button('취소',()=>{st.timer=null;writeTimer(ctx.storage??globalThis.localStorage,null);void ctx.rerender();}));
-  }else add(timerRow,button('집중 시작',()=>{st.timer={subjectId:subject.id,startIso:ctx.now()};writeTimer(ctx.storage??globalThis.localStorage,st.timer);void ctx.rerender();},'primary'));
+      st.liveOpen?null:button('끝내고 담기',act(()=>finishTimer(ts??subject,t.startIso,rested?liveRecordMin(t,ctx.now()):timerRecordMin(t.startIso,ctx.now()))),'primary'),   // 덮개가 열려 있으면 그 안의 같은 단추를 쓴다
+      button('취소',()=>{st.timer=null;writeTimer(store,null);st.liveOpen=false;void ctx.rerender();}));
+  }else add(timerRow,button('집중 시작',()=>{st.timer={subjectId:subject.id,startIso:ctx.now()};writeTimer(store,st.timer);st.liveOpen=liveSettings(store).autoOpen;void ctx.rerender();},'primary'));
+  // R36 (S1A + P1B): STUDY LIVE 덮개·휴식은 어느 단추로 시작한 타이머든 같다(오늘 계획 카드 [▶ 집중]으로 시작해도). 위 줄의 단추만 계획 카드와 나눈다.
+  if(st.timer){
+    const t=st.timer,ts=subjects.find(s=>s.id===t.subjectId)??defs.subjects.find(s=>s.id===t.subjectId);
+    // S1A 휴식(V4 결정 S1D D2): 휴식 시간은 공부 분·벽돌에 넣지 않고 어디에도 기록하지 않는다. 휴식 합이 30분을 넘으면 "이어서" 때
+    // 앞부분을 끝 시각 = 휴식 시작으로 담고(기존 finishTimer 그대로) 지금 시각으로 새 타이머를 시작한다. 담기가 실패하면 새로 시작하지 않는다.
+    const gone=()=>{st.liveOpen=false;void ctx.rerender();};   // FIX37C (H37-S3): 다른 탭이 지운 타이머를 쓰기로 되살리지 않는다
+    const pause=()=>{const c=currentTimer(st,store);if(!c){gone();return;}if(c.endIso||c.pausedAt)return;st.timer={...c,pausedAt:ctx.now()};writeTimer(store,st.timer);void ctx.rerender();};
+    const resume=()=>{
+      const c=currentTimer(st,store);if(!c){gone();return;}if(!c.pausedAt||c.endIso)return;
+      const restMs=(c.restMs??0)+Math.max(0,Date.parse(ctx.now())-Date.parse(c.pausedAt));
+      if(restMs>REST_SPLIT_MS){act(async()=>{
+        const short=Date.parse(c.pausedAt)-Date.parse(c.startIso)-(c.restMs??0)<60000;   // FIX36 (H36-T2): 앞부분이 1분 미만이면 담지 않는다(저장 최소 1분이라 안 한 공부가 1분으로 남음)
+        if(!short){await finishTimer(ts??subject,c.startIso,liveRecordMin(c,ctx.now()));if(st.timer!==null)return;}
+        st.timer={subjectId:c.subjectId,startIso:ctx.now(),...itemIdOf(c)};writeTimer(store,st.timer);st.liveOpen=true;   // R36: 계획 줄에서 시작한 타이머는 나눈 뒤에도 같은 줄
+        st.message=short?'30분 넘게 쉬었어요 · 앞부분은 1분이 안 되어 담지 않고 새로 시작해요':'30분 넘게 쉬었어요 · 앞부분을 먼저 담고 새로 시작해요 · '+(st.message??'');
+      })();return;}
+      const {pausedAt:_p,...rest}=c;st.timer={...rest,restMs};writeTimer(store,st.timer);void ctx.rerender();
+    };
+    st.liveStop?.();
+    const live=renderLive(ctx,{timer:t,subject:ts??subject,open:st.liveOpen,draftCard:st.studyCard?.card??null,exams:defs.exams,goalBricks,on:{
+      finish:act(()=>finishTimer(ts??subject,t.startIso,liveRecordMin(t,ctx.now()))),pause,resume,
+      expand:()=>{st.liveOpen=true;void ctx.rerender();},collapse:()=>{st.liveOpen=false;void ctx.rerender();},
+      storage:()=>{st.timer=readTimer(store);if(!st.timer)st.liveOpen=false;void ctx.rerender();}}});   // 다른 탭의 휴식·담기·취소를 따라간다
+    st.liveStop=live.stop;
+    add(liveSlot??sec,live.card,live.dialog);
+  }
   const min=input('',{inputmode:'numeric',placeholder:'분','aria-label':'공부한 분'});
   add(timerRow,min,button('분 입력으로 담기',act(async()=>{await recordNow(subject,int(min.value));min.value='';}),'secondary'));
   add(sec,timerRow);
   return sec;
 }
 
+// ---- P1B: 오늘 계획 카드의 집중 포트 ----
+// start = 기존 "집중 시작"과 같은 타이머 값에 줄 id(itemId)만 더한다(기록 쓰기 0, 타이머가 이미 돌면 아무것도 안 함). finish = 기존 finishTimer 그대로(같은 시작 시각 = 같은 세션 id, 다시 눌러도 한 번만 담김).
+// act를 안 주면(계획 탭) 오늘 화면의 act와 같은 모양으로 감싼다: 오늘 화면 준비가 아직이면 먼저 준비하고, 끝나면 다시 준비해 그린다.
+export function focusPort(ctx,st,act=null){
+  const store=ctx.storage??globalThis.localStorage;
+  currentTimer(st,store);   // FIX37C (H37-S3): 오늘 화면 밖(계획 탭)에서도 저장소 기준
+  const run=act??(fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{if(!st.flowState)await prepareLife(ctx,st);await fn();}catch(e){st.message=st.ports?.box?.ERROR_TEXT[e?.code]??lifeErrorText(e?.code);st.error=true;}if(st.today)flagBoxFail(st,st.today);try{await prepareLife(ctx,st);}catch{/* 다시 그리기는 계속 */}st.focusNote=st.message?{text:st.message,error:st.error}:null;await ctx.rerender();}));
+  return {
+    timer:()=>st.timer,
+    message:()=>st.focusNote&&st.focusNote.text===st.message?st.focusNote:null,   // 이 포트의 담기 결과만(오늘 화면의 다른 문구는 계획 탭에 옮기지 않는다)
+    start:(subjectId,itemId)=>{if(st.timer)return false;st.timer={subjectId,startIso:ctx.now(),...itemIdOf({itemId})};writeTimer(store,st.timer);void ctx.rerender();return true;},
+    finish:()=>{
+      const t=st.timer;if(!t)return;
+      const defs=lifeDefs(ctx.getWhole().life??null),subject=defs.subjects.find(s=>s.id===t.subjectId)??{id:t.subjectId,name:'과목'},{finishTimer}=timerOps(ctx,st,run);
+      run(()=>finishTimer(subject,t.startIso,liveRecordMin(t,ctx.now())))();   // R36: S1A 휴식 합은 빼고 담는다(끝 시각 ?? 휴식 시작 ?? 지금 − 시작 − 휴식 합, 휴식이 없으면 예전 값과 같음)
+    },
+    cancel:()=>{st.timer=null;writeTimer(store,null);st.liveOpen=false;void ctx.rerender();},
+  };
+}
+
 // ---- FIX34 (HUNT34 H5): 오래된 타이머의 "언제 끝났나요" 시트 ----
 // 시작일이 어제보다 오래된 타이머는 지금까지를 공부로 치지 않는다. 끝 시각(KST)을 받아 그 시각으로 담는다. 기본값 = 저장된 끝 시각 또는 시작 + 최대 3시간(지금을 넘지 않음).
+// FIX36 (H36-T1): 휴식 중인 타이머는 공부가 휴식 시작에서 멈췄다. 기본값 = 휴식 시작, 그보다 늦은 끝 시각은 받지 않는다(휴식이 공부로 담기지 않게).
 const kstInput=ms=>new Date(ms+KST_MS).toISOString().slice(0,16);
 function openTimerEnd(ctx,st,subject,act,finish){
+  // FIX37C (H37-S1): 덮개를 접고 시트만 띄운다(act 뒤의 다시 그리기가 덮개를 시트 위로 올리지 않게). 이미 열린 시트가 있으면 또 쌓지 않는다.
+  if(st.endSheet?.open)return;
+  st.liveOpen=false;
   const doc=ctx.document??globalThis.document,{el,add,button,hint,input,field}=maker(doc),t=st.timer,store=ctx.storage??globalThis.localStorage;
-  const start=Date.parse(t.startIso),now=Date.parse(ctx.now()),guess=t.endIso?Date.parse(t.endIso):Math.min(now,start+TIMER_SUGGEST_MS);
+  const start=Date.parse(t.startIso),now=Date.parse(ctx.now()),paused=t.pausedAt?Date.parse(t.pausedAt):null,guess=t.endIso?Date.parse(t.endIso):paused!==null?Math.min(paused,start+MAX_TIMER_MS):Math.min(now,start+TIMER_SUGGEST_MS);
   const end=input(kstInput(guess),{'aria-label':'끝난 시각 (KST)'},'datetime-local'),err=el('p',null,'notice error');err.hidden=true;
   const body=add(el('div',null,'life-sheet-body'),hint(hhmmFromIso(t.startIso)+'에 시작한 '+subject.name+' 타이머가 '+dateLabel(kstDate(t.startIso))+'부터 켜져 있어요. 지금까지를 공부로 치지 않고, 끝난 시각으로 담습니다.'),field('끝난 시각 (KST)',end),err);
-  const dlg=sheet('언제 끝났나요',body);
+  const dlg=sheet('언제 끝났나요',body);st.endSheet=dlg;
   add(body,add(el('div',null,'buttons'),button('이 시각으로 담기',()=>{
     const ms=Date.parse(end.value+':00.000+09:00');
     if(!(ms>start&&ms<=now&&ms-start<=MAX_TIMER_MS)){err.textContent=lifeErrorText('INVALID_TIMER_END');err.hidden=false;return;}
+    if(paused!==null&&ms>paused){err.textContent=lifeErrorText('INVALID_TIMER_END_REST');err.hidden=false;return;}
     dlg.close();
     const endIso=new Date(ms).toISOString();st.timer={...t,endIso};writeTimer(store,st.timer);
-    act(()=>finish(subject,t.startIso,timerRecordMin(t.startIso,endIso),true))();
+    act(()=>finish(subject,t.startIso,timerRecordMin(t.startIso,endIso,(t.restMs??0)+(paused!==null?Math.max(0,ms-paused):0)),true))();   // S1A: 그 전 휴식 합은 뺀다 · FIX36: 지금 휴식분도 뺀다(같은 식 하나)
   },'primary')));
 }
 
@@ -466,6 +587,7 @@ export function renderPastDays(root,ctx,st){
     if(!ids.length)add(sec,hint('습관 기록이 없습니다.'));
     add(sec,row('기분',day.mood===null?'기록 없음':MOODS.find(m=>m[0]===day.mood)[1]+' '+MOODS.find(m=>m[0]===day.mood)[2]),day.note?row('한 줄',day.note):null);
   }
+  add(sec,dayRoomCard(ctx,date));   // S1B "그날의 방": 그날 공부 카드 + 그날까지의 평생 분(읽기만, 진행 중 타이머 없음)
   root.append(sec);
   return sec;
 }

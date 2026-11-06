@@ -61,7 +61,10 @@ export const CARD_DRAFT_ERROR_TEXT=Object.freeze({
   CARD_DRAFT_MERGE_FAILED:'다른 창의 같은 날짜 초안과 합치지 못해 이 입력을 저장하지 않았어요 · 다른 창 초안은 그대로예요 — 이 화면을 다시 연 뒤 다시 입력해 주세요',
   CARD_DRAFT_STALE_BASE:'그 사이 초안이 바뀌어 이 입력을 저장하지 못했어요 — 다시 입력해 주세요',
   CARD_DRAFT_STALE_INPUT:'이미 끝난 입력이라 저장하지 않았어요 — 다시 입력해 주세요',
+  CARD_DRAFT_MERGED_CHANGED:'다른 창의 같은 날짜 초안과 합치면서 양쪽에서 바꾼 항목이 있었어요(같은 항목은 이 창 값으로 덮음 · 지운 항목이 남았을 수 있음) — 내용을 확인한 뒤 쌓아 주세요',
 });
+// FIX35 (HUNT35 F1): 합칠 때 화면에 알릴 rebase 알림(다른 창 값이 덮였거나, 한쪽의 삭제가 되돌려짐). 타이머 겹침 알림은 확정 때 따로 보인다.
+export const MERGE_CONFLICT_NOTICES=Object.freeze(['REBASE_VALUE_OVERWRITTEN','REBASE_SCALAR_OVERWRITTEN','REBASE_CONFLICT_KEPT_LOCAL','REBASE_CONFLICT_KEPT_REMOTE']);
 
 const KEY_ID='key',UNREADABLE_PREFIX='UNREADABLE|',FLUSH_ROUNDS=8;
 const SCOPE_RE=/^v1:[A-Za-z0-9_-]{1,128}:[A-Za-z0-9_-]{1,128}$/,DATE_RE=/^\d{4}-\d{2}-\d{2}$/;
@@ -95,6 +98,8 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
   const owners=new WeakMap(),accepted=new Map();
   // R33B (HUNT32 D1): 레코드(id)별 마지막 쓰기 실패 코드. 상자 전체 failure와 달리 그 레코드의 쓰기가 성공하면 지운다(statusFor().own).
   const recFail=new Map();
+  // FIX35 (HUNT35 F1): 레코드(id)별 합치기 알림(MERGE_CONFLICT_NOTICES에 든 것). 그 초안을 확정·버려 지울 때까지 남는다(statusFor().merged, status().notice).
+  const mergeNotes=new Map();
   let loaded=null,ready=false,keyCache=null,otherRows=0,failure=null,chain=Promise.resolve(),ver=0,inputGen=0,doneSeq=0;
   // S1c: lock() 뒤 새로 시작하는 list·count·save·discard·commit·flush는 디스크를 읽거나 쓰지 않는다(복호 사본·키 캐시를 다시 만들지 않음).
   // lock() 전에 시작한 호출(ops)은 끝까지 가고, lock은 그것들이 끝난 뒤 메모리 사본을 버린다. 다시 unlocked()가 참이 되면 풀린다.
@@ -178,11 +183,11 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
       seen.add(row.id);
       const m=mem.get(row.id);
       if(m?.dirty){if(m.stale){m.base=baseOf(row);m.aside=false;}continue;}
-      mem.set(row.id,{id:row.id,kind:row.kind,date:row.date,base:baseOf(row),draft:r.draft,updatedAt:row.updatedAt,dirty:false,deleted:false,ver:++ver});
+      mem.set(row.id,{id:row.id,kind:row.kind,date:row.date,base:baseOf(row),draft:r.draft,known:r.draft.body,updatedAt:row.updatedAt,dirty:false,deleted:false,ver:++ver});
     }
     for(const [id,m] of [...mem]){
       if(seen.has(id))continue;
-      if(!m.dirty){mem.delete(id);continue;}   // 다른 창이 지웠다
+      if(!m.dirty){mem.delete(id);mergeNotes.delete(id);continue;}   // 다른 창이 지웠다
       const u=unreadable.get(id);
       if(m.stale){m.base=u?u.base:null;m.aside=Boolean(u);}
       else if(u&&sameBase(u.base,m.base))m.aside=true;   // 내가 알던 그 레코드가 키가 바뀌어 열 수 없게 됨: 다음 쓰기에서 옆으로 옮긴다
@@ -247,8 +252,9 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
       throw err;
     }
     if(aside){const u=unreadable.get(aside.from);unreadable.delete(aside.from);if(u)unreadable.set(aside.to,{...u,id:aside.to,reason:'MOVED_ASIDE'});}
+    if(!row)mergeNotes.delete(e.id);
     const cur=mem.get(e.id);if(!cur)return;
-    cur.base=baseOf(row);cur.aside=false;
+    cur.base=baseOf(row);cur.aside=false;cur.known=row?e.draft.body:null;   // FIX35 (F1): 디스크에 쓴 본문 = 다음 합치기의 기준
     if(cur.ver===v){if(row)cur.dirty=false;else mem.delete(e.id);}
   }
   // STALE: 이 창 입력은 메모리에 두고(dirty) 디스크 최신 기준값만 기억한다. 지우려던 것이면 이 창 초안은 이미 디스크에 없으니 다시 읽는다.
@@ -381,13 +387,17 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
     const byDraft=id=>live().find(e=>e.kind===kind&&e.draft.draftId===id)??null;
     // FIX34 (H1): 이 창 초안 본문(mine)과 디스크 초안 본문(disk)을 합친 새 본문. 기준(base)은 내 초안의 heads, 명령 서명은 흐름의 makeBody로 다시 만든다(내용이 바뀌므로).
     // 합칠 수 없으면(REBASE_ID_COLLISION·검증 위반) 던진다. confirmCount는 초안의 값을 그대로 둔다(rebase의 +1은 확정용이다).
+    // FIX35 (HUNT35 F1): 기준은 이 창이 마지막으로 디스크와 맞춘 초안 본문(known: 읽었거나 쓴 것)이 있으면 그것, 없으면 확정 카드(heads)다.
+    // 확정 카드만 기준으로 쓰면 기준 카드가 없는 날(또는 초안에만 있던 항목) 이 창이 지운 세션이 "상대가 더한 것"으로 보여 되살아난다.
+    // 결과는 {body, notices}: 저장하는 쪽이 MERGE_CONFLICT_NOTICES를 레코드 알림으로 남긴다(조용히 버리지 않음).
     let mergeRule=null;
-    const mergedBody=async(mine,disk)=>{
-      const {rebase,ports,prepare}=mergeRule,date=mine.entityId,base=mine.expectedHeads.length?ports.revision(date,mine.expectedHeads[0]):null;
+    const mergedBody=async(mine,disk,known=null)=>{
+      const {rebase,ports,prepare}=mergeRule,date=mine.entityId,base=known?.data?known.data:mine.expectedHeads.length?ports.revision(date,mine.expectedHeads[0]):null;
       const r=rebase({date,base,mine:prepare?prepare(mine.data,disk.data):mine.data,latest:disk.data});
       if(r.status==='REJECTED')throw fail(r.code);
       const card=r.status==='ALREADY_APPLIED'?disk.data:r.card;
-      return ports.makeBody({requestId:ports.newRequestId(),date,data:Object.hasOwn(mine.data,'confirmCount')?{...card,confirmCount:mine.data.confirmCount}:card,heads:mine.expectedHeads,reason:mine.reason});
+      const body=await ports.makeBody({requestId:ports.newRequestId(),date,data:Object.hasOwn(mine.data,'confirmCount')?{...card,confirmCount:mine.data.confirmCount}:card,heads:mine.expectedHeads,reason:mine.reason});
+      return {body,notices:(r.notices??[]).filter(n=>MERGE_CONFLICT_NOTICES.includes(n?.code))};
     };
     const api={
       mergeWith:rule=>{mergeRule=rule;},
@@ -413,11 +423,11 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
           const superseded=()=>{input.ok();notify();return {draftId:mem.get(id)?.draft?.draftId??null,status:'LOCAL_DRAFT',superseded:true};};
           if(input.stale())return superseded();
           // FIX34 (H1): 이 창 초안이 STALE이면 디스크를 다시 읽어 합친 본문을 쓴다. CAS 기준은 방금 읽은 레코드다(그 사이 또 바뀌면 다시 STALE이고 덮지 않는다).
-          const was=mem.get(id);let fresh=null;
+          const was=mem.get(id);let fresh=null,notes=[];
           if(was?.stale&&!was.deleted&&mergeRule){
             try{
               fresh=await onChain(async()=>{const {row,key}=await readRow(id);return {row,opened:row?await open(row,key):null};});
-              if(fresh.opened?.draft)draft.body=structuredClone(await mergedBody(draft.body,fresh.opened.draft.body));
+              if(fresh.opened?.draft){const m=await mergedBody(draft.body,fresh.opened.draft.body,was.known);draft.body=structuredClone(m.body);notes=m.notices;}
             }catch{throw refuse('CARD_DRAFT_MERGE_FAILED');}
             if(mem.get(id)!==was){input.rebased();throw fail('CARD_DRAFT_STALE_BASE');}   // 합치는 동안 이 창의 다른 입력이 먼저 저장됐다
             if(input.stale())return superseded();
@@ -431,7 +441,9 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
           if(hasBase&&(prev&&!prev.deleted?prev.draft.draftId:null)!==opts.base){input.rebased();throw fail('CARD_DRAFT_STALE_BASE');}
           // base 없는 카드 전체 저장(토큰): 그 날짜에 더 새 세대 입력이 이미 받아들여졌다 → 옛 입력은 바꾸지 않는다(입력 순서로 마지막이 이김).
           if(!hasBase&&input.exact&&(accepted.get(kind+'|'+date+'|')??0)>input.gen)return superseded();
-          mem.set(id,{id,kind,date,base:fresh?baseOf(fresh.row):prev?prev.base:aside?unreadable.get(id).base:null,aside:fresh?Boolean(fresh.row&&!fresh.opened.draft):Boolean(prev?.aside)||aside,draft,updatedAt:now(),dirty:true,deleted:false,ver:++ver});
+          mem.set(id,{id,kind,date,base:fresh?baseOf(fresh.row):prev?prev.base:aside?unreadable.get(id).base:null,aside:fresh?Boolean(fresh.row&&!fresh.opened.draft):Boolean(prev?.aside)||aside,draft,
+            known:fresh?fresh.opened?.draft?.body??null:prev?.known??null,updatedAt:now(),dirty:true,deleted:false,ver:++ver});
+          if(notes.length)mergeNotes.set(id,{codes:[...new Set([...(mergeNotes.get(id)?.codes??[]),...notes.map(n=>n.code)])],at:now()});   // FIX35 (F1)
           input.ok();input.wrote();
           notify();await persist();
           return {draftId:draft.draftId,status:'LOCAL_DRAFT'};
@@ -459,7 +471,7 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
         if(input.exact&&input.stale()){input.ok();input.done();return;}   // B16: 같은 칸의 더 새 입력이 이미 저장·삭제됐다
         input.ok();input.wrote();   // B14: 새 입력이 되돌린(지운) 뒤 늦은 옛 입력이 초안을 다시 만들지 않게
         try{
-          if(e.stale){mem.delete(e.id);await reload();await persist();return;}   // 이 창 초안은 디스크에 없다: 다른 창 초안은 지우지 않고 다시 읽는다
+          if(e.stale){mem.delete(e.id);mergeNotes.delete(e.id);await reload();await persist();return;}   // 이 창 초안은 디스크에 없다: 다른 창 초안은 지우지 않고 다시 읽는다
           mem.set(e.id,{...e,deleted:true,dirty:true,ver:++ver});
           notify();await persist();
         }finally{input.done();}
@@ -505,7 +517,7 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
           if(status==='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED'){
             const cur=mem.get(e.id);
             if(cur&&!cur.deleted&&cur.draft.draftId===id){
-              if(cur.stale){mem.delete(e.id);await reload();await persist();}   // 이 창 초안은 디스크에 없다: 다른 창 초안은 남긴다
+              if(cur.stale){mem.delete(e.id);mergeNotes.delete(e.id);await reload();await persist();}   // 이 창 초안은 디스크에 없다: 다른 창 초안은 남긴다
               else{mem.set(e.id,{...cur,deleted:true,dirty:true,ver:++ver});if((await persist()).has(e.id))cleanup='FAILED';}
             }
           }
@@ -525,8 +537,11 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
     // failed는 예전 그대로 상자 전체 값(다른 날짜·종류 초안의 STALE·Quota 포함)이다. "이 레코드가 디스크에 써졌는가"는 has&&!dirty로 본다.
     const own=inputFor(kind,date)??(has&&e.dirty?recFail.get(e.id)??(e.stale?'STALE_DRAFT':null):null);
     return {typing,has,saved:has&&!e.dirty&&!failed,dirty:has&&e.dirty,failed,own,updatedAt:has?e.updatedAt:null,
-      old:has&&Date.parse(now())-Date.parse(e.updatedAt)>OLD_DRAFT_DAYS*86400000};
+      old:has&&Date.parse(now())-Date.parse(e.updatedAt)>OLD_DRAFT_DAYS*86400000,
+      merged:has&&mergeNotes.has(e.id)?[...mergeNotes.get(e.id).codes]:null};   // FIX35 (HUNT35 F1)
   }
+  // FIX35 (HUNT35 F1): 남아 있는 초안 중 합치기 알림이 있으면 CARD_DRAFT_MERGED_CHANGED(없으면 null).
+  const noticeNow=()=>[...mergeNotes.keys()].some(id=>{const e=mem.get(id);return e&&!e.deleted;})?'CARD_DRAFT_MERGED_CHANGED':null;
   return {
     mode:DRAFT_MODE.DEVICE_BOX,TEXT:CARD_DRAFT_TEXT,ERROR_TEXT:CARD_DRAFT_ERROR_TEXT,scope:scopeId,
     available,port,defer,statusFor,
@@ -539,10 +554,11 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
     // S1c: 부르는 즉시 잠긴다(새 호출은 디스크를 읽거나 쓰지 않음). 그 전에 시작한 호출(아직 load를 기다리는 save 포함)이 끝난 뒤에 버린다.
     lock(){
       locked=true;
-      const drop=()=>{keyCache=null;loaded=null;for(const [id,e] of [...mem])if(!e.dirty)mem.delete(id);notify();};
+      const drop=()=>{keyCache=null;loaded=null;for(const [id,e] of [...mem])if(!e.dirty){mem.delete(id);mergeNotes.delete(id);}notify();};
       return Promise.allSettled([...ops]).then(()=>onChain(drop)).then(()=>{});
     },
-    status:()=>({failed:failure?.code??firstInput(),unreadable:unreadable.size,pending:deferred.size>0||[...mem.values()].some(e=>e.dirty),count:countNow()}),
+    // FIX35 (HUNT35 F1): 세 화면(건강·공부·오늘)은 status().failed 문구를 상태 줄에 보여 준다. 저장 실패가 없을 때만 합치기 알림을 그 자리에 보여 준다(flush·저장 판정에는 쓰지 않음).
+    status:()=>{const notice=noticeNow();return {failed:failure?.code??firstInput()??notice,notice,unreadable:unreadable.size,pending:deferred.size>0||[...mem.values()].some(e=>e.dirty),count:countNow()};},
     onChange:cb=>{listeners.add(cb);return ()=>listeners.delete(cb);},
     // pagehide·화면 숨김 때 기다리는 입력을 저장한다(최선 노력: 브라우저가 끝까지 기다려 주지 않을 수 있다).
     attachFlush(target=globalThis,doc=globalThis.document){

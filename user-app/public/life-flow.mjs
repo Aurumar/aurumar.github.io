@@ -3,7 +3,7 @@
 // 화면을 열거나 동기화하는 것만으로는 어떤 엔티티도 쓰지 않는다: 쓰기는 confirm()과 saveDefinitions()(습관·과목·시험 편집 저장)에서만 일어난다.
 // 초안은 확정 성공을 확인한 뒤에만 지운다. 검증 거부·저장 실패·응답 불명이면 초안을 그대로 둔다.
 // 건강·공부와 달리 PC 초안 저널(drafts.lbd)은 쓰지 않는다: 저널의 목록 응답이 LIFE_DAY 본문을 돌려주지 않는다. 상자(브라우저 IndexedDB 암호문) 또는 메모리다.
-import {validateLifeData,emptyDay,kstDate,lifeDefs} from './life-model.mjs';
+import {validateLifeData,emptyDay,kstDate,lifeDefs,DEFAULT_HABITS,DEFAULT_SUBJECTS} from './life-model.mjs';
 import {rebase,hasChanges,diffDay,stable} from './life-rebase.mjs';
 
 const codeOf=e=>typeof e?.code==='string'?e.code:(e?.message??'UNKNOWN');
@@ -180,8 +180,8 @@ export function createLifePorts(ctx){
 // rows = [{type,id,data,heads}] — 바뀐 것만 넘긴다. 돌려주는 값 = 실제로 저장한 개수.
 export async function saveDefinitions(ctx,rows,reason){
   let saved=0;
+  for(const r of rows)validateLifeData(r.type,r.id,r.data);   // 한 줄이라도 틀리면 아무것도 쓰지 않는다(쓰다가 끊기면 저장본이 반쪽이 된다, H37-Q1)
   for(const r of rows){
-    validateLifeData(r.type,r.id,r.data);
     try{await ctx.entity(r.type,r.id,r.data,r.heads,reason);}
     catch(e){
       if(e?.code!=='STALE_HEADS'||!ctx.reload)throw e;
@@ -203,10 +203,12 @@ function lookup(life,type,id){
 // 바뀐 정의만 골라 낸다. 저장된 정의가 하나도 없던 종류(기본값 상태)는 처음 저장 때 전부 쓴다. 숨김은 삭제가 아니다.
 export function collectRows(work,life,defs=lifeDefs(life)){
   const rows=[];
-  const pick=(type,list,stored,effective)=>{
+  const pick=(type,list,stored,effective,defaults)=>{
     // 저장된 정의가 없는 구역은 소유자가 실제로 고친 경우에만 처음 저장한다(고치지 않은 기본값은 쓰지 않는다).
     if(!stored.length&&stable(list.map((x,i)=>({...x,order:i})))===stable(effective.map((x,i)=>({...x,order:i}))))return;
-    list.forEach((x,i)=>{
+    // 저장본이 있는데 기본값이 빠졌으면 끊긴 첫 저장의 남은 줄이다(삭제 길이 없다). 다시 저장할 때 모두 써서 돌려놓는다(H37-Q1).
+    const missing=stored.length?defaults.filter(d=>!list.some(x=>x.id===d.id)):[];
+    [...list,...missing].forEach((x,i)=>{
       const data={...x,order:i};
       if(type==='HABIT_DEF'){data.name=String(data.name).trim();}
       if(type==='SUBJECT_DEF'){data.name=String(data.name).trim();}
@@ -215,8 +217,8 @@ export function collectRows(work,life,defs=lifeDefs(life)){
       rows.push({type,id:x.id,data,heads:old?old.heads:[]});
     });
   };
-  pick('HABIT_DEF',work.habits,life.habits,defs.habits);
-  pick('SUBJECT_DEF',work.subjects,life.subjects,defs.subjects);
+  pick('HABIT_DEF',work.habits,life.habits,defs.habits,DEFAULT_HABITS);
+  pick('SUBJECT_DEF',work.subjects,life.subjects,defs.subjects,DEFAULT_SUBJECTS);
   const examData={items:work.exams.items.map(x=>({...x,name:String(x.name).trim()}))};
   if(stable(examData)!==stable(defs.exams))rows.push({type:'EXAM_SCHEDULE',id:'exams',data:examData,heads:life.exams?life.exams.heads:[]});
   return rows;

@@ -103,18 +103,20 @@ export function todayEffectOf(todayMin){
 }
 
 // 진행 중 시간은 1초씩 더하지 않고 언제나 "지금 - 시작 시각"으로 구한다. 화면이 꺼지거나 탭이 멈춰 있어도 다시 계산하면 맞다. 시계가 뒤로 가면 0.
-export function timerElapsedMin(startIso,nowIso){
-  const diff=Date.parse(nowIso)-Date.parse(startIso);
+// S1A: restMs = 이 타이머의 휴식 합(ms). 공부 분에서 뺀다(기본 0이라 예전 호출은 그대로).
+const restOK=ms=>Number.isFinite(ms)&&ms>0?ms:0;
+export function timerElapsedMin(startIso,nowIso,restMs=0){
+  const diff=Date.parse(nowIso)-Date.parse(startIso)-restOK(restMs);
   return Number.isFinite(diff)?Math.max(0,Math.round(diff/60000)):0;
 }
 // "끝내고 담기"로 저장할 분(1~1440). 버튼을 누른 그 순간의 시각으로 계산해야 한다.
-export const timerRecordMin=(startIso,nowIso)=>Math.min(MAX_DAY_MIN,Math.max(1,timerElapsedMin(startIso,nowIso)));
+export const timerRecordMin=(startIso,nowIso,restMs=0)=>Math.min(MAX_DAY_MIN,Math.max(1,timerElapsedMin(startIso,nowIso,restMs)));
 
 // 오늘 공부 분 = 오늘 카드(초안이 있으면 초안이 확정본을 포함하므로 초안 하나만) + 진행 중 타이머.
 // draftCard = 오늘 공부 흐름의 카드(초안 또는 확정본). 다른 날짜의 카드가 남아 있으면 쓰지 않는다.
 export function todayMinutes({study=null,date,draftCard=null,timer=null,nowIso}){
   const card=draftCard&&draftCard.date===date?draftCard:[...(study?.days??[])].reverse().find(d=>d?.date===date)?.data??null;
-  const running=timer?.startIso?Math.min(MAX_DAY_MIN,timerElapsedMin(timer.startIso,timer.endIso??nowIso)):0;   // FIX34 (H4): 끝 시각이 적힌 타이머는 더 늘지 않는다
+  const running=timer?.startIso?Math.min(MAX_DAY_MIN,timerElapsedMin(timer.startIso,timer.endIso??timer.pausedAt??nowIso,timer.restMs)):0;   // FIX34 (H4): 끝 시각이 적힌 타이머는 더 늘지 않는다 · S1A: 휴식 중엔 멈추고 휴식 합은 뺀다
   return {cardMin:cardMinutes(card),timerMin:running,minutes:cardMinutes(card)+running};
 }
 

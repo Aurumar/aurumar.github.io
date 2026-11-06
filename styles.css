@@ -719,6 +719,22 @@ button.fin-quick-need{background:transparent;color:var(--lb-ink-3)}
 .vault-forecast[data-level=TIGHT] .vault-forecast-tag{color:var(--lb-warn)}
 .vault-forecast[data-level=OVER] .vault-forecast-tag,.vault-forecast[data-level=OVER] .vault-forecast-msg{color:var(--lb-bad)}
 .vault-forecast-msg{font-size:15px;font-weight:700;color:var(--lb-ink-1)}
+/* M1A 돈 진단 카드: 기존 토큰만, 색만으로 구분하지 않고 단계 이름을 글자로 함께 적는다 */
+.feel-card{margin-bottom:14px;border-left:4px solid var(--lb-line);overflow-wrap:anywhere}
+.feel-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.feel-level{font-size:var(--lb-caption);font-weight:800}
+.feel-main{margin:6px 0 0;font-size:15px;line-height:1.5;color:var(--lb-ink-1)}
+.feel-main strong{font-size:17px;font-variant-numeric:tabular-nums}
+.feel-cause,.feel-action{margin:6px 0 0}
+.feel-action{font-weight:700}
+.feel-card[data-level=DANGER]{background:var(--lb-bad-bg);border-left-color:var(--lb-bad)}
+.feel-card[data-level=DANGER] .feel-level,.feel-card[data-level=DANGER] .feel-main strong{color:var(--lb-bad)}
+.feel-card[data-level=CAUTION]{background:var(--lb-warn-bg);border-left-color:var(--lb-warn)}
+.feel-card[data-level=CAUTION] .feel-level,.feel-card[data-level=CAUTION] .feel-main strong{color:var(--lb-warn)}
+.feel-card[data-level=ROOM]{background:var(--lb-ok-bg);border-left-color:var(--lb-ok)}
+.feel-card[data-level=ROOM] .feel-level,.feel-card[data-level=ROOM] .feel-main strong{color:var(--lb-ok)}
+.feel-forecast{margin:0 0 12px}
+.feel-forecast>summary{cursor:pointer;font-size:var(--lb-caption);color:var(--lb-ink-3)}
 .vault-melt{margin:2px 0 10px}
 .vault-melt .fin-svg{display:block;margin:0 auto;max-width:100%;height:auto}
 .vault-melt-cap{margin:2px 0 0;text-align:center;font-size:var(--lb-caption);color:var(--lb-ink-3)}
@@ -1010,6 +1026,23 @@ button.fin-quick-need{background:transparent;color:var(--lb-ink-3)}
 .tower-gold-3{stop-color:var(--lb-gold-3)}
 .tower-levels{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--lb-s-2)}
 .tower-level,.tower-quest{display:grid;gap:4px;padding:8px 12px;border-radius:var(--lb-r-2);border:1px solid var(--lb-line-soft);background:var(--lb-surface-2);min-width:0}
+/* A1A 영역 칸: 왼쪽 링 + 오른쪽 이름·막대·XP, 칸 전체가 단추 */
+.tower-level[role=button]{grid-template-columns:44px minmax(0,1fr);column-gap:10px;cursor:pointer}
+.tower-level[role=button]>*{grid-column:2}
+.tower-level[role=button]:focus-visible{outline:2px solid var(--lb-gold-2);outline-offset:2px}
+.tower-level>.tower-ring{grid-column:1;grid-row:1 / span 3;align-self:center}
+.tower-ring-text{font-size:10px}
+.tower-level-body .lb-ring-fill{stroke:var(--lb-area-body)}
+.tower-level-head .lb-ring-fill{stroke:var(--lb-area-head)}
+.tower-level-money .lb-ring-fill{stroke:var(--lb-area-money)}
+.tower-level-heart .lb-ring-fill{stroke:var(--lb-area-heart)}
+.tower-area-recent{margin:0;padding-left:18px;display:grid;gap:4px}
+.tower-area-money{font-weight:700;margin:10px 0 6px}
+/* A1B 옛 영역 기록(읽기 전용) */
+.legacy-areas>summary{cursor:pointer;font-weight:700}
+.legacy-area{display:grid;gap:4px;padding:8px 0;border-top:1px solid var(--lb-line-soft)}
+.legacy-area .state-line{display:flex;align-items:baseline;gap:10px;overflow-wrap:anywhere}
+.legacy-area .state-line>strong{flex:none}
 .tower-quest.done{background:var(--lb-gold-soft);border-color:var(--lb-gold-2)}
 .tower-detail{display:grid;gap:var(--lb-s-2)}
 .tower-detail h3{margin:0}
@@ -1125,6 +1158,115 @@ button.fin-quick-need{background:transparent;color:var(--lb-ink-3)}
 .plan-edit-row input{flex:1 1 140px;min-width:0}
 .plan-edit-row select{flex:0 1 110px;min-width:0;width:auto}
 @media(max-width:600px){.plan-exams{gap:4px}.plan-exam{padding:6px 2px}.plan-exam-dday{font-size:15px}.plan-exam .life-badge{font-size:10px;padding:0 6px}.plan-card{padding:var(--lb-s-2)}.plan-nav button{padding-inline:8px}}
+/* ===== 17-1. 오늘 계획 카드·칩 시트 (P1B, plan-today): 새 색 없음 — 토큰만. 계획 = 점선 칩, 실제 = 금 채움 ===== */
+.pt-card{display:grid;gap:6px;margin:var(--lb-s-3) 0;padding:var(--lb-s-3);border:1px solid var(--lb-line);border-radius:var(--lb-r-1);background:var(--lb-surface-solid);min-width:0}
+.pt-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.pt-title{margin:0;font-size:15px}
+.pt-sum{flex:1 1 auto;font-size:12px;font-weight:700;color:var(--lb-ink-3)}
+.pt-add{min-width:44px;min-height:36px;padding:4px 10px;margin-left:auto}
+.pt-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-height:40px;min-width:0}
+.pt-block{font-size:11px;font-weight:700;color:var(--lb-ink-3);white-space:nowrap}
+.pt-tag{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:2px 10px;border-radius:var(--lb-r-full);border:1.5px solid var(--lb-gold-2);background:var(--lb-surface-solid);color:var(--lb-ink-1);font-size:12px;font-weight:700;box-shadow:none;white-space:nowrap}
+.pt-tag.dashed{border-style:dashed;border-color:var(--lb-line);background:transparent}
+.pt-what{flex:1 1 48px;min-width:0;overflow-wrap:anywhere;font-size:13px;color:var(--lb-ink-2)}
+.pt-meter{display:none}
+.pt-meter-bg{fill:var(--lb-heat-0)}
+.pt-meter-fill{fill:var(--lb-gold-2)}
+.pt-count{font-size:12px;font-variant-numeric:tabular-nums;color:var(--lb-ink-2);white-space:nowrap}
+.pt-status{font-size:12px;font-weight:700;white-space:nowrap;color:var(--lb-ink-3)}
+.pt-status.plan{opacity:.55}
+.pt-status.ignite,.pt-status.done{color:var(--lb-ok)}
+.pt-status.gold{color:var(--lb-gold-3)}
+.pt-status.doing{color:var(--lb-warn)}
+.pt-focus{min-height:36px;padding:4px 12px;white-space:nowrap}
+.pt-timer{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 4px;padding:6px 10px;border-left:3px solid var(--lb-gold-2);background:var(--lb-gold-soft);border-radius:0 var(--lb-r-1) var(--lb-r-1) 0}
+.pt-timer-text{flex:1 1 160px;font-size:13px;font-weight:700;color:var(--lb-ink-1)}
+.pt-empty{display:flex;gap:8px;flex-wrap:wrap}
+.pt-copy[disabled]{opacity:.5;cursor:not-allowed}
+.pt-sheet{display:grid;gap:var(--lb-s-3);max-height:62vh;overflow-y:auto}
+.pt-sheet-row{display:grid;gap:4px}
+.pt-sheet-label{font-size:12px;font-weight:700;color:var(--lb-ink-3)}
+.pt-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pt-chips .lb-chip{min-height:40px}
+.pt-step{min-width:44px;min-height:40px;padding:4px 10px}
+.pt-step-value{min-width:48px;text-align:center}
+@media(min-width:601px){.pt-meter{display:inline-block}}
+/* ===== 17-2. 주간 계획 격자·계획 탭 머리 (P1A, plan-week·life-plan): 새 색 없음 — 토큰만. 계획 = 과목 색 테두리(SVG stroke 속성), 실제 = 금 채움 ===== */
+.plan-far .lb-chip{min-height:36px}
+.plan-exam-wrap{display:grid;gap:var(--lb-s-2);min-width:0}
+.plan-exam-line{justify-self:start;max-width:100%;min-height:36px;padding:4px 14px;border-radius:var(--lb-r-full);border:1px solid var(--lb-gold-2);background:var(--lb-gold-soft);color:var(--lb-ink-1);font-size:13px;font-weight:700;box-shadow:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plan-exam-line[aria-expanded="true"]{background:var(--lb-surface-2)}
+#view-content:has(>.plan-panel)>.plan-more{grid-column:1/-1}
+.plan-more>summary{min-height:40px;line-height:40px;cursor:pointer;font-weight:700;color:var(--lb-ink-2)}
+.plan-more[open]{display:grid;gap:var(--lb-s-3)}
+.pw-grid{display:grid;grid-template-columns:22px repeat(7,minmax(0,1fr));gap:3px;align-items:stretch;min-width:0}
+.pw-dayhead{display:grid;justify-items:center;padding:2px 0;border-radius:var(--lb-r-1);font-size:11px;line-height:1.2;color:var(--lb-ink-3)}
+.pw-dayhead strong{font-size:12px;color:var(--lb-ink-1)}
+.pw-dayhead.today{background:var(--lb-gold-soft)}
+.pw-dayhead.changed small::after{content:" •";color:var(--lb-gold-3)}
+.pw-block{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--lb-ink-3)}
+.pw-cell{display:grid;gap:2px;align-content:start;min-width:0;min-height:44px;padding:2px;border-radius:var(--lb-r-1);border:1px solid var(--lb-line-soft);background:var(--lb-surface-solid)}
+.pw-cell.today{border-color:var(--lb-gold-2)}
+.pw-cell.past{background:var(--lb-surface-2)}
+.pw-item{display:block;width:100%;min-width:0;min-height:22px;padding:0;border:0;border-radius:var(--lb-r-1);background:transparent;box-shadow:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+.pw-item-svg{display:block;width:100%;height:auto;max-width:100%;max-height:26px}
+.pw-total-bar{display:block;width:100%;height:6px;max-width:100%}
+.pw-item-box{fill:none;stroke-width:1.6}
+.pw-item-box.dashed{stroke-dasharray:3 2}
+.pw-fill{fill:var(--lb-gold-2)}
+.pw-item-text{font-size:10px;font-weight:800;text-anchor:middle;fill:var(--lb-ink-1)}
+.pw-add,.pw-more{display:block;width:100%;min-width:0;min-height:22px;padding:0;border:1px dashed var(--lb-line);border-radius:var(--lb-r-1);background:transparent;box-shadow:none;color:var(--lb-ink-3);font-size:13px;line-height:1}
+.pw-cell.empty .pw-add{min-height:38px}
+.pw-more{border-style:solid;font-size:11px;font-weight:700}
+.pw-total{display:grid;gap:2px;justify-items:center;min-width:0}
+.pw-total-plan{min-height:14px;font-size:11px;color:var(--lb-ink-3);font-variant-numeric:tabular-nums}
+.pw-total-bg{fill:var(--lb-heat-0)}
+.pw-picks .lb-chip{min-height:40px}
+.pw-actions{display:flex;flex-wrap:wrap;gap:var(--lb-s-2)}
+.pw-actions button[disabled]{opacity:.5;cursor:not-allowed}
+.pw-suggest{display:grid;gap:var(--lb-s-3);max-height:62vh;overflow-y:auto}
+@media(min-width:601px){.pw-grid{grid-template-columns:28px repeat(7,minmax(0,1fr));gap:4px}.pw-cell{min-height:52px}}
+/* ===== 17-3. 월 과목×주차 표·일정 줄 (P1C, plan-month·life-plan): 새 색 없음 — 토큰만. 실제 = 열 지도 색, 계획 = 칸 테두리 ===== */
+.pm-month{display:grid;gap:var(--lb-s-3);min-width:0}
+.pm-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--lb-s-2)}
+.pm-head .muted{flex:1 1 180px;margin:0}
+.pm-toggle{min-height:36px;padding-inline:12px}
+.pm-grid{display:grid;gap:3px;align-items:stretch;min-width:0}
+.pm-cols-4{grid-template-columns:54px repeat(4,minmax(0,1fr)) 46px}
+.pm-cols-5{grid-template-columns:54px repeat(5,minmax(0,1fr)) 46px}
+.pm-cols-6{grid-template-columns:54px repeat(6,minmax(0,1fr)) 46px}
+.pm-colhead{display:grid;justify-items:center;align-content:center;min-width:0;padding:2px 0;border-radius:var(--lb-r-1);font-size:10px;line-height:1.2;color:var(--lb-ink-3);white-space:nowrap;overflow:hidden}
+.pm-colhead strong{font-size:12px;color:var(--lb-ink-1)}
+.pm-colhead.now{background:var(--lb-gold-soft)}
+.pm-total-head{font-size:12px;font-weight:800}
+.pm-subject{display:flex;align-items:center;gap:3px;min-width:0;font-size:11px;font-weight:700;line-height:1.15;color:var(--lb-ink-2);word-break:keep-all}
+.pm-subject .life-dot{flex:none}
+.pm-cell{display:block;width:100%;min-width:0;min-height:36px;padding:0;border:1px solid var(--lb-line-soft);border-radius:var(--lb-r-1);background:var(--lb-heat-none);color:var(--lb-ink-1);box-shadow:none;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;touch-action:manipulation}
+.pm-cell.plan-heat-1{background:var(--lb-heat-1)}
+.pm-cell.plan-heat-2{background:var(--lb-heat-2)}
+.pm-cell.plan-heat-3{background:var(--lb-heat-3)}
+.pm-cell.plan-heat-4{background:var(--lb-heat-4);color:var(--lb-surface-solid)}
+.pm-cell.planned{border:2px solid var(--lb-gold-3)}
+.pm-cell.plan-heat-3.planned,.pm-cell.plan-heat-4.planned{border-color:var(--lb-ink-1)}
+.pm-total{display:flex;align-items:center;justify-content:center;min-width:0;font-size:11px;font-weight:700;color:var(--lb-ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.pm-col-total{color:var(--lb-ink-3)}
+.pm-grand{color:var(--lb-ink-1)}
+.pm-sched{display:grid;gap:1px;align-content:center;justify-items:center;width:100%;min-width:0;min-height:36px;padding:2px 1px;border:1px dashed var(--lb-line);border-radius:var(--lb-r-1);background:transparent;box-shadow:none;color:var(--lb-ink-2);font-size:10px;line-height:1.2;touch-action:manipulation}
+.pm-sched-exam{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:800;color:var(--lb-ink-1)}
+.pm-sched-event{font-weight:700}
+.pm-hint{margin:0}
+.plan-cal-events{font-size:10px;font-weight:700;line-height:1.1}
+.plan-sched{display:grid;gap:var(--lb-s-2);min-width:0}
+.plan-sched-head{display:flex;align-items:center;justify-content:space-between;gap:var(--lb-s-2)}
+.plan-sched-head h3{margin:0}
+.plan-sched-add{min-height:36px;padding-inline:12px;margin-inline-start:auto}
+.plan-sched-row{display:flex;align-items:center;gap:var(--lb-s-2);width:100%;min-width:0;min-height:40px;padding:4px 10px;border:1px solid var(--lb-line-soft);border-radius:var(--lb-r-1);background:var(--lb-surface-solid);box-shadow:none;color:var(--lb-ink-1);font-size:13px;font-weight:400;text-align:left}
+.plan-sched-row.exam{border-color:var(--lb-gold-2);background:var(--lb-gold-soft)}
+.plan-sched-when{flex:none;font-size:12px;color:var(--lb-ink-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.plan-sched-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plan-sched-note{flex:none;font-size:12px}
+.plan-sched-more{justify-self:start;min-height:36px}
+@media(min-width:601px){.pm-cols-4{grid-template-columns:84px repeat(4,minmax(0,1fr)) 64px}.pm-cols-5{grid-template-columns:84px repeat(5,minmax(0,1fr)) 64px}.pm-cols-6{grid-template-columns:84px repeat(6,minmax(0,1fr)) 64px}.pm-grid{gap:4px}.pm-cell,.pm-sched{min-height:44px}.pm-subject{font-size:13px;gap:5px}.pm-total{font-size:13px}}
 /* ===== 18. Fold 네이티브 다리 (B44B, native-bridge): 결제 알림 칩·초안 시트·설정 알림 절. 새 색 없음 — 토큰만 ===== */
 .native-pay-row{margin:var(--lb-s-2) 0}
 .native-pay-chip{min-height:40px;font-weight:700}
@@ -1146,6 +1288,21 @@ button.fin-quick-need{background:transparent;color:var(--lb-ink-3)}
 .tower-3d-canvas:active{cursor:grabbing}
 .tower-3d-canvas:focus-visible{outline:2px solid var(--lb-gold-3);outline-offset:2px}
 .tower-3d-hint{margin:0}
+.tower-3d-status summary{cursor:pointer;color:var(--lb-ink-2)}
+.tower-3d-status p{margin:var(--lb-s-1) 0 0}
+/* T2B 나의 집: 머리 문구·시즌 청사진 목록·보기 칩·캔버스 위 글자 겹침층(SVG, 누르기는 캔버스로 통과)·완공 문구 */
+.tower-house-line{margin:0;font-weight:700;color:var(--lb-ink-2)}
+.tower-seasons summary{cursor:pointer;color:var(--lb-ink-2)}
+.tower-season-list{margin:var(--lb-s-1) 0 0;padding-left:1.4em;display:grid;gap:2px}
+.tower-season.current{font-weight:700;color:var(--lb-ink-1)}
+.tower-season.passed{color:var(--lb-ink-3)}
+.tower-3d-views{display:flex;flex-wrap:wrap;gap:var(--lb-s-2)}
+.tower-3d-stage{position:relative;min-width:0}
+.tower-3d-labels{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:hidden}
+.tower-3d-tag{font-size:12px;font-weight:800;fill:var(--lb-ink-1);stroke:var(--lb-surface);stroke-width:3px;paint-order:stroke;stroke-linejoin:round;text-anchor:middle}
+.tower-3d-tag-plan{fill:var(--lb-area-head);text-anchor:start}
+.tower-3d-tag-done{fill:var(--lb-gold-3)}
+.tower-3d-done{margin:0;font-weight:800;color:var(--lb-gold-3)}
 
 /* ===== 20. 사령부 상태 내보내기 (B47p): 새 색 없음 — 미리보기 글이 길면 안에서만 스크롤 ===== */
 .state-export-text{white-space:pre-wrap;max-height:48vh;overflow:auto;margin:var(--lb-s-2) 0}
@@ -1352,3 +1509,224 @@ button.finder-link{display:grid;gap:2px;justify-items:start;text-align:left;min-
 .tag.stmt-suspect,.tag.stmt-pair{background:var(--lb-warn-bg);color:var(--lb-warn)}
 .tag.stmt-skip{background:var(--lb-gold-soft);color:var(--lb-ink-3)}
 .tag.stmt-fail{background:var(--lb-bad-bg);color:var(--lb-bad)}
+/* ===== 26. STUDY LIVE 덮개 (S1A, study-live · 설계 §23a): 새 색 없음 — 토큰만. 시계는 시스템 고정폭 글꼴(외부 글꼴 0). 폭 경계는 기존 700/1000 ===== */
+.live-slot:empty{display:none}
+.live-mini{display:flex;align-items:center;gap:var(--lb-s-3);flex-wrap:wrap}
+.live-mini.resting{opacity:.86}
+.live-mini-text{display:grid;gap:2px;min-width:0;flex:1 1 160px}
+.live-mini-text .eyebrow{margin:0}
+.live-clock{font-family:ui-monospace,"Cascadia Mono",Consolas,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums;font-weight:800;color:var(--lb-ink-1);letter-spacing:.02em;line-height:1.05}
+.live-mini-clock{font-size:34px}
+dialog.live-dlg{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;margin:0;border:0;border-radius:0;padding:var(--lb-s-3) var(--lb-s-3) calc(var(--lb-s-3) + env(safe-area-inset-bottom));background:var(--lb-bg);overflow:auto}
+dialog.live-dlg::backdrop{background:var(--lb-bg)}
+.live-top{display:flex;align-items:center;gap:var(--lb-s-2)}
+.live-top .eyebrow{margin:0 auto 0 0}
+.live-close{min-width:44px;font-size:20px;line-height:1}
+.live-body{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--lb-s-3);margin-top:var(--lb-s-3);min-width:0}
+.room-stage{position:relative;justify-self:center;width:auto;height:46vh;max-width:100%;aspect-ratio:1560/2280;overflow:hidden;border-radius:var(--lb-r-2);background:var(--lb-surface-tint);box-shadow:var(--lb-shadow-1)}
+.room-stage .live-fig{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover}
+.live-panel{display:grid;gap:var(--lb-s-2);align-content:start;min-width:0}
+.live-state{margin:0;font-weight:700;color:var(--lb-gold-3)}
+.live-state.resting{color:var(--lb-ink-3)}
+.live-state.waiting{color:var(--lb-warn)}
+.live-panel .live-clock{font-size:56px}
+.live-ring-row{display:flex;align-items:center;gap:var(--lb-s-3)}
+.live-ring-side{display:grid;gap:var(--lb-s-1);min-width:0}
+.live-next,.live-gold,.live-bricks{margin:0;font-variant-numeric:tabular-nums}
+.live-next{font-weight:700;color:var(--lb-ink-1)}
+.live-gold{color:var(--lb-ink-3)}
+.live-gold.done{color:var(--lb-gold-3);font-weight:700}
+.live-ring-track{fill:none;stroke:var(--lb-heat-0)}
+.live-ring-fill{fill:none;stroke:var(--lb-gold-2);stroke-linecap:round}
+.live-ring.gold .live-ring-fill{stroke:var(--lb-gold-bright)}
+.live-ring-tick{stroke:var(--lb-line);stroke-width:1.5}
+.live-ring-tick.piece{stroke:var(--lb-gold-3);stroke-width:2.5}
+.live-ring-text{fill:var(--lb-ink-1);font-size:13px;font-weight:800;text-anchor:middle;dominant-baseline:central}
+.live-chips{display:flex;flex-wrap:wrap;gap:var(--lb-s-1)}
+.live-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid var(--lb-line);border-radius:var(--lb-r-full);background:var(--lb-surface-2);color:var(--lb-ink-2);font-size:13px;font-variant-numeric:tabular-nums}
+.live-overlap,.live-rest-over{margin:0}
+.live-actions{position:sticky;bottom:0;display:flex;flex-wrap:wrap;gap:var(--lb-s-2);padding-top:var(--lb-s-2);background:var(--lb-bg)}
+.live-actions button{flex:1 1 30%;min-height:48px}
+.live-dlg.resting .room-stage{opacity:.72}
+@media(min-width:701px){.live-body{grid-template-columns:minmax(0,5fr) minmax(0,7fr);align-items:start}.room-stage{height:min(78vh,720px)}.live-panel .live-clock{font-size:72px}.live-actions{position:static}}
+@media(min-width:1000px){dialog.live-dlg{padding:var(--lb-s-4)}.live-body{max-width:1280px;margin-inline:auto}.live-panel .live-clock{font-size:96px}.live-actions button{flex:0 1 auto;min-width:140px}}
+@media(prefers-reduced-motion:reduce){dialog.live-dlg[open]{animation:none}}
+
+/* ===== Q1A 오늘 퀘스트 줄·업적 패널 자리: 새 색 없음 — 토큰만 ===== */
+.life-quest-slot{display:flex;flex-wrap:wrap;align-items:center;gap:4px var(--lb-s-3);padding:8px 12px;border-radius:var(--lb-r-2);border:1px solid var(--lb-line-soft);background:var(--lb-surface-2);min-width:0}
+.life-quest-slot[hidden]{display:none}
+.life-quest-chip{min-width:0;overflow-wrap:anywhere;color:var(--lb-ink-3)}
+.life-quest-chip.done{color:var(--lb-gold-3)}
+.life-quest-chip.pending{color:var(--lb-ink-4)}
+.achv-panel{display:grid;gap:var(--lb-s-2);padding:12px;border-radius:var(--lb-r-2);border:1px solid var(--lb-line-soft);background:var(--lb-surface-2);min-width:0;margin-top:var(--lb-s-3)}
+.achv-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px var(--lb-s-3)}
+.achv-note{margin:0;padding:6px 10px;border-radius:var(--lb-r-2);background:var(--lb-gold-soft);border:1px solid var(--lb-gold-2)}
+.achv-title,.achv-bricks,.achv-line{margin:0;overflow-wrap:anywhere}
+.achv-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px var(--lb-s-2);min-width:0}
+.achv-chip{min-width:0;overflow-wrap:anywhere}
+.achv-near{display:grid;gap:4px;min-width:0}
+
+/* ===== 27. 공부방 장면 (S1B, study-room · 설계 §23b): 새 색 없음 — 토큰만. 물건은 그림 아래 책상 띠·좌우 가장자리, 좌우 날개는 넓은 화면(≥1000)만. 움직임은 opacity·transform만, 움직임 줄이기면 결과만 ===== */
+.room{position:relative;display:grid;grid-template-columns:minmax(0,1fr);justify-items:center;align-items:end;gap:var(--lb-s-2);min-width:0}
+.room-wing{display:none}
+.room-stage .room-front,.room-stage .room-fx{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;overflow:visible}
+.room-stage .room-fx{z-index:1}
+.room-stage .room-front{z-index:2}
+.room-desk-top{fill:var(--lb-vault-spent);opacity:.62}
+.room-desk-shade{fill:var(--lb-gold-3);opacity:.35}
+.room-desk-edge{stroke:var(--lb-gold-3);stroke-width:1.2}
+.room-desk-edge.gold{stroke:var(--lb-gold-bright);stroke-width:2}
+.room-note-page{fill:var(--lb-surface-solid);stroke:var(--lb-ink-4);stroke-width:.6}
+.room-note-spine{stroke:var(--lb-ink-4);stroke-width:.6}
+.room-pencil{stroke:var(--lb-gold-2);stroke-width:2.2;stroke-linecap:round}
+.room-book,.room-corner-spine,.room-wing-spine{stroke:var(--lb-ink-2);stroke-width:.4}
+.room-book-0{fill:var(--lb-chart-1)}
+.room-book-1{fill:var(--lb-chart-4)}
+.room-book-2{fill:var(--lb-chart-2)}
+.room-book-3{fill:var(--lb-chart-5)}
+.room-book-spine{stroke:var(--lb-gold-1);stroke-width:.8}
+.room-cup-body{fill:var(--lb-surface-solid);stroke:var(--lb-ink-3);stroke-width:.8}
+.room-cup-handle{fill:none;stroke:var(--lb-ink-3);stroke-width:1.2}
+.room-steam{fill:none;stroke:var(--lb-surface-solid);stroke-width:1.2;stroke-linecap:round;opacity:.8;animation:room-steam 2.6s ease-in-out infinite}
+.room-steam-2{animation-delay:-1.3s}
+.room-lamp-base,.room-lamp-head{fill:var(--lb-ink-3)}
+.room-lamp-pole,.room-lamp-arm{stroke:var(--lb-ink-3);stroke-width:2;stroke-linecap:round}
+.room-lamp-head.on{fill:var(--lb-gold-2)}
+.room-lamp-light{fill:var(--lb-gold-bright);opacity:.32;mix-blend-mode:screen}
+.room-brick{fill:var(--lb-subj-math);stroke:var(--lb-ink-2);stroke-width:.5}
+.room-brick.gold{fill:var(--lb-gold-bright);stroke:var(--lb-gold-3)}
+.room-candle-dish{fill:var(--lb-gold-3)}
+.room-candle{fill:var(--lb-surface-solid);stroke:var(--lb-ink-4);stroke-width:.4}
+.room-candle-wick{stroke:var(--lb-ink-1);stroke-width:.6}
+.room-flame-tip{fill:var(--lb-gold-bright);stroke:var(--lb-gold-2);stroke-width:.4;transform-box:fill-box;transform-origin:50% 100%;animation:room-flicker 1.2s ease-in-out infinite}
+.room-spark{fill:var(--lb-gold-bright);animation:room-steam 1.8s ease-in-out infinite}
+.room-spark-2{animation-delay:-.9s}
+.room-corner-frame,.room-wing-frame{fill:var(--lb-vault-spent);opacity:.72;stroke:var(--lb-gold-3);stroke-width:1}
+.room-corner-boards,.room-wing-boards{fill:none;stroke:var(--lb-gold-3);stroke-width:1.4}
+.room-halo-ring{fill:none;stroke:var(--lb-gold-bright);stroke-width:3;mix-blend-mode:screen;animation:st-breath 3s ease-in-out infinite}
+.room-halo-inner{stroke:var(--lb-gold-1);stroke-width:1.2}
+.room-halo-desk{stroke:var(--lb-gold-bright);stroke-width:2.4}
+.room-r5 .room-stage{box-shadow:0 0 0 1px var(--lb-gold-2),var(--lb-shadow-1)}
+.room-r6 .room-stage{box-shadow:0 0 0 2px var(--lb-gold-2),var(--lb-gold-glow)}
+.room-spark-ray{stroke:var(--lb-gold-2);stroke-width:1.4;stroke-linecap:round;transform-box:view-box;transform-origin:122px 314px;animation:room-burst .6s ease-out both}
+.room-spark-ray.gold{stroke:var(--lb-gold-bright);stroke-width:1.8}
+.room-front .room-new{animation:room-fade .6s ease-out both}
+.room-bricks .room-new{transform-box:fill-box;animation:room-drop .6s ease-out both}
+.room-cheer{position:absolute;left:50%;bottom:18%;z-index:3;transform:translateX(-50%);margin:0;padding:4px 12px;border:1px solid var(--lb-gold-2);border-radius:var(--lb-r-full);background:var(--lb-surface-solid);color:var(--lb-ink-1);max-width:calc(100% - 16px);font-size:13px;font-weight:800;text-align:center;overflow-wrap:anywhere;box-shadow:var(--lb-gold-glow)}
+.room-cheer.gold{background:var(--lb-gold-2);color:var(--lb-on-gold)}
+.room-cheer[hidden]{display:none}
+.room-window-pane{fill:var(--lb-ink-1);stroke:var(--lb-gold-3);stroke-width:2}
+.room-wing-mullion{fill:none;stroke:var(--lb-gold-3);stroke-width:2}
+.room-star{fill:var(--lb-gold-bright);animation:st-breath 2.6s ease-in-out infinite}
+.room-star-1{animation-delay:-.9s}
+.room-star-2{animation-delay:-1.7s}
+@media(min-width:1000px){
+  .live-body{grid-template-columns:minmax(0,3fr) minmax(340px,2fr)}
+  .room-wide{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);justify-items:stretch}
+  .room-wide .room-wing{display:block;width:100%;height:auto;max-height:min(72vh,640px)}
+  .room-wide .room-stage{justify-self:center;height:min(72vh,640px)}
+  .room-wide .room-shelf-corner{display:none}
+}
+/* 지난 날짜 "그날의 방" 작은 카드(날개 없음) */
+.room-day{display:grid;gap:var(--lb-s-1);justify-items:start;margin-top:var(--lb-s-3);min-width:0}
+.room-day .room{justify-self:stretch;justify-items:start}
+.room-day .room-stage{justify-self:start;height:auto;width:180px;max-width:100%}
+.room-day-note{margin:0}
+@keyframes room-fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes room-drop{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}
+@keyframes room-burst{from{opacity:1;transform:scale(.4)}to{opacity:0;transform:scale(1.5)}}
+@keyframes room-steam{0%,100%{opacity:.25;transform:translateY(2px)}50%{opacity:.85;transform:translateY(-2px)}}
+@keyframes room-flicker{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.82)}}
+@media(prefers-reduced-motion:reduce){.room-burst{display:none}.room *,.room-cheer{animation:none}}
+
+/* S1C: 덮개 위 띠의 소리 단추 */
+.live-sound{min-width:44px;font-size:18px;line-height:1}
+@media(max-width:700px){.live-top .eyebrow,.live-full{display:none}.live-top .live-sound{margin-left:auto}}   /* Fold 접힘 위 띠 = 과목 칩·소리·×(설계 §6) */
+
+/* ===== 28. 돈 카드 모션 (M1B): 새 색 없음 — 토큰만. 움직임은 14절 prefers-reduced-motion 규칙이 멈추고, 멈춰도 다 그려진 모양이 보인다 ===== */
+.vault-melt-reserved{stroke:var(--lb-gold-3);stroke-width:.6;stroke-linejoin:round}
+.vault-melt-hatch-bg{fill:var(--lb-vault-today)}
+.vault-melt-hatch-line{stroke:var(--lb-gold-3);stroke-width:1.6;stroke-opacity:.7}
+.feel-card{scroll-margin-top:72px}
+.feel-change{margin:6px 0 0;font-size:var(--lb-caption);color:var(--lb-ink-2);font-variant-numeric:tabular-nums}
+.feel-change-new{display:inline-block;font-size:15px;color:var(--lb-ink-1)}
+.feel-change-new.fresh{animation:lb-rise .7s ease-out both}
+.feel-line{margin:10px 0 0}
+.feel-line .fin-svg{width:100%;max-width:560px;height:auto}
+.feel-line p{margin:2px 0 0}
+.feel-line-budget{stroke:var(--lb-ink-3);stroke-width:1}
+.feel-line-today{stroke:var(--lb-ink-4);stroke-width:1;stroke-dasharray:2 3}
+.feel-line-actual,.feel-line-forecast{fill:none;stroke:var(--lb-gold-3);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.feel-line-forecast{stroke-dasharray:1 5}
+.feel-line-end{fill:var(--lb-gold-3)}
+.fin-svg .feel-line-budget-text,.fin-svg .feel-line-label{font-size:10px}
+.fin-svg .feel-line-end-text{font-size:11px;font-weight:700;fill:var(--lb-ink-1)}
+.feel-line[data-over="1"] .feel-line-forecast{stroke:var(--lb-bad)}
+.feel-line[data-over="1"] .feel-line-end{fill:var(--lb-bad)}
+.feel-line[data-over="1"] .fin-svg .feel-line-end-text{fill:var(--lb-bad)}
+.feel-line.draw .feel-line-actual{stroke-dasharray:1;animation:feel-line-draw .8s ease-out both}
+.feel-line.draw .feel-line-forecast,.feel-line.draw .feel-line-end,.feel-line.draw .feel-line-end-text{animation:lb-fade .4s ease-out .7s both}
+@keyframes feel-line-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@media(prefers-reduced-motion:reduce){.feel-line.draw .feel-line-actual{stroke-dasharray:none}}
+
+/* ===== 29. 바깥 일정 보기 (P1E): 새 색 없음 — 토큰만. 앱 일정과 구별되게 배경 없이 흐린 글자·점선 ===== */
+.calendar-event.ics-outer{background:transparent;color:var(--lb-ink-3);border:1px dashed var(--lb-line-soft);border-left:2px dashed var(--lb-ink-3);font-weight:400}
+.calendar-event.ics-outer:hover{background:var(--lb-surface-tint)}
+.ics-outer-body{display:grid;gap:var(--lb-s-2)}
+.ics-outer-title{margin:0;overflow-wrap:anywhere}
+.ics-outer-list{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--lb-s-1) var(--lb-s-2);align-items:center}
+.plan-sched-outer{margin-top:var(--lb-s-1)}
+.ics-outer-mark{color:var(--lb-ink-3)}
+
+/* ===== Q1B 오늘 줄 단추·달성 알림·시트·금빛 기둥: 새 색 없음 — 토큰만 ===== */
+button.life-quest-open,button.life-quest-open:hover{display:flex;flex-wrap:wrap;align-items:center;gap:4px var(--lb-s-3);width:100%;min-height:44px;margin:0;padding:0;border:0;background:none;box-shadow:none;color:inherit;font:inherit;text-align:left;cursor:pointer;min-width:0}
+button.life-quest-open:hover .life-quest-more{color:var(--lb-gold-3)}
+.life-quest-more{margin-left:auto;font-weight:700;color:var(--lb-ink-4)}
+.achv-moment-slot:empty{display:none}
+.achv-moment{position:relative;overflow:hidden;font-weight:700;animation:achv-band 1.2s ease-out both}
+.achv-moment.quiet{font-weight:400;animation:none}
+@keyframes achv-band{0%{opacity:0;transform:scaleX(.72);background:var(--lb-gold-bright)}45%{opacity:1;transform:scaleX(1);background:var(--lb-gold-bright)}100%{opacity:1;transform:scaleX(1);background:var(--lb-gold-soft)}}
+.achv-actions{display:flex;flex-wrap:wrap;gap:var(--lb-s-2)}
+.achv-sheet,.quest-sheet{display:grid;gap:var(--lb-s-2);min-width:0}
+.achv-sheet h3,.quest-sheet h3{margin:var(--lb-s-2) 0 0}
+.achv-group{display:grid;gap:4px;min-width:0}
+.achv-group-list{display:grid;gap:2px;margin:0;padding:0;list-style:none}
+.achv-item{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px var(--lb-s-3);padding:6px 0;border-bottom:1px solid var(--lb-line-soft);min-width:0}
+.achv-item-name{min-width:0;overflow-wrap:anywhere;color:var(--lb-ink-3)}
+.achv-item.done .achv-item-name{font-weight:700;color:var(--lb-gold-3)}
+.achv-item-state{font-variant-numeric:tabular-nums}
+.quest-row{display:grid;gap:4px;min-width:0}
+.quest-row.done .lb-xp-head span{color:var(--lb-gold-3)}
+.quest-row.pending .lb-xp-head span{color:var(--lb-ink-4)}
+.quest-line{margin:0;overflow-wrap:anywhere}
+.quest-mine{display:grid;gap:var(--lb-s-2);padding-top:var(--lb-s-2);border-top:1px solid var(--lb-line-soft);min-width:0}
+.quest-mine p{margin:0}
+.quest-form{display:grid;gap:var(--lb-s-2);min-width:0}
+.quest-form label{display:grid;gap:4px;min-width:0}
+.quest-form input,.quest-form select{min-height:44px;width:100%;min-width:0}
+.quest-form .lb-toggle{display:inline-flex;width:auto}
+.quest-form .notice{margin:0}
+.tower-bonus{fill:var(--lb-gold-bright);stroke:var(--lb-gold-1);stroke-width:.6}
+.tower-bonus-side{fill:var(--lb-gold-2)}
+.tower-bonus-top{fill:var(--lb-gold-1)}
+.tower-label-bonus{fill:var(--lb-ink-1)}
+.tower-bonus-line{margin:0;font-weight:700;color:var(--lb-gold-3)}
+.tower-bonus-total{margin:0;font-variant-numeric:tabular-nums}
+@media(prefers-reduced-motion:reduce){.achv-moment{animation:none}}
+.title-chip{display:inline-block;justify-self:start;width:fit-content;max-width:100%;padding:2px 10px;border:2px solid var(--lb-line);border-radius:var(--lb-r-full);background:var(--lb-surface-solid);color:var(--lb-ink-1);font-size:var(--lb-caption);font-weight:700;line-height:1.4;overflow-wrap:anywhere}
+.title-chip.tier-bronze{border-color:var(--lb-gold-3)}
+.title-chip.tier-silver{border-color:var(--lb-ink-4)}
+.title-chip.tier-gold{border-color:var(--lb-gold-2);background:var(--lb-gold-soft)}
+.title-chip.tier-hidden{border-color:var(--lb-ink-3);border-style:dashed}
+.st-title{display:flex;justify-content:center;max-width:100%;min-width:0}
+.title-sheet{display:grid;gap:var(--lb-s-2);min-width:0}
+.title-sheet p{margin:0}
+.title-pick{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px var(--lb-s-2);width:100%;min-height:44px;min-width:0;text-align:left}
+.title-pick.on{border-color:var(--lb-gold-2);background:var(--lb-gold-soft)}
+.title-locked summary{min-height:32px;cursor:pointer}
+.tower-3d-tag-plaque{fill:var(--lb-gold-3)}
+.tower-3d-tag-corner{font-size:10px;fill:var(--lb-ink-2)}
+.tower-badges summary{cursor:pointer;color:var(--lb-ink-2)}
+.tower-badge-list{margin:var(--lb-s-1) 0 0;padding-left:1.2em;display:grid;gap:2px}
+.tower-badge{color:var(--lb-ink-3);overflow-wrap:anywhere}
+.tower-badge.done{font-weight:700;color:var(--lb-ink-1)}

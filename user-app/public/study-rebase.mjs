@@ -75,6 +75,14 @@ export function timerClaimOverlap(sessions){
   for(const a of of('A'))for(const t of timers){const o=Math.min(a.span[1],t.span[1])-Math.max(a.span[0],t.span[0]);if(o>0){ms+=o;itemId??=a.id;}}
   return ms>=MIN_MS?{code:OVERLAP_NOTICE,list:'sessions',itemId,min:Math.round(ms/MIN_MS)}:null;
 }
+// S1A: 두 기기 타이머(T×T)도 같은 1분 기준으로 알리기만 한다(자동 삭제·차감 없음). 같은 타이머는 같은 id라 이미 하나로 합쳐져 있다.
+export const TIMER_OVERLAP_NOTICE='REBASE_TIMER_TIMER_OVERLAP';
+export function timerTimerOverlap(sessions){
+  const timers=sessions.filter(s=>sessionMark(s?.id)==='T').map(s=>({id:s.id,span:spanOf(s)})).filter(x=>x.span);
+  let ms=0,itemId=null;
+  for(let i=0;i<timers.length;i++)for(let j=i+1;j<timers.length;j++){const a=timers[i],b=timers[j],o=Math.min(a.span[1],b.span[1])-Math.max(a.span[0],b.span[0]);if(o>0){ms+=o;itemId??=b.id;}}
+  return ms>=MIN_MS?{code:TIMER_OVERLAP_NOTICE,list:'sessions',itemId,min:Math.round(ms/MIN_MS)}:null;
+}
 
 export function rebase({date,base,mine,latest}){
   const notices=[],merged={date};
@@ -88,5 +96,6 @@ export function rebase({date,base,mine,latest}){
   try{validateStudyData('STUDY_DAY',date,merged);}
   catch(e){return {status:'REJECTED',code:e.code??'STUDY_REBASE_INVALID',notices,detail:Object.fromEntries(LISTS.map(l=>[l,merged[l].length]))};}
   const overlap=timerClaimOverlap(merged.sessions);if(overlap)notices.push(overlap);
+  const tt=timerTimerOverlap(merged.sessions);if(tt)notices.push(tt);
   return {status:'MERGED',card:merged,notices};
 }

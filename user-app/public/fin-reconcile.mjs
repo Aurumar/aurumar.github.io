@@ -4,7 +4,7 @@
 // 같은 파일을 다시 넣으면 방금 저장한 거래가 "이미 있음"으로 잡혀 다시 저장되지 않는다(idempotent).
 import {merchantKey} from './fin-plan.mjs';
 import {ledgerMatch} from './fin-recurring.mjs';
-import {shiftMonth} from './fin-ledger.mjs';
+import {shiftMonth,finError} from './fin-ledger.mjs';
 
 export const SAME_DAYS=1,SUSPECT_DAYS=3,CANCEL_LOOKBACK_DAYS=90,FX_PERCENT=3n,SAVE_MAX=300;
 export const STATUS_TEXT=Object.freeze({SAME:'이미 있음',SUSPECT:'중복 의심',NEW:'새것',PAIR:'파일 안 취소 짝',SKIP:'건너뜀',FAIL:'해석 실패'});
@@ -122,15 +122,21 @@ export function reconcileStatement(rows,fin,{labels=fin?.labels,localDate=null}=
   // 4) 기본 처리: 새것만 체크(소비 아님 제안이면 체크 안 함), 그 밖은 "그래도 새것으로"를 눌러야 체크 가능. 해석 실패는 저장 불가.
   const ctx=suggestContext(fin??{},{labels,localDate});
   for(const it of items){
-    it.forcible=['SAME','SUSPECT','PAIR','SKIP'].includes(it.status);
+    it.forcible=['SAME','SUSPECT','PAIR','SKIP'].includes(it.status)&&it.row.amount!==null;   // FIX37A (HUNT37 F6): 할부 총액을 모르면(금액 null) 새것으로 저장할 금액이 없다
     if(it.status==='FAIL')continue;
     const s=suggestFor(it,ctx);if(!it.kind)it.kind=s.kind;
     if(it.kind==='EXPENSE'||it.kind==='REFUND'){if(!it.category||!Object.hasOwn(ctx.labels,it.category)){it.category=s.category;it.subcategory=s.subcategory;it.suggestFrom=s.from;}else it.suggestFrom='ORIGINAL';}
     else{it.category=null;it.subcategory='';it.suggestFrom=s.from;}
-    it.checked=it.status==='NEW'&&it.kind!=='NONE';
+    it.checked=it.status==='NEW'&&it.kind!=='NONE'&&!it.row.flags?.includes('DATE_AMBIGUOUS')&&!it.row.flags?.includes('EARLY');   // FIX35 (HUNT35 D8)·FIX37A (HUNT37 F4): 두 자리 연도 순서가 모호하거나 기간보다 앞인 행은 소유자가 확인하고 체크
   }
   return items;
 }
+// FIX35 (HUNT35 D2): 다시 대조한 뒤에도 "그래도 새것으로"(c.forced)를 이어 갈지. 장부에 같은 거래가 생겨 "이미 있음"(SAME)이 됐으면 풀어 대기열에서 뺀다:
+// 고를 때는 SAME이 아니었거나(c.forcedFrom), 이미 저장을 시도했다(c.tried, 응답을 잃었을 수 있음). 고를 때부터 SAME이었고 아직 저장을 시도하지 않았으면 유지한다.
+// 결정적 저장 ID는 쓰지 않는다: 같은 id·빈 heads 재전송을 코어가 어떻게 다루는지(거절·충돌 가지) 이 범위에서 확인하지 못했고, 무효화한 거래를 다시 가져오면 id가 부딪힌다.
+export const keepForced=(it,c)=>Boolean(c?.forced)&&it.forcible&&!(it.status==='SAME'&&(c.tried||c.forcedFrom!=='SAME'));
+// FIX35 (HUNT35 D1): 저장 완료 키(done)는 파일 + 표(시트) + 행. 여러 표 명세서에서 표를 바꿔도 같은 행 번호(R1…)의 새 거래를 "이미 저장함"으로 건너뛰지 않는다.
+export const statementSaveKey=({sha12,tableIndex=0},it)=>sha12+':T'+tableIndex+':'+it.key;
 
 // ---------- 분류 제안(§7) ----------
 const NOT_SPEND=/카드대금|결제대금|대금결제|자동이체|카드결제/;
@@ -180,13 +186,16 @@ export function coveredByBatches(items,fin){
 // ---------- 저장 계획(§6) ----------
 // 고른 항목(체크됨 · 저장 안 함 아님 · 새것이거나 "그래도 새것으로")을 날짜순으로, 한 번에 300건까지.
 export function selectForSave(items,{max=SAVE_MAX}={}){
-  const pickable=items.filter(it=>it.checked&&it.kind&&it.kind!=='NONE'&&it.status!=='FAIL'&&(it.status==='NEW'||it.forced))
+  const pickable=items.filter(it=>it.checked&&it.kind&&it.kind!=='NONE'&&it.status!=='FAIL'&&it.row.amount!==null&&(it.status==='NEW'||it.forced))
     .sort((a,b)=>a.row.date.localeCompare(b.row.date)||a.row.idx-b.row.idx);
   return {queue:pickable.slice(0,max),later:Math.max(0,pickable.length-max)};
 }
 // buildTxn(fin-ledger.mjs) 입력. 원본 파일 내용은 넣지 않는다: 메모에는 파일 SHA256 앞 12자와 행 번호, 할부·외화·수수료·교통 묶음 건수만.
-export function statementTxnInput(it,{sha12,monthTag}){
-  const r=it.row,kind=it.kind,spend=kind==='EXPENSE'||kind==='REFUND',memo=['명세서 '+sha12+' · 행 '+(r.idx+1)];
+// FIX35: 두 번째 표(시트)부터는 메모에 표 번호를 붙인다(첫 표는 예전 그대로).
+// FIX37A (HUNT37 F6): 금액 null은 BigInt TypeError(코드 없음 → fail()이 연결 오류로 다룸) 대신 이 기기 안의 입력 오류(finLocal)로 멈춘다.
+export function statementTxnInput(it,{sha12,monthTag,tableIndex=0}){
+  if(it.row.amount===null||it.row.amount===undefined)throw finError('INVALID_FIN_AMOUNT');
+  const r=it.row,kind=it.kind,spend=kind==='EXPENSE'||kind==='REFUND',memo=['명세서 '+sha12+(tableIndex>0?' · 표 '+(tableIndex+1):'')+' · 행 '+(r.idx+1)];
   if((r.months??0)>=2)memo.push('할부 '+r.months+'개월'+(r.round?' (명세서 '+r.round+'회차)':''));
   if(r.transit)memo.push('교통 묶음 '+r.transit+'건');
   if(r.foreign&&!r.original)memo.push('외화 '+r.foreign.amount+(r.foreign.currency?' '+r.foreign.currency:''));
