@@ -101,6 +101,7 @@ export function fixedDue(lastDate,month,days){
 // FIX36 (HUNT35 H8·F13): 예정일은 평소 결제일(dueDay, PC 알림과 같은 함수)이 먼저이고, 그것을 모를 때만 마지막 결제일이다. 예정일 ±3일 안의 결제가 있는 달에는 예정일 밖의 같은 금액 결제를 배정하지 않는다(구독은 한 달에 한 번, 나머지는 변동 지출).
 // FIX36 (HUNT36 M6): state PREPAID = 지난달 마지막 며칠에 이번 달 몫을 미리 냄(paidDate = 그 날짜). 그 돈은 지난달 지출이라 이번 달 낸 돈(actual)에도 예정에도 더하지 않는다.
 // FIX39B (통제탑 C): state CHECK = 규칙 금액과 정확히 같은 결제가 예정일 밖에만 있음(due = 예정일, paidDate = 그 날짜). 그 결제 하나를 고정비로 한 번만 센다(actual = 규칙 금액, 여러 건이면 마지막 결제일, 나머지는 변동 지출). 예정·연체로 더하지 않는다.
+// FIX41 (HUNT40 D1): 앞달 몫인 늦은 결제(lineKind 'LATE')는 이번 달 몫(got)에 배정하지 않고 late(합, 있을 때만 칸이 있다)에 둔다. 이번 달 예정은 그대로 살아 있다. FIX41 (D3): CHECK인데 예정일 +3일이 지났으면 pastDue:true(ruleStatus 값).
 export function fixedSchedule(rules,lines,today,days){
   const month=today.slice(0,7),byKey=new Map();
   for(const l of lines){
@@ -112,7 +113,7 @@ export function fixedSchedule(rules,lines,today,days){
   const list=Array.isArray(rules)?rules:[],active=list.filter(r=>!r.hidden),info=new Map(),byMerchant=new Map();
   for(const r of active){
     const mine=byKey.get(r.match.merchant)??[];
-    info.set(r.id,{st:ruleStatus(r,mine,today,list),due:dueDay(r,mine,month,list),amount:BigInt(r.match.amount),got:[]});
+    info.set(r.id,{st:ruleStatus(r,mine,today,list),due:dueDay(r,mine,month,list),amount:BigInt(r.match.amount),got:[],late:0n});
     if(!byMerchant.has(r.match.merchant))byMerchant.set(r.match.merchant,[]);
     byMerchant.get(r.match.merchant).push(r);
   }
@@ -129,16 +130,18 @@ export function fixedSchedule(rules,lines,today,days){
       const kinds=group.map(r=>[r,lineKind(r,a,date,info.get(r.id).due,list,thisMonth,history)]);
       const own=kinds.filter(([,k])=>k==='PAID').map(([r])=>r);
       const other=own.length?[]:kinds.filter(([r,k])=>k==='OTHER'&&info.get(r.id).st.state==='DIFFERENT').map(([r])=>r);
-      const check=own.length||other.length?[]:group.filter(r=>info.get(r.id).st.state==='CHECK'&&info.get(r.id).amount===a);
+      const check=own.length||other.length?[]:kinds.filter(([r,k])=>k!=='LATE'&&info.get(r.id).st.state==='CHECK'&&info.get(r.id).amount===a).map(([r])=>r);
       const pick=closest(own.length?own:other.length?other:check,a);
-      if(pick)info.get(pick.id).got.push({date,amount:a});
+      if(pick){info.get(pick.id).got.push({date,amount:a});continue;}
+      const late=closest(kinds.filter(([,k])=>k==='LATE').map(([r])=>r),a);
+      if(late)info.get(late.id).late+=a;
     }
   }
   const out=[];
   for(const r of active){
-    const {st,amount,got,due:dueD}=info.get(r.id),base={rule:r,id:r.id,name:r.name,provisional:amount,actual:null,count:0,paidDate:null,changed:null,suggest:null,blocked:false};
+    const {st,amount,got,due:dueD,late}=info.get(r.id),base={rule:r,id:r.id,name:r.name,provisional:amount,actual:null,count:0,paidDate:null,changed:null,suggest:null,blocked:false,...(late?{late}:{})};
     if(st.prepaid&&!got.length){out.push({...base,state:'PREPAID',due:null,paidDate:st.prepaid});continue;}
-    if(st.state==='CHECK'&&got.length){out.push({...base,state:'CHECK',due:month+'-'+pad(Math.min(dueD,days)),actual:amount,count:1,paidDate:got.reduce((m,x)=>x.date>m?x.date:m,got[0].date)});continue;}
+    if(st.state==='CHECK'&&got.length){out.push({...base,state:'CHECK',due:month+'-'+pad(Math.min(dueD,days)),actual:amount,count:1,paidDate:got.reduce((m,x)=>x.date>m?x.date:m,got[0].date),...(st.pastDue?{pastDue:true}:{})});continue;}
     if(st.state==='PENDING'||!got.length){
       // R33B (HUNT32 D5): 금액대 안 구독 결제가 없으면(결제 전에 잠정 금액을 바꿈) 평소 결제일(dueDay, 대체 기준 포함)로 예정일을 정한다.
       const due=dueD===null?fixedDue(st.lastDate,month,days):month+'-'+pad(Math.min(dueD,days));
@@ -157,9 +160,11 @@ export function fixedSchedule(rules,lines,today,days){
 // 이번 달 정기 결제를 셋으로 나눈다(fixedSchedule의 합).
 // paid: 이번 달 기록이 있는 규칙에 배정된 실제 금액(CHECK 포함, 이미 쓴 돈에 들어 있으므로 일평균에서 뺀다). 배정되지 않은 같은 가게 지출(예정일 밖 일반 구매)은 변동 지출이다(R32 D4).
 // upcoming: 기록이 없고 예정일이 오늘 이후(오늘 포함)이거나 예정일을 모르는 규칙의 금액. overdue: 기록이 없고 예정일이 지난 규칙의 금액.
+// FIX41 (HUNT40 D1): 앞달 몫인 늦은 결제도 이번 달 쓴 돈에 들어 있는 고정비라 paid에 더한다(변동 지출로 일평균에 늘어나지 않게). 건수에는 넣지 않고, 있으면 late에 합을 함께 둔다.
 export function fixedPlan(rules,lines,today,days){
   const out={paid:0n,paidCount:0,upcoming:0n,upcomingCount:0,overdue:0n,overdueCount:0,undatedCount:0};
   for(const it of fixedSchedule(rules,lines,today,days)){
+    if(it.late){out.paid+=it.late;out.late=(out.late??0n)+it.late;}
     if(it.state==='PREPAID')continue;   // FIX36: 지난달 지출에 이미 들어 있다
     if(it.state==='OVERDUE'){out.overdue+=it.provisional;out.overdueCount++;}
     else if(it.state==='PLANNED'){out.upcoming+=it.provisional;out.upcomingCount++;if(it.due===null)out.undatedCount++;}
@@ -172,20 +177,21 @@ export function fixedPlan(rules,lines,today,days){
 // FIX40 (통제탑 결정 1): 반복결제 항목에 맞는 정기 결제 규칙이 있으면 다음 예상일은 정기 결제 화면(fixedSchedule)·PC 알림과 같은 예정일(dueDay, 말일 정리 포함)이다.
 // 이번 달 예정일이 살아 있으면(예정·연체·확인 필요) 그 날, 이번 달 몫이 끝났으면(확정·금액 다름·미리 냄) 다음 달 예정일이다. 예정일을 모르면 탐지 값을 그대로 둔다.
 // 맞는 규칙 = 같은 가맹점의 숨기지 않은 규칙 중 금액이 항목의 보통 금액에 가장 가깝고 그 절반~두 배 안인 것(같으면 목록 앞). 없으면 탐지 값 그대로다. 항목의 다른 값(주기·빠짐·상태)과 기록은 바꾸지 않는다.
+// FIX41 (HUNT40 D2): 확인 필요인데 이번 달 예정일이 이미 지났으면 다음 달 예정일이다. FIX41 (D5): 규칙은 매달이라 분기·연 주기 항목에는 쓰지 않는다. 주기를 모르는 항목(period null, "반복결제로 포함"만 지정)은 탐지 값이 없어 FIX40대로 규칙 날짜를 쓴다.
 const monthDays=m=>{const y=Number(m.slice(0,4)),n=Number(m.slice(5,7));return (Date.UTC(y,n,1)-Date.UTC(y,n-1,1))/86400000;};
 export function withRuleDates(rec,rules,lines,today){
   const list=Array.isArray(rules)?rules:[];
   if(!list.length)return rec;
   const month=today.slice(0,7),next=shiftMonth(month,1),schedule=fixedSchedule(list,lines,today,monthDays(month));
   const dateOf=s=>{
-    if(s.due!==null)return s.due;
+    if(s.due!==null&&!(s.state==='CHECK'&&s.due<today))return s.due;
     if(s.state==='PLANNED')return null;
     const day=dueDay(s.rule,lines,next,list);
     return day===null?null:next+'-'+pad(Math.min(day,monthDays(next)));
   };
   const gap=(s,a)=>a>s.provisional?a-s.provisional:s.provisional-a;
   const ruleFor=item=>schedule.filter(s=>s.rule.match.merchant===item.key&&item.typical*2n>=s.provisional&&item.typical<=s.provisional*2n).reduce((best,s)=>best===null||gap(s,item.typical)<gap(best,item.typical)?s:best,null);
-  return {...rec,items:rec.items.map(item=>{const s=ruleFor(item),date=s?dateOf(s):null;return date===null?item:{...item,nextDate:date};})};
+  return {...rec,items:rec.items.map(item=>{const s=item.period==='MONTHLY'||item.period===null?ruleFor(item):null,date=s?dateOf(s):null;return date===null?item:{...item,nextDate:date};})};
 }
 
 // ---------- 이대로면 월말 ----------
@@ -216,6 +222,7 @@ export function forecastText(f){
   const fx=f.fixed,fixedCount=fx.paidCount+fx.upcomingCount+fx.overdueCount,notes=[];
   notes.push('월말 예상 지출 '+formatWon(net)+' · 하루 '+formatWon(f.perDay)+' 속도로 '+formatWon(f.projectedVariable)+(fixedCount?' + 정기 결제 '+formatWon(fx.paid+fx.upcoming+fx.overdue):''));
   if(f.refundOver)notes.push('변동 지출보다 큰 환불 '+formatWon(f.refundOver)+'을 뺐습니다.');
+  if(fx.late)notes.push('앞달 몫이 이번 달에 늦게 찍힌 정기 결제 '+formatWon(fx.late)+'은 변동 지출에서 뺐습니다.');
   if(fx.upcomingCount)notes.push('아직 안 나간 정기 결제 '+fx.upcomingCount+'건 '+formatWon(fx.upcoming)+'을 더했습니다.');
   if(fx.overdueCount)notes.push('예정일이 지났는데 기록이 없는 정기 결제 '+fx.overdueCount+'건 '+formatWon(fx.overdue)+'도 나갈 돈으로 더했습니다.');
   if(f.early)notes.push('이번 달 '+f.elapsed+'일치 기록으로 계산해 크게 달라질 수 있습니다.');

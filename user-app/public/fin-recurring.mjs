@@ -12,7 +12,7 @@ export const HIDDEN_KEY='lb.fin.recurring.hidden.v1',HIDDEN_MAX=200;
 export const RECURRING_TEXT=Object.freeze({
   tab:'정기 결제',total:'매달 나가는 돈',empty:'등록한 정기 결제가 없습니다. 아래 후보에서 "정기로 등록"을 누르면 여기에 모입니다.',
   candidates:'정기 결제 후보',noCandidates:'후보가 없습니다. 같은 가게·비슷한 금액이 서로 다른 달에 3번 이상 나온 결제만 후보가 됩니다.',
-  PAID:'이번 달 결제 있음',PENDING:'이번 달 아직',DIFFERENT:'이번 달 금액 다름',CHECK:'확인 필요 · 예정일 밖 같은 금액',chip:'정기 결제: ',
+  PAID:'이번 달 결제 있음',PENDING:'이번 달 아직',DIFFERENT:'이번 달 금액 다름',CHECK:'확인 필요 · 예정일 밖 같은 금액',CHECK_PAST:'확인 필요 · 예정일 지남(예정일 결제 없음)',chip:'정기 결제: ',
   priceChanged:'금액이 바뀌었어요 · 새 금액으로 바꿀까요',priceApply:'새 금액으로 바꾸기',
   hideFailed:'이 기기에 숨김을 저장하지 못했습니다 · 저장 공간을 확인한 뒤 다시 눌러 주세요.',
   // R33B (HUNT32 D2·D3): 겹침 판정에 걸려 버튼을 내지 않을 때 보이는 이유.
@@ -168,12 +168,12 @@ export const dueFallback=(rule,a,rules=[])=>{
 const FALLBACK_MIN_MONTHS=2,FIRM_DUE_PAYMENTS=2,DUE_RECENT_MONTHS=3,MONTH_END_DAY=31;
 // FIX39B (HUNT37 M4): 그 달의 말일 결제는 "말일"(31)로 센다. 예정일 31은 짧은 달에서 그 달 말일이다(dueOf).
 const billDay=date=>date===dueOf(date.slice(0,7),MONTH_END_DAY)?MONTH_END_DAY:Number(date.slice(8,10));
-// 가장 많이 나온 날(동률은 최근).
+// 가장 많이 나온 날(동률은 최근). FIX41 (HUNT40 D4): 동률이면 말일(31)보다 실제 날짜가 먼저다(1/28·2/28이 31로 굳지 않게).
 function usualDay(list){
   const count=new Map();
   for(const x of list){const d=billDay(x.date);count.set(d,(count.get(d)??0)+1);}
   let best=null,bestN=0;
-  for(const x of [...list].sort((p,q)=>q.date.localeCompare(p.date))){const d=billDay(x.date),n=count.get(d);if(n>bestN){best=d;bestN=n;}}
+  for(const x of [...list].sort((p,q)=>q.date.localeCompare(p.date))){const d=billDay(x.date),n=count.get(d);if(n>bestN||(n===bestN&&best===MONTH_END_DAY&&d!==MONTH_END_DAY)){best=d;bestN=n;}}
   return best;
 }
 // FIX34 (HUNT34 H8·H13): 대체 결제일. 화면(dueDayOf)과 PC 알림(pc-toast)이 이 함수 하나를 쓴다. 후보는 같은 금액대로 묶여 서로 다른 달에 2번 이상 되풀이된 결제뿐이다(한 번 산 일반 구매로 정하지 않는다).
@@ -261,14 +261,27 @@ const earlyPayment=(rule,date,history)=>{
   }
   return true;
 };
+// FIX41 (HUNT40 D1): history를 주면 앞달 몫인 늦은 결제(lateShare)는 'LATE'다. 그 줄은 찍힌 달의 구독 결제가 아니다. history가 없으면 예전처럼 'PAID'다.
 export function lineKind(rule,a,date,due,rules=[],monthLines=null,history=null){
   const center=BigInt(rule.match.amount),inBand=within(a,center,rule.match.tolerancePct);
   if(!inBand&&rules.some(r=>r.id!==rule.id&&r.match.merchant===rule.match.merchant&&within(a,BigInt(r.match.amount),r.match.tolerancePct)))return null;
   const sched=due===null?null:onSchedule(date,due);
-  if(sched===false&&monthLines?.some(x=>onSchedule(x.date,due)&&lineKind(rule,x.a,x.date,due,rules)==='PAID'))return null;
-  if(inBand&&sched===true)return 'PAID';
+  if(sched===false&&monthLines?.some(x=>onSchedule(x.date,due)&&lineKind(rule,x.a,x.date,due,rules,null,history)==='PAID'))return null;
+  if(inBand&&sched===true)return history!==null&&lateShare(rule,a,date,due,history,rules)?'LATE':'PAID';
   if(a===center&&(sched===null||(history!==null&&earlyPayment(rule,date,history))))return 'PAID';
   return sched===false?null:'OTHER';
+}
+// FIX41 (HUNT40 D1, 통제탑): 늦게 찍힌 앞달 결제(prepaidLine의 대칭). 규칙 금액대 결제가 앞달 예정일 +0~3일에 찍혔고 달력상 앞달에 예정일 ±3일 안 구독 결제가 없으면 앞달 몫이다(찍힌 달의 결제가 아니다).
+// ruleStatus·fixedSchedule이 lineKind를 거쳐 이 함수 하나를 쓰고, fixedPlan·PC 알림은 그 결과를 쓴다. history: 이 규칙 가맹점의 결제 줄.
+export function lateShare(rule,a,date,due,history,rules=[]){
+  if(due===null||!within(a,BigInt(rule.match.amount),rule.match.tolerancePct))return false;
+  const prev=shiftMonth(date.slice(0,7),-1),prevDue=dayNum(dueOf(prev,due));
+  if(dayNum(date)-prevDue>DUE_WINDOW_DAYS)return false;
+  return !history.some(l=>{
+    if(l.date.slice(0,7)!==prev||Math.abs(dayNum(l.date)-prevDue)>DUE_WINDOW_DAYS)return false;
+    const x=wonOf(l.net);
+    return x!==null&&lineKind(rule,x,l.date,due,rules)==='PAID';
+  });
 }
 // 이번 달 결제 확인. 구독 결제로 치는 것: 규칙 금액대(±tolerancePct%)이면서 예정일 ±3일 안의 결제, 또는 첫 2회(예정일이 아직 굳지 않음)의 규칙 금액과 정확히 같은 결제.
 // 예정일 밖의 다른 결제(같은 가게 일반 구매)는 세지 않는다. 지난 결제가 없어 예정일을 모르면 정확히 같은 금액만 구독 결제이고, 다른 금액은 "금액 다름"으로 보인다.
@@ -278,6 +291,8 @@ export function lineKind(rule,a,date,due,rules=[],monthLines=null,history=null){
 // (다음 예정일이 그 구매일로 밀리지 않게). FIX39: 그 달에 그것뿐이어도 첫 2회가 아니면 구독 결제가 아니다(lineKind).
 // FIX36 (HUNT35 H8·HUNT36 M6): 이번 달에 구독 결제가 없어도 지난달 마지막 며칠에 미리 낸 결제가 있으면 PAID이고 prepaid(그 날짜)를 함께 돌려준다(없으면 칸이 없다).
 // FIX39B (통제탑 C): 이번 달에 구독 결제·금액 다름이 없고 규칙 금액과 정확히 같은 예정일 밖 결제가 있으면 CHECK(확인 필요). 저장하지 않는 계산 상태다. 나중에 예정일 ±3일 안 결제가 오면 PAID로 바뀐다.
+// FIX41 (HUNT40 D1): 앞달 몫인 늦은 결제(lineKind 'LATE')는 이번 달 결제로 치지 않는다(마지막 결제일 lastDate에는 남는다).
+// FIX41 (HUNT40 D3): CHECK인데 예정일 +3일이 지났으면 pastDue:true(화면 글자만 다르다, 없으면 칸이 없다).
 export function ruleStatus(rule,lines,today,rules=[]){
   const month=today.slice(0,7),mine=mineOf(rule,lines),due=dueDayOf(rule,mine,month,rules),center=BigInt(rule.match.amount);
   let paid=false,other=false,otherAmount=null,prepaid=null,check=false;const paidLines=[],onTimeMonths=new Set();
@@ -285,13 +300,14 @@ export function ruleStatus(rule,lines,today,rules=[]){
     if(l.date>today)continue;
     const a=wonOf(l.net);if(a===null)continue;
     const kind=lineKind(rule,a,l.date,due,rules,null,mine);
-    if(kind==='PAID'){const onTime=due===null||onSchedule(l.date,due);paidLines.push({date:l.date,onTime});if(onTime)onTimeMonths.add(l.date.slice(0,7));if(prepaidLine(l.date,due,month)&&(prepaid===null||l.date>prepaid))prepaid=l.date;}
-    if(l.date.slice(0,7)!==month)continue;
+    if(kind==='PAID'||kind==='LATE'){const onTime=due===null||onSchedule(l.date,due);paidLines.push({date:l.date,onTime});if(onTime)onTimeMonths.add(l.date.slice(0,7));if(prepaidLine(l.date,due,month)&&(prepaid===null||l.date>prepaid))prepaid=l.date;}
+    if(l.date.slice(0,7)!==month||kind==='LATE')continue;
     if(kind==='PAID')paid=true;else if(kind==='OTHER'){other=true;otherAmount=a.toString();}else if(a===center)check=true;
   }
   const last=paidLines.filter(p=>p.onTime||!onTimeMonths.has(p.date.slice(0,7))).reduce((m,p)=>m===null||p.date>m?p.date:m,null);
   if(!paid&&prepaid!==null)return {state:'PAID',lastDate:last,otherAmount:null,prepaid};
-  return {state:paid?'PAID':other?'DIFFERENT':check?'CHECK':'PENDING',lastDate:last,otherAmount:paid?null:otherAmount};
+  const state=paid?'PAID':other?'DIFFERENT':check?'CHECK':'PENDING';
+  return {state,lastDate:last,otherAmount:paid?null:otherAmount,...(state==='CHECK'&&due!==null&&dayNum(today)-dayNum(dueOf(month,due))>DUE_WINDOW_DAYS?{pastDue:true}:{})};
 }
 // 가격 변경 제안: 이번 달 예정일쯤 다른 금액을 냈고, 지난 결제가 있고, 금액이 절반~두 배 안이면 {amount}. 아니면 null(일반 구매로 본다). 자동으로 바꾸지 않는다.
 export function priceChange(rule,lines,today,rules=[]){

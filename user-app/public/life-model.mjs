@@ -232,14 +232,20 @@ export function effectiveList(stored,defaults){
 export const STUDY_CODE_BY_SUBJECT=Object.freeze({kor:'K',math:'M',eng:'E',hist:'H',soc:'S',sci:'C',bio:'C'});
 export const studyCodeOf=subjectId=>STUDY_CODE_BY_SUBJECT[subjectId]??'C';
 export const sessionIdFor=(subjectId,rand)=>('lf_'+subjectId+'_'+rand).slice(0,40);
-export function subjectOfSession(id){const m=/^lf_([A-Za-z0-9-]{1,30})_/.exec(id);return m?m[1]:null;}
+// FIX41 (HUNT40 D6): 해시로 줄인 과목 자리(SUBJECT_HASH_MARK로 시작)는 과목 id가 아니므로 null이다(읽는 쪽은 옛 긴 과목 id처럼 과목 코드로 돌아간다).
+const SUBJECT_HASH_MARK='--';
+export function subjectOfSession(id){const m=/^lf_([A-Za-z0-9-]{1,30})_/.exec(id);return m&&!m[1].startsWith(SUBJECT_HASH_MARK)?m[1]:null;}
 // FIX40 (HUNT35 H7): 타이머 세션 id = lf_<과목>_T<시작 ms 36진><접미>. 접미는 타이머를 시작할 때 uid에서 정한 짧은 무작위 글자다(두 기기가 같은 과목을 같은 ms에 시작해도 id가 겹치지 않게). 접미가 없는 옛 타이머는 옛 id 그대로다.
-// 40자에 안 들어가면(긴 과목 id) 접미가 아니라 시작 시각 쪽을 줄인다.
+// FIX41 (HUNT40 D6, 통제탑): 40자에 안 들어가면(긴 과목 id) 시작 시각의 하위 자리(실제로 변하는 쪽)를 남긴다. 시각이 4자도 안 남으면(과목 28자 이상) 과목 쪽을 짧은 해시로 줄여 접미·시각 전체를 남긴다.
 export const TIMER_TAG_LEN=4;
+const TIMER_TIME_MIN=4;
 export const timerTagFrom=uid=>String(uid??'').toLowerCase().replace(/[^0-9a-z]/g,'').slice(0,TIMER_TAG_LEN);
+const shortSubject=id=>{let h=0x811c9dc5;for(let i=0;i<id.length;i++){h^=id.charCodeAt(i);h=Math.imul(h,0x01000193);}return SUBJECT_HASH_MARK+(h>>>0).toString(36);};   // FNV-1a
 export function timerSessionId(subjectId,startIso,tag){
-  const t=tag??'',room=40-('lf_'+subjectId+'_T').length-t.length;
-  return sessionIdFor(subjectId,'T'+Date.parse(startIso).toString(36).slice(0,Math.max(0,room))+t);
+  const t=tag??'',ms=Date.parse(startIso).toString(36);
+  if(!t)return sessionIdFor(subjectId,'T'+ms);   // 옛 타이머: 옛 잘림 그대로(이미 담은 옛 세션을 알아본다)
+  const room=40-('lf_'+subjectId+'_T').length-t.length;
+  return room>=TIMER_TIME_MIN?sessionIdFor(subjectId,'T'+ms.slice(-room)+t):sessionIdFor(shortSubject(subjectId),'T'+ms+t);
 }
 
 // wholeLifeView가 싣는 원자료: 엔티티 그대로(heads 포함). 하루 카드는 최신 날짜가 앞.

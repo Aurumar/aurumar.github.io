@@ -1220,7 +1220,7 @@ function renderFinRecurring(root,fin){
   const stuck=moved&&!canSetRecurringAmount(rules,r.id,moved.amount);   // R33B (HUNT32 D3): 형제 규칙과 금액대가 겹쳐 저장할 수 없으면 버튼 대신 이유
   const n=row(r.name,formatWon(r.match.amount)+' · 매달 · 허용 ±'+r.match.tolerancePct+'% · 마지막 결제일 '+(s.lastDate??'없음')+(s.state==='DIFFERENT'?' · 이번 달 낸 금액 '+formatWon(s.otherAmount):'')+(moved?' · '+(stuck?RECURRING_TEXT.overlapAmount:RECURRING_TEXT.priceChanged):''),
    add(el('div',null,'buttons'),moved&&!stuck?button(RECURRING_TEXT.priceApply,()=>save(()=>setRecurringAmount(fin.recurring.data,r.id,moved.amount),'정기 결제 금액 변경','"'+r.name+'" 금액을 '+formatWon(moved.amount)+'으로 바꿨습니다.'),'primary'):null,button(r.hidden?'다시 보이기':'목록에서 숨기기',()=>save(()=>setRecurringHidden(fin.recurring.data,r.id,!r.hidden),r.hidden?'정기 결제 다시 보임':'정기 결제 숨김','"'+r.name+'" '+(r.hidden?'다시 보입니다.':'숨겼습니다.')))));
-  if(!r.hidden)n.querySelector('.row-main strong').after(el('span',RECURRING_TEXT[s.state],'tag '+cls));
+  if(!r.hidden)n.querySelector('.row-main strong').after(el('span',RECURRING_TEXT[s.pastDue?'CHECK_PAST':s.state],'tag '+cls));   // FIX41 (H40-D3)
   return n;
  };
  for(const r of shown)add(list,ruleRow(r));
@@ -1273,7 +1273,7 @@ function renderFixedSchedule(root,fin,{pendingOnly=false}={}){
   n.querySelector('.row-main strong').after(el('span',FIXED_STATE_TEXT[it.state],'tag '+(it.state==='PAID'?'src-txn':'unknown')));
   add(p,n);
  }
- if(!pendingOnly)for(const it of check){const n=row(it.name,'실제 '+formatWon(it.actual)+' · '+it.paidDate+' · 예정일 '+it.due+' 밖이라 고정비로 한 번만 셉니다');n.querySelector('.row-main strong').after(el('span',RECURRING_TEXT.CHECK,'tag unknown'));add(p,n);}   // FIX39B
+ if(!pendingOnly)for(const it of check){const n=row(it.name,'실제 '+formatWon(it.actual)+' · '+it.paidDate+' · 예정일 '+it.due+' 밖이라 고정비로 한 번만 셉니다');n.querySelector('.row-main strong').after(el('span',RECURRING_TEXT[it.pastDue?'CHECK_PAST':'CHECK'],'tag unknown'));add(p,n);}   // FIX39B, FIX41 (H40-D3)
  if(!pendingOnly)for(const it of prepaid){const n=row(it.name,it.paidDate+' 결제 · 지난달 지출에 들어 있어 이번 달에는 더하지 않음');n.querySelector('.row-main strong').after(el('span',FIXED_STATE_TEXT.PREPAID,'tag src-txn'));add(p,n);}   // FIX36 (H36-M6)
  add(root,p);
  return p;

@@ -343,8 +343,8 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "27eefbb3d38895e4aad632df0ab0d7ca68491bc5fe1f644827d7c923801d94bb",
-      "outputSha256": "27eefbb3d38895e4aad632df0ab0d7ca68491bc5fe1f644827d7c923801d94bb",
+      "sourceSha256": "1c6eebcc5dafa50eb625634a4b19e19718212fe9972d0964392f97a391099711",
+      "outputSha256": "1c6eebcc5dafa50eb625634a4b19e19718212fe9972d0964392f97a391099711",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs",
@@ -484,8 +484,8 @@
     },
     {
       "path": "user-app/public/life-model.mjs",
-      "sourceSha256": "cce26063f0b795958feb51f4bb0c091c8e9dda41367bebada238102bf306bfc1",
-      "outputSha256": "cce26063f0b795958feb51f4bb0c091c8e9dda41367bebada238102bf306bfc1",
+      "sourceSha256": "28f5e908e7e41db131d2394d136e674bc7f8785a6c670794ff8b988434923de6",
+      "outputSha256": "28f5e908e7e41db131d2394d136e674bc7f8785a6c670794ff8b988434923de6",
       "dependencies": [],
       "transforms": []
     },
@@ -535,8 +535,8 @@
     },
     {
       "path": "user-app/public/fin-recurring.mjs",
-      "sourceSha256": "c47a0128201a09ec3e3d0dca5bf4deea873ff1e9452e58682f12816a98055558",
-      "outputSha256": "c47a0128201a09ec3e3d0dca5bf4deea873ff1e9452e58682f12816a98055558",
+      "sourceSha256": "ae2bf38b4cbd1158bcf878d847bc751c60a55c340f12d523a58a5b4978c26906",
+      "outputSha256": "ae2bf38b4cbd1158bcf878d847bc751c60a55c340f12d523a58a5b4978c26906",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs"
@@ -545,8 +545,8 @@
     },
     {
       "path": "user-app/public/fin-forecast.mjs",
-      "sourceSha256": "05d2211c9225d8e1f804c8fd504c9584eec13e04e63b72d722dc3cf0372f0fb5",
-      "outputSha256": "05d2211c9225d8e1f804c8fd504c9584eec13e04e63b72d722dc3cf0372f0fb5",
+      "sourceSha256": "ec5e3cb4d9ab001e15b6878befea26182ad886008f1438107cb56a446e283327",
+      "outputSha256": "ec5e3cb4d9ab001e15b6878befea26182ad886008f1438107cb56a446e283327",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-charts.mjs",
