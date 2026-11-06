@@ -38,7 +38,7 @@ export function billingDay(dates){
 }
 // R33B (HUNT32 D5): 금액대 안 결제가 없으면(결제 전에 잠정 금액을 바꿈) 정기 결제 화면의 예정일과 같은 대체 결제일을 쓴다.
 // FIX34 (HUNT34 H13): 대체 결제일은 화면과 같은 함수(fin-recurring fallbackDay) 하나로 고른다.
-// FIX36 (HUNT35 F13): 금액대 안 결제가 있을 때도 화면(fixedSchedule)과 같은 dueDay를 쓴다(알림 날과 화면 예정일이 어긋나지 않게). 최근 12개월 안에 그런 결제가 없으면 이력으로 치지 않는 것은 그대로다. billingDay는 돈 탭 "다음 예상일"과 맞추는 값으로 남는다.
+// FIX36 (HUNT35 F13): 금액대 안 결제가 있을 때도 화면(fixedSchedule)과 같은 dueDay를 쓴다(알림 날과 화면 예정일이 어긋나지 않게). 최근 12개월 안에 그런 결제가 없으면 이력으로 치지 않는 것은 그대로다. billingDay는 규칙이 없는 돈 탭 항목의 "다음 예상일"과 같은 값으로 남는다(규칙이 있는 항목은 FIX40부터 dueDay, fin-forecast withRuleDates).
 function dueTomorrow(rule,lines,today,tomorrow,allRules){
   const center=BigInt(rule.match.amount),pct=rule.match.tolerancePct,from=shiftMonth(today.slice(0,7),-(CANDIDATE_WINDOW_MONTHS-1)),dates=[];
   for(const l of lines){

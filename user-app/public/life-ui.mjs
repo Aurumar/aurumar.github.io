@@ -12,7 +12,7 @@ import {renderLive,liveRecordMin,liveElapsedMin,liveSettings,REST_SPLIT_MS} from
 import {dayRoomCard,CELEBRATED_KEY} from './study-room.mjs';
 import {HABIT_KINDS,HABIT_AREAS,DAY_TYPES,MAX_NAME,MAX_NOTE,SUBJECT_COLOR_KEYS,HABIT_HINTS,
   kstDate,shiftDay,dateKeyOK,dayNumber,hhmmFromIso,timeOK,targetTimeOK,lifeIdOK,
-  brickOf,sumBricks,entryDone,nearestExam,lifeDefs,weekCount,studyCodeOf,sessionIdFor,subjectOfSession,emptyDay} from './life-model.mjs';
+  brickOf,sumBricks,entryDone,nearestExam,lifeDefs,weekCount,studyCodeOf,sessionIdFor,timerSessionId,timerTagFrom,subjectOfSession,emptyDay} from './life-model.mjs';
 
 export const LIFE_ERROR_TEXT=Object.freeze({
   INVALID_LIFE_MINUTES:'분은 1~1440의 정수로 넣어 주세요.',STUDY_OFF:'공부 모듈이 꺼져 있습니다. 설정에서 켜세요.',
@@ -43,7 +43,7 @@ const STATUS_TEXT=Object.freeze({
   UNKNOWN:'서버 응답을 확인하지 못했습니다 · 입력은 그대로 있습니다. 다시 쌓기를 누르면 결과를 확인한 뒤 이어서 처리합니다(중복 저장 없음).',
   SYNC_FAILED:'서버에서 최신 기록을 받지 못했습니다 · 입력은 그대로 있습니다.',FAILED:'저장하지 못했습니다 · 입력은 그대로 있습니다.',STALE:'다른 기기와 계속 겹쳐 쌓지 못했습니다 · 입력은 그대로 있습니다.',
 });
-export const TIMER_KEY='lb.life.timer',TIMER_END_KEY='lb.life.timer.end',TIMER_REST_KEY='lb.life.timer.rest';
+export const TIMER_KEY='lb.life.timer',TIMER_END_KEY='lb.life.timer.end',TIMER_REST_KEY='lb.life.timer.rest',TIMER_TAG_KEY='lb.life.timer.tag';
 const MIN_MS=60000,KST_MS=9*3600000,MAX_TIMER_MS=1440*MIN_MS;
 const TIMER_SUGGEST_MS=3*3600000,TIMER_LOOKBACK_DAYS=400;   // FIX34 (H5): "언제 끝났나요" 기본 제안(시작 + 최대 3시간) · 이미 담았는지 찾아보는 날 수의 상한(깨진 시작 시각에도 끝나게)
 const MOODS=Object.freeze([[1,'😞','많이 힘듦'],[2,'🙁','별로'],[3,'😐','보통'],[4,'🙂','좋음'],[5,'😄','아주 좋음']]);
@@ -88,13 +88,21 @@ function readTimerRest(storage,startIso){
 }
 // P1B: 오늘 계획 카드의 [▶ 집중]으로 시작한 타이머는 어느 줄인지(itemId)도 함께 적는다(기기 저장소 화면 값, 기록 아님). 없으면 예전 모양 그대로.
 const itemIdOf=v=>typeof v?.itemId==='string'&&v.itemId?{itemId:v.itemId}:{};
+// FIX40 (HUNT35 H7): 세션 id 접미(timerSessionId). 시작할 때 정해 끝 시각·휴식 칸처럼 옆 칸에 startIso로 묶어 둔다(앱을 다시 켜도 같은 타이머 = 같은 id). 이 기기 저장소 값이고 기록 형식이 아니다. 없으면 옛 타이머다(옛 id).
+const newTimerTag=ctx=>{const tag=timerTagFrom(ctx.uid?.());return tag?{tag}:{};};
+// 이 저장소에서 마지막으로 본 접미. 다른 탭이 끝내 칸이 지워진 뒤 메모리 값으로 남은 같은 타이머도 같은 id가 되게 한다(두 번 담지 않음).
+const seenTag=new WeakMap();
+const lastTag=(storage,startIso)=>{const s=storage?seenTag.get(storage):null;return s?.startIso===startIso?s.tag:undefined;};
+function readTimerTag(storage,startIso){try{const r=JSON.parse(storage?.getItem(TIMER_TAG_KEY)??'null');return r?.startIso===startIso&&typeof r.tag==='string'&&/^[0-9a-z]{1,8}$/.test(r.tag)?{tag:r.tag}:{};}catch{return {};}}
 // FIX37C (H37-S3): 저장소에 있다고 확인한 타이머 값. 이런 값은 저장소가 기준이다(다른 탭이 끝내거나 취소하면 저장소에서 사라진다). 쓰기가 막혀 메모리에만 있는 값은 여기 없으므로 지워지지 않는다(FIX31 D1).
 const onDisk=new WeakSet();
-function readTimer(storage){try{const v=JSON.parse(storage?.getItem(TIMER_KEY)??'null');if(!(v&&typeof v.subjectId==='string'&&typeof v.startIso==='string'&&Number.isFinite(Date.parse(v.startIso))))return null;const t={subjectId:v.subjectId,startIso:v.startIso,...itemIdOf(v),...readTimerEnd(storage,v.startIso),...readTimerRest(storage,v.startIso)};onDisk.add(t);return t;}catch{return null;}}
+function readTimer(storage){try{const v=JSON.parse(storage?.getItem(TIMER_KEY)??'null');if(!(v&&typeof v.subjectId==='string'&&typeof v.startIso==='string'&&Number.isFinite(Date.parse(v.startIso))))return null;const t={subjectId:v.subjectId,startIso:v.startIso,...itemIdOf(v),...readTimerTag(storage,v.startIso),...readTimerEnd(storage,v.startIso),...readTimerRest(storage,v.startIso)};if(t.tag)seenTag.set(storage,{startIso:t.startIso,tag:t.tag});onDisk.add(t);return t;}catch{return null;}}
 function writeTimer(storage,t){
   try{
-    if(!t){storage?.removeItem(TIMER_KEY);storage?.removeItem(TIMER_END_KEY);storage?.removeItem(TIMER_REST_KEY);storage?.removeItem(CELEBRATED_KEY);return;}   // S1B: 끝내거나 취소하면 축하 칸도 지운다
+    if(!t){storage?.removeItem(TIMER_KEY);storage?.removeItem(TIMER_END_KEY);storage?.removeItem(TIMER_REST_KEY);storage?.removeItem(TIMER_TAG_KEY);storage?.removeItem(CELEBRATED_KEY);return;}   // S1B: 끝내거나 취소하면 축하 칸도 지운다
     storage?.setItem(TIMER_KEY,JSON.stringify({subjectId:t.subjectId,startIso:t.startIso,...itemIdOf(t)}));
+    if(t.tag&&storage)seenTag.set(storage,{startIso:t.startIso,tag:t.tag});
+    if(t.tag)storage?.setItem(TIMER_TAG_KEY,JSON.stringify({startIso:t.startIso,tag:t.tag}));else storage?.removeItem(TIMER_TAG_KEY);
     if(t.endIso)storage?.setItem(TIMER_END_KEY,JSON.stringify({startIso:t.startIso,endIso:t.endIso}));else storage?.removeItem(TIMER_END_KEY);
     if(t.restMs||t.pausedAt)storage?.setItem(TIMER_REST_KEY,JSON.stringify({startIso:t.startIso,restMs:t.restMs??0,pausedAt:t.pausedAt??null}));else storage?.removeItem(TIMER_REST_KEY);
     if(storage)onDisk.add(t);
@@ -366,7 +374,8 @@ function timerOps(ctx,st,act){
   // FIX34 (H4): 새로 담을 때 끝 시각을 타이머 저장소에 먼저 적는다. 담기가 실패하고 앱을 닫아도 다음 누름이 그 시각을 쓴다.
   const finishTimer=async(subject,startIso,m,confirmed=false)=>{
     const keep=text=>{st.message=text+' · 집중 타이머는 그대로 두었어요.';st.error=true;},box=st.ports?.box??null;
-    const id=sessionIdFor(subject.id,'T'+Date.parse(startIso).toString(36));
+    // FIX40 (HUNT35 H7): 접미까지 같은 세션만 이 타이머의 것이다(같은 ms에 시작한 다른 기기 세션을 "이미 담음"으로 보지 않게). 접미가 없으면(옛 타이머) 옛 id다.
+    const tag=(st.timer?.startIso===startIso?st.timer.tag:undefined)??lastTag(ctx.storage??globalThis.localStorage,startIso),id=timerSessionId(subject.id,startIso,tag);
     let day;
     try{
       const s=await studyFlow(ctx),today=kstDate(ctx.now()),startDay=kstDate(startIso),old=startDay<shiftDay(today,-1);
@@ -406,7 +415,7 @@ function bricksTimer(ctx,st,h,defs,subjects,sec,act,recordNow,finishTimer,goalBr
     add(timerRow,timerLabel,
       st.liveOpen?null:button('끝내고 담기',act(()=>finishTimer(ts??subject,t.startIso,rested?liveRecordMin(t,ctx.now()):timerRecordMin(t.startIso,ctx.now()))),'primary'),   // 덮개가 열려 있으면 그 안의 같은 단추를 쓴다
       button('취소',()=>{st.timer=null;writeTimer(store,null);st.liveOpen=false;void ctx.rerender();}));
-  }else add(timerRow,button('집중 시작',()=>{st.timer={subjectId:subject.id,startIso:ctx.now()};writeTimer(store,st.timer);st.liveOpen=liveSettings(store).autoOpen;void ctx.rerender();},'primary'));
+  }else add(timerRow,button('집중 시작',()=>{st.timer={subjectId:subject.id,startIso:ctx.now(),...newTimerTag(ctx)};writeTimer(store,st.timer);st.liveOpen=liveSettings(store).autoOpen;void ctx.rerender();},'primary'));
   // R36 (S1A + P1B): STUDY LIVE 덮개·휴식은 어느 단추로 시작한 타이머든 같다(오늘 계획 카드 [▶ 집중]으로 시작해도). 위 줄의 단추만 계획 카드와 나눈다.
   if(st.timer){
     const t=st.timer,ts=subjects.find(s=>s.id===t.subjectId)??defs.subjects.find(s=>s.id===t.subjectId);
@@ -420,7 +429,7 @@ function bricksTimer(ctx,st,h,defs,subjects,sec,act,recordNow,finishTimer,goalBr
       if(restMs>REST_SPLIT_MS){act(async()=>{
         const short=Date.parse(c.pausedAt)-Date.parse(c.startIso)-(c.restMs??0)<60000;   // FIX36 (H36-T2): 앞부분이 1분 미만이면 담지 않는다(저장 최소 1분이라 안 한 공부가 1분으로 남음)
         if(!short){await finishTimer(ts??subject,c.startIso,liveRecordMin(c,ctx.now()));if(st.timer!==null)return;}
-        st.timer={subjectId:c.subjectId,startIso:ctx.now(),...itemIdOf(c)};writeTimer(store,st.timer);st.liveOpen=true;   // R36: 계획 줄에서 시작한 타이머는 나눈 뒤에도 같은 줄
+        st.timer={subjectId:c.subjectId,startIso:ctx.now(),...itemIdOf(c),...newTimerTag(ctx)};writeTimer(store,st.timer);st.liveOpen=true;   // R36: 계획 줄에서 시작한 타이머는 나눈 뒤에도 같은 줄
         st.message=short?'30분 넘게 쉬었어요 · 앞부분은 1분이 안 되어 담지 않고 새로 시작해요':'30분 넘게 쉬었어요 · 앞부분을 먼저 담고 새로 시작해요 · '+(st.message??'');
       })();return;}
       const {pausedAt:_p,...rest}=c;st.timer={...rest,restMs};writeTimer(store,st.timer);void ctx.rerender();
@@ -449,7 +458,7 @@ export function focusPort(ctx,st,act=null){
   return {
     timer:()=>st.timer,
     message:()=>st.focusNote&&st.focusNote.text===st.message?st.focusNote:null,   // 이 포트의 담기 결과만(오늘 화면의 다른 문구는 계획 탭에 옮기지 않는다)
-    start:(subjectId,itemId)=>{if(st.timer)return false;st.timer={subjectId,startIso:ctx.now(),...itemIdOf({itemId})};writeTimer(store,st.timer);void ctx.rerender();return true;},
+    start:(subjectId,itemId)=>{if(st.timer)return false;st.timer={subjectId,startIso:ctx.now(),...itemIdOf({itemId}),...newTimerTag(ctx)};writeTimer(store,st.timer);void ctx.rerender();return true;},
     finish:()=>{
       const t=st.timer;if(!t)return;
       const defs=lifeDefs(ctx.getWhole().life??null),subject=defs.subjects.find(s=>s.id===t.subjectId)??{id:t.subjectId,name:'과목'},{finishTimer}=timerOps(ctx,st,run);

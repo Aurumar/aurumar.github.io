@@ -233,6 +233,14 @@ export const STUDY_CODE_BY_SUBJECT=Object.freeze({kor:'K',math:'M',eng:'E',hist:
 export const studyCodeOf=subjectId=>STUDY_CODE_BY_SUBJECT[subjectId]??'C';
 export const sessionIdFor=(subjectId,rand)=>('lf_'+subjectId+'_'+rand).slice(0,40);
 export function subjectOfSession(id){const m=/^lf_([A-Za-z0-9-]{1,30})_/.exec(id);return m?m[1]:null;}
+// FIX40 (HUNT35 H7): 타이머 세션 id = lf_<과목>_T<시작 ms 36진><접미>. 접미는 타이머를 시작할 때 uid에서 정한 짧은 무작위 글자다(두 기기가 같은 과목을 같은 ms에 시작해도 id가 겹치지 않게). 접미가 없는 옛 타이머는 옛 id 그대로다.
+// 40자에 안 들어가면(긴 과목 id) 접미가 아니라 시작 시각 쪽을 줄인다.
+export const TIMER_TAG_LEN=4;
+export const timerTagFrom=uid=>String(uid??'').toLowerCase().replace(/[^0-9a-z]/g,'').slice(0,TIMER_TAG_LEN);
+export function timerSessionId(subjectId,startIso,tag){
+  const t=tag??'',room=40-('lf_'+subjectId+'_T').length-t.length;
+  return sessionIdFor(subjectId,'T'+Date.parse(startIso).toString(36).slice(0,Math.max(0,room))+t);
+}
 
 // wholeLifeView가 싣는 원자료: 엔티티 그대로(heads 포함). 하루 카드는 최신 날짜가 앞.
 export function lifeRawView(entities){

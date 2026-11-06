@@ -2,7 +2,7 @@ import {PC_ENTITY_REQUEST_LIMIT,buildBudget,monthSpan,finErrorText,finError,form
 import {PERIODS as PLAN_PERIODS,detectRecurring,recurringGridLayout,costSplit,budgetStatus,budgetFor,budgetBarsLayout,lifeTimeline,timelineLayout,vaultPlan,vaultBudget,vaultFixedItems,vaultBricks,vaultBrickLayout,vaultCashFromSnapshot,vaultOverdraftFromSnapshot,vaultCardUnpaidFromSnapshot,liveNetCash,quickPicks,monthInsight} from './fin-plan.mjs';
 import {prepare,PERIODS,periodRange,aggregate,roundDiv,dataMonths,overview,monthlySeries,barLayout,sankeyData,sankeyLayout,treemapItems,squarify,dailyTotals,heatmapMonths,completeness,todaySpendLine,buildTodayGlance} from './fin-charts.mjs';
 import {RECURRING_ID,RECURRING_TEXT,findCandidates,addRule as addRecurringRule,setRuleHidden as setRecurringHidden,ruleStatus as recurringStatus,monthlyTotal as recurringMonthly,matchDraft as recurringMatchDraft,recurringKey,setRuleAmount as setRecurringAmount,canSetAmount as canSetRecurringAmount,priceChange as recurringPriceChange,ledgerMatch as recurringLedgerMatch,createHiddenBox as createRecurringHiddenBox} from './fin-recurring.mjs';
-import {meltNode,monthForecast,forecastNode,renderBudgetReport,fixedSchedule,fixedPlan} from './fin-forecast.mjs';
+import {meltNode,monthForecast,forecastNode,renderBudgetReport,fixedSchedule,fixedPlan,withRuleDates} from './fin-forecast.mjs';
 import {readStatementAsync,findHeader,headerAt,guessColumns,guessInstallAmountIsTotal,columnsProblem,normalizeRows,controlCheck,headerSig,accountSig,rememberedAccount,bytesSha256,createMappingStore,stmtErrorText,maskCell,normHeader,COLUMN_ROLES,COLUMN_TEXT,REQUIRED_ROLES,ROW_STATUS_TEXT,STMT_LIMITS} from './fin-statement.mjs';
 import {readXlsx,xlsxErrorText,xlsxSupported,XLSX_LIMITS} from './fin-xlsx.mjs';
 import {reconcileStatement,suggestContext,STATUS_TEXT as STMT_STATUS_TEXT,REASON_TEXT as STMT_REASON_TEXT,sameMerchantKeys,coveredByBatches,selectForSave,statementTxnInput,checkStatementSave,runStatementSave,keepForced,statementSaveKey,SAVE_MAX} from './fin-reconcile.mjs';
@@ -1138,7 +1138,7 @@ function setFinMerchantEffect(target,effect,value){
 // ---------- F5 반복결제 · 고정비/변동비 ----------
 const FIN_REC_STATUS={ACTIVE:'계속 결제 중',LATE:'이번 결제가 늦음',CANCEL_CANDIDATE:'해지 후보',NO_DATA:'최근 자료 없음',IRREGULAR:'주기 불규칙(직접 포함)'};
 function renderFinPlan(root,fin){
- const prep=prepare(fin),rec=detectRecurring(prep,whole.localDate),items=rec.items;
+ const prep=prepare(fin),rec=withRuleDates(detectRecurring(prep,whole.localDate),fin.recurring?.data.rules??[],prep.lines,whole.localDate),items=rec.items;   // FIX40: 규칙이 있는 항목의 다음 예상일 = 정기 결제 예정일
  const monthly=items.filter(i=>i.period&&['ACTIVE','LATE','NO_DATA'].includes(i.status)).reduce((s,i)=>s+roundDiv(i.latest,BigInt(PLAN_PERIODS[i.period].months)),0n);
  add(root,add(el('div',null,'fin-chips'),
   add(el('span',null,'fin-chip'),el('span','반복결제'),el('strong',finCount(items.length)+'개')),

@@ -4,7 +4,7 @@
 // 화면 규칙: DOM 생성 함수만(innerHTML·인라인 style 없음). 링은 createElementNS로 만든 SVG와 속성으로 그린다. 색은 styles.css 토큰만.
 // 공부방 장면(S1B)·소리·토스트(S1C)는 여기 없다. 그쪽은 liveState 모양과 onBrick(n,gold) 사건만 쓴다.
 import {timerElapsedMin,timerRecordMin,todayEffectOf,artFile,AVATAR_ART_READY,lifetimeMinutes,stageOf,cardMinutes,hmText} from './study-stage.mjs';
-import {BRICK_MINUTES,PIECE_MIN_MINUTES,SUBJECT_COLOR_KEYS,brickOf,sumBricks,kstDate,shiftDay,nearestExam,sessionIdFor} from './life-model.mjs';
+import {BRICK_MINUTES,PIECE_MIN_MINUTES,SUBJECT_COLOR_KEYS,brickOf,sumBricks,kstDate,shiftDay,nearestExam,timerSessionId} from './life-model.mjs';
 import {XP} from './life-achieve.mjs';
 import {sessionMark} from './study-rebase.mjs';
 import {liveRoom} from './study-room.mjs';
@@ -57,7 +57,7 @@ export function weekBeforeMinutes(study,date){
 export function liveOverlapMin(card,timer,nowMs){
   const start=Date.parse(timer?.startIso),stop=timer?.endIso?Date.parse(timer.endIso):timer?.pausedAt?Date.parse(timer.pausedAt):nowMs;
   if(!Number.isFinite(start)||!Number.isFinite(stop)||stop<=start)return 0;
-  const own=sessionIdFor(timer.subjectId,'T'+start.toString(36));
+  const own=timerSessionId(timer.subjectId,timer.startIso,timer.tag);
   let ms=0;
   for(const s of card?.sessions??[]){
     if(s?.id===own||sessionMark(s?.id)!=='T'||!okMin(s.confirmedMin))continue;
@@ -72,7 +72,7 @@ export function liveOverlapMin(card,timer,nowMs){
 export function liveState({timer,nowIso,study=null,draftCard=null,exams=null,goalBricks=null}){
   const nowMs=Date.parse(nowIso),date=kstDate(nowIso),clock=liveClock({...timer,nowMs}),session=brickClock(clock.studyMs);
   // FIX37C (H37-S6): 담기 저장이 실패해 타이머가 남으면 같은 세션이 이미 카드에 있다. 진행 중 세션으로 한 번만 센다(같은 시작 시각 = 같은 세션 id).
-  const start=Date.parse(timer.startIso),ownId=Number.isFinite(start)?sessionIdFor(timer.subjectId,'T'+start.toString(36)):null,raw=cardOf(study,date,draftCard);
+  const start=Date.parse(timer.startIso),ownId=Number.isFinite(start)?timerSessionId(timer.subjectId,timer.startIso,timer.tag):null,raw=cardOf(study,date,draftCard);
   const card=raw&&ownId!==null&&raw.sessions?.some?.(x=>x?.id===ownId)?{...raw,sessions:raw.sessions.filter(x=>x?.id!==ownId)}:raw,cardMin=cardMinutes(card),todayMs=cardMin*MIN_MS+clock.studyMs,todayMin=Math.floor(todayMs/MIN_MS);
   const day=sumBricks((card?.sessions??[]).map(s=>s?.confirmedMin).filter(okMin)),own=brickOf(Math.floor(clock.studyMs/MIN_MS));
   const bricks={bricks:day.bricks+own.bricks,pieces:day.pieces+own.pieces,value:day.value+own.bricks+own.pieces*0.5,goal:Number.isInteger(goalBricks)?goalBricks:null};

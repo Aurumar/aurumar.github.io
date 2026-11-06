@@ -1,7 +1,7 @@
 // 이번 달 금고 확장 (B59, V3 §8): 금괴 녹음 단계, "이대로면 월말" 예측, 가계부 비서 보고 카드. 앱 안 계산이고 AI를 부르지 않는다.
 // 규칙: 금액은 BigInt, 모름은 0이 아니다(자료 없음·순액 모름이면 예측하지 않는다). 시계·저장소·외부 통신·innerHTML 없음. 화면 요소는 부른 쪽이 넘긴 h로만 만든다.
 // 가게 이름·규칙 이름은 예측 결과와 경고 문구에 넣지 않는다(개수와 합계만). 무엇을 해야 하는지 정하는 문장을 만들지 않는다.
-import {formatWon} from './fin-ledger.mjs';
+import {formatWon,shiftMonth} from './fin-ledger.mjs';
 import {roundDiv} from './fin-charts.mjs';
 import {recurringKey,ruleStatus,dueDay,lineKind,wonOf,canSetAmount} from './fin-recurring.mjs';
 import {latestByAssistant,reportNodes,reportResultText} from './ai-gate.mjs';
@@ -166,6 +166,26 @@ export function fixedPlan(rules,lines,today,days){
     else{out.paid+=it.actual;out.paidCount++;}
   }
   return out;
+}
+
+// ---------- 돈 탭 "다음 예상일" ----------
+// FIX40 (통제탑 결정 1): 반복결제 항목에 맞는 정기 결제 규칙이 있으면 다음 예상일은 정기 결제 화면(fixedSchedule)·PC 알림과 같은 예정일(dueDay, 말일 정리 포함)이다.
+// 이번 달 예정일이 살아 있으면(예정·연체·확인 필요) 그 날, 이번 달 몫이 끝났으면(확정·금액 다름·미리 냄) 다음 달 예정일이다. 예정일을 모르면 탐지 값을 그대로 둔다.
+// 맞는 규칙 = 같은 가맹점의 숨기지 않은 규칙 중 금액이 항목의 보통 금액에 가장 가깝고 그 절반~두 배 안인 것(같으면 목록 앞). 없으면 탐지 값 그대로다. 항목의 다른 값(주기·빠짐·상태)과 기록은 바꾸지 않는다.
+const monthDays=m=>{const y=Number(m.slice(0,4)),n=Number(m.slice(5,7));return (Date.UTC(y,n,1)-Date.UTC(y,n-1,1))/86400000;};
+export function withRuleDates(rec,rules,lines,today){
+  const list=Array.isArray(rules)?rules:[];
+  if(!list.length)return rec;
+  const month=today.slice(0,7),next=shiftMonth(month,1),schedule=fixedSchedule(list,lines,today,monthDays(month));
+  const dateOf=s=>{
+    if(s.due!==null)return s.due;
+    if(s.state==='PLANNED')return null;
+    const day=dueDay(s.rule,lines,next,list);
+    return day===null?null:next+'-'+pad(Math.min(day,monthDays(next)));
+  };
+  const gap=(s,a)=>a>s.provisional?a-s.provisional:s.provisional-a;
+  const ruleFor=item=>schedule.filter(s=>s.rule.match.merchant===item.key&&item.typical*2n>=s.provisional&&item.typical<=s.provisional*2n).reduce((best,s)=>best===null||gap(s,item.typical)<gap(best,item.typical)?s:best,null);
+  return {...rec,items:rec.items.map(item=>{const s=ruleFor(item),date=s?dateOf(s):null;return date===null?item:{...item,nextDate:date};})};
 }
 
 // ---------- 이대로면 월말 ----------
