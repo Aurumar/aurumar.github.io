@@ -126,7 +126,7 @@ export function renderLiveSettings(root,ctx){
 export function installStudyChime({doc=globalThis.document,win=globalThis,nav=globalThis.navigator,storage,fold=()=>false,timer,audioCtor,nowMs,timers=globalThis}={}){
   const opts=()=>({fold:fold()}),settings=()=>loadLiveSettings(storage,opts());
   const chime=createChime({audioCtor,soundOn:()=>settings().sound,nowMs});
-  const running=t=>Boolean(t)&&!t.pausedAt&&!t.endIso;   // FIX37C (H37-S4): 설명대로 타이머가 실제로 도는 동안만(휴식·담기 대기 제외)
+  const running=t=>Boolean(t)&&!t.pausedAt&&!t.endIso&&!liveState({timer:t,nowIso:new Date(nowMs?.()??Date.now()).toISOString()}).clock.overDay;   // FIX37C (H37-S4): 설명대로 타이머가 실제로 도는 동안만(휴식·담기 대기 제외)
   const wake=createWakeKeeper({nav,doc,want:()=>settings().wakeLock&&running(timer())});
   const syncWake=()=>{void wake.sync();};
   // 버블 단계라 "집중 시작" 단추가 타이머를 적은 뒤에 불린다. 타이머가 없을 때는 AudioContext를 만들지 않는다.

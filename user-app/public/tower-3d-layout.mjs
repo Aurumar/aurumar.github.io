@@ -325,16 +325,31 @@ const halfV=()=>Math.tan(FOV/2*Math.PI/180);
 const fitDist=aspect=>(COLS+1.4)/(2*halfV()*Math.max(0.3,aspect))+HALF_D;
 const wholeDist=height=>(height+2)/(2*halfV())+HALF_D;
 const baseDist=aspect=>2*Math.hypot(TOWER_X+TOWER_W/2,TOWER_Z+TOWER_W/2)/(2*halfV()*Math.max(0.3,aspect))+HALF_D;   // T2C: 네 모퉁이 탑까지 들어오는 거리
+// T2C: 높이 h까지 네 모퉁이 탑의 바닥·꼭대기를 한 화면에(앞쪽 탑이 더 가까워 TOWER_X만큼 물러난다)
+const frameTowers=(h,aspect)=>clampCamera({theta:0.6,dist:Math.max(fitDist(aspect),wholeDist(h)+TOWER_X,baseDist(aspect)),y:h/2},{height:h},aspect);
+const towerPeak=scene=>Math.max(0,...scene.towers.map(t=>t.roofTop));
+// FIX38: 예전에는 "전체를 보여 줄 집"을 화면 비율로 갈랐다(whole<=fit*2). 넓은 화면(비율 1.9)은 높이 약 9에서 벌써 벗어났고, 층 높이는 하루 벽돌 수에 따라 1.3~5.4까지 달라 몇 주 만에 넘었다. 이제 높이 하나로 가른다.
+export const WHOLE_VIEW_MAX_H=40,GATE_VIEW_H=9,WHOLE_VIEW_PAD=2,FRONT_SPIN_END=1.25;
+export const isTallHouse=scene=>scene.height>WHOLE_VIEW_MAX_H;
 export function initialCamera(scene,aspect){
   const fit=fitDist(aspect),whole=wholeDist(scene.height);
-  if(whole<=fit*2){
-    if(!scene.towers)return clampCamera({theta:0.6,dist:Math.max(fit,whole),y:scene.height/2},scene,aspect);
-    const h=Math.max(scene.height,...scene.towers.map(t=>t.roofTop));   // T2C: 집이 작으면 네 모퉁이 탑의 바닥·꼭대기까지 한 화면에(앞쪽 탑이 더 가까워 TOWER_X만큼 물러난다)
-    return clampCamera({theta:0.6,dist:Math.max(fit,wholeDist(h)+TOWER_X,baseDist(aspect)),y:h/2},{height:h},aspect);
-  }
+  if(!scene.towers&&whole<=fit*2)return clampCamera({theta:0.6,dist:Math.max(fit,whole),y:scene.height/2},scene,aspect);
+  if(scene.towers&&!isTallHouse(scene))return frameTowers(Math.max(scene.height,towerPeak(scene)),aspect);
   const dist=Math.max(fit*1.3,MIN_VIEW_H/(2*halfV()));   // 넓은 화면에서도 위아래로 몇 층은 보이게
   return clampCamera({theta:0.6,dist,y:scene.height-halfV()*dist*0.45},scene,aspect);
 }
+// FIX38 "집 앞": 큰 집은 맨 위와 땅이 한 화면에 들어갈 수 없다(52주 집 높이 70~210). 큰 집의 첫 화면은 모퉁이 탑과 현판이 보이는 땅쪽이고, "이번 주"는 맨 위(initialCamera)다.
+export const gateCamera=(scene,aspect)=>frameTowers(Math.max(GATE_VIEW_H,towerPeak(scene)),aspect);
+export const startView=scene=>isTallHouse(scene)?'gate':'week';
+// 오늘 벽돌은 앱을 켤 때마다 다시 날아오고(메모리 기억) 맨 위에 놓인다. 집 앞을 볼 큰 집이면 맨 위에서 보여 준 뒤 집 앞으로 내려온다. 손대면 그 자리에 멈춘다.
+export const flyFirst=(scene,flights,view=null)=>flights>0&&isTallHouse(scene)&&(view??'gate')==='gate';
+export const SETTLE_SECONDS=1.2;
+export function settleCamera(from,to,s){
+  const u=smooth(Math.max(0,Math.min(1,s/SETTLE_SECONDS)));
+  return {y:from.y+(to.y-from.y)*u,dist:from.dist+(to.dist-from.dist)*u,done:s>=SETTLE_SECONDS};
+}
+// 자동 회전은 현판이 있는 앞면이 보이는 동안만 돈다.
+export const spinKeepsFront=(from,t)=>from+autoRotateAt(t)<FRONT_SPIN_END;
 export function clampCamera(cam,scene,aspect){
   const fit=fitDist(aspect),whole=wholeDist(scene.height);
   cam.dist=Math.max(fit*MIN_ZOOM,Math.min(Math.max(fit*1.2,whole*1.1+TOWER_X,baseDist(aspect)*1.05),cam.dist));

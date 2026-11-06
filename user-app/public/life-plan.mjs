@@ -612,7 +612,7 @@ function openPlanEditor(ctx,st,date,{seed=[],onSaved=null}={}){
       }
       catch(e){st.message=planErrorText(e?.code);st.error=true;}
       await ctx.rerender();
-      if(sealed){note.hidden=false;dlg=ctx.sheet?.('하루 계획 편집',body)??null;}   // 임시 저장은 성공이 아니다: 시트와 입력을 그대로 다시 연다(H37-P1)
+      if(sealed&&!ctx.locked?.()){note.hidden=false;dlg=ctx.sheet?.('하루 계획 편집',body)??null;}   // 임시 저장은 성공이 아니다: 시트와 입력을 그대로 다시 연다(H37-P1). 잠겼으면 열지 않는다(열린 모달은 로그인 칸을 막는다, FIX38)
     });
   };
   // 단추는 줄 목록 위에 둔다(줄이 많아 시트가 스크롤돼도 "저장"이 보인다).

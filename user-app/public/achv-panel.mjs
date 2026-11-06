@@ -2,7 +2,7 @@
 // 화면 규칙: DOM 생성 함수만 쓴다(innerHTML·인라인 style 없음). 앱이 혼자 기록을 쓰지 않는다: 내 퀘스트 저장만 소유자가 누를 때 한다. 이 기기 저장소에는 기기 장부(업적 id와 날짜)와 고른 칭호 id만 적는다.
 // life-tower는 이 파일을 불러오지 않는다: 앱이 ctx.achvPanel·ctx.achvMoment·ctx.questSheet·ctx.achvTitle로 넘겨 탑 모듈은 그대로 둔다.
 import {TITLES,achievements,titleOf,unlockedTitles,recentDone,nearDone,shownName,settleSeen,parseSeen,ACHV_SEEN_KEY,MONEY_OFF_TEXT,GROUP_TEXT} from './life-achv.mjs';
-import {todayQuestLine,myQuestOf,myQuestRows,saveMyQuest} from './life-quest.mjs';
+import {todayQuestLine,myQuestOf,myQuestRows,saveMyQuest,DEFS_SEALED_TEXT} from './life-quest.mjs';
 import {MY_QUEST_ID} from './life-achieve.mjs';
 import {HABIT_AREAS,MAX_NAME,weekCount} from './life-model.mjs';
 
@@ -104,7 +104,7 @@ function questRow(h,kit,{label,value,target,unit,state,xp}){
 }
 // 입력 칸. 저장을 누르기 전에는 아무것도 쓰지 않는다. onSave(spec)가 저장을 맡고 실패하면 칸의 값을 그대로 둔다.
 function myQuestForm(h,kit,old,onSave){
-  const {el,add,button}=h,err=el('p',null,'notice error quest-error');err.hidden=true;
+  const {el,add,button}=h,err=el('p',null,'notice error quest-error'),note=el('p',DEFS_SEALED_TEXT,'notice quest-note');err.hidden=true;note.hidden=true;
   const name=el('input');name.type='text';name.value=old?.name??'';name.setAttribute('maxlength',String(MAX_NAME));name.setAttribute('aria-label','내 퀘스트 이름');name.setAttribute('placeholder','예: 영단어 복습');
   const count=el('input');count.type='text';count.value=String(old?.target.count??3);count.setAttribute('inputmode','numeric');count.setAttribute('aria-label','한 주 횟수');
   const area=el('select');for(const a of HABIT_AREAS){const o=el('option',AREA_TEXT[a]);o.value=a;area.append(o);}area.value=old?.area??'HEAD';area.setAttribute('aria-label','영역');
@@ -113,15 +113,17 @@ function myQuestForm(h,kit,old,onSave){
   if(old&&kit?.toggle)add(form,kit.toggle('오늘 화면에서 숨김',hidden,v=>{hidden=v;}));
   const show=code=>{err.textContent=questErrorText(code);err.hidden=false;};
   const read=()=>({name:name.value,count:/^\d+$/.test(count.value.trim())?Number(count.value.trim()):NaN,area:area.value,hidden});
-  add(form,err,add(el('div',null,'buttons'),button('저장',()=>{err.hidden=true;void onSave(read(),show);},'primary')));
-  return {form,name,count,area,err};
+  add(form,err,note,add(el('div',null,'buttons'),button('저장',()=>{err.hidden=true;note.hidden=true;void onSave(read(),show,()=>{note.hidden=false;});},'primary')));
+  return {form,name,count,area,err,note};
 }
 function myQuestSection(h,args,after){
   const {el,add,button}=h,{life=null,today,kit=null,ctx=null}=args,old=myQuestOf(life),box=el('section',null,'quest-mine');
-  const onSave=(spec,show)=>{
+  const memo={};
+  const onSave=(spec,show,sealedNote)=>{
     try{myQuestRows(life,spec);}catch(e){show(e?.code);return;}   // 입력이 틀리면 쓰기 시도 없이 칸에 알린다
     return ctx.perform(async()=>{
-      try{await saveMyQuest(ctx,spec);}catch(e){show(e?.code);return;}
+      try{await saveMyQuest(ctx,spec,memo);}catch(e){show(e?.code);return;}
+      if(memo.sealed){sealedNote();await ctx.rerender();return;}   // FIX38: 임시 저장은 성공이 아니다. 칸을 그대로 두고 알린다
       after();await ctx.rerender();
     });
   };

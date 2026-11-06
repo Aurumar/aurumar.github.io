@@ -3,7 +3,7 @@
 // 기본 습관·과목·시험 일정은 코드 상수를 보여 줄 뿐이며, 소유자가 편집 화면에서 "저장"을 누를 때만 엔티티가 된다.
 // 공부 벽돌은 기존 공부 모듈(STUDY_DAY)의 세션으로 기록한다(ctx.study 포트).
 import {chip,toggle,sheet,xpBar,ring} from './ui-kit.mjs';
-import {LifeFlow,createLifePorts,saveDefinitions,collectRows,stackDay,STACK_DONE} from './life-flow.mjs';
+import {LifeFlow,createLifePorts,saveDefinitions,DEFS_SEALED_TEXT,collectRows,stackDay,STACK_DONE} from './life-flow.mjs';
 import {achieve,previewAchieve,habitXpToday,multText} from './life-achieve.mjs';
 import {todayQuestLine} from './life-quest.mjs';
 import {timerElapsedMin,timerRecordMin,liveTick} from './study-stage.mjs';
@@ -498,12 +498,12 @@ function openEntrySheet(ctx,st,hb,e){
 }
 
 // ---- 습관·과목·시험 일정 편집 시트 ----
-function openEditor(ctx,st){
+export function openEditor(ctx,st){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,hint,input,select,field}=h;
   const life=ctx.getWhole().life??{habits:[],days:[],subjects:[],exams:null},defs=lifeDefs(life);
   const work={habits:defs.habits.map(x=>structuredClone(x)),subjects:defs.subjects.map(x=>structuredClone(x)),exams:structuredClone(defs.exams)};
   let tab='HABITS';
-  const body=el('div',null,'life-editor'),err=el('p',null,'notice error life-editor-error');err.hidden=true;
+  const body=el('div',null,'life-editor'),err=el('p',null,'notice error life-editor-error'),note=el('p',DEFS_SEALED_TEXT,'notice life-editor-note');err.hidden=true;note.hidden=true;
   const showErr=code=>{err.textContent=lifeErrorText(code);err.hidden=false;};
   const move=(list,i,d)=>{const j=i+d;if(j<0||j>=list.length)return;[list[i],list[j]]=[list[j],list[i]];};
   const rerender=()=>{
@@ -511,7 +511,7 @@ function openEditor(ctx,st){
     const seg=add(el('div',null,'segment lb-segment'),...[['HABITS','습관'],['SUBJECTS','과목'],['EXAMS','시험 일정']].map(([k,t])=>{const b=button(t,()=>{tab=k;rerender();},tab===k?'selected':'secondary');return b;}));
     add(body,seg);
     if(tab==='HABITS')habitsPane();else if(tab==='SUBJECTS')subjectsPane();else examsPane();
-    add(body,err);
+    add(body,note,err);
   };
   const habitsPane=()=>{
     work.habits.forEach((x,i)=>{
@@ -551,20 +551,24 @@ function openEditor(ctx,st){
     add(body,add(el('div',null,'life-edit-row'),nn,button('시험 추가',()=>{const name=nn.value.trim();if(!name){showErr('INVALID_LIFE_TEXT');return;}work.exams.items.push({id:'e-'+ctx.uid().slice(0,12),name,date:ctx.now().slice(0,10),status:'잠정'});rerender();},'primary')),hint('날짜는 발표 전 잠정값입니다. 확정되면 상태를 "확정"으로 바꾸세요.'));
   };
   rerender();
-  const dlg=sheet('습관 · 과목 · 시험 일정',body);
+  let dlg=null;
+  const open=()=>{dlg=sheet('습관 · 과목 · 시험 일정',body);dlg.querySelector('.lb-sheet-head')?.append(save);};
+  const memo={};
   const save=button('저장',()=>{
     try{
       const rows=collectRows(work,life,defs);
       dlg.close();
       void ctx.perform(async()=>{
         st.message=null;st.error=false;
-        try{const n=await saveDefinitions(ctx,rows,'습관·과목·시험 일정 편집');st.message=n?n+'건을 저장했습니다.':'바뀐 것이 없어 저장하지 않았습니다.';}
+        let sealed=false;
+        try{const n=await saveDefinitions(ctx,rows,'습관·과목·시험 일정 편집',memo);sealed=memo.sealed>0;st.message=sealed?DEFS_SEALED_TEXT:n?n+'건을 저장했습니다.':'바뀐 것이 없어 저장하지 않았습니다.';}
         catch(x){st.message=lifeErrorText(x?.code);st.error=true;}
         await prepareLife(ctx,st);await ctx.rerender();
+        if(sealed&&!ctx.locked?.()){note.hidden=false;open();}   // FIX38: 임시 저장은 성공이 아니다. 고친 내용이 든 시트를 다시 연다. 잠겼으면 열지 않는다(H37-S2)
       });
     }catch(x){showErr(x?.code);}
   },'primary');
-  const head=dlg.querySelector('.lb-sheet-head');head?.append(save);
+  open();
 }
 // ---- 기록 탭: 지난 날짜 보기 ----
 export function renderPastDays(root,ctx,st){

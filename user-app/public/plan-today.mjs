@@ -51,15 +51,28 @@ export function todayPlanModel({life=null,study=null,date,today,timer=null,draft
 
 // ---------- 기록 쓰기(한 곳) ----------
 // 지금 그 날 계획(base)에 change를 적용한 초안을 검사한 뒤 기존 savePlanDay로 저장한다. 검사에 걸리면 쓰지 않고 오류 코드를 돌려준다(시트에 보임).
-function commitPlan(ctx,state,date,change,okText,before=()=>{}){
+// FIX38 (R37C 위험 4): 임시 저장 모드(sealed)는 성공이 아니다. "넣었습니다"라고 말하지 않고, 칩 시트와 입력을 그대로 다시 연다(reopen). 같은 내용을 또 봉인하지 않는다(H37-P1과 같은 방식).
+const SEALED_TEXT='임시 저장됨(동기화 전) · 아직 계획표에 보이지 않습니다 · 연결한 뒤 연결 · 장치의 임시 저장 목록에서 "승인하고 쌓기"를 누르세요.';
+function commitPlan(ctx,state,date,change,okText,before=()=>{},reopen=null){
   const base=structuredClone(planOf(ctx.getWhole().life??null,date)),mine={date,items:change(structuredClone(base?.items??[]))};
   try{validateLifeData('PLAN_DAY',date,mine);}catch(e){return e?.code??'INVALID_PLAN_DAY';}
   before();
   void ctx.perform(async()=>{
     Object.assign(state,{date,message:null,error:false,notices:[]});
-    try{const r=await savePlanDay(ctx,{date,base,mine});state.message=r.status==='SAVED'?okText:'이미 같은 계획이 저장되어 있습니다.';state.notices=r.notices;}
+    let sealed=false;
+    const key=JSON.stringify(mine);
+    try{
+      if(state.sealedAs===key&&await ctx.draftMode?.())sealed=true;
+      else{
+        const r=await savePlanDay(ctx,{date,base,mine});
+        if(r.sealed){sealed=true;state.sealedAs=key;state.notices=r.notices.filter(n=>n.code!=='PLAN_LOCAL_DRAFT');}
+        else{state.sealedAs=null;state.message=r.status==='SAVED'?okText:'이미 같은 계획이 저장되어 있습니다.';state.notices=r.notices;}
+      }
+      if(sealed)state.message=SEALED_TEXT;
+    }
     catch(e){state.message=planErrorText(e?.code);state.error=true;}
     await ctx.rerender();
+    if(sealed&&!ctx.locked?.())reopen?.(SEALED_TEXT);   // 잠겼으면 다시 열지 않는다(열린 모달은 로그인 칸을 막는다, H37-S2)
   });
   return null;
 }
@@ -84,7 +97,7 @@ export function openChipSheet(ctx,{date,item=null,block=null,onPut,onDelete=null
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button}=h,store=ctx.storage??globalThis.localStorage;
   const defs=lifeDefs(ctx.getWhole().life??null),subjects=defs.subjects.filter(s=>!s.hidden||s.id===item?.subjectId),nameOf=id=>subjects.find(s=>s.id===id)?.name??'기타';
   const pick={subjectId:item&&subjects.some(s=>s.id===item.subjectId)?item.subjectId:null,bricks:item?.bricks??readChipPrefs(store).bricks,block:item?.block??(PLAN_BLOCKS.includes(block)?block:blockOfNow(ctx.now()))};
-  const body=el('div',null,'pt-sheet'),err=el('p',null,'notice error pt-sheet-error');err.hidden=true;
+  const body=el('div',null,'pt-sheet'),err=el('p',null,'notice error pt-sheet-error'),note=el('p',null,'notice pt-sheet-note');err.hidden=true;note.hidden=true;
   const showErr=text=>{err.textContent=text;err.hidden=false;};
   const what=el('input');what.type='text';what.value=item&&item.title!==nameOf(item.subjectId)?item.title:'';
   what.setAttribute('maxlength',String(MAX_PLAN_TITLE));what.setAttribute('aria-label','할 일');what.setAttribute('placeholder','할 일 (비우면 과목 이름)');
@@ -105,17 +118,19 @@ export function openChipSheet(ctx,{date,item=null,block=null,onPut,onDelete=null
   draw();
   let dlg=null;
   const close=()=>dlg?.close?.();
+  const title=dateLabel(date)+(item?' · 계획 줄 고치기':' · 계획 줄 넣기');
+  const reopen=text=>{note.textContent=text;note.hidden=false;dlg=ctx.sheet?.(title,body)??null;};
   const put=()=>{
     if(!pick.subjectId){showErr('과목을 고르세요.');return;}
     writeChipPrefs(store,{bricks:pick.bricks});
     const next={id:item?.id??'p'+ctx.uid().slice(0,10),subjectId:pick.subjectId,title:titleOr(what.value,nameOf(pick.subjectId)),bricks:pick.bricks,block:pick.block};
-    const code=onPut(next,close);if(code)showErr(planErrorText(code));
+    const code=onPut(next,close,reopen);if(code)showErr(planErrorText(code));
   };
   // 단추는 위에 둔다(시트가 스크롤돼도 "넣기"가 보인다).
-  add(body,add(el('div',null,'buttons'),item&&onDelete?button('지우기',()=>{const code=onDelete(close);if(code)showErr(planErrorText(code));},'secondary'):null,button(item?'고치기':'넣기',put,'primary')),err,
+  add(body,add(el('div',null,'buttons'),item&&onDelete?button('지우기',()=>{const code=onDelete(close,reopen);if(code)showErr(planErrorText(code));},'secondary'):null,button(item?'고치기':'넣기',put,'primary')),err,note,
     add(el('div',null,'pt-sheet-row'),el('span','과목','pt-sheet-label'),subjRow),add(el('div',null,'pt-sheet-row'),el('span','벽돌','pt-sheet-label'),brickRow),
     add(el('div',null,'pt-sheet-row'),el('span','시간대','pt-sheet-label'),blockRow),add(el('div',null,'pt-sheet-row'),el('span','할 일','pt-sheet-label'),what));
-  dlg=ctx.sheet?.(dateLabel(date)+(item?' · 계획 줄 고치기':' · 계획 줄 넣기'),body)??null;
+  dlg=ctx.sheet?.(title,body)??null;
   return {body,pick,put};
 }
 
@@ -132,8 +147,8 @@ export function renderTodayPlan(ctx,{date=null,today=null,focus=null,draft=null,
   const day=today??kstDate(ctx.now()),d=date??day,timer=focus?.timer?.()??null;
   const m=todayPlanModel({life,study:whole.study??null,date:d,today:day,timer,draft});
   const out=el('section',null,'pt-card'+(m.isToday?' today':''));out.id=m.isToday?'today-plan':'';out.dataset.date=d;
-  const put=(item,close)=>commitPlan(ctx,state,d,items=>{const i=items.findIndex(x=>x.id===item.id);if(i<0)items.push(item);else items[i]=item;return items;},m.isToday?'오늘 계획에 넣었습니다.':'계획에 넣었습니다.',close);
-  const sheetFor=item=>()=>openChipSheet(ctx,{date:d,item,onPut:put,onDelete:item?close=>commitPlan(ctx,state,d,items=>items.filter(x=>x.id!==item.id),'계획 줄을 지웠습니다.',close):null});
+  const put=(item,close,reopen)=>commitPlan(ctx,state,d,items=>{const i=items.findIndex(x=>x.id===item.id);if(i<0)items.push(item);else items[i]=item;return items;},m.isToday?'오늘 계획에 넣었습니다.':'계획에 넣었습니다.',close,reopen);
+  const sheetFor=item=>()=>openChipSheet(ctx,{date:d,item,onPut:put,onDelete:item?(close,reopen)=>commitPlan(ctx,state,d,items=>items.filter(x=>x.id!==item.id),'계획 줄을 지웠습니다.',close,reopen):null});
   const plus=button('+',sheetFor(null),'secondary pt-add');plus.setAttribute('aria-label','계획 줄 넣기');
   add(out,add(el('div',null,'pt-head'),el('h3',m.title,'pt-title'),m.head?el('span',m.head,'pt-sum'):null,m.empty?null:plus));
   if(state.message&&state.date===d)add(out,el('p',state.message,state.error?'notice error pt-message':'notice pt-message'));

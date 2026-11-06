@@ -3,11 +3,15 @@
 import {MY_QUEST_ID} from './life-achieve.mjs';
 import {collectRows,saveDefinitions} from './life-flow.mjs';
 import {HABIT_AREAS,EMPTY_LIFE_VIEW,LIFE_LIMITS,MAX_NAME,lifeDefs,validateLifeData} from './life-model.mjs';
+export {DEFS_SEALED_TEXT} from './life-flow.mjs';
 
 export const MY_QUEST_REASON='내 퀘스트 저장';
 const questError=code=>Object.assign(new Error(code),{code});
 // 보이는 글자가 하나도 없는 이름: 제어·글자 방향·폭 없는 문자, 공백, 결합 부호, 점자 빈칸만 있는 경우(H37-Q6). 보이는 글자가 섞이면 통과한다(textContent로만 나간다).
 const NO_VISIBLE_TEXT=/^[\p{C}\p{Z}\p{M}\p{Default_Ignorable_Code_Point}⠀]*$/u;
+// 보이는 글자가 섞여도 제어문자·글자 방향 문자·줄 구분 문자는 저장 전에 뺀다(FIX38, H37-Q6 남은 것). 이모지·한글 조합에 쓰는 ZWJ·ZWNJ(200C·200D)는 둔다.
+const STRIP_FROM_NAME=/[\p{Cc}\p{Bidi_Control}\p{Zl}\p{Zp}]/gu;
+export const cleanQuestName=name=>String(name??'').replace(STRIP_FROM_NAME,'').trim();
 
 // 오늘 퀘스트 한 줄. 값은 쌓은 기록 기준이다: 쌓기 전 입력으로만 채워지면(preview) pending("쌓으면 완료").
 export function todayQuestLine(ach,preview=null){
@@ -21,7 +25,7 @@ export function todayQuestLine(ach,preview=null){
 export const myQuestOf=life=>lifeDefs(life).habits.find(h=>h.id===MY_QUEST_ID)??null;
 // 저장할 줄. 저장된 습관이 없는 상태면 기본 13개 + 1개를 함께 저장한다(하나만 쓰면 기본 습관이 화면에서 사라진다). 있으면 uq-1 한 줄만.
 export function myQuestRows(life,{name,count,area='HEAD',hidden=false}){
-  const view=life??EMPTY_LIFE_VIEW,defs=lifeDefs(view),label=String(name??'').trim();
+  const view=life??EMPTY_LIFE_VIEW,defs=lifeDefs(view),label=cleanQuestName(name);
   if(NO_VISIBLE_TEXT.test(label)||[...label].length>MAX_NAME)throw questError('INVALID_LIFE_TEXT');
   if(!Number.isInteger(count)||count<1||count>99)throw questError('INVALID_HABIT_TARGET');
   if(!HABIT_AREAS.includes(area))throw questError('INVALID_HABIT_DEF');
@@ -32,5 +36,5 @@ export function myQuestRows(life,{name,count,area='HEAD',hidden=false}){
   const habits=old?defs.habits.map(h=>h.id===MY_QUEST_ID?def:h):[...defs.habits,def];
   return collectRows({habits,subjects:defs.subjects,exams:defs.exams},view,defs);
 }
-// 소유자가 저장을 눌렀을 때만 부른다. 돌려주는 값 = 실제로 저장한 개수.
-export function saveMyQuest(ctx,spec){return saveDefinitions(ctx,myQuestRows(ctx.getWhole().life??null,spec),MY_QUEST_REASON);}
+// 소유자가 저장을 눌렀을 때만 부른다. 돌려주는 값 = 실제로 저장한 개수. memo.sealed = 그중 임시 저장(봉인 초안)된 줄 수(saveDefinitions).
+export function saveMyQuest(ctx,spec,memo){return saveDefinitions(ctx,myQuestRows(ctx.getWhole().life??null,spec),MY_QUEST_REASON,memo);}

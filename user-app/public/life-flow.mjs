@@ -178,19 +178,27 @@ export function createLifePorts(ctx){
 
 // 정의 저장(습관·과목·시험 일정): 소유자가 "저장"을 누를 때만 부른다. 엔티티마다 연산 1. 최신과 겹치면(STALE_HEADS) 최신을 받아 내 값을 그대로 쓴다.
 // rows = [{type,id,data,heads}] — 바뀐 것만 넘긴다. 돌려주는 값 = 실제로 저장한 개수.
-export async function saveDefinitions(ctx,rows,reason){
-  let saved=0;
+// FIX38 (R37C 위험 4): 임시 저장 모드에서는 봉인 초안으로만 들어가 목록에 안 보인다. 화면이 넘긴 memo의 sealed(그중 봉인된 줄 수)를 보고 성공이라고 말하지 않는다.
+// memo.as = 지난번에 봉인한 내용. 초안을 남기면 저장을 또 누를 수 있어서, 아직 임시 저장 모드면 같은 내용을 다시 봉인하지 않는다(H37-P1과 같은 방식).
+export const DEFS_SEALED_TEXT='임시 저장됨(동기화 전) · 아직 적용되지 않았고 입력은 그대로 있습니다 · 연결한 뒤 연결 · 장치의 임시 저장 목록에서 "승인하고 쌓기"를 누르세요.';
+export async function saveDefinitions(ctx,rows,reason,memo={}){
+  let saved=0,sealed=0;
   for(const r of rows)validateLifeData(r.type,r.id,r.data);   // 한 줄이라도 틀리면 아무것도 쓰지 않는다(쓰다가 끊기면 저장본이 반쪽이 된다, H37-Q1)
+  const key=stable(rows);
+  memo.sealed=0;
+  if(rows.length&&memo.as===key&&await ctx.draftMode?.()){memo.sealed=rows.length;return 0;}
   for(const r of rows){
-    try{await ctx.entity(r.type,r.id,r.data,r.heads,reason);}
+    let w;
+    try{w=await ctx.entity(r.type,r.id,r.data,r.heads,reason);}
     catch(e){
       if(e?.code!=='STALE_HEADS'||!ctx.reload)throw e;
       await ctx.reload();
       const latest=lookup(ctx.getWhole().life,r.type,r.id);
-      await ctx.entity(r.type,r.id,r.data,latest?latest.heads:[],reason);
+      w=await ctx.entity(r.type,r.id,r.data,latest?latest.heads:[],reason);
     }
-    saved++;
+    saved++;if(w?.status==='LOCAL_DRAFT')sealed++;
   }
+  memo.as=sealed?key:null;memo.sealed=sealed;
   return saved;
 }
 function lookup(life,type,id){

@@ -6,7 +6,7 @@
 // T2C: 네 모퉁이 탑(누르면 영역 시트, 레벨이 오른 뒤 처음 보면 맥동)·업적 장식·현판 칭호 글자(같은 SVG 겹침층).
 import {WebGLRenderer,Scene,PerspectiveCamera,HemisphereLight,DirectionalLight,BoxGeometry,ConeGeometry,SphereGeometry,CircleGeometry,ExtrudeGeometry,Shape,BufferGeometry,BufferAttribute,MeshStandardMaterial,MeshBasicMaterial,PointsMaterial,LineBasicMaterial,InstancedMesh,Mesh,Points,LineSegments,Group,Object3D,Color,Fog,DataTexture,RGBAFormat,UnsignedByteType,RepeatWrapping,LinearFilter,LinearMipmapLinearFilter,SRGBColorSpace,EquirectangularReflectionMapping,PMREMGenerator,PCFSoftShadowMap,BackSide,Raycaster,Vector2,Vector3} from './three.module.js';
 import {towerScene,quality3d,framesTooSlow,initialCamera,clampCamera,cameraPosition,FOV,GOLD,BRICK_W,BRICK_D,BRICK_GAP,ROW_H,TEX,WALL_TILE,brickTexels,wallTexels,groundTexels,envTexels,skyAt,starField,flyAt,flyFrom,dustAt,flashAt,shakeAt,autoRotateAt,AUTO_ROTATE_SECONDS,DUST_POINTS,DUST_SECONDS,FLASH_SECONDS,SHAKE_SECONDS,TIERS,START_TIER,nextTier,p50,p95,GROUND_R,SKY_R,fogRange,shadowBox,
-  COLS,DEPTH,PHI,CRANE_UP,SPARKS,DONE_ROOF_DROP,blueprint,houseTop,wholeCamera,craneRows,completionAt,sparkAt,BONUS_SPARKS,BONUS_BURST_SECONDS,bonusFresh,bonusSparkAt,withBadges,houseLabels,towersToPulse,pulseAt,PULSE_SECONDS} from './tower-3d-layout.mjs';
+  COLS,DEPTH,PHI,CRANE_UP,SPARKS,DONE_ROOF_DROP,blueprint,houseTop,wholeCamera,gateCamera,isTallHouse,startView,flyFirst,settleCamera,spinKeepsFront,WHOLE_VIEW_PAD,craneRows,completionAt,sparkAt,BONUS_SPARKS,BONUS_BURST_SECONDS,bonusFresh,bonusSparkAt,withBadges,houseLabels,towersToPulse,pulseAt,PULSE_SECONDS} from './tower-3d-layout.mjs';
 
 const MORTAR='#CFC6B4',CORE='#D8CCB6',SLAB='#BDAF96',WINDOW='#FFE9A8',MORTAR_DARK='#4A3F2E',DUST='#E9DFC8',BLUEPRINT='#8EC5FF',TAP_PX=8,TAP_MS=500,ROTATE_PER_PX=0.008,ZOOM_PER_WHEEL=0.0012,KEY_ROTATE=0.2,KEY_ZOOM=0.9,FRAME_LOG=120,LIT_WINDOWS=1.2;
 let active=null;
@@ -84,7 +84,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   if(tags){tags.setAttribute('class','tower-3d-labels');tags.setAttribute('aria-hidden','true');}
   stage.append(...[canvas,tags].filter(Boolean));
   const views=doc.createElement('div');views.className='tower-3d-views';views.setAttribute('role','group');views.setAttribute('aria-label','3D 보기');
-  const chips=[['week','이번 주'],['whole','집 전체']].map(([key,label])=>{const b=doc.createElement('button');b.type='button';b.className='lb-chip';b.textContent=label;b.dataset.view=key;b.addEventListener('click',()=>setView(key));views.append(b);return b;});
+  const chips=[...(isTallHouse(data)?[['gate','집 앞']]:[]),['week','이번 주'],['whole','집 전체']].map(([key,label])=>{const b=doc.createElement('button');b.type='button';b.className='lb-chip';b.textContent=label;b.dataset.view=key;b.addEventListener('click',()=>setView(key));views.append(b);return b;});
   let disposed=false,raf=0,renderer=null,started=0,lastT=0,dragging=false,frames=0;
   const deltas=[],tierDeltas=[],frameLog=[],owned=[],pointers=new Map();
   const reduced=Boolean(win.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
@@ -310,26 +310,29 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   };
 
   const aspect=()=>{const w=canvas.clientWidth||1,h=canvas.clientHeight||1;return w/h;};
-  const cam=st?(st.cam3d??=initialCamera(data,1)):initialCamera(data,1);
-  let selected=data.floors.length-1,fitted=Boolean(st?.cam3dFitted);
-  // 카메라 범위는 예상도 꼭대기까지(room). "이번 주" 첫 자리는 기존 initialCamera 그대로.
+  // 보기별 카메라: "집 앞" = 모퉁이 탑·현판(큰 집만), "이번 주" = 작은 집은 전체, 큰 집은 맨 위, "집 전체" = 고각 0.45로 기단부터 지금 집 꼭대기 + 여유까지.
+  const nowTop=houseTop(data)+WHOLE_VIEW_PAD,topFirst=flyFirst(data,flights.length,st?.view3d),firstView=topFirst?'week':startView(data);
+  const viewCamera=(key,a)=>key==='whole'?wholeCamera(data,a,nowTop):{phi:PHI,...(key==='gate'?gateCamera(data,a):initialCamera(data,a))};
+  const cam=st?(st.cam3d??=viewCamera(firstView,1)):viewCamera(firstView,1);
+  if(topFirst&&st)st.view3d='week';
+  let selected=data.floors.length-1,fitted=Boolean(st?.cam3dFitted)&&!topFirst;
+  // 카메라 범위는 예상도 꼭대기까지(room). 끌거나 멀리 보면 예상도까지 갈 수 있다.
   const aim=()=>{clampCamera(cam,room,aspect());const p=cameraPosition(cam);camera.position.set(p.x,p.y+shake,p.z);camera.lookAt(0,cam.y+shake,0);skyGroup.position.copy(camera.position);};
   const resize=()=>{
     const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;
     renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();tags?.setAttribute('viewBox','0 0 '+w+' '+h);
-    if(!fitted){Object.assign(cam,{phi:PHI},initialCamera(data,w/h));fitted=true;if(st)st.cam3dFitted=true;}
+    if(!fitted){Object.assign(cam,viewCamera(firstView,w/h));fitted=true;if(st)st.cam3dFitted=true;}
   };
   // 자동 회전: 손대기 전까지 천천히, 최대 20초. 움직임 줄이기면 돌지 않는다.
-  let spin=!reduced,spinFrom=null;
-  const stopSpin=()=>{spin=false;};
-  // 보기 칩: "이번 주" = 맨 위 근처(기존 첫 자리), "집 전체" = 고각 0.45로 기단부터 예상도 지붕까지 한 화면.
+  let spin=!reduced,spinFrom=null,settle=topFirst?{}:null;
+  const stopSpin=()=>{spin=false;settle=null;};
   const paintChips=key=>{for(const b of chips)b.setAttribute('aria-pressed',String(b.dataset.view===key));slot.dataset.view=key;};
   const setView=key=>{
     stopSpin();
-    if(key==='whole')Object.assign(cam,wholeCamera(data,aspect(),peak));else Object.assign(cam,{phi:PHI},initialCamera(data,aspect()));
+    Object.assign(cam,viewCamera(key,aspect()));
     if(st)st.view3d=key;paintChips(key);invalidate();
   };
-  paintChips(st?.view3d??'week');
+  paintChips(st?.view3d??firstView);
   const writeStatus=()=>{
     const a=p50(frameLog),b=p95(frameLog),info=renderer.info.render;
     if(a!==null){slot.dataset.frameMsP50=a.toFixed(1);slot.dataset.frameMsP95=b.toFixed(1);slot.dataset.fpsP50=String(Math.round(1000/a));slot.dataset.fpsP95=String(Math.round(1000/b));}
@@ -342,8 +345,9 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
     const t=(now-started)/1000;
     let moving=false;
     if(spin){
-      if(doc.visibilityState!=='visible'||t>=AUTO_ROTATE_SECONDS)spin=false;
-      else{spinFrom??=cam.theta;cam.theta=spinFrom+autoRotateAt(t);moving=true;}
+      spinFrom??=cam.theta;
+      if(doc.visibilityState!=='visible'||t>=AUTO_ROTATE_SECONDS||!spinKeepsFront(spinFrom,t))spin=false;
+      else{cam.theta=spinFrom+autoRotateAt(t);moving=true;}
     }
     if(flying){
       let done=true;
@@ -371,6 +375,12 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
       shake=last.landedAt===null?0:shakeAt(t-last.landedAt);
       if(last.landedAt!==null&&t-last.landedAt<=SHAKE_SECONDS)live=true;
       effects=live;moving=true;
+    }
+    if(settle&&!flying&&!effects){
+      // 큰 집: 오늘 벽돌이 다 놓이면 집 앞으로 내려온다.
+      settle.at??=t;settle.from??={y:cam.y,dist:cam.dist};
+      const c=settleCamera(settle.from,gateCamera(data,aspect()),t-settle.at);cam.y=c.y;cam.dist=c.dist;moving=true;
+      if(c.done){settle=null;if(st)st.view3d='gate';paintChips('gate');}
     }
     if(celebrate){
       // 완공 순간: 크레인이 땅으로 내려가고, 지붕이 내려앉고, 창이 켜지고, 꼭대기에서 금 불꽃이 핀다(3초).

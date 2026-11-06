@@ -156,6 +156,8 @@ function mainParts(x){
   if(x.short!==null)return [t(head),b(leftWords(x.left)),t(' · 내일부터 하루 '),b(formatWon(x.cut)),t('씩 줄여야 함')];
   // FIX37C (H37-M6): 위험 단계에서 "괜찮음"이라 말하지 않는다. 하루 몫이 평소보다 크게 줄었다는 단계의 근거를 그대로 말한다.
   if(x.level==='DANGER')return [t(head),b(leftWords(x.left)),t(' · 그래도 내일부터 하루 '),b(formatWon(x.safe)),t('뿐이라 평소 몫보다 크게 적음')];
+  // FIX38: 주의 단계도 "괜찮음"이라 말하지 않는다. 쓸 수 있는 하루 몫만 말한다.
+  if(x.level==='CAUTION')return [t(head),b(leftWords(x.left)),t(' · 내일부터 하루 '),b(formatWon(x.safe)),t(' 안에서 쓰기')];
   return [t(head),b(leftWords(x.left)),t(' · 내일부터 하루 '),b(formatWon(x.safe)),t('까지 괜찮음')];
 }
 export function feelText(x){
