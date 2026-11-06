@@ -1209,12 +1209,12 @@ void recurringHiddenBox.load().then(done=>{if(done&&recurringOnScreen())void ren
 function renderFinRecurring(root,fin){
  const prep=prepare(fin),rules=fin.recurring?.data.rules??[],today=whole.localDate,hiddenHere=loadRecurringHidden(globalThis.localStorage);
  const shown=rules.filter(r=>!r.hidden),folded=rules.filter(r=>r.hidden),stat=new Map(rules.map(r=>[r.id,recurringStatus(r,prep.lines,today,rules)]));
- const paid=shown.filter(r=>stat.get(r.id).state==='PAID').length;
+ const paid=shown.filter(r=>stat.get(r.id).state==='PAID').length,check=shown.filter(r=>stat.get(r.id).state==='CHECK').length;
  add(root,add(el('div',null,'metric-grid fin-metrics'),
   metric(RECURRING_TEXT.total,formatWon(recurringMonthly(rules)),'정기 결제 '+finCount(shown.length)+'개 · 매달 기준'),
-  metric('이번 달 결제 확인',finCount(paid)+' / '+finCount(shown.length),'아직·금액 다름 '+finCount(shown.length-paid)+'개')));
+  metric('이번 달 결제 확인',finCount(paid)+' / '+finCount(shown.length),'아직·금액 다름 '+finCount(shown.length-paid-check)+'개'+(check?' · 확인 필요 '+finCount(check)+'개':''))));
  const save=(next,reason,message)=>void perform(async()=>{await entity('FIN_RECURRING',RECURRING_ID,next(),fin.recurring?.heads??[],reason);await refresh();status(savedMessage()+' · '+message);});
- const list=section('정기 결제 '+shown.length+'개','매달 나가는 돈을 한눈에 봅니다. 이번 달 결제 확인은 같은 가게에서 규칙 금액과 같거나, 평소 결제일 ±3일 안에 규칙 금액 근처(허용 오차 안)로 낸 지출이 있는지 봅니다. 거래 내역의 가게 이름은 이 화면에만 보이고 내보내기에는 넣지 않습니다.');
+ const list=section('정기 결제 '+shown.length+'개','매달 나가는 돈을 한눈에 봅니다. 이번 달 결제 확인은 같은 가게에서 예정일 ±3일 안에 규칙 금액 근처(허용 오차 안)로 낸 지출이 있는지 봅니다. 처음 2회는 예정일이 아직 굳지 않아 규칙 금액과 같으면 결제로 봅니다. 그 뒤로 예정일 밖에 규칙 금액과 같은 지출만 있으면 "확인 필요"로 보입니다. 거래 내역의 가게 이름은 이 화면에만 보이고 내보내기에는 넣지 않습니다.');
  const ruleRow=r=>{
   const s=stat.get(r.id),cls=s.state==='PAID'?'src-txn':s.state==='DIFFERENT'?'unknown':'dup',moved=r.hidden||s.state!=='DIFFERENT'?null:recurringPriceChange(r,prep.lines,today,rules);
   const stuck=moved&&!canSetRecurringAmount(rules,r.id,moved.amount);   // R33B (HUNT32 D3): 형제 규칙과 금액대가 겹쳐 저장할 수 없으면 버튼 대신 이유
@@ -1257,10 +1257,10 @@ function editProvisional(fin,it){
 }
 function renderFixedSchedule(root,fin,{pendingOnly=false}={}){
  const prep=prepare(fin),today=whole.localDate,all=fixedSchedule(fin.recurring?.data.rules??[],prep.lines,today,daysInMonth(today.slice(0,7)));
- const pending=all.filter(it=>it.state==='PLANNED'||it.state==='OVERDUE').sort((a,b)=>(a.due??'9').localeCompare(b.due??'9')),done=all.filter(it=>it.state==='PAID'||it.state==='DIFFERENT'),prepaid=all.filter(it=>it.state==='PREPAID');
+ const pending=all.filter(it=>it.state==='PLANNED'||it.state==='OVERDUE').sort((a,b)=>(a.due??'9').localeCompare(b.due??'9')),done=all.filter(it=>it.state==='PAID'||it.state==='DIFFERENT'),prepaid=all.filter(it=>it.state==='PREPAID'),check=all.filter(it=>it.state==='CHECK');
  if(!all.length||(pendingOnly&&!pending.length))return null;
- const due=pending.reduce((s,it)=>s+it.provisional,0n),paid=done.reduce((s,it)=>s+it.actual,0n);
- const p=section('이번 달 고정비 · '+today.slice(0,7),'예정 '+finCount(pending.length)+'건 '+formatWon(due)+(pendingOnly?'':' · 확정 '+finCount(done.length)+'건 '+formatWon(paid))+' · 정기 결제 규칙에서 보여 주는 값이고 거래 기록이 아닙니다. 실제 결제가 들어오면 예정이 사라지고 실제 금액으로 계산합니다(두 번 세지 않음).');
+ const due=pending.reduce((s,it)=>s+it.provisional,0n),paid=done.reduce((s,it)=>s+it.actual,0n),held=check.reduce((s,it)=>s+it.actual,0n);
+ const p=section('이번 달 고정비 · '+today.slice(0,7),'예정 '+finCount(pending.length)+'건 '+formatWon(due)+(pendingOnly?'':' · 확정 '+finCount(done.length)+'건 '+formatWon(paid)+(check.length?' · 확인 필요 '+finCount(check.length)+'건 '+formatWon(held):''))+' · 정기 결제 규칙에서 보여 주는 값이고 거래 기록이 아닙니다. 실제 결제가 들어오면 예정이 사라지고 실제 금액으로 계산합니다(두 번 세지 않음).');
  p.classList.add('fin-fixed-plan');
  for(const it of pending){
   const n=row(it.name,FIXED_STATE_TEXT[it.state]+' · 잠정 '+formatWon(it.provisional)+' · '+(it.due??'예정일 모름'),add(el('div',null,'buttons'),button('금액 수정',()=>editProvisional(fin,it),'secondary')));
@@ -1273,6 +1273,7 @@ function renderFixedSchedule(root,fin,{pendingOnly=false}={}){
   n.querySelector('.row-main strong').after(el('span',FIXED_STATE_TEXT[it.state],'tag '+(it.state==='PAID'?'src-txn':'unknown')));
   add(p,n);
  }
+ if(!pendingOnly)for(const it of check){const n=row(it.name,'실제 '+formatWon(it.actual)+' · '+it.paidDate+' · 예정일 '+it.due+' 밖이라 고정비로 한 번만 셉니다');n.querySelector('.row-main strong').after(el('span',RECURRING_TEXT.CHECK,'tag unknown'));add(p,n);}   // FIX39B
  if(!pendingOnly)for(const it of prepaid){const n=row(it.name,it.paidDate+' 결제 · 지난달 지출에 들어 있어 이번 달에는 더하지 않음');n.querySelector('.row-main strong').after(el('span',FIXED_STATE_TEXT.PREPAID,'tag src-txn'));add(p,n);}   // FIX36 (H36-M6)
  add(root,p);
  return p;

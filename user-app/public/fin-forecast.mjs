@@ -94,12 +94,13 @@ export function fixedDue(lastDate,month,days){
 // changed = 실제 ≠ 잠정이면 {from,to}. suggest = "다음 달 잠정도 이 금액으로" 1탭에 쓸 금액(원 단위 문자열): PAID는 결제가 1건일 때 그 금액, DIFFERENT는 B48C 가격 변경 규칙(지난 결제 있음, 절반~두 배)대로 마지막 금액 다름 결제의 금액. 없으면 null.
 // blocked = suggest 금액이 같은 가맹점 형제 규칙과 금액대가 겹쳐 setRuleAmount가 받지 않으면 true(R33B, 화면은 1탭 대신 이유). 아니면 false.
 // R32 (HUNT31 D3·D4): 이번 달 결제 줄 하나는 규칙 하나에만 배정한다(두 번 더하지 않음). 판정은 ruleStatus와 같은 lineKind:
-//  1) 자기 금액대의 구독 결제('PAID': 정확히 같은 금액, 또는 금액대 안 + 예정일 ±3일)인 규칙이 있으면 그중 하나(규칙 금액이 가장 가까운 것, 같으면 목록 앞).
+//  1) 자기 금액대의 구독 결제('PAID': 금액대 안 + 예정일 ±3일, 또는 첫 2회의 정확히 같은 금액. FIX39)인 규칙이 있으면 그중 하나(규칙 금액이 가장 가까운 것, 같으면 목록 앞).
 //  2) 없으면 "금액 다름"('OTHER')으로 보는 규칙 중 이번 달 상태가 금액 다름인 규칙 하나(같은 기준으로 고른다).
 //  3) 어느 규칙에도 안 맞는 줄(예정일 밖 같은 가게 일반 구매, 어느 금액대에도 없는 결제)은 배정하지 않는다 → 변동 지출에 남아 일평균으로 늘어난다.
 // 기록이 없는 규칙과, 금액 다름 결제가 모두 다른 규칙에 배정돼 자기 몫이 0건인 규칙은 아직 안 나간 돈(PLANNED/OVERDUE, 잠정)으로 둔다.
 // FIX36 (HUNT35 H8·F13): 예정일은 평소 결제일(dueDay, PC 알림과 같은 함수)이 먼저이고, 그것을 모를 때만 마지막 결제일이다. 예정일 ±3일 안의 결제가 있는 달에는 예정일 밖의 같은 금액 결제를 배정하지 않는다(구독은 한 달에 한 번, 나머지는 변동 지출).
 // FIX36 (HUNT36 M6): state PREPAID = 지난달 마지막 며칠에 이번 달 몫을 미리 냄(paidDate = 그 날짜). 그 돈은 지난달 지출이라 이번 달 낸 돈(actual)에도 예정에도 더하지 않는다.
+// FIX39B (통제탑 C): state CHECK = 규칙 금액과 정확히 같은 결제가 예정일 밖에만 있음(due = 예정일, paidDate = 그 날짜). 그 결제 하나를 고정비로 한 번만 센다(actual = 규칙 금액, 여러 건이면 마지막 결제일, 나머지는 변동 지출). 예정·연체로 더하지 않는다.
 export function fixedSchedule(rules,lines,today,days){
   const month=today.slice(0,7),byKey=new Map();
   for(const l of lines){
@@ -119,15 +120,17 @@ export function fixedSchedule(rules,lines,today,days){
   const closest=(cands,a)=>cands.reduce((best,r)=>best===null||gap(r,a)<gap(best,a)?r:best,null);
   for(const [key,group] of byMerchant){
     const thisMonth=[];
-    for(const l of byKey.get(key)??[]){
+    const history=byKey.get(key)??[];
+    for(const l of history){
       if(l.date.slice(0,7)!==month||l.date>today)continue;
       const a=wonOf(l.net);if(a!==null)thisMonth.push({date:l.date,a});
     }
     for(const {date,a} of thisMonth){
-      const kinds=group.map(r=>[r,lineKind(r,a,date,info.get(r.id).due,list,thisMonth)]);
+      const kinds=group.map(r=>[r,lineKind(r,a,date,info.get(r.id).due,list,thisMonth,history)]);
       const own=kinds.filter(([,k])=>k==='PAID').map(([r])=>r);
       const other=own.length?[]:kinds.filter(([r,k])=>k==='OTHER'&&info.get(r.id).st.state==='DIFFERENT').map(([r])=>r);
-      const pick=closest(own.length?own:other,a);
+      const check=own.length||other.length?[]:group.filter(r=>info.get(r.id).st.state==='CHECK'&&info.get(r.id).amount===a);
+      const pick=closest(own.length?own:other.length?other:check,a);
       if(pick)info.get(pick.id).got.push({date,amount:a});
     }
   }
@@ -135,6 +138,7 @@ export function fixedSchedule(rules,lines,today,days){
   for(const r of active){
     const {st,amount,got,due:dueD}=info.get(r.id),base={rule:r,id:r.id,name:r.name,provisional:amount,actual:null,count:0,paidDate:null,changed:null,suggest:null,blocked:false};
     if(st.prepaid&&!got.length){out.push({...base,state:'PREPAID',due:null,paidDate:st.prepaid});continue;}
+    if(st.state==='CHECK'&&got.length){out.push({...base,state:'CHECK',due:month+'-'+pad(Math.min(dueD,days)),actual:amount,count:1,paidDate:got.reduce((m,x)=>x.date>m?x.date:m,got[0].date)});continue;}
     if(st.state==='PENDING'||!got.length){
       // R33B (HUNT32 D5): 금액대 안 구독 결제가 없으면(결제 전에 잠정 금액을 바꿈) 평소 결제일(dueDay, 대체 기준 포함)로 예정일을 정한다.
       const due=dueD===null?fixedDue(st.lastDate,month,days):month+'-'+pad(Math.min(dueD,days));
@@ -151,7 +155,7 @@ export function fixedSchedule(rules,lines,today,days){
   return out;
 }
 // 이번 달 정기 결제를 셋으로 나눈다(fixedSchedule의 합).
-// paid: 이번 달 기록이 있는 규칙에 배정된 실제 금액(이미 쓴 돈에 들어 있으므로 일평균에서 뺀다). 배정되지 않은 같은 가게 지출(예정일 밖 일반 구매)은 변동 지출이다(R32 D4).
+// paid: 이번 달 기록이 있는 규칙에 배정된 실제 금액(CHECK 포함, 이미 쓴 돈에 들어 있으므로 일평균에서 뺀다). 배정되지 않은 같은 가게 지출(예정일 밖 일반 구매)은 변동 지출이다(R32 D4).
 // upcoming: 기록이 없고 예정일이 오늘 이후(오늘 포함)이거나 예정일을 모르는 규칙의 금액. overdue: 기록이 없고 예정일이 지난 규칙의 금액.
 export function fixedPlan(rules,lines,today,days){
   const out={paid:0n,paidCount:0,upcoming:0n,upcomingCount:0,overdue:0n,overdueCount:0,undatedCount:0};
