@@ -65,7 +65,56 @@ const hoursText=m=>{const h=Math.floor(m/60),r=m%60;return (h?h+'시간':'')+(h&
 const charCount=s=>[...String(s??'')].length;
 // FIX50A (HUNT49 A4): 글자 수 상한은 검사기·글자 수 표시와 같은 코드 포인트로 센다(입력 처리기에서 자른다). HTML maxlength는 UTF-16 단위라
 // 코드 포인트 1개 = 최대 2단위인 2배 값을 바깥 울타리로만 둔다(이모지 글이 1,000자에서 막히지 않게). 8KB 한도는 저장 때 검사기가 본다(원인 안내).
-export const clipChars=(s,max)=>{const a=[...String(s??'')];return a.length>max?a.slice(0,max).join(''):String(s??'');};
+// FIX51A (HUNT50 A4): 자르는 자리는 글자 묶음(국기·ZWJ 가족·결합 문자·한글 첫가끝) 경계다. 한도는 그대로 코드 포인트(검사기와 같은 셈)라 결과가 한도보다 짧을 수 있다.
+// week-review clipPick(FIX50B C2)과 같은 규칙이고 한도를 인자로 받는다(주간 리뷰는 이미 이 파일을 불러오므로 그대로 쓸 수 있다).
+// whole = 칸 전체 한도(남은 칸만큼 자를 때 max보다 크다). 첫 묶음 하나가 whole보다 큰 글(결합 부호 쌓기)만 코드 포인트로 자른다. 남은 칸보다 큰 묶음은 넣지 않는다(빈 값).
+const SEGMENTER=typeof Intl!=='undefined'&&Intl.Segmenter?new Intl.Segmenter(undefined,{granularity:'grapheme'}):null;
+export function clipGraphemes(s,max,whole=max){
+  const t=String(s??'');
+  if([...t].length<=max)return t;
+  if(!SEGMENTER)return [...t].slice(0,max).join('');
+  let out='',n=0;
+  for(const {segment} of SEGMENTER.segment(t)){const c=[...segment].length;if(n+c>max){if(!n&&c>whole)out=[...segment].slice(0,max).join('');break;}out+=segment;n+=c;}
+  return out;
+}
+export const clipChars=clipGraphemes;
+// FIX51A (HUNT50 A3): 한도를 넘는 입력은 이미 쓴 글을 자르지 않고 새로 들어온 부분만 자른다(가득 찬 글의 앞·가운데에 넣거나 붙여 넣어도 뒷부분이 남는다).
+// prev = 입력 전 값, next = 브라우저가 바꾼 값, caret = 입력 뒤 커서(UTF-16, 모르면 null). 넣은 글은 커서에서 끝나므로 커서 뒤 글 = 입력 전 글의 끝이다.
+// 커서를 모르면(시험의 가짜 DOM) 앞·뒤의 같은 부분을 찾는다. 지운 부분과 남은 뒷부분의 경계가 같은 글자가 이어진 곳이면 어디서 갈렸는지 알 수 없어 경계를 뒤로 민다(새 입력의 끝을 자른다).
+// 돌려주는 값 = {value, caret(자른 뒤 새 커서, UTF-16)}.
+export function clipInsert(prev,next,max,caret=null){
+  const p0=String(prev??''),n0=String(next??'');
+  if([...n0].length<=max)return {value:n0,caret:null};
+  const A=[...p0],B=[...n0];
+  let pre=0,suf=-1;
+  if(Number.isInteger(caret)&&caret>=0&&caret<=n0.length&&!(n0.charCodeAt(caret)>=0xDC00&&n0.charCodeAt(caret)<=0xDFFF)){const tail=n0.slice(caret);if(tail.length<=p0.length&&p0.endsWith(tail))suf=[...tail].length;}
+  if(suf>=0){const cap=Math.min(A.length,B.length)-suf;while(pre<cap&&A[pre]===B[pre])pre++;}
+  else{
+    const lim=Math.min(A.length,B.length);
+    while(pre<lim&&A[pre]===B[pre])pre++;
+    suf=0;while(suf<lim-pre&&A[A.length-1-suf]===B[B.length-1-suf])suf++;
+    while(suf>0&&A.length-suf>pre&&A[A.length-suf-1]===A[A.length-suf])suf--;
+  }
+  const room=max-pre-suf;
+  if(room<0)return {value:clipGraphemes(n0,max),caret:null};   // 입력 전 글이 이미 한도를 넘었던 경우(정상 경로에는 없음)
+  // FIX52B (HUNT51 HA1·HA2): 뒷글이 있으면 한도보다 큰 단일 묶음도 코드 포인트로 자르지 않는다(빈 값). 자른 조각과 뒷글을 이은 자리는 묶음 경계여야 한다:
+  // 뒷글 첫 묶음이 입력 전과 달라지면(외톨이 지역 표시 문자·ZWJ·첫소리 자모가 뒷글과 붙음) 조각의 마지막 묶음을 하나씩 뺀다. Segmenter가 없으면 예전대로.
+  // 넣은 글 없이 이어도 이미 다르면(지운 부분이 뒷글과 묶여 있었음) 넣은 글 탓이 아니므로 보지 않는다.
+  const head=B.slice(0,pre).join(''),ins=B.slice(pre,B.length-suf).join(''),tail=B.slice(B.length-suf).join('');
+  let mid=clipGraphemes(ins,room,tail?Infinity:max);
+  const want=tail&&SEGMENTER&&mid!==ins?tailHead(p0.slice(0,p0.length-tail.length),tail):null;
+  if(want!==null&&tailHead(head,tail)===want){
+    const parts=[...SEGMENTER.segment(mid)].map(x=>x.segment);
+    while(parts.length&&tailHead(head+parts.join(''),tail)!==want)parts.pop();
+    mid=parts.join('');
+  }
+  return {value:head+mid+tail,caret:head.length+mid.length};
+}
+// 앞글 before 뒤에 붙인 tail의 첫 묶음(이은 자리에 걸친 묶음이면 표시를 붙인다). 이은 자리가 경계이고 첫 묶음이 같으면 뒷글의 묶음은 그대로다.
+function tailHead(before,tail){
+  for(const {segment,index} of SEGMENTER.segment(before+tail))if(index+segment.length>before.length)return (index<before.length?'~':'=')+segment.slice(before.length-Math.min(index,before.length));
+  return '';
+}
 const unitCap=max=>String(max*2);
 const storageOf=ctx=>{try{return ctx.storage??globalThis.localStorage??null;}catch{return null;}};
 
@@ -139,7 +188,8 @@ export function renderDiaryEntry(ctx,st,{open}){
   const {el,add,button}=maker(ctx.document??globalThis.document),life=ctx.getWhole().life??null;
   const out=el('section',null,'diary-entry');out.id='diary-entry';
   const label=d.status==='NONE'?'쓰기':d.status==='LOCAL_DRAFT'?'이어서 쓰기':'고치기';
-  const go=button(label,()=>open(d.date),'primary diary-open');go.dataset.navOnly='1';go.setAttribute('aria-label',(d.late?'어제':'오늘')+' 일기 '+label);
+  // FIX52C (Codex R4): 기본 입구는 누를 때 일기 날짜를 다시 계산한다(03:59에 그린 화면을 04:01에 눌러도 새 날짜). 날짜를 적은 입구(지난 초안 열기)는 그 날짜 그대로.
+  const go=button(label,()=>open(diaryDateOf(ctx.now()).date),'primary diary-open');go.dataset.navOnly='1';go.setAttribute('aria-label',(d.late?'어제':'오늘')+' 일기 '+label);
   add(out,add(el('div',null,'diary-entry-head'),el('h3',d.late?'어제 일기':'오늘 일기'),go),
     el('p',d.status==='NONE'?DIARY_TEXT.none:d.status==='LOCAL_DRAFT'?DIARY_TEXT.draft:diarySummaryText(d.card),'muted small diary-entry-state'));
   const prev=yesterdayOf(life,d.date);
@@ -204,10 +254,13 @@ export async function openDiarySheet(ctx,st,date,opts={}){
   const text=el('textarea',null,'diary-text');text.value=work.text;text.setAttribute('aria-label','일기 글');text.setAttribute('maxlength',unitCap(MAX_DIARY_TEXT));text.setAttribute('rows','8');
   const count=el('p',null,'muted small diary-count');
   const tomorrow=el('input',null,'diary-tomorrow');tomorrow.type='text';tomorrow.value=work.tomorrow;tomorrow.setAttribute('aria-label','내일 한 가지');tomorrow.setAttribute('maxlength',unitCap(MAX_DIARY_TOMORROW));tomorrow.setAttribute('placeholder','내일 한 가지 (선택, '+MAX_DIARY_TOMORROW+'자)');
+  // FIX52B (HUNT51 HA-S2): 브라우저는 값을 넣을 때 줄바꿈을 바꾼다(textarea \r\n → \n, 한 줄 입력은 줄바꿈 제거). 자르기의 "입력 전 값"이 화면 값과 같게 맞춘다(건드린 칸만 저장하므로 저장 값은 그대로).
+  work.text=text.value;work.tomorrow=tomorrow.value;
   const paintCount=()=>{const n=charCount(text.value);count.textContent=n.toLocaleString('ko-KR')+' / '+MAX_DIARY_TEXT.toLocaleString('ko-KR')+'자';count.hidden=n<1800;};   // 글자 수는 1,800자부터(양을 부추기지 않게)
-  const clipInput=(n,max)=>{const v=clipChars(n.value,max);if(v!==n.value)n.value=v;return v;};
-  text.addEventListener('input',()=>{work.text=clipInput(text,MAX_DIARY_TEXT);paintCount();paintSave();touch('text');});
-  tomorrow.addEventListener('input',()=>{work.tomorrow=clipInput(tomorrow,MAX_DIARY_TOMORROW);touch('tomorrow');});
+  // FIX51A (HUNT50 A3): prev = 이 칸의 직전 값(work). 넘친 입력은 새로 들어온 부분만 자르고 커서를 그 자리에 둔다.
+  const clipInput=(n,max,prev)=>{const r=clipInsert(prev,n.value,max,typeof n.selectionEnd==='number'?n.selectionEnd:null);if(r.value!==n.value){n.value=r.value;if(r.caret!==null&&typeof n.setSelectionRange==='function')n.setSelectionRange(r.caret,r.caret);}return r.value;};
+  text.addEventListener('input',()=>{work.text=clipInput(text,MAX_DIARY_TEXT,work.text);paintCount();paintSave();touch('text');});
+  tomorrow.addEventListener('input',()=>{work.tomorrow=clipInput(tomorrow,MAX_DIARY_TOMORROW,work.tomorrow);touch('tomorrow');});
 
   let dlg=null,step=1,busy=false;
   const save=async()=>{
@@ -225,7 +278,8 @@ export async function openDiarySheet(ctx,st,date,opts={}){
         if(r.status!=='NOTHING_TO_CONFIRM')await ctx.reload?.();
         let habit=false;
         if(r.status!=='NOTHING_TO_CONFIRM'){try{habit=await markDiaryHabit({flow:opts.lifeFlow,life:ctx.getWhole().life??null,date});}catch{habit=false;}}
-        st.diaryMessage={text:(r.status==='NOTHING_TO_CONFIRM'?DIARY_TEXT.same:DIARY_TEXT.saved)+(habit?diaryHabitText(date,kstDate(ctx.now())):''),error:false};st.diaryNotices=r.notices??[];
+        // FIX52B (HUNT51 HF2): 쓰지 않았으면(바뀐 것 없음) 겹침 알림을 그리지 않는다.
+        st.diaryMessage={text:(r.status==='NOTHING_TO_CONFIRM'?DIARY_TEXT.same:DIARY_TEXT.saved)+(habit?diaryHabitText(date,kstDate(ctx.now())):''),error:false};st.diaryNotices=r.status==='NOTHING_TO_CONFIRM'?[]:r.notices??[];
         dlg?.close?.();
         await opts.after?.();
         return;

@@ -209,10 +209,10 @@ export function titleSheetBody(args,after=()=>{}){
     if(!vault){saveTitleChoice(storage,st,id);after();return;}
     err.hidden=true;
     void ctx.perform(async()=>{
-      const r=await pickTitle(ctx,id,text=>{err.textContent=text;err.hidden=false;});
+      const info={},r=await pickTitle(ctx,id,text=>{err.textContent=text;err.hidden=false;},info);
       if(r==='ERROR')return;
       if(r==='SEALED'){saveTitleChoice(storage,st,id);st.titleSealed={id,base:life?.profile?.data?.titleId};}   // 임시 저장은 아직 금고에 없다: 금고에 칭호가 있어도 이 기기 값으로 보여 준다(금고 값이 바뀌면 금고가 이김)
-      else delete st.titleSealed;
+      else{delete st.titleSealed;if(info.discarded)saveTitleChoice(storage,st,id);}   // 금고 값으로 되돌려 남은 봉인 초안을 지웠다면 이 기기 설정도 금고 값에 맞춘다(FIX51B B2)
       after();
     });
   };

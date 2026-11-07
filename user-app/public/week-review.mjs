@@ -10,7 +10,7 @@ import {mondayOf,weekSummary,rateText,planErrorText,unknownOutcome,PLAN_NOTICE_T
 import {weekMinutes,hoursText} from './study-stats.mjs';
 import {habitWindow} from './state-export.mjs';
 import {saveWeekReview} from './life-quest.mjs';
-import {chipLabel} from './diary-ui.mjs';
+import {chipLabel,clipGraphemes} from './diary-ui.mjs';
 
 export const TOP_CHIPS=3,MAX_CHOICES=20,LOW_AVG=2,LOW_MIN_DAYS=3,EVENING_HOUR=18;
 export const WEEK_REVIEW_TEXT=Object.freeze({
@@ -47,7 +47,7 @@ export function reviewWindow(nowIso){
 }
 
 // ---- 계산(순수, 저장 0) ----
-const diaryWritten=d=>d.score!==null||d.energy!==null||d.good.length>0||d.bad.length>0||d.text.trim()!==''||d.tomorrow.trim()!=='';
+const diaryWritten=d=>d.score!==null||d.energy!==null||d.good.length>0||d.bad.length>0||hasVisibleText(d.text)||hasVisibleText(d.tomorrow);   // 보이는 글자 판정은 보상 쪽(diaryWrote)과 같은 함수(FIX51B B1)
 const chipOrder=(id,list)=>{const i=list.indexOf(id);return i<0?list.length:i;};
 function chipTop(diaries,key,list){
   const m=new Map();
@@ -58,20 +58,20 @@ function chipTop(diaries,key,list){
 export function weekReviewStats({life=null,study=null,monday,today}){
   const sunday=shiftDay(monday,6),dates=Array.from({length:7},(_,i)=>shiftDay(monday,i)),inWeek=d=>d>=monday&&d<=sunday;
   const ach=achieve({life,study,today}),w=ach.weeks.find(x=>x.monday===monday)??null;
-  const plan=weekSummary(life,ach,monday);
-  // 진행 중인 주(오늘이 월~토)는 월요일~오늘만 센다. 아직 오지 않은 날을 안 한 날로 세지 않는다(FIX50B C4). 지난 주·일요일은 7일 그대로.
+  // 진행 중인 주(오늘이 월~토)는 월요일~오늘만 센다. 아직 오지 않은 날을 안 한 날로 세지 않는다(FIX50B C4: 습관, FIX51B C1: 계획 실행률). 지난 주·일요일은 7일 그대로.
   const habitEnd=today>=monday&&today<sunday?today:sunday,habitDays=dates.indexOf(habitEnd)+1;
+  const plan=weekSummary(life,ach,monday,habitDays);
   const habits=habitWindow(life,habitEnd,habitDays)??[],habitGoal=habits.reduce((s,r)=>s+r.goal,0),habitDone=habits.reduce((s,r)=>s+r.done,0);
   const diaryRows=(life?.diaries??[]).filter(x=>inWeek(x.date)),diaryBy=new Map(diaryRows.map(x=>[x.date,x.data]));
   const cardBy=new Map((life?.days??[]).filter(x=>inWeek(x.date)).map(x=>[x.date,x.data]));
   const days=dates.map(date=>{const d=diaryBy.get(date)??null,c=cardBy.get(date)??null;return {date,score:d?.score??null,mood:Number.isInteger(c?.mood)?c.mood:null,written:Boolean(d&&diaryWritten(d))};});
   const scores=days.map(d=>d.score).filter(v=>v!==null),avg=scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:null;
-  const diaries=diaryRows.map(x=>x.data);
+  const diaries=diaryRows.map(x=>x.data),lastNext=reviewRow(life,shiftDay(monday,-7))?.data.next;
   return {monday,sunday,days,
     study:study?{minutes:weekMinutes(study,monday,today),prevMinutes:weekMinutes(study,shiftDay(monday,-7),today),bricks:w?.bricks??0,pieces:w?.pieces??0}:null,
     planRate:plan.rate,planned:plan.planned,habits,habitDays,habitGoal,habitDone,habitRate:habitGoal>0?habitDone/habitGoal:null,
     diaryDays:days.filter(d=>d.written).length,good:chipTop(diaries,'good',DIARY_GOOD_CHIPS),bad:chipTop(diaries,'bad',DIARY_BAD_CHIPS),
-    avg,low:scores.length>=LOW_MIN_DAYS&&avg<=LOW_AVG,lastNext:reviewRow(life,shiftDay(monday,-7))?.data.next.trim()??''};
+    avg,low:scores.length>=LOW_MIN_DAYS&&avg<=LOW_AVG,lastNext:hasVisibleText(lastNext)?lastNext.trim():''};   // 보이는 글자가 없으면 줄을 그리지 않는다(FIX51B B3)
 }
 // 그래프 선 조각: 값이 이어진 날끼리만 잇는다(없는 날은 끊김, 0으로 그리지 않음). [[{i,v},…],…]
 export function lineRuns(values){
@@ -82,21 +82,14 @@ export function lineRuns(values){
 // 문장 나누기(D49 7.2): . ! ? … 줄바꿈에서 나눈다(문장 끝 부호는 남김). 글자·숫자가 없는 조각은 뺀다. 그 주 일기를 날짜 순으로 보고 최대 20개.
 export const SENTENCE=/[^.!?…\n]+[.!?…]*/g;
 // 120자가 넘으면 잘라서 저장. 한도는 코드 포인트 120(검사기와 같은 셈)이고, 자르는 자리는 글자 묶음(국기·ZWJ 가족·피부색) 경계다(FIX50B C2).
-const SEGMENTER=typeof Intl!=='undefined'&&Intl.Segmenter?new Intl.Segmenter(undefined,{granularity:'grapheme'}):null;
-export function clipPick(s){
-  const t=String(s);
-  if([...t].length<=MAX_REVIEW_PICK)return t;
-  if(!SEGMENTER)return [...t].slice(0,MAX_REVIEW_PICK).join('');
-  let out='',n=0;
-  for(const {segment} of SEGMENTER.segment(t)){const c=[...segment].length;if(n+c>MAX_REVIEW_PICK)break;out+=segment;n+=c;}
-  return out||[...t].slice(0,MAX_REVIEW_PICK).join('');   // 한 묶음이 120을 넘는 글(결합 부호 쌓기)은 코드 포인트로 자른다
-}
+// M51: 자르기 규칙은 diary-ui의 clipGraphemes(FIX51A)와 같아서 하나로 합쳤다(한 묶음이 120을 넘는 글은 코드 포인트로 자른다).
+export const clipPick=s=>clipGraphemes(String(s),MAX_REVIEW_PICK);
 export function sentenceChoices(life,monday,max=MAX_CHOICES){
   const sunday=shiftDay(monday,6),out=[];
   const rows=(life?.diaries??[]).filter(x=>x.date>=monday&&x.date<=sunday).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
   for(const r of rows)for(const m of r.data.text.match(SENTENCE)??[]){
     const t=clipPick(m.trim());
-    if(!/[\p{L}\p{N}]/u.test(t))continue;
+    if(!hasVisibleText(t)||!/[\p{L}\p{N}]/u.test(t))continue;   // 한글 채움 같은 빈칸 글자만 있는 문장은 후보가 아니다(FIX51B B1)
     out.push({date:r.date,text:t});if(out.length>=max)return out;
   }
   return out;
@@ -153,7 +146,7 @@ export function openWeekReview(ctx,{monday=null,today=null}={}){
         s.study?cell(WR.study,hoursText(s.study.minutes),brickLine(s.study)+' · '+compareLine(s.study.minutes,s.study.prevMinutes)):cell(WR.study,'-',WR.noStudy),
         cell(WR.plan,rateText(s.planRate),s.planned>0?null:WR.noPlan),
         cell(WR.habit,s.habitRate===null?'-':Math.round(s.habitRate*100)+'%',s.habitGoal>0?(s.habitDays<7?s.habitDays+'일 중 · ':'')+s.habitDone+' / '+s.habitGoal+'칸':null),
-        cell(WR.diary,s.diaryDays+'일','7일 중')));
+        cell(WR.diary,s.diaryDays+'일',s.habitDays+'일 중')));   // 계획·습관과 같은 창(FIX51B C2). 지난 주·일요일은 7일 중
       add(body,el('h3',WR.graph,'wr-sub'));
       if(s.days.some(x=>x.score!==null||x.mood!==null))add(body,graphNode(ctx.document??globalThis.document,s.days),el('p',WR.legend,'muted small wr-legend'));
       else add(body,el('p',WR.noScore,'muted small wr-no-score'));

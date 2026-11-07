@@ -226,9 +226,10 @@ export function daySummary(life,ach,date){
   const plan=planOf(life,date),items=sortedItems(plan?.items??[]),actual=actualOf(weekIndex(ach),date);
   return {...planVsActual(items,actual),date,plan,items,actual,actualTotal:actual.total};   // actual = 그날 실제 벽돌(과목별 포함), actualTotal = 합(장)
 }
-export function weekSummary(life,ach,monday){
-  const weeks=weekIndex(ach),days=[],subjects=new Map();let planned=0,achieved=0,actualTotal=0;
-  for(let k=0;k<7;k++){
+// span = 월요일부터 세는 날 수(1~7, 그 밖의 값은 7). 진행 중인 주 리뷰가 "월요일~오늘"만 셀 때 쓴다(FIX51B C1). 계획 탭은 기본 7일 그대로.
+export function weekSummary(life,ach,monday,span=7){
+  const weeks=weekIndex(ach),days=[],subjects=new Map(),n=Number.isInteger(span)&&span>=1&&span<=7?span:7;let planned=0,achieved=0,actualTotal=0;
+  for(let k=0;k<n;k++){
     const d=shiftDay(monday,k),s=daySummary(life,ach,d);days.push(s);planned+=s.planned;achieved+=s.achieved;actualTotal+=s.actualTotal;
     for(const r of s.rows){const t=subjects.get(r.subjectId)??{subjectId:r.subjectId,planned:0,actual:0,achieved:0};t.planned+=r.planned;t.actual+=r.actual;t.achieved+=Math.min(r.planned,r.actual);subjects.set(r.subjectId,t);}
   }

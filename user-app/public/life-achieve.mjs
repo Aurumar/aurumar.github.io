@@ -50,7 +50,12 @@ export const DIARY_WEIGHT=Object.freeze({DAY:0.25,REVIEW:0.5});
 export const DIARY_BONUS=Object.freeze({QUEST:1,REVIEW:1});
 export const DIARY_QUEST_DAYS=5,DIARY_HABIT_ID='hb-diary';
 export const DIARY_STREAK_PRIZES=Object.freeze([[3,15,0],[7,30,0],[30,100,3]]);   // [연속 일수, XP, ✦], 평생 한 번씩
-export const hasVisibleText=s=>typeof s==='string'&&/[^\s\p{C}]/u.test(s);   // 보이는 글자가 하나라도 있으면 참(공백·제어·서식 문자만이면 거짓). 주간 리뷰 "빈 값" 판정을 저장 쪽(life-quest·week-review)과 보상 쪽이 함께 쓴다(FIX50B C3)
+// 보이는 글자가 하나도 없는 글: 제어·서식·글자 방향·폭 없는 문자, 공백, 결합 부호, 한글 채움(U+3164·U+115F·U+1160·U+FFA0)·점자 빈칸(U+2800)·CGJ(U+034F)·변형 선택자·U+17B4 같은 Default_Ignorable만 있는 경우(H37-Q6, HUNT50 B1).
+// Default_Ignorable이 아닌데 글리프가 빈 글자는 따로 적는다: 점자 빈칸(U+2800)·음악 기호 빈 음표머리(U+1D159, HUNT51 HB2). U+FFFC(개체 대체 문자)는 글꼴이 상자로 그려 보이는 글자로 둔다.
+const NO_VISIBLE_TEXT=/^[\p{C}\p{Z}\p{M}\p{Default_Ignorable_Code_Point}⠀\u{1D159}]*$/u;
+// 보이는 글자가 하나라도 있으면 참. 내 퀘스트 이름(life-quest)·주간 리뷰 빈 값 판정(life-quest·week-review)·보상(여기)이 모두 이 함수 하나를 쓴다(FIX50B C3, FIX51B B1).
+// XP·작은 벽돌은 기록에서 다시 계산하므로, 이 글자들로 받던 보상은 이 판정을 따라 줄어든다(올바른 동작).
+export const hasVisibleText=s=>typeof s==='string'&&!NO_VISIBLE_TEXT.test(s);
 const seen=hasVisibleText;
 export const diaryRated=d=>Number.isInteger(d?.score);
 export const diaryWrote=d=>seen(d?.text);

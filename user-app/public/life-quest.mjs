@@ -9,8 +9,7 @@ export {DEFS_SEALED_TEXT} from './life-flow.mjs';
 
 export const MY_QUEST_REASON='내 퀘스트 저장';
 const questError=code=>Object.assign(new Error(code),{code});
-// 보이는 글자가 하나도 없는 이름: 제어·글자 방향·폭 없는 문자, 공백, 결합 부호, 점자 빈칸만 있는 경우(H37-Q6). 보이는 글자가 섞이면 통과한다(textContent로만 나간다).
-const NO_VISIBLE_TEXT=/^[\p{C}\p{Z}\p{M}\p{Default_Ignorable_Code_Point}⠀]*$/u;
+// 보이는 글자가 하나도 없는 이름은 거절한다(H37-Q6, 판정은 life-achieve의 hasVisibleText 하나). 보이는 글자가 섞이면 통과한다(textContent로만 나간다).
 // 보이는 글자가 섞여도 제어문자·글자 방향 문자·줄 구분 문자는 저장 전에 뺀다(FIX38, H37-Q6 남은 것). 이모지·한글 조합에 쓰는 ZWJ·ZWNJ(200C·200D)는 둔다.
 const STRIP_FROM_NAME=/[\p{Cc}\p{Bidi_Control}\p{Zl}\p{Zp}]/gu;
 export const cleanQuestName=name=>String(name??'').replace(STRIP_FROM_NAME,'').trim();
@@ -28,7 +27,7 @@ export const myQuestOf=life=>lifeDefs(life).habits.find(h=>h.id===MY_QUEST_ID)??
 // 저장할 줄. 저장된 습관이 없는 상태면 기본 13개 + 1개를 함께 저장한다(하나만 쓰면 기본 습관이 화면에서 사라진다). 있으면 uq-1 한 줄만.
 export function myQuestRows(life,{name,count,area='HEAD',hidden=false}){
   const view=life??EMPTY_LIFE_VIEW,defs=lifeDefs(view),label=cleanQuestName(name);
-  if(NO_VISIBLE_TEXT.test(label)||[...label].length>MAX_NAME)throw questError('INVALID_LIFE_TEXT');
+  if(!hasVisibleText(label)||[...label].length>MAX_NAME)throw questError('INVALID_LIFE_TEXT');
   if(!Number.isInteger(count)||count<1||count>99)throw questError('INVALID_HABIT_TARGET');
   if(!HABIT_AREAS.includes(area))throw questError('INVALID_HABIT_DEF');
   const old=defs.habits.find(h=>h.id===MY_QUEST_ID)??null;
@@ -53,6 +52,29 @@ function recordRow(life,type,id){
   return life?.profile??null;
 }
 const recordEmpty=(type,d)=>type==='PLAN_GOAL'?d.goals.length===0:type==='WEEK_REVIEW'?d.pick===null&&!hasVisibleText(d.next):type==='EXAM_RESULT'&&d.scores.length===0;
+// 봉인(임시 저장)으로 쌓인 칭호 초안 id를 ctx.sealedDrafts(Map, 앱이 오래 사는 하나를 넘김)에 기록과 같은 키로 모은다. 없으면 기억하지 않는다(그 경우 옛 동작).
+// 나중에 고른 칭호가 금고 값과 같아지면(ALREADY_APPLIED) 남은 초안은 마지막 선택과 어긋난 옛 값이라 지운다. 안 지우면 "승인하고 쌓기"가 옛 값으로 금고를 바꾼다(HUNT50 B2).
+// 칭호(GAME_PROFILE)만 한다: 칭호 시트는 봉인 값을 보여 주므로 금고 값을 고르는 것이 곧 되돌림이다. 주간 리뷰·목표·모의고사 시트는 다시 열면 금고 값으로 그리고
+// 여러 칸을 합치므로 "금고 값과 같음"이 되돌림을 뜻하지 않는다. 그 봉인 초안은 남겨 승인 흐름으로 처리한다(FIX52A, HUNT51 HB1).
+const SEAL_DROP_TYPE='GAME_PROFILE';
+const sealKey=(type,id)=>type+':'+id;
+function rememberSealed(ctx,type,id,w){
+  const reg=ctx.sealedDrafts;
+  if(type!==SEAL_DROP_TYPE||!(reg instanceof Map)||typeof w?.draftId!=='string')return;
+  reg.set(sealKey(type,id),[...(reg.get(sealKey(type,id))??[]),w.draftId]);
+}
+async function dropSealed(ctx,type,id,out){
+  const reg=ctx.sealedDrafts,key=sealKey(type,id),list=reg instanceof Map?reg.get(key):null;
+  if(type!==SEAL_DROP_TYPE||!list?.length||typeof ctx.api!=='function')return out;
+  let gone=0;
+  for(const draftId of [...list]){
+    try{await ctx.api('/api/md/draft-discard',{draftId,confirmed:true});}
+    catch(e){if(e?.code!=='MD_DRAFT_NOT_FOUND'){reg.set(key,list.slice(list.indexOf(draftId)));throw recordError(e?.code??'DRAFT_DISCARD_FAILED');}}   // 이미 없는 초안(승인·정리됨)은 지운 것으로 본다
+    gone++;
+  }
+  reg.delete(key);
+  return gone?{...out,discarded:gone}:out;
+}
 async function saveRecord(ctx,type,id,{base=null,mine},reason){
   const whole=ctx.getWhole();
   requireRecordsDoor({life:whole.life,study:whole.study,storage:storageOf(ctx)});
@@ -63,14 +85,14 @@ async function saveRecord(ctx,type,id,{base=null,mine},reason){
     if(type!=='GAME_PROFILE'&&stable(latest)!==stable(base)){   // 칭호는 값 하나라 나중 저장이 남는다
       const rb=rebaseRecord(type,{id,base,mine,latest});
       if(rb.status==='REJECTED')throw recordError(rb.code);
-      if(rb.status==='ALREADY_APPLIED')return {status:'ALREADY_APPLIED',notices:rb.notices};
+      if(rb.status==='ALREADY_APPLIED')return dropSealed(ctx,type,id,{status:'ALREADY_APPLIED',notices:rb.notices});
       data=rb.data;notices=rb.notices;
-    }else if(latest&&stable(latest)===stable(mine))return {status:'ALREADY_APPLIED',notices:[]};
-    if(!latest&&recordEmpty(type,data))return {status:'ALREADY_APPLIED',notices};   // 없는 기록을 빈 채로 만들지 않는다
+    }else if(latest&&stable(latest)===stable(mine))return dropSealed(ctx,type,id,{status:'ALREADY_APPLIED',notices:[]});
+    if(!latest&&recordEmpty(type,data))return dropSealed(ctx,type,id,{status:'ALREADY_APPLIED',notices});   // 없는 기록을 빈 채로 만들지 않는다
     let w;
     try{w=await ctx.entity(type,id,data,row?[...row.heads]:[],reason);}
     catch(e){if(e?.code==='STALE_HEADS'&&attempt<3&&ctx.reload){await ctx.reload();continue;}throw e;}
-    if(w?.status==='LOCAL_DRAFT')return {status:'SAVED',sealed:true,notices:[...notices,{code:'RECORD_LOCAL_DRAFT'}],data};
+    if(w?.status==='LOCAL_DRAFT'){rememberSealed(ctx,type,id,w);return {status:'SAVED',sealed:true,notices:[...notices,{code:'RECORD_LOCAL_DRAFT'}],data};}
     return {status:'SAVED',notices,data};
   }
   throw recordError('STALE_HEADS');
@@ -87,10 +109,12 @@ export function titleVaultOn(ctx){
   try{return typeof ctx?.entity==='function'&&typeof ctx.getWhole==='function'&&recordsOpen(ctx);}catch{return false;}
 }
 // 돌려주는 값: 'SAVED' | 'SEALED'(임시 저장이라 금고에는 아직 없음) | 'ERROR'(show에 문구를 넘김). 결과를 모르는 오류는 그대로 던진다(앱의 perform이 처리).
-export async function pickTitle(ctx,titleId,show){
+// info를 넘기면 info.discarded = 금고 값으로 되돌려서 지운 봉인 초안 수(없으면 0)를 채운다(부른 쪽이 이 기기 표시를 금고 값에 맞춘다, FIX51B B2).
+export async function pickTitle(ctx,titleId,show,info=null){
   let r;
   try{r=await saveGameProfile(ctx,titleId);}
   catch(e){if(unknownOutcome(e?.code))throw e;show(planErrorText(e?.code));return 'ERROR';}
+  if(info)info.discarded=r.discarded??0;
   return r.sealed?'SEALED':'SAVED';
 }
 
