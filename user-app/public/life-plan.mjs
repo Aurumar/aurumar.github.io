@@ -216,6 +216,7 @@ export function weekSummary(life,ach,monday){
 }
 export const rateText=r=>r===null?'-':Math.round(r*100)+'%';
 export const barsText=v=>(Number.isInteger(v)?String(v):v.toFixed(1))+'장';
+export const RATE_MEANING='계획한 만큼 실제로 한 비율(과목·날별, 계획보다 더 한 시간은 안 셈)';   // FIX44 (AUD1 #16): 달성률 옆에 함께 보인다
 
 // ---------- 화면 ----------
 const SVGNS='http://www.w3.org/2000/svg';
@@ -281,7 +282,8 @@ function examRow(h,exams,today){
 // 시험 한 줄(P1A·D36-3): 수능 + 가장 가까운 다른 시험만 글자로("수능 D-379 · 다음 3평 D-139"). 누르면 아래에 4칸 카드가 펼쳐진다(다시 누르면 접힘).
 const ddayText=x=>x.dDay===0?'D-DAY':'D-'+x.dDay;
 export function examLineText(exams,today){
-  const cards=examCards(exams,today),csat=cards.find(x=>x.csat&&!x.ended)??null,next=cards.find(x=>x.nearest&&!x.csat)??null,name=x=>x.name.replace(/\(.*\)/,'');
+  // FIX44 (AUD1 #3): 오늘 머리도 이 글을 쓴다. 카드는 앞 4개뿐이라 수능이 5번째 뒤여도 빠지지 않게 수능은 일정 전체에서 찾는다.
+  const cards=examCards(exams,today),target=csatTarget(exams),csat=target&&target.date>=today?{...target,dDay:dDay(today,target.date)}:null,next=cards.find(x=>x.nearest&&!x.csat)??null,name=x=>x.name.replace(/\(.*\)/,'');
   const parts=[csat?name(csat)+' '+ddayText(csat):null,next?'다음 '+name(next)+' '+ddayText(next):null].filter(Boolean);
   return parts.length?parts.join(' · '):cards.length?'지난 시험 '+cards.length+'개':null;
 }
@@ -359,7 +361,7 @@ function weekView(h,ctx,st,data){
   const out=h.el('section',null,'plan-card plan-week');
   h.add(out,navRow(h,short(monday)+' ~ '+short(shiftDay(monday,6))+(monday===mondayOf(today)?' · 이번 주':''),()=>{st.monday=shiftDay(monday,-7);void ctx.rerender();},()=>{st.monday=shiftDay(monday,7);void ctx.rerender();},()=>{st.monday=mondayOf(today);void ctx.rerender();},'이번 주',monday===mondayOf(today)));
   h.add(out,weekBars(h,sum,ach.goalBricks));
-  h.add(out,h.el('p','계획 '+barsText(sum.planned)+' · 실제 '+barsText(sum.actual)+(upto.rate!==null?' · 계획 달성 '+rateText(upto.rate)+(upto.later>0?' · 남은 계획 '+barsText(upto.later):''):sum.planned>0?' · 남은 계획 '+barsText(upto.later):' · 이 주 계획 없음'),'plan-sum'));
+  h.add(out,h.el('p','계획 '+barsText(sum.planned)+' · 실제 '+barsText(sum.actual)+(upto.rate!==null?' · 계획 달성 '+rateText(upto.rate)+(upto.later>0?' · 남은 계획 '+barsText(upto.later):''):sum.planned>0?' · 남은 계획 '+barsText(upto.later):' · 이 주 계획 없음'),'plan-sum'),upto.rate!==null?h.el('p',RATE_MEANING,'muted small pw-rate-note'):null);
   if(sum.rows.length){
     const t=h.el('div',null,'plan-compare');
     for(const r of sum.rows)h.add(t,h.add(h.el('div',null,'plan-compare-row'),tag(h,subjects,r.subjectId),h.el('span','계획 '+barsText(r.planned)+' · 실제 '+barsText(r.actual),'muted small'),h.el('strong',rateText(r.rate))));

@@ -7,7 +7,7 @@
 import {lifeDefs,kstDate,shiftDay,validateLifeData,SUBJECT_COLOR_KEYS,PLAN_BLOCKS} from './life-model.mjs';
 import {achieve} from './life-achieve.mjs';
 import {stable} from './life-rebase.mjs';
-import {planOf,sortedItems,actualOf,planVsActual,copyPlan,savePlanDay,planErrorText,unknownOutcome,PLAN_NOTICE_TEXT,barsText,rateText,mondayOf,dateLabel,NO_SUBJECT_COLOR} from './life-plan.mjs';
+import {planOf,sortedItems,actualOf,planVsActual,copyPlan,savePlanDay,planErrorText,unknownOutcome,PLAN_NOTICE_TEXT,barsText,rateText,RATE_MEANING,mondayOf,dateLabel,NO_SUBJECT_COLOR} from './life-plan.mjs';
 import {openChipSheet,blockLabel,BLOCK_SHORT,titleOr} from './plan-today.mjs';
 
 export const WEEKDAYS=Object.freeze(['월','화','수','목','금','토','일']);
@@ -198,7 +198,7 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
   const nav=add(el('div',null,'plan-nav'),button('◀',()=>{st.monday=shiftDay(monday,-7);rerender();},'secondary'),el('strong',short(monday)+' ~ '+short(m.end),'plan-nav-label'),button('▶',()=>{st.monday=shiftDay(monday,7);rerender();},'secondary'));
   if(monday!==mondayOf(day0))nav.append(button('이번 주',()=>{st.monday=mondayOf(day0);rerender();},'secondary'));
   const head=weekHeadText(m);
-  add(out,nav,head?el('p',head,'plan-sum pw-sum'):null);
+  add(out,nav,head?el('p',head,'plan-sum pw-sum'):null,m.rate!==null?el('p',RATE_MEANING,'muted small pw-rate-note'):null);   // FIX44 (AUD1 #16): 달성률의 뜻
   if(w.message)add(out,el('p',w.message,w.error?'notice error pw-message':'notice pw-message'));
   for(const n of w.notices)add(out,el('p',PLAN_NOTICE_TEXT[n.code]??n.code,'notice plan-notice'));
 

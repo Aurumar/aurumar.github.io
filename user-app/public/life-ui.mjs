@@ -10,6 +10,7 @@ import {timerElapsedMin,timerRecordMin,liveTick} from './study-stage.mjs';
 import {OVERLAP_NOTICE,TIMER_OVERLAP_NOTICE} from './study-rebase.mjs';
 import {renderLive,liveRecordMin,liveElapsedMin,liveSettings,REST_SPLIT_MS} from './study-live.mjs';
 import {dayRoomCard,CELEBRATED_KEY} from './study-room.mjs';
+import {examLineText,daySummary,barsText} from './life-plan.mjs';
 import {HABIT_KINDS,HABIT_AREAS,DAY_TYPES,MAX_NAME,MAX_NOTE,SUBJECT_COLOR_KEYS,HABIT_HINTS,
   kstDate,shiftDay,dateKeyOK,dayNumber,hhmmFromIso,timeOK,targetTimeOK,lifeIdOK,
   brickOf,sumBricks,entryDone,nearestExam,lifeDefs,weekCount,studyCodeOf,sessionIdFor,timerSessionId,timerTagFrom,subjectOfSession,emptyDay} from './life-model.mjs';
@@ -48,6 +49,8 @@ const MIN_MS=60000,KST_MS=9*3600000,MAX_TIMER_MS=1440*MIN_MS;
 const TIMER_SUGGEST_MS=3*3600000,TIMER_LOOKBACK_DAYS=400;   // FIX34 (H5): "언제 끝났나요" 기본 제안(시작 + 최대 3시간) · 이미 담았는지 찾아보는 날 수의 상한(깨진 시작 시각에도 끝나게)
 const MOODS=Object.freeze([[1,'😞','많이 힘듦'],[2,'🙁','별로'],[3,'😐','보통'],[4,'🙂','좋음'],[5,'😄','아주 좋음']]);
 const DURATION_CHIPS=Object.freeze([5,10,15,20,30]);
+// FIX44 (AUD1 #13): 목표 값 칩을 맨 앞에 둔다(일폭 15분이 칸 밖으로 밀리지 않게). 목록에 없는 목표는 앞에 더한다.
+export const durationChips=target=>Number.isInteger(target)&&target>0?[target,...DURATION_CHIPS.filter(m=>m!==target)]:[...DURATION_CHIPS];
 const KIND_TEXT=Object.freeze({TIME:'시각',CHECK:'체크',DURATION:'분',COUNT:'횟수',RECOVERY:'복구'});
 const AREA_TEXT=Object.freeze({BODY:'몸',HEAD:'머리',MONEY:'돈',HEART:'마음'});
 const DAY_TYPE_TEXT=Object.freeze({NORMAL:'보통',DETOX:'디톡스',REST:'쉬는 날'});
@@ -173,20 +176,20 @@ export function renderLifeToday(root,ctx,st){
   const act=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{await fn();}catch(e){st.message=box?.ERROR_TEXT[e?.code]??lifeErrorText(e?.code);st.error=true;}flagBoxFail(st,date);await prepareLife(ctx,st);await ctx.rerender();});
   const out=add(el('section',null,'panel next-panel life-panel'),null);out.id='life-today';
 
-  // 1) 머리: 날짜, 가장 가까운 시험 D-day(잠정 배지), 오늘 XP 링(쌓은 기록 기준), 연속·레벨 칩
-  const exam=nearestExam(defs.exams,date);
-  const examLine=exam?add(el('div',null,'life-exam'),el('strong',exam.name+' '+(exam.dDay===0?'D-DAY':'D-'+exam.dDay),'life-dday'),exam.status==='잠정'?el('span','잠정','life-badge'):null,el('span',exam.date,'muted small')):hint('시험 일정이 없습니다. 습관 편집에서 추가하세요.');
+  // 1) 머리: 날짜, 수능 + 다음 시험 D-day(FIX44, 계획 탭과 같은 글, 잠정 배지), 오늘 XP 링(쌓은 기록 기준), 연속·레벨 칩
+  const exam=nearestExam(defs.exams,date),examText=examLineText(defs.exams,date);
+  const examLine=examText?add(el('div',null,'life-exam'),el('strong',examText,'life-dday'),exam?.status==='잠정'?el('span','잠정','life-badge'):null):hint('시험 일정이 없습니다. 습관 편집에서 추가하세요.');
   const money=ctx.money?.(date)??null,ach=achieve({life:whole.life??null,study:whole.study??null,fin:whole.fin??null,today:date,money}),topLevel=ach.levels[ach.topArea];
   const xpSlot=add(el('div',null,'life-xp-slot'),ring(ach.todayXp,ach.goalXp,{size:64}));xpSlot.id='xp-slot';xpSlot.setAttribute('aria-label','오늘 XP '+ach.todayXp+' / '+ach.goalXp);
   const chips=add(el('div',null,'life-chips'),el('span',ach.todayXp+' / '+ach.goalXp+' XP','life-xp-text'),(()=>{const n=el('span','연속 '+ach.streak.days+'일 '+multText(ach.streak.mult10),'life-chip-slot');n.id='streak-chip';return n;})(),(()=>{const n=el('span',AREA_TEXT[ach.topArea]+' Lv '+topLevel.level,'life-chip-slot');n.id='level-chip';return n;})());
   const title=ctx.achvTitle?.({doc,ach,life:whole.life??null,money,storage:ctx.storage});   // Q1C: 칭호 칩(앱이 넘긴다, 표시만)
   add(out,add(el('div',null,'life-head'),add(el('div',null,'life-head-main'),el('span','TODAY','eyebrow'),el('h2',dateLabel(date),'panel-title'),title?.node,examLine),add(el('div',null,'life-head-side'),xpSlot,chips)),
-    add(el('div',null,'button-row'),button('습관 편집',()=>openEditor(ctx,st),'secondary')));
+    summaryLine(ctx,h,{life,ach,date,study:whole.study??null}));
   // 1-1) S1A: 집중 타이머가 돌면 맨 위에 작은 STUDY LIVE 카드(펼치면 덮개). 채우는 것은 아래 공부 벽돌 칸이 한다(타이머 동작이 그곳에 있다).
   const liveSlot=el('div',null,'live-slot');add(out,liveSlot);
   // Q1B: 달성 알림. 쌓기가 성공해 다시 읽은 뒤와 앱을 처음 열 때 이 화면이 그려지며 새 달성을 찾는다(쌓은 기록 기준, ach). 없으면 빈칸이다.
   const momentSlot=el('div',null,'achv-moment-slot');ctx.achvMoment?.(momentSlot,{doc,ach,today:date,life:whole.life??null,money,storage:ctx.storage});
-  const questSlot=el('div',null,'life-quest-slot');add(out,momentSlot,questSlot);   // Q1A: 오늘 퀘스트 줄(쌓기 전 예상을 함께 봐야 해서 아래에서 채운다)
+  const questSlot=el('div',null,'life-quest-slot');add(out,momentSlot);   // Q1A: 오늘 퀘스트 줄(쌓기 전 예상을 함께 봐야 해서 아래에서 채운다). FIX44: 자리는 습관 바로 위
 
   // 2) 상태 줄
   const dirty=fs.status==='LOCAL_DRAFT';
@@ -215,7 +218,7 @@ export function renderLifeToday(root,ctx,st){
   // 자정 이후 첫 열기: 어제(또는 그 전) 쌓지 않은 입력이 있으면 한 번 눌러 쌓게 안내
   for(const d of st.pending)add(status,add(el('div',null,'notice life-yesterday'),el('span',(d===shiftDay(date,-1)?'어제':dateLabel(d))+' 카드를 아직 쌓지 않았어요. '),button((d===shiftDay(date,-1)?'어제':dateLabel(d))+' 카드 쌓기',act(async()=>{const r=await st.flow.confirm(d);await reportConfirm(ctx,st,r);}),'primary')));
 
-  // 3) 습관 격자
+  // 3) 습관 격자(FIX44: 여기서는 만들기만 하고, 자리는 공부 벽돌 아래)
   const grid=el('div',null,'life-habits');
   const hs=defs.habits.filter(x=>!x.hidden);
   if(!hs.length)add(grid,hint('보이는 습관이 없습니다. 습관 편집에서 추가하거나 숨김을 풀어 주세요.'));
@@ -237,17 +240,17 @@ export function renderLifeToday(root,ctx,st){
       pressable(b,()=>{if(done)openEntrySheet(ctx,st,hb,e);else setEntry(hb,()=>entryFor(hb,{now:hhmmFromIso(ctx.now())}))();},()=>openEntrySheet(ctx,st,hb,e));add(cell,b);
     }else if(hb.kind==='DURATION'){
       const row=el('div',null,'life-chip-row');
-      for(const m of DURATION_CHIPS)add(row,chip(m+'분',{selected:e?.minutes===m,onClick:setEntry(hb,()=>e?.minutes===m?null:entryFor(hb,{minutes:m,now:hhmmFromIso(ctx.now())}))}));
-      add(row,button(e&&!DURATION_CHIPS.includes(e.minutes)&&e.minutes?'직접 '+e.minutes+'분':'직접',()=>openEntrySheet(ctx,st,hb,e),'secondary'));add(cell,row);
+      const shown=durationChips(hb.target?.minutes);
+      for(const m of shown)add(row,chip(m+'분',{selected:e?.minutes===m,onClick:setEntry(hb,()=>e?.minutes===m?null:entryFor(hb,{minutes:m,now:hhmmFromIso(ctx.now())}))}));
+      add(row,button(e&&!shown.includes(e.minutes)&&e.minutes?'직접 '+e.minutes+'분':'직접',()=>openEntrySheet(ctx,st,hb,e),'secondary'));add(cell,row);
     }else if(hb.kind==='COUNT'){
       const row=el('div',null,'life-chip-row');
       add(row,button('+1',setEntry(hb,()=>entryFor(hb,{count:Math.min(99,(e?.count??0)+1)})),'primary'),button('수정',()=>openEntrySheet(ctx,st,hb,e),'secondary'));add(cell,row);
     }else{
-      add(cell,toggle(hb.kind==='RECOVERY'?'복구 했음':'했음',done,on=>setEntry(hb,()=>on?entryFor(hb,{}):null)()));
+      add(cell,toggle(hb.name+' 했음',done,on=>setEntry(hb,()=>on?entryFor(hb,{}):null)()));   // FIX44 (AUD1 #1): 라벨이 칸마다 달라야 saReconcile이 다른 칸과 비교하지 않는다
     }
     add(grid,cell);
   }
-  add(out,grid);
 
   // 4) 오늘 계획(P1B): 앱이 ctx.todayPlan으로 넘겨 준 카드(계획 탭 '일' 보기와 같은 함수). [▶ 집중]은 아래 공부 벽돌과 같은 타이머·담기를 쓴다(focusPort, 기록 쓰기 0).
   const planCard=ctx.todayPlan?.({date,today:date,focus:ctx.study?.()?focusPort(ctx,st,act):null,draft:st.studyCard?.status==='LOCAL_DRAFT'?st.studyCard.card:null})??null;
@@ -263,6 +266,8 @@ export function renderLifeToday(root,ctx,st){
       st.message='PC 측정 공부 '+rows.length+'개 · '+rows.reduce((n,r)=>n+r.confirmedMin,0)+'분을 담았습니다 · "오늘 쌓기"를 누르면 함께 쌓입니다';
     })()});
   if(focus)add(out,focus);
+  // 4-2) FIX44 (AUD1 #3): 습관은 계획·공부 벽돌 아래(소유자 확인용 그림 layout_A·B, 기본 B = 계획 먼저). 습관 편집 단추도 이 칸으로 옮겼다.
+  add(out,questSlot,add(el('div',null,'life-habits-head'),el('h3','습관'),button('습관 편집',()=>openEditor(ctx,st),'secondary')),grid);
 
   // 5) 기분 5단계 + 한 줄
   const moodRow=el('div',null,'life-moods');
@@ -300,6 +305,51 @@ export function renderLifeToday(root,ctx,st){
   add(out,add(el('div',null,'life-stack-bar'),stackBtn,el('span',dirty||studyDirty?'변경 있음':fs.status==='CONFIRMED'?'쌓음':'','muted small life-stack-note')));
   root.append(out);
   return out;
+}
+// FIX44 (AUD1 #3·#2·#7): 머리 바로 아래 요약 한 줄. 보여 주기만 한다(쓰기 0). 복습 건수·복습 열기·백업 열기·빠른 지출은 앱이 ctx로 넘긴다(없으면 그 조각을 그리지 않는다).
+const hoursText=m=>{const h=Math.floor(m/60),r=m%60;return (h?h+'시간':'')+(h&&r?' ':'')+(r||!h?r+'분':'');};
+// 어제 공부 시간: 쌓은 공부 카드의 확인한 분 합(공부 요약과 같이 상태를 가리지 않는다). 아직 쌓지 않은 초안은 넣지 않는다.
+export function yesterdayMinutes(study,date){
+  const d=shiftDay(date,-1),card=(study?.days??[]).find(x=>x.date===d)?.data;
+  return (card?.sessions??[]).reduce((n,s)=>n+(s.confirmedMin>0?s.confirmedMin:0),0);
+}
+function summaryLine(ctx,{el,add,button},{life,ach,date,study}){
+  const line=el('div',null,'life-summary');line.id='today-summary';
+  const part=text=>el('span',text,'life-summary-part');
+  const link=(text,fn,cls='')=>{const b=button(text,fn,'secondary life-summary-link'+cls);b.dataset.navOnly='1';return b;};
+  const planned=daySummary(life,ach,date).planned,reviews=ctx.reviewTotal?.()??null,mins=yesterdayMinutes(study,date);
+  add(line,part(planned>0?'오늘 계획 '+barsText(planned):'오늘 계획 없음'));
+  if(reviews!==null)add(line,reviews>0&&ctx.openStudy?link('복습 '+reviews+'건',ctx.openStudy):part('복습 '+reviews+'건'));
+  add(line,part(mins>0?'어제 공부 '+hoursText(mins):'어제 공부 기록 없음'));
+  if(ctx.openBackup&&backupDue(readBackupMark(ctx.storage),date))add(line,link(BACKUP_DUE_TEXT,ctx.openBackup,' life-summary-alert'));
+  if(ctx.quickExpense)add(line,button('빠른 지출',ctx.quickExpense,'primary life-summary-quick'));
+  return line;
+}
+// FIX44 (AUD1 #5): 공부 세션의 과목 이름(세션 id의 과목, 생물 포함). 찾지 못하면 null(공부 화면이 과목 코드 이름을 쓴다).
+export const sessionSubjectName=(life,id)=>lifeDefs(life).subjects.find(s=>s.id===subjectOfSession(id))?.name??null;
+// ---- FIX44 (AUD1 #2): 주간 백업 표시 ----
+// 값은 이 기기 저장소 키 1개(YYYY-MM-DD)다. 기록·서버 쓰기 0. 소유자가 직접 표시한 날짜일 뿐 앱이 백업 파일을 검사한 값이 아니다. 저장소가 막혀 있으면 이번 실행 동안만 메모리에 둔다.
+export const BACKUP_MARK_KEY='lb.backup.mark',BACKUP_DUE_DAYS=7,BACKUP_DUE_TEXT='주간 백업할 때예요';
+export const BACKUP_NOTE='내가 표시한 날짜, 앱이 파일을 검사한 값은 아님';
+export const BACKUP_STEPS=Object.freeze(['① PC에서 서버 내보내기(지휘소 안내대로)','② 백업 폴더와 외장 드라이브에 복사','③ 여기서 [오늘 백업했어요]']);
+let memoryBackupMark=null;
+export function readBackupMark(storage=globalThis.localStorage){
+  try{if(!storage)return memoryBackupMark;const v=storage.getItem(BACKUP_MARK_KEY);return dateKeyOK(v)?v:null;}catch{return memoryBackupMark;}
+}
+export function markBackup(date,storage=globalThis.localStorage){
+  try{if(!storage)throw new Error('NO_STORAGE');storage.setItem(BACKUP_MARK_KEY,date);memoryBackupMark=null;return true;}catch{memoryBackupMark=date;return false;}
+}
+// 표시가 없거나, 7일을 넘었거나(7일째는 아직 아님), 오늘보다 뒤면(시계 오류) 알린다.
+export function backupDue(mark,today){return !dateKeyOK(mark)||mark>today||dayNumber(today)-dayNumber(mark)>BACKUP_DUE_DAYS;}
+export function renderBackupCard(root,{document:doc=globalThis.document,today,storage=globalThis.localStorage}){
+  const {el,add,button,hint}=maker(doc);
+  const draw=note=>{
+    const mark=readBackupMark(storage),card=el('section',null,'panel backup-card');card.id='backup-card';
+    const press=button('오늘 백업했어요',()=>{const kept=markBackup(today(),storage);card.replaceWith(draw(kept?null:'이 기기 저장소가 막혀 있어 앱을 닫으면 이 표시가 사라집니다.'));},'primary');press.dataset.navOnly='1';
+    add(card,el('h2','백업','panel-title'),el('p','마지막 주간 백업: '+(mark??'표시 없음')+' ('+BACKUP_NOTE+')','backup-last'),press,...BACKUP_STEPS.map(s=>hint(s)),note?el('p',note,'notice error backup-note'):null);
+    return card;
+  };
+  const card=draw(null);root.append(card);return card;
 }
 async function reportConfirm(ctx,st,r){
   st.notices=r.notices??[];

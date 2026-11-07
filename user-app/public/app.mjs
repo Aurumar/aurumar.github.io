@@ -70,7 +70,7 @@ const mdAutoOK=()=>mdProfile&&mdUnlocked&&mdRole==='OWNER'&&ownerSurface();
 function applyMDLocks(){if(!mdProfile)return;const open=mdReady||mdDraftReady||mdAutoOK();for(const n of document.querySelectorAll('#workspace input,#workspace textarea,#workspace select,#workspace button.primary,#editor input,#editor textarea,#editor select,#editor-save')){if(n.dataset.navOnly||n.closest('#md-controls'))continue;if(!open&&!n.disabled){n.disabled=true;n.dataset.mdLock='1';}else if(open&&n.dataset.mdLock&&!busy){n.disabled=false;delete n.dataset.mdLock;}}}
 function renderMDSettings(root,s){const p=section('이 기기의 저장소','기록은 이 기기에 암호화되어 저장되고, 연결되면 서버에는 암호문만 동기화됩니다. 동기화는 백업이 아닙니다.');
  const where=s.surface==='BROWSER'?'이 사이트(HTTPS origin)의 브라우저 저장소(IndexedDB)에 암호화하여 저장합니다. 사이트 데이터 삭제나 비공개 모드로 이 기기의 등록 정보가 사라지면 새 장치 등록이 필요합니다.':s.surface==='APP_SHELL'?'이 앱 전용 데이터 폴더에 암호화하여 저장합니다. 브라우저 저장소를 쓰지 않습니다. 쌓인 기록은 연결된 상태에서 기록 권한과 서버 확인을 받은 것만입니다.':'이 PC의 별도 암호화 SQLite와 장치 identity를 사용합니다. 다른 PC로 identity를 복사하지 마세요.';
- const backup=s.surface==='WINDOWS'?'백업 만들기와 검증된 복원본 만들기를 사용할 수 있습니다. 복원본은 자동으로 활성화되지 않습니다.':'이 앱 후보에는 아직 자동 백업·내보내기·복원 기능이 없습니다. 서버 동기화는 백업을 대신하지 않습니다.';
+ const backup=s.surface==='WINDOWS'?'백업 만들기와 검증된 복원본 만들기를 사용할 수 있습니다. 복원본은 자동으로 활성화되지 않습니다.':'이 앱에는 아직 자동 백업·내보내기·복원 기능이 없습니다. 서버 동기화는 백업을 대신하지 않습니다.';
  const tech=add(el('details',null,'tech-details'),el('summary','기술 정보'),row('세션',s.session),row('로컬 · 서버 상태',productText(mdProduct)),row('암호화 저장 형식',s.storage),el('p',s.dataRoot,'path'),row('검증한 원격 버전',s.remoteCheckpoint.version),el('p',s.remoteCheckpoint.head,'path'),s.backup?.status?row('백업 상태 코드',s.backup.status):null);
  // B23: 브라우저 저장 보호 상태·사용량·홈 화면 앱 여부(읽기 전용, pwa-core가 꽂은 훅이 있을 때만). 서버 호출·기록 쓰기 없음.
  const pwaStore=s.surface==='BROWSER'?globalThis.lbPwaStorage:null,storageLine=el('p','확인 중…','muted small'),storageAdvice=hint('');storageAdvice.hidden=true;
@@ -438,9 +438,11 @@ globalThis.addEventListener?.('lb:card-drafts-changed',e=>showCardDrafts(documen
 async function hltReload(){const lockSeq=mdSignedOutSeq,gone=()=>lockSeq!==mdSignedOutSeq||mdSignedOut;const [nextToday,nextWhole]=await Promise.all([api('/api/today'),api('/api/whole-life')]);if(gone())throw appError('MD_SIGNED_OUT_ELSEWHERE');const nextChanges=(await api('/api/history')).changes;if(gone())throw appError('MD_SIGNED_OUT_ELSEWHERE');today=nextToday;whole=nextWhole;changes=nextChanges;}
 let achvPanelMod=null;import('./achv-panel.mjs').then(m=>{achvPanelMod=m;}).catch(()=>{achvPanelMod=null;});   // Q1A: 못 불러오면 탑만 보인다
 const achvSt={},achvArgs=args=>({...args,st:achvSt,toast:pcToastMod?.achvToastPort({surface:mdSurface,storage:globalThis.localStorage,send:body=>api('/api/pc-toast',body)})??null});   // Q1B: 오늘·탑이 장부 메모리와 토스트 포트를 함께 쓴다(한쪽에서 알린 달성을 다른 쪽이 다시 알리지 않게)
-const lifeCtx=()=>({...hltCtx(),todayPlan,locked:()=>mdSignedOut,storage:globalThis.localStorage,kit:uiKit,study:()=>studyOn()?{ui:studyUi,st:studySt,ctx:hltCtx}:null,yptTimer:a=>nativeOn()?nativeBr.yptTimer(a):null,money:day=>moneyFacts(whole.fin??null,day),achvPanel:(out,args)=>achvPanelMod?.renderAchvPanel(out,achvArgs(args)),achvMoment:(out,args)=>achvPanelMod?.renderAchvMoment(out,achvArgs(args)),questSheet:args=>achvPanelMod?.openQuestSheet(args),achvTitle:args=>achvPanelMod?.titleBadge({...args,st:achvSt}),exportAfterStack:(st,status)=>stateExportMod?stateExportMod.exportAfterStack({surface:mdSurface,views:stateViews,now:()=>new Date().toISOString(),storage:globalThis.localStorage,send:stateSend},st,status):Promise.resolve({status:'SKIPPED',reason:'MODULE'}),focusCard});
+// FIX44 (AUD1 #2·#3·#7): 오늘 요약 줄이 쓰는 값·이동. 복습 건수는 공부 모듈이 준비됐을 때만(아니면 그 조각을 그리지 않는다).
+const todaySummaryPorts=()=>({reviewTotal:()=>{if(!studyOn()||!studySt?.flowState)return null;try{return studyUi.studyReviewTotal(hltCtx(),studySt);}catch{return null;}},openStudy:()=>navigate('STUDY'),openBackup:mdProfile?openBackup:null,quickExpense:whole?.fin?()=>openQuickExpense(whole.fin):null});
+const lifeCtx=()=>({...hltCtx(),todayPlan,locked:()=>mdSignedOut,storage:globalThis.localStorage,kit:uiKit,study:()=>studyOn()?{ui:studyUi,st:studySt,ctx:hltCtx}:null,yptTimer:a=>nativeOn()?nativeBr.yptTimer(a):null,...todaySummaryPorts(),money:day=>moneyFacts(whole.fin??null,day),achvPanel:(out,args)=>achvPanelMod?.renderAchvPanel(out,achvArgs(args)),achvMoment:(out,args)=>achvPanelMod?.renderAchvMoment(out,achvArgs(args)),questSheet:args=>achvPanelMod?.openQuestSheet(args),achvTitle:args=>achvPanelMod?.titleBadge({...args,st:achvSt}),exportAfterStack:(st,status)=>stateExportMod?stateExportMod.exportAfterStack({surface:mdSurface,views:stateViews,now:()=>new Date().toISOString(),storage:globalThis.localStorage,send:stateSend},st,status):Promise.resolve({status:'SKIPPED',reason:'MODULE'}),focusCard});
 const afterEntity=async(type,id)=>{await hltReload();if(type==='PLAN_DAY')nativeMirrorDay(id);};
-const hltCtx=()=>({document,api,uid,digest:sha,now:()=>new Date().toISOString(),session:()=>mdSignedOutSeq,mdProfile:()=>mdProfile,getWhole:()=>whole,getChanges:()=>changes,
+const hltCtx=()=>({document,api,uid,digest:sha,now:()=>new Date().toISOString(),session:()=>mdSignedOutSeq,mdProfile:()=>mdProfile,getWhole:()=>whole,getChanges:()=>changes,sessionSubjectName:id=>lifeUi?lifeUi.sessionSubjectName(whole?.life??null,id):null,
   syncForWrite:async()=>{if(mdProfile&&!mdReady){await mdAutoWrite();if(!mdReady)throw appError(autoWriteFail||'MD_NOT_WRITE_READY');}await hltReload();},
   hasPending:()=>Boolean(mdProduct?.pendingStatus),reconcile:async()=>{await api('/api/md/reconcile',{});await hltReload();},
   receipt:requestId=>api('/api/command/'+requestId),   // B19: 이 기기 금고의 그 requestId 결말(읽기 전용). 건강·공부 상자·메모리 포트의 재확정 수렴용
@@ -578,8 +580,10 @@ function saBanner(){
 }
 function saReconcile(dirty,root){
  if(!dirty.length)return;
- const now=new Map(saIn([root]).map(n=>[n.dataset.editKey,n]));
- const lost=dirty.filter(d=>{const n=now.get(d.key);return !n||saRaw(n)!==d.raw;});
+ const nodes=saIn([root]),now=new Map(nodes.map(n=>[n.dataset.editKey,n]));
+ // FIX44 (AUD1 #1): 같은 키가 둘 이상이면 어느 칸끼리 비교할지 알 수 없다. 다른 칸과 비교해 거짓 경고를 내지 않도록 비교에서 뺀다.
+ const many=list=>{const seen=new Set(),dup=new Set();for(const k of list){if(seen.has(k))dup.add(k);seen.add(k);}return dup;},dup=new Set([...many(nodes.map(n=>n.dataset.editKey)),...many(dirty.map(d=>d.key))]);
+ const lost=dirty.filter(d=>{if(dup.has(d.key))return false;const n=now.get(d.key);return !n||saRaw(n)!==d.raw;});
  if(lost.length)saNotify(lost.map(d=>{const n=now.get(d.key);return {label:d.label,value:d.shown,now:n?saShown(n):null};}),'화면이 다시 그려지며 사라짐');
 }
 const saRenderBase=render;
@@ -632,7 +636,6 @@ function dayLabel(date){const d=Math.round((Date.parse(date+'T12:00:00Z')-Date.p
 // Urgent date: only dates the owner entered (calendar events, plan due/review/milestone dates, a finance snapshot's
 // dated upcoming payment) within the next 7 days. Nothing is inferred.
 function urgentDate(){const limit=shifted(whole.localDate,7),rows=whole.home.upcoming.filter(e=>e.date<=limit).map(e=>({...e,from:e.source==='PLAN'?'계획에 입력한 날짜':'직접 입력한 일정'})),pay=whole.finance.nextPayment;if(pay?.date&&pay.date>=whole.localDate&&pay.date<=limit)rows.push({title:pay.label+' 납부',date:pay.date,time:null,kind:'DEADLINE',from:'재정 스냅샷('+whole.finance.snapshotDate+')에 입력한 예정 납부'});return rows.sort((a,b)=>a.date.localeCompare(b.date)||(a.time??'').localeCompare(b.time??''))[0]??null;}
-function houseStrip(h){const todayBlocks=today.actions.filter(a=>['COMPLETE','PARTIAL'].includes(a.outcome)).length,more=button('탑에서 자세히',()=>navigate('HOUSE'),'secondary nav-link');more.dataset.navOnly='1';const p=add(el('section',null,'panel house-strip'),add(el('div',null,'house-strip-head'),el('h2','탑','panel-title'),more)),bricks=el('div',null,'brick-strip');bricks.setAttribute('role','img');bricks.setAttribute('aria-label','쌓인 블록 '+h.totalBlocks+'개 · 행동 '+h.actionBlocks+' · 마일스톤 '+h.milestoneBlocks);for(let i=0;i<48;i++)add(bricks,el('span',null,i<Math.min(h.totalBlocks,48)?(i<Math.min(h.actionBlocks,48)?'filled':'filled milestone-brick'):''));add(p,add(el('div',null,'house-mini'),add(el('div',null,'house-count-box'),el('span',h.totalBlocks,'house-count'),el('span','블록 · 오늘 +'+todayBlocks,'house-today')),bricks),hint('완료·일부 완료 행동일과 완료 마일스톤만 셉니다.'+(localDrafted.size?' 임시 저장 '+localDrafted.size+'건은 쌓이기 전까지 블록에 들어가지 않습니다.':'')));return p;}
 // B5: 홈 "오늘" 패널. 보여주기만(연산 0). 잠금 중에는 그리지 않는다. 줄 계산은 각 모듈 함수가 하고, 던지면 그 줄만 "확인할 수 없음".
 function glancePanel(){
  if(mdProfile&&!mdUnlocked)return null;
@@ -657,17 +660,19 @@ function renderHome(root){
  const u=urgentDate(),urgent=add(el('section',null,'panel urgent-panel'),el('h2','가까운 날짜','panel-title'));urgent.id='urgent-date';
  if(u)add(urgent,row(u.title,dayLabel(u.date)+(u.time?' '+u.time:'')+' · '+u.from,badge(u.kind)));else add(urgent,hint('앞으로 7일 안에 직접 입력한 일정·계획·납부 날짜가 없습니다.'));add(root,urgent);
  if(!alert)add(root,saveStateCard(state));
- add(root,houseStrip(p.house));
  if(whole.fin)vaultCard(root,whole.fin,{compact:true});
- add(root,el('h2','오늘과 삶의 요약','home-divider'));
- add(root,add(el('div',null,'metric-grid'),metric('오늘 결과 기록',today.actions.filter(a=>a.outcome!==null).length+' / '+today.actions.length,'활성 행동 중 기록한 수'),metric('진행 · 유지 계획',h.activePlans.length,'직접 지정한 상태'),metric('유동 현금',money(whole.finance.totalLiquidCash),whole.finance.snapshotDate||'스냅샷을 추가하세요'),metric('쌓인 블록',p.house.totalBlocks,'유효 행동일 + 완료 마일스톤')));
- const grid=el('div',null,'overview-grid'),left=el('div',null,'stack'),right=el('div',null,'stack'),third=el('div',null,'stack');add(grid,left,right,third);add(root,grid);
+ // FIX44 (AUD1 #4): 금고 아래 옛 칸은 하나로 접는다(기본 닫힘, 값·기능 그대로, 이번 실행 동안 연 상태 유지). 탑 띠는 옛 계산("탑 1 블록")이 탑 탭과 달라 오늘 탭에서 뺐다.
+ const old=add(el('details',null,'home-old'),el('summary','지난 화면 보기 ▾','home-old-summary'));old.id='home-old';old.open=homeOldOpen;old.addEventListener('toggle',()=>{homeOldOpen=old.open;});add(root,old);
+ add(old,el('h2','오늘과 삶의 요약','home-divider'));
+ add(old,add(el('div',null,'metric-grid'),metric('오늘 결과 기록',today.actions.filter(a=>a.outcome!==null).length+' / '+today.actions.length,'활성 행동 중 기록한 수'),metric('진행 · 유지 계획',h.activePlans.length,'직접 지정한 상태'),metric('유동 현금',money(whole.finance.totalLiquidCash),whole.finance.snapshotDate||'스냅샷을 추가하세요'),metric('쌓인 블록',p.house.totalBlocks,'유효 행동일 + 완료 마일스톤')));
+ const grid=el('div',null,'overview-grid'),left=el('div',null,'stack'),right=el('div',null,'stack'),third=el('div',null,'stack');add(grid,left,right,third);add(old,grid);
  const priorities=section('오늘의 우선 행동','설정한 순서의 활성 행동 최대 5개');for(const a of h.priorityActions)add(priorities,row(a.title,domainName(a.domain),badge(today.actions.find(t=>t.actionId===a.actionId)?.outcome||'UNRECORDED')));if(!h.priorityActions.length)add(priorities,empty('설정에서 행동을 추가하세요.'));add(left,priorities);
  const restart=section('이어갈 지점','직접 비울 때까지 남겨 둡니다.');for(const a of h.restartPoints){const b=button('이어가기',()=>navigate('RECORDS'));b.dataset.navOnly='1';add(restart,row(a.title,a.restartPoint,b));}if(!h.restartPoints.length)add(restart,empty('아직 적어 둔 이어갈 지점이 없습니다.'));add(left,restart);
  const upcoming=section('다가오는 일정','앞으로 90일 중 가까운 10개');for(const e of h.upcoming)add(upcoming,row(e.title,e.date+(e.time?' '+e.time:' · 종일'),badge(e.kind)));if(!h.upcoming.length)add(upcoming,empty('다가오는 일정이 없습니다.'));add(right,upcoming);
  const plans=section('진행 중인 계획');for(const p of h.activePlans.slice(0,6))add(plans,row(p.data.title,p.data.nextAction||'다음 행동을 정해 보세요.',button('열기',()=>editPlan(p))));if(!h.activePlans.length)add(plans,empty('계획을 추가하고 진행 상태를 정하세요.'));add(right,plans);
  const recent=section('최근 실제 행동');for(const a of h.recentActualActions)add(recent,row(a.title,a.localDate,badge(a.value.outcome)));if(!h.recentActualActions.length)add(recent,empty('첫 행동 기록을 기다립니다.'));add(third,recent);
 }
+let homeOldOpen=false;
 // One compact capture card shared by HOME (next action) and TODAY: outcome → optional restart point → one Save.
 // Opening or rendering never writes; an untouched outcome stays unrecorded (never NOT_DONE).
 function durationEditorValue(seconds){
@@ -706,10 +711,12 @@ function actionCard(a,{home=false}={}){
  add(box,group,edit,amount,add(el('div',null,'save-row'),save,saved));show();return box;
 }
 function renderToday(root){const state=saveState();if(state.tone!=='ok'||problem)add(root,saveStateCard(state));add(root,writeModeNote());if(lifeUi&&lifeSt)lifeUi.renderPastDays(root,lifeCtx(),lifeSt);const grid=el('div',null,'actions-grid');for(const a of today.actions)add(grid,actionCard(a));if(!today.actions.length)add(grid,empty('활성 행동이 없습니다. 설정에서 추가하거나 활성화하세요.'));add(root,grid,hint('화면을 여는 것만으로는 기록되지 않습니다. 기록하지 않은 행동은 "하지 못함"으로 세지 않습니다. 저장하지 않은 입력은 화면을 옮겨도 남고, "저장 후 종료" 때 함께 저장됩니다.'));}
-function renderMore(root,gone=()=>false){const s=saveState();if(s.tone==='alert')add(root,saveStateCard(s));const list=el('div',null,'more-list');for(const [key,title,detail] of [['SETTINGS'],['DEVICES','연결 · 장치 · 복구'],['DEVICES','백업 · 복구','저장 위치 · 백업 · 분실 복구는 연결 · 장치 안에 있습니다'],['ADVANCED']]){const [,label,sub,icon]=NAV.find(n=>n[0]===key),b=el('button',null,'more-item'),mark=el('span',icon,'nav-symbol');b.type='button';b.dataset.navOnly='1';b.dataset.view=key;mark.setAttribute('aria-hidden','true');add(b,mark,add(el('span',null,'more-text'),el('strong',title||label),el('small',detail||sub)));b.addEventListener('click',()=>navigate(key));add(list,b);}add(root,list);if(aiGateMod)aiGateMod.renderAssistants(root,{h:{el,add,button},surface:mdSurface,request:aiReports,gone,decorate:finderDecorate()});}
+function renderMore(root,gone=()=>false){const s=saveState();if(s.tone==='alert')add(root,saveStateCard(s));const list=el('div',null,'more-list');for(const [key,title,detail,go] of [['SETTINGS'],['DEVICES','연결 · 장치 · 복구'],['DEVICES','백업 · 복구','마지막 주간 백업 표시 · 저장 위치 · 분실 복구',openBackup],['ADVANCED']]){const [,label,sub,icon]=NAV.find(n=>n[0]===key),b=el('button',null,'more-item'),mark=el('span',icon,'nav-symbol');b.type='button';b.dataset.navOnly='1';b.dataset.view=key;mark.setAttribute('aria-hidden','true');add(b,mark,add(el('span',null,'more-text'),el('strong',title||label),el('small',detail||sub)));b.addEventListener('click',go??(()=>navigate(key)));add(list,b);}add(root,list);if(aiGateMod)aiGateMod.renderAssistants(root,{h:{el,add,button},surface:mdSurface,request:aiReports,gone,decorate:finderDecorate()});}
 // B40 더보기 > 고급: 남은 저장 용량 한 줄과 기록 권한 버튼들. 버튼은 #md-controls 패널 안에 그대로 있고(잠금·입력 추적 규칙 동일), data-pane으로 이 화면에서는 고급 묶음만, 연결 · 장치에서는 그 밖의 것만 보인다.
 function renderAdvanced(root){add(root,add(section('남은 저장 용량','평소에는 신경 쓰지 않아도 됩니다.'),opsNotice(finOps(),{always:true})));if(mdProfile&&mdPanel){mdHost.hidden=true;mdPanel.dataset.pane='ADVANCED';add(root,mdPanel);}}
-function renderDevices(root){add(root,saveStateCard());if(mdProfile){if(mdPanel){mdHost.hidden=true;mdPanel.dataset.pane='DEVICES';add(root,mdPanel);}renderMDSettings(root,whole.settings);return;}renderLegacyStorage(root);}
+// FIX44 (AUD1 #2): 백업 카드로 간다(더보기 줄·오늘 요약 줄). 카드는 연결 · 장치 맨 위이고 이 기기 저장소 키 1개만 쓴다(life-ui renderBackupCard).
+function openBackup(){void perform(async()=>{view='DEVICES';await render();window.scrollTo(0,0);$('backup-card')?.scrollIntoView({block:'start'});$('page-title').focus({preventScroll:true});});}
+function renderDevices(root){add(root,saveStateCard());if(mdProfile&&lifeUi)lifeUi.renderBackupCard(root,{document,today:kstDay,storage:globalThis.localStorage});if(mdProfile){if(mdPanel){mdHost.hidden=true;mdPanel.dataset.pane='DEVICES';add(root,mdPanel);}renderMDSettings(root,whole.settings);return;}renderLegacyStorage(root);}
 async function saveDraft(actionId){const d=drafts.get(actionId);if(!d)return;const a=d.base,v=d.value;if([...v.restartPoint].length>500)throw appError('INVALID_TEXT');const fields={actionId,localDate:d.localDate,expectedHeads:a.heads,outcome:v.outcome!==a.outcome?v.outcome:null,restartPoint:v.restartPoint!==a.restartPoint?v.restartPoint:null,reason:'',confirmed:false};if(v.measurementInput){const inputs=Object.fromEntries(Object.entries(v.measurementInput).map(([k,value])=>[k,{value}]));const measurement=inputMeasurement(inputs,d.observationId);if(measurement){fields.measurement=measurement;fields.expectedHeads={...fields.expectedHeads,measurement:[]};}}const result=await submit('/api/action-record',await command('RECORD',fields));if(result.status!==savedStatus())throw appError('HOLD_UNKNOWN_SAVE');drafts.delete(actionId);updateUnsaved();return {status:result.status,value:v};}
 async function saveDrafts(){for(const actionId of [...drafts.keys()])await saveDraft(actionId);}
 // A1B: 옛 영역 A~J는 읽기 전용(V4 결정 M1D 1). 기록·쓰는 함수·서버 검사는 그대로이고 화면에서 편집만 없앤다.
@@ -805,6 +812,8 @@ function renderLedger(root){
  if(!fin){add(root,empty('이 앱 버전은 가계부 자료를 보내지 않습니다. 모든 기기를 새 빌드로 업데이트하세요.'));return;}
  const tabs=el('div',null,'fin-tabs');tabs.setAttribute('role','toolbar');tabs.setAttribute('aria-label','가계부 화면');
  for(const [k,label] of FIN_TABS){const b=button(label,()=>void perform(async()=>{finTab=k;await render();}),'secondary'+(finTab===k?' active':''));b.dataset.navOnly='1';b.setAttribute('aria-pressed',String(finTab===k));add(tabs,b);}
+ // FIX44 (AUD1 #7): 빠른 지출은 돈 탭 맨 위. 어느 소탭에서든 바로 연다(기존 빠른 지출 입력 창).
+ add(root,add(el('div',null,'button-row fin-quick-bar'),button('빠른 지출',()=>openQuickExpense(fin),'primary')));
  add(root,opsNotice(finOps()),tabs);
  if(finTab!=='STATEMENT'&&finStmt&&!finStmt.running)finStmt=null;   // B64: 명세서 파일 내용은 소탭을 떠나면 버린다
  if(fin.incompleteSplits?.length)add(root,el('p','분할 묶음 미완료 · '+fin.incompleteSplits.map(x=>x.chunk+' ('+x.saved.length+'/'+x.count+'조각 저장)').join(', ')+' · 이 달의 합계·그래프는 일부만 반영된 상태입니다. "과거 이력 가져오기"에서 같은 계획 파일로 이어서 가져오세요.','fin-warn'));
@@ -1008,13 +1017,17 @@ function editFinTxn(t,prefill=null){
   const amount=field(grid,'금액 (원, 정수)','text',d.amount);amount.inputMode='numeric';amount.required=true;if(prefill?.kind)amount.autofocus=true;
   const accounts=fin.accounts.filter(a=>a.data.active||a.id===d.accountId||a.id===d.toAccountId).map(a=>[a.id,a.data.name+' · '+FIN_ACCOUNT_TEXT[a.data.type]+(a.data.active?'':' (비활성)')]);
   const account=field(grid,'계정','select',d.accountId,accounts),to=field(grid,'받는 계정 (이체만)','select',d.toAccountId??'',[['','받는 계정 선택'],...accounts]);
-  const category=field(grid,'분류','select','',[]),sub=field(grid,'세부 분류 (선택)','text',d.subcategory);sub.maxLength=40;
+  const category=field(grid,'분류','select','',[]);
   const merchant=field(grid,'가맹점 (선택)','text',d.merchant);merchant.maxLength=120;
-  const tags=field(grid,'태그 (쉼표로 구분, 선택)','text',d.tags.join(', '));
-  const inst=field(grid,'할부 개월 (일시불 0)','text',String(d.installments));inst.inputMode='numeric';
-  const currency=field(grid,'외화 통화 (예: USD, 선택)','text',d.original?.currency??'');currency.maxLength=3;
-  const original=field(grid,'외화 원금 (예: 22.00, 선택)','text',d.original?.amount??'');original.inputMode='decimal';
-  const memo=field(root,'메모 (선택)','textarea',d.memo);memo.maxLength=1000;
+  // FIX44 (AUD1 #7): 평소 안 쓰는 칸은 접는다. 값이 하나라도 있으면(수정·미리 채움) 펼친 채로 연다.
+  const more=add(el('details',null,'fin-more'),el('summary','더 적기 · 세부 분류, 태그, 할부, 외화, 메모')),moreGrid=el('div',null,'field-grid');add(more,moreGrid);add(root,more);
+  more.open=Boolean(d.subcategory||d.tags.length||d.installments||d.original||d.memo);
+  const sub=field(moreGrid,'세부 분류 (선택)','text',d.subcategory);sub.maxLength=40;
+  const tags=field(moreGrid,'태그 (쉼표로 구분, 선택)','text',d.tags.join(', '));
+  const inst=field(moreGrid,'할부 개월 (일시불 0)','text',String(d.installments));inst.inputMode='numeric';
+  const currency=field(moreGrid,'외화 통화 (예: USD, 선택)','text',d.original?.currency??'');currency.maxLength=3;
+  const original=field(moreGrid,'외화 원금 (예: 22.00, 선택)','text',d.original?.amount??'');original.inputMode='decimal';
+  const memo=field(more,'메모 (선택)','textarea',d.memo);memo.maxLength=1000;
   if(d.sourceRefs.length)add(root,el('p','이 거래는 가져온 원천 행 '+d.sourceRefs.length+'개를 대신합니다. 계정·종류·금액을 바꾸면 원천 행과 맞지 않아 저장이 거절됩니다.','form-note'));
   add(root,hint('이체(카드대금 납부 포함)와 선불 충전은 소비가 아니라서 분류가 없습니다. 카드 계정은 수입을 받을 수 없습니다.'));
   let wanted=d.category;

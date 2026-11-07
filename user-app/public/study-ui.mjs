@@ -12,13 +12,47 @@ let memorySwitch=true;   // B38: 저장값이 없으면 켜짐(명시적으로 �
 export function studyEnabled(storage=globalThis.localStorage){try{const v=storage?.getItem(STUDY_SWITCH_KEY);return v===null||v===undefined?memorySwitch:v==='1';}catch{return memorySwitch;}}
 export function setStudyEnabled(on,storage=globalThis.localStorage){memorySwitch=Boolean(on);try{storage?.setItem(STUDY_SWITCH_KEY,on?'1':'0');}catch{/* 저장소가 막혀 있으면 이번 실행 동안만 */}return studyEnabled(storage);}
 
+// FIX44 (AUD1 #5): 화면 글자만 쉬운 말로 바꾼다. 저장 값(과목 코드·출처 표기·원인 코드)은 그대로다.
+export const ITEM_NUMBER_GUIDE='번호만: 예) 2026-06 평가원 12번 → KICE:2026-06-12';
+export const SUBJECT_TEXT=Object.freeze({K:'국어',M:'수학',E:'영어',H:'한국사',S:'통합사회',C:'통합과학·생물'});   // 오답·입력 칸의 C에는 생물이 함께 들어 있다(칸 추가는 소유자 확인 대기). 세션은 id로 나눈다.
+export const ERROR_CODE_TEXT=Object.freeze({
+  'K-FACT':'국어: 내용 확인','K-REL':'국어: 관계 파악','K-INF':'국어: 추론','K-OPT':'국어: 선지 판단','K-TIME':'국어: 시간 부족',
+  'M-CONCEPT':'수학: 개념 부족','M-MODEL':'수학: 식 세우기','M-ALG':'수학: 계산','M-COND':'수학: 조건 놓침','M-TRANSFER':'수학: 응용',
+  'E-VOCAB':'영어: 어휘','E-SYNTAX':'영어: 구문','E-LOGIC':'영어: 글의 논리','E-LISTEN':'영어: 듣기',
+  'I-CONCEPT':'탐구: 개념 부족','I-CAUSE':'탐구: 원인·결과','I-DATA':'탐구: 자료 해석','I-TRANSFER':'탐구: 응용',
+  'X-NOT_STARTED':'공통: 시작 못 함','X-INTERRUPTED':'공통: 풀다 끊김','X-SOURCE_BLOCKED':'공통: 자료를 못 봄','X-TIME_UNKNOWN':'공통: 걸린 시간 모름',
+});
+export const subjectText=code=>SUBJECT_TEXT[code]??'기타 과목';
+export const errorCodeText=code=>ERROR_CODE_TEXT[code]??'기타 이유';
+// itemRef = 출처 표기:번호. 옛 카드도 같은 모양이다(모델이 검사). 모양이 다르면 그대로 보인다.
+export function itemRefText(ref){
+  const i=String(ref).indexOf(':'),text=i>0?PROV_TEXT[String(ref).slice(0,i)]:null;
+  return text?text+' · '+String(ref).slice(i+1):String(ref);
+}
+// 번호 칸에 안내 글 모양 그대로 "KICE:2026-06-12"를 넣어도 받는다. 앞 글자는 출처로 읽고 저장 값은 그대로(출처 표기:번호)다.
+export function itemRefFrom(prov,number){
+  const n=String(number).trim(),m=/^KICE:(.*)$/i.exec(n);
+  return m?'OFFICIAL_KICE_SAMPLE:'+m[1]:prov+':'+n;
+}
+// 세션의 과목 이름: 앱이 넘긴 이름 찾기(세션 id의 과목, 생물 포함, life-ui sessionSubjectName)를 먼저 보고, 없으면 과목 코드. 이 모듈은 공부 모델만 불러오므로(시험 XW01·SH05) ctx로 받는다.
+const sessionSubject=(s,nameOf)=>nameOf?.(s.id)??subjectText(s.subject);
+// 최근 공부 요약: 세는 세션은 projectStudy와 같고(이후 날짜 제외, 같은 id가 겹치면 뺌), 이름만 세션별로 나눈다.
+export function minutesByName(cards,today,days,nameOf=null){
+  const from=shiftDay(today,-(days-1)),counts=new Map(),totals=new Map();
+  for(const c of cards)for(const s of c.sessions)counts.set(s.id,(counts.get(s.id)??0)+1);
+  for(const c of cards){
+    if(c.date<from||c.date>today)continue;
+    for(const s of c.sessions){if(counts.get(s.id)!==1||!(s.confirmedMin>0))continue;const name=sessionSubject(s,nameOf);totals.set(name,(totals.get(name)??0)+s.confirmedMin);}
+  }
+  return [...totals].sort((a,b)=>b[1]-a[1]||(a[0]<b[0]?-1:1));
+}
 export const STUDY_ERROR_TEXT=Object.freeze({
   STUDY_SESSION_LIMIT:'한 카드에는 세션을 30개까지만 둘 수 있습니다. 자동으로 지우거나 나누지 않았습니다 · 초안은 그대로 있습니다.',
   STUDY_MISTAKE_LIMIT:'한 카드에는 오답을 80개까지만 둘 수 있습니다 · 초안은 그대로 있습니다.',
   STUDY_REVIEW_LIMIT:'한 카드에는 복습 기록을 200개까지만 둘 수 있습니다 · 초안은 그대로 있습니다.',
   STUDY_CARD_TOO_LARGE:'카드가 너무 큽니다(32KB). 메모를 줄이거나 항목을 정리하세요 · 초안은 그대로 있습니다.',
   REBASE_ID_COLLISION:'다른 기기에서 같은 번호로 다른 내용을 추가했습니다. 아무것도 저장하지 않았습니다 · 초안은 그대로 있습니다.',
-  INVALID_STUDY_ITEMREF:'출처 표기와 번호만 넣을 수 있습니다(예: OFFICIAL_KICE_SAMPLE:2026-06-12). 문제 문장은 넣지 않습니다.',
+  INVALID_STUDY_ITEMREF:ITEM_NUMBER_GUIDE+' · 한글·빈칸은 넣을 수 없습니다(문제 문장을 저장하지 않으려는 규칙).',
   INVALID_STUDY_TEXT:'글자 수를 확인하세요.',INVALID_STUDY_DATE:'날짜는 YYYY-MM-DD 형식이어야 합니다.',INVALID_STUDY_NEXT_DUE:'다음 복습일은 복습한 날 이후여야 합니다.',
   INVALID_STUDY_SESSION:'세션 값을 확인하세요(분은 0~1440 정수).',NO_STARTED_SESSION:'시작한 세션이 없습니다. 먼저 "공부 시작"을 누르세요.',
   APP_ENTITY_LIMIT:'개수 한도에 닿았습니다.',STALE_HEADS:'다른 기기에서 먼저 바뀌었습니다. 다시 받아 합친 뒤 쌓으세요.',
@@ -117,7 +151,7 @@ function maker(doc){
   return {el,add,button,hint,section,row,input,select,field};
 }
 const int=s=>typeof s==='string'&&/^\d+$/.test(s.trim())?Number(s.trim()):NaN;
-const subjectOptions=()=>SUBJECTS.map(c=>[c,'과목 '+c]);
+const subjectOptions=()=>SUBJECTS.map(c=>[c,subjectText(c)]);
 const dueText=r=>r.daysLate>0?r.due+' 예정 · '+r.daysLate+'일 늦음':r.due+' 예정 · 오늘';
 
 export function renderStudy(root,ctx,st){
@@ -139,7 +173,7 @@ export function renderStudy(root,ctx,st){
   };
   // B17 (H12-N03): 빠른 입력(공부 시작·끝)이 바꾼 카드가 화면 날짜와 다르면 화면을 그 카드의 날짜로 옮기고 한 줄 알린다(확정 버튼은 늘 화면에 보이는 카드를 확정).
   const follow=(s,text)=>{const d=s?.card?.date,moved=Boolean(d)&&d!==date;if(moved){st.date=d;st.form=null;st.reviewForm=null;st.notices=[];}st.message=[text,moved?(d===kstDate(ctx.now())?'빠른 입력은 오늘('+d+') 카드에 들어갑니다':'시작한 세션이 있는 '+d+' 카드에 기록했습니다')+' · 화면을 그 날짜로 옮겼습니다.':null].filter(Boolean).join(' · ');};
-  const out=el('div',null,'study-view');
+  const out=el('div',null,'study-view'),nameOf=ctx.sessionSubjectName??null;
 
   // 0) 복습 목록(맨 위): 오늘 도래·밀린 건수 + 목록 + 결과 기록
   let proj=null,sum=null;
@@ -152,7 +186,7 @@ export function renderStudy(root,ctx,st){
     if(!sum.items.length)add(rev,hint('복습할 오답이 없습니다.'));
     for(const r of sum.items){
       const open=st.reviewForm?.mistakeId===r.mistakeId;
-      add(rev,row('['+r.subject+'] '+r.itemRef,dueText(r),isToday?add(el('div',null,'buttons'),...RESULTS.map(res=>button(RESULT_TEXT[res],act(async()=>{
+      add(rev,row(subjectText(r.subject)+' · '+itemRefText(r.itemRef),dueText(r),isToday?add(el('div',null,'buttons'),...RESULTS.map(res=>button(RESULT_TEXT[res],act(async()=>{
         if(dayMoved())return;
         const sug=await st.flow.suggestReview(st.today,r.mistakeId,res);
         st.reviewForm={mistakeId:r.mistakeId,result:res,nextDue:sug.nextDue,graduated:sug.graduated,intervalDays:sug.intervalDays,itemRef:r.itemRef};
@@ -214,22 +248,22 @@ export function renderStudy(root,ctx,st){
   if(!fs.card.sessions.length)add(ses,hint('아직 세션이 없습니다.'));
   for(const s of fs.card.sessions){
     const nextState=SESSION_STATES[Math.min(SESSION_STATES.indexOf(s.state)+1,SESSION_STATES.length-1)];
-    add(ses,row('['+s.subject+'] '+STATE_TEXT[s.state]+' · 확인 '+s.confirmedMin+'분'+(s.plannedMin?' / 계획 '+s.plannedMin+'분':''),s.restartLocator?'이어하기 위치: '+s.restartLocator:null,add(el('div',null,'buttons'),
+    add(ses,row(sessionSubject(s,nameOf)+' · '+STATE_TEXT[s.state]+' · 확인 '+s.confirmedMin+'분'+(s.plannedMin?' / 계획 '+s.plannedMin+'분':''),s.restartLocator?'이어하기 위치: '+s.restartLocator:null,add(el('div',null,'buttons'),
       s.state===nextState?null:button('→ '+STATE_TEXT[nextState],act(async()=>{await st.flow.updateRow(date,'sessions',{...s,state:nextState});})),
       button('삭제',act(async()=>{await st.flow.removeRow(date,'sessions',s.id);})))));
   }
   add(out,ses);
 
   // 3) 오답
-  const mis=section('오답','문제 본문·정답·해설은 저장하지 않습니다. 출처 표기와 번호, 원인 코드, 짧은 메모만 남깁니다. 등록하면 복습일이 기본으로 다음 날로 들어갑니다.');
-  const mSub=select(subjectOptions(),SUBJECTS[0]),mProv=select(PROVENANCE.map(p=>[p,PROV_TEXT[p]]),PROVENANCE[0]),mNum=input('',{maxlength:'30',placeholder:'번호(영문·숫자·.-_)'}),
-    mCode=select(ERROR_CODES.map(c=>[c,c]),ERROR_CODES[0]),mEv=select(EVIDENCE_STATUS.map(e=>[e,EVIDENCE_TEXT[e]]),'USER_REPORTED'),mNote=input('',{maxlength:String(MAX_NOTE),placeholder:'메모(최대 '+MAX_NOTE+'자)'}),mDue=input(defaultReviewDue(date),{inputmode:'numeric',maxlength:'10'});
-  for(const m of fs.card.mistakes)add(mis,row('['+m.subject+'] '+m.itemRef+' · '+m.errorCode,(m.note?m.note+' · ':'')+'증거: '+EVIDENCE_TEXT[m.evidence]+(m.reviewDue?' · 첫 복습 '+m.reviewDue:''),add(el('div',null,'buttons'),button('삭제',act(async()=>{await st.flow.removeRow(date,'mistakes',m.id);})))));
+  const mis=section('오답','문제 본문·정답·해설은 저장하지 않습니다. 출처와 번호, 틀린 이유, 짧은 메모만 남깁니다. 등록하면 복습일이 기본으로 다음 날로 들어갑니다.');
+  const mSub=select(subjectOptions(),SUBJECTS[0]),mProv=select(PROVENANCE.map(p=>[p,PROV_TEXT[p]]),PROVENANCE[0]),mNum=input('',{maxlength:'35',placeholder:'번호(영문·숫자·.-_)'}),
+    mCode=select(ERROR_CODES.map(c=>[c,errorCodeText(c)]),ERROR_CODES[0]),mEv=select(EVIDENCE_STATUS.map(e=>[e,EVIDENCE_TEXT[e]]),'USER_REPORTED'),mNote=input('',{maxlength:String(MAX_NOTE),placeholder:'메모(최대 '+MAX_NOTE+'자)'}),mDue=input(defaultReviewDue(date),{inputmode:'numeric',maxlength:'10'});
+  for(const m of fs.card.mistakes)add(mis,row(subjectText(m.subject)+' · '+itemRefText(m.itemRef)+' · '+errorCodeText(m.errorCode),(m.note?m.note+' · ':'')+'증거: '+EVIDENCE_TEXT[m.evidence]+(m.reviewDue?' · 첫 복습 '+m.reviewDue:''),add(el('div',null,'buttons'),button('삭제',act(async()=>{await st.flow.removeRow(date,'mistakes',m.id);})))));
   if(!fs.card.mistakes.length)add(mis,hint('이 카드에 등록한 오답이 없습니다.'));
-  add(mis,el('h3','오답 추가','panel-title'),field('과목',mSub),field('출처',mProv),field('번호',mNum),field('원인 코드',mCode),field('증거',mEv),field('메모',mNote),field('첫 복습일',mDue),
+  add(mis,el('h3','오답 추가','panel-title'),field('과목',mSub),field('출처',mProv),field('번호',mNum),hint(ITEM_NUMBER_GUIDE),field('틀린 이유',mCode),field('증거',mEv),field('메모',mNote),field('첫 복습일',mDue),
     button('오답 넣기',act(async()=>{
       const reviewDue=mDue.value.trim();
-      await st.flow.addMistake(date,{subject:mSub.value,itemRef:mProv.value+':'+mNum.value.trim(),errorCode:mCode.value,evidence:mEv.value,note:mNote.value.trim(),...(reviewDue?{reviewDue}:{})});
+      await st.flow.addMistake(date,{subject:mSub.value,itemRef:itemRefFrom(mProv.value,mNum.value),errorCode:mCode.value,evidence:mEv.value,note:mNote.value.trim(),...(reviewDue?{reviewDue}:{})});
       st.message='오답을 초안에 넣었습니다.';
     }),'primary'));
   add(out,mis);
@@ -249,11 +283,12 @@ export function renderStudy(root,ctx,st){
   // 5) 요약(계산만, 연산 0)
   const sm=section('최근 공부 요약','확인한 분만 합산합니다. 저장하지 않고 계산만 합니다. 기준일 '+st.today+' · KST');
   if(proj){
-    for(const [name,w] of [['최근 7일',proj.minutes.w7],['최근 30일',proj.minutes.w30]]){
-      const parts=SUBJECTS.filter(c=>w[c]>0).map(c=>c+' '+w[c]+'분');
+    const cards=projectionCards(st.raw,fs);
+    for(const [name,days] of [['최근 7일',7],['최근 30일',30]]){
+      const parts=minutesByName(cards,st.today,days,nameOf).map(([n,m])=>n+' '+m+'분');
       add(sm,row(name,parts.length?parts.join(' · '):'확인한 공부 시간이 없습니다.'));
     }
-    add(sm,row('오늘 이어하기',proj.resume?proj.resume.date+' · ['+proj.resume.subject+'] '+proj.resume.restartLocator:'이어할 위치가 없습니다.'));
+    add(sm,row('오늘 이어하기',proj.resume?proj.resume.date+' · '+subjectText(proj.resume.subject)+' · '+proj.resume.restartLocator:'이어할 위치가 없습니다.'));
     if(proj.orphanReviews.length)add(sm,hint('가리키는 오답을 찾지 못한 복습 기록이 '+proj.orphanReviews.length+'건 있습니다(오답 카드가 아직 안 받아졌거나 지워졌을 수 있음). 복습 목록에는 나오지 않습니다.'));
     if(proj.duplicates.length)add(sm,hint('같은 번호가 겹친 항목이 '+proj.duplicates.length+'건 있어 계산에서 뺐습니다.'));
   }
@@ -273,4 +308,9 @@ export function renderStudySwitch(ctx){
 export function studyHomeLine(ctx,st){
   if(!st?.flowState)throw new Error('STUDY_NOT_PREPARED');
   return reviewSummary(projectStudy(projectionCards(ctx.getWhole().study,st.flowState),kstDate(ctx.now()))).line;
+}
+// FIX44 (AUD1 #3): 오늘 요약 줄의 복습 건수(오늘 + 밀린 것). 위와 같은 계산이고 없으면 던진다.
+export function studyReviewTotal(ctx,st){
+  if(!st?.flowState)throw new Error('STUDY_NOT_PREPARED');
+  return reviewSummary(projectStudy(projectionCards(ctx.getWhole().study,st.flowState),kstDate(ctx.now()))).total;
 }
