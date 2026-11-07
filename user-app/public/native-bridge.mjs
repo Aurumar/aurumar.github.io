@@ -383,7 +383,7 @@ export function createNativeBridge({native=globalThis.LifeBrickNative,storage,no
     // 옛 앱(메서드 없음)이면 null(설정 절이 숨는다). YPT2: 접근성은 도우미 앱에 있다. 도우미에 닿지 못하면 helper 칸이 붙는다(닿으면 칸이 없다).
     yptState(){
       const r=callNative(native,'yptState');if(r.ok!==true)return null;
-      const l=r.last,last=l&&typeof l==='object'&&(l.action==='start'||l.action==='stop')&&Number.isSafeInteger(l.at)?{action:l.action,ok:l.ok===true,code:typeof l.code==='string'?l.code:null,at:l.at}:null;
+      const l=r.last,last=l&&typeof l==='object'&&(l.action==='start'||l.action==='stop'||l.action==='learn')&&Number.isSafeInteger(l.at)?{action:l.action,ok:l.ok===true,code:typeof l.code==='string'?l.code:null,at:l.at}:null;
       const s={accessOn:r.accessOn===true,package:typeof r.package==='string'?r.package:null,label:typeof r.label==='string'?r.label:null,startLearned:r.startLearned===true,stopLearned:r.stopLearned===true,learning:r.learning==='START'||r.learning==='STOP'?r.learning:'NONE',last};
       if(typeof r.helper==='string'&&Object.hasOwn(YPT_TEXT.helper,r.helper))s.helper=r.helper;
       return s;
@@ -532,23 +532,27 @@ export const YPT_TEXT=Object.freeze({
   title:'열품타 같이 켜기',
   toggle:'공부 타이머와 열품타 같이 켜기',
   notReady:'열품타 같이 켜기: 준비 안 됨 — 설정에서 확인',
-  rules:'공부 타이머를 시작하면 열품타를 열어 시작 버튼을 눌러 주고, 끝내고 담거나 취소하면 정지 버튼을 눌러 줘요. 잠깐 열품타가 앞에 나왔다가 돌아와요.',
+  rules:'공부 타이머를 시작하면 열품타를 열어 시작 버튼을 눌러 주고, 끝내고 담거나 취소하면 일시정지 버튼을 눌러 줘요. 잠깐 열품타가 앞에 나왔다가 돌아와요.',
   rest:'휴식 중 열품타는 계속 돎 — 휴식은 LIFE BRICK 공부 시간에만 빠져요.',
+  allowApp:'열품타 허용앱에 LIFE BRICK을 넣어 두세요. 없으면 돌아올 때 열품타 차단 화면에 막혀요.',
   helper:{NOT_INSTALLED:'LIFE BRICK 열품타 도우미 설치 필요 — 열품타 버튼은 도우미 앱이 대신 눌러 줘요. 설치한 뒤 "다시 확인"을 눌러 주세요.',BAD_KEY:'LIFE BRICK 열품타 도우미의 서명이 달라요 — 같은 키로 서명한 도우미를 다시 설치해 주세요.',NO_PERMISSION:'LIFE BRICK 열품타 도우미에 연결할 권한이 없어요 — LIFE BRICK을 같은 파일로 한 번 더 설치해 주세요.',NO_ANSWER:'LIFE BRICK 열품타 도우미가 답하지 않아요 — 잠시 뒤 "다시 확인"을 눌러 주세요.'},
   accessOn:'접근성: 켜짐',accessOff:'접근성: 꺼짐 — "LIFE BRICK 열품타 연동"을 켜 주세요. 직접 설치한 도우미 앱은 앱 정보에서 "제한된 설정 허용"이 먼저 필요할 수 있어요.',accessBtn:'접근성 설정 열기',
   noApp:'열품타 앱을 찾지 못했어요. 설치한 뒤 "다시 확인"을 눌러 주세요.',
   pick:n=>n+' 이 앱이 맞나요?',pickBtn:'이 앱이 맞아요',
   app:n=>'열품타 앱: '+n,
-  learnStep:{START:'배우는 중 — 열품타의 시작 버튼을 직접 1번 눌러 주세요.',STOP:'배우는 중 — 이제 열품타의 정지 버튼을 직접 1번 눌러 주세요.'},
-  learned:'버튼: 시작·정지 둘 다 배웠어요',unlearned:'버튼: 아직 안 배웠어요',
-  learnBtn:'배우기 시작',relearnBtn:'다시 배우기',learnRule:'열품타가 열리면 시작 버튼을 1번, 정지 버튼을 1번 직접 눌러 주세요. 다른 곳을 누르면 그것을 배우니, 잘못 눌렀으면 다시 배우세요. 누른 버튼의 정보만 이 기기에 남아요.',
+  learnStep:{START:'배우는 중 — 열품타 위의 판에서 시작 버튼 자리를 눌러 주세요.',STOP:'배우는 중 — 이제 판에서 일시정지 버튼 자리를 눌러 주세요.'},
+  learned:'버튼: 시작·일시정지 둘 다 배웠어요',unlearned:'버튼: 아직 안 배웠어요',
+  learnBtn:'배우기 시작',relearnBtn:'다시 배우기',learnRule:'열품타 타이머를 멈춘 상태에서 시작하세요. 열품타가 열리면 반투명 판이 떠요. 시작 버튼 자리를 누르면 도우미가 그 자리를 실제로 눌러 타이머를 시작해요. 판이 다시 뜨면 일시정지 버튼 자리를 눌러 주세요. 도우미가 눌러서 멈춘 것을 확인하면 돌아와요. 60초 안에 안 누르거나 어느 단계가 실패하면 알림을 띄우고 돌아와요. 그때는 열품타 타이머가 돌고 있는지 봐 주세요. 잘못 눌렀으면 다시 배우세요. 누른 자리의 정보만 이 기기에 남아요.',
   recheck:'다시 확인',
   never:'마지막 결과: 아직 없음',
-  failCode:{NOT_INSTALLED:'열품타가 설치되어 있지 않음',BUTTON_NOT_FOUND:'버튼을 못 찾음',TIMEOUT:'5초 안에 못 누름'},
+  failCode:{NOT_INSTALLED:'열품타가 설치되어 있지 않음',BUTTON_NOT_FOUND:'버튼을 못 찾음',TIMEOUT:'5초 안에 못 누름',SCREEN_CHANGED:'화면 상태가 달라 다시 배우기 필요',NOT_CHECKED:'열품타 화면을 확인하지 못해 누르지 않음',AD_LEFT:'광고가 떠서 멈춤'},
+  learnOk:'배우기 성공',learnTimeout:'배우기 시간 초과',learnFail:{LEARN_START_FAILED:'배우기 실패 — 시작 단계',LEARN_STOP_FAILED:'배우기 실패 — 일시정지 단계'},
 });
 export function yptLastText(last){
   if(!last)return YPT_TEXT.never;
-  const name=last.action==='start'?'시작':'정지',when=kstDateOf(last.at).slice(5)+' '+kstTimeOf(last.at);
+  const when=kstDateOf(last.at).slice(5)+' '+kstTimeOf(last.at);
+  if(last.action==='learn')return '마지막 결과: '+(last.ok?YPT_TEXT.learnOk:Object.hasOwn(YPT_TEXT.learnFail,last.code??'')?YPT_TEXT.learnFail[last.code]:YPT_TEXT.learnTimeout)+' · '+when;
+  const name=last.action==='start'?'시작':'일시정지';
   return '마지막 결과: '+name+' '+(last.ok?'성공':'실패 — '+(YPT_TEXT.failCode[last.code]??'다시 시도해 주세요'))+' · '+when;
 }
 export function renderYptSettings(root,ctx){
@@ -558,7 +562,7 @@ export function renderYptSettings(root,ctx){
   const sec=h.add(h.el('section',null,'panel native-settings'),h.el('h2',YPT_TEXT.title,'panel-title'));
   // YPT2: 도우미에 닿지 못하면 그 이유와 "다시 확인"만 보인다(토글을 켜 두었어도 시작 때 준비 안 됨 알림으로 이어진다).
   if(s.helper){h.add(sec,h.el('p',YPT_TEXT.helper[s.helper],'muted'),h.add(h.el('div',null,'native-row'),h.button(YPT_TEXT.recheck,()=>ctx.rerender?.(),'secondary')));h.add(root,sec);return sec;}
-  h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle(YPT_TEXT.toggle,br.yptPrefs().on,on=>{br.setYpt(on);})),h.el('p',YPT_TEXT.rules,'muted small'),h.el('p',YPT_TEXT.rest,'muted small'));
+  h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle(YPT_TEXT.toggle,br.yptPrefs().on,on=>{br.setYpt(on);})),h.el('p',YPT_TEXT.rules,'muted small'),h.el('p',YPT_TEXT.allowApp,'muted small'),h.el('p',YPT_TEXT.rest,'muted small'));
   h.add(sec,h.add(h.el('div',null,'native-row'),h.el('p',s.accessOn?YPT_TEXT.accessOn:YPT_TEXT.accessOff,'muted'),
     s.accessOn?null:h.button(YPT_TEXT.accessBtn,()=>{const r=br.yptOpenAccessibilitySettings();if(!r.ok)msg.textContent=NATIVE_TEXT.fail;},'secondary')));
   const appRow=h.el('div',null,'native-row');
