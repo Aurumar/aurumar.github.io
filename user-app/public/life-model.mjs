@@ -243,7 +243,7 @@ export const timerTagFrom=uid=>String(uid??'').toLowerCase().replace(/[^0-9a-z]/
 const shortSubject=id=>{let h=0x811c9dc5;for(let i=0;i<id.length;i++){h^=id.charCodeAt(i);h=Math.imul(h,0x01000193);}return SUBJECT_HASH_MARK+(h>>>0).toString(36);};   // FNV-1a
 export function timerSessionId(subjectId,startIso,tag){
   const t=tag??'',ms=Date.parse(startIso).toString(36);
-  if(!t)return sessionIdFor(subjectId,'T'+ms);   // 옛 타이머: 옛 잘림 그대로(이미 담은 옛 세션을 알아본다)
+  if(!t)return sessionIdFor(('lf_'+subjectId+'_T').length>40?shortSubject(subjectId):subjectId,'T'+ms);   // 옛 타이머: 옛 잘림 그대로(이미 담은 옛 세션을 알아본다). R42 (HUNT41 N2): 과목 36자 이상은 T 표지·시각이 모두 잘리므로 해시로 줄인다
   const room=40-('lf_'+subjectId+'_T').length-t.length;
   return room>=TIMER_TIME_MIN?sessionIdFor(subjectId,'T'+ms.slice(-room)+t):sessionIdFor(shortSubject(subjectId),'T'+ms+t);
 }

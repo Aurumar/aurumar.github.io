@@ -160,8 +160,8 @@ const examText=e=>e?e.name+' '+(e.dDay===0?'D-DAY':'D-'+e.dDay):'시험 일정 �
 const restOver=(t,s)=>Boolean(t.pausedAt)&&!t.endIso&&s.clock.restMs+s.clock.restNowMs>REST_SPLIT_MS;
 
 // 작은 카드(오늘 화면 맨 위) + 덮개(open일 때). 단추 동작은 on.* (life-ui). 반환: {card, dialog, stop}.
-// on = {finish, pause, resume, expand, collapse, storage}. 덮개를 닫아도(작게 보기) 타이머는 멈추지 않는다.
-export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=null,goalBricks=null,on={}}){
+// on = {finish, pause, resume, expand, collapse, storage}. 덮개를 닫아도(작게 보기) 타이머는 멈추지 않는다. note = 덮개에 보일 한 줄(R42: 덮개가 오늘 화면의 안내를 가리므로).
+export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=null,goalBricks=null,note=null,on={}}){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button}=h,win=doc.defaultView??null;
   const read=()=>liveState({timer,nowIso:String(ctx.now()),study:ctx.getWhole()?.study??null,draftCard,exams,goalBricks});
   let s=read();
@@ -197,7 +197,7 @@ export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=nu
       add(el('div',null,'live-body'),room.node,add(el('div',null,'live-panel'),
         state,clock,todaySec,
         add(el('div',null,'live-ring-row'),ring.node,add(el('div',null,'live-ring-side'),next,gold)),
-        add(el('div',null,'live-chips'),todayChip,weekChip,examChip),bricks,overlap,restNote,
+        add(el('div',null,'live-chips'),todayChip,weekChip,examChip),bricks,overlap,restNote,note?el('p',note,'notice live-note'):null,
         add(el('div',null,'live-actions'),restBtn,button('끝내고 담기',()=>on.finish?.(),'primary live-finish'),button('작게 보기',()=>on.collapse?.(),'secondary live-small')))));
     dialog.setAttribute('aria-label','STUDY LIVE 집중 화면');
     ring.paint(s.session);

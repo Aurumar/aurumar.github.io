@@ -10,8 +10,9 @@
 // - 로컬 알림 4종 토글은 이 기기 localStorage에만 저장하고, 켜고 끌 때마다 다리 scheduleReminders()에 "전체 목록"을 보낸다(부분 목록은 나머지를 취소함).
 // - 캘린더는 사용자가 단추를 눌렀을 때와, 사용자가 켠 거울 토글(P1D2, 기본 꺼짐)에서만 쓴다. 꺼져 있으면 거울은 다리를 전혀 부르지 않는다. 일정 key가 안정적이라 다시 써도 새로 만들지 않고 고친다.
 // - 걸음·수면(B58B, Health Connect): 건강 화면이 부를 때만 읽는다. 값은 메모리로만 지나가고 이 파일은 저장·로그하지 않는다. 다리의 readHealthDay는 pending 뒤 결과를 한 번만 주므로 여기서 짧게 되묻는다.
+// - 열품타(YPT1): 공부 타이머 시작·끝·취소 때 Fold 앱이 열품타 버튼을 대신 누른다. 토글(기본 꺼짐)은 이 기기 저장소에만 있고 기록이 아니다. 꺼져 있으면 다리 호출 0. 성패는 비동기라 타이머·담기와 무관하다.
 // 모든 다리 호출은 try/catch로 감싸 실패해도 화면은 계속 돌아간다.
-export const NATIVE_KEYS=Object.freeze({reminders:'lb.native.reminders',seen:'lb.native.seen',calendar:'lb.native.calendar',added:'lb.native.added',unacked:'lb.native.unacked',mirror:'lb.native.mirror'});
+export const NATIVE_KEYS=Object.freeze({reminders:'lb.native.reminders',seen:'lb.native.seen',calendar:'lb.native.calendar',added:'lb.native.added',unacked:'lb.native.unacked',mirror:'lb.native.mirror',ypt:'lb.native.ypt',yptNotice:'lb.native.yptNotice'});
 export const NATIVE_LIMITS=Object.freeze({seen:500,drafts:200,events:64,added:200,unacked:1000});
 export const NATIVE_TEXT=Object.freeze({
   chip:n=>'Fold 결제 '+n+'건 · 눌러서 쌓기',
@@ -376,6 +377,35 @@ export function createNativeBridge({native=globalThis.LifeBrickNative,storage,no
       if(p.lastFull===args?.today)return {state:'SKIPPED'};
       return api.mirrorSync(args);
     },
+    // ---- 열품타(YPT1) ----
+    yptPrefs:()=>({on:readJson(store,NATIVE_KEYS.ypt,null)?.on===true}),
+    setYpt(on){return writeJson(store,NATIVE_KEYS.ypt,{on:on===true})?api.yptPrefs():null;},
+    // 옛 앱(메서드 없음)이면 null(설정 절이 숨는다).
+    yptState(){
+      const r=callNative(native,'yptState');if(r.ok!==true)return null;
+      const l=r.last,last=l&&typeof l==='object'&&(l.action==='start'||l.action==='stop')&&Number.isSafeInteger(l.at)?{action:l.action,ok:l.ok===true,code:typeof l.code==='string'?l.code:null,at:l.at}:null;
+      return {accessOn:r.accessOn===true,package:typeof r.package==='string'?r.package:null,label:typeof r.label==='string'?r.label:null,startLearned:r.startLearned===true,stopLearned:r.stopLearned===true,learning:r.learning==='START'||r.learning==='STOP'?r.learning:'NONE',last};
+    },
+    yptCandidates(){const r=callNative(native,'yptCandidates');return r.ok===true&&Array.isArray(r.candidates)?r.candidates.filter(c=>c&&typeof c.package==='string'&&typeof c.label==='string'):[];},
+    yptConfirmPackage:name=>callNative(native,'yptConfirmPackage',name),
+    yptOpenAccessibilitySettings:()=>callNative(native,'yptOpenAccessibilitySettings'),
+    yptStartLearning:()=>callNative(native,'yptStartLearning'),
+    // R42 (YPT1B 확인 요청 1번): 준비 안 됨 알림은 하루 1번까지(이 기기 저장소에 KST 날짜만 남긴다). 그 날짜를 못 적으면 알리지 않는다(횟수를 지킬 수 없으므로).
+    yptNotReady(){
+      const day=kstDateOf(now());
+      if(readJson(store,NATIVE_KEYS.yptNotice,null)?.day===day)return {state:'NOT_READY',notice:null};
+      return {state:'NOT_READY',notice:writeJson(store,NATIVE_KEYS.yptNotice,{day})?YPT_TEXT.notReady:null};
+    },
+    // 타이머 시작('start')·끝내고 담기와 취소('stop') 때 부른다. 꺼져 있으면 다리 호출이 하나도 없다(version 포함). 던지지 않는다.
+    // R42: 시작 때만 준비를 미리 본다. 접근성 꺼짐·버튼 미학습(설정의 "둘 다 배웠어요"가 아니면 미학습)이면 yptTrigger를 부르지 않아 열품타가 열리지 않는다. 옛 앱처럼 상태를 모르면 전과 같이 yptTrigger에 맡긴다.
+    yptTimer(action){
+      if(!api.yptPrefs().on)return {state:'OFF'};
+      if(!available())return {state:'NO_BRIDGE'};
+      if(action==='start'){const s=api.yptState();if(s&&!(s.accessOn&&s.package&&s.startLearned&&s.stopLearned))return api.yptNotReady();}
+      const r=callNative(native,'yptTrigger',action);
+      if(action==='start'&&r.error==='NOT_READY')return api.yptNotReady();
+      return r.ok===true?{state:'STARTED'}:{state:'FAILED',error:r.error||'BRIDGE_ERROR'};
+    },
   };
   return api;
 }
@@ -492,5 +522,51 @@ export function renderMirrorSettings(root,ctx){
     h.add(sec,blockRow);
   }
   h.add(sec,h.add(h.el('div',null,'native-row'),h.button(MIRROR_TEXT.run,()=>{msg.textContent=mirrorResultText(br.mirrorSync(ctx.views()));},'secondary')),msg,h.el('p',MIRROR_TEXT.rules,'muted small'));
+  h.add(root,sec);return sec;
+}
+// 설정 "열품타 같이 켜기" 절(YPT1). 다리가 없거나 옛 앱이면 null. 그리기만으로는 열품타를 열지 않는다.
+// ctx: {h,kit:{toggle},br,rerender()}
+export const YPT_TEXT=Object.freeze({
+  title:'열품타 같이 켜기',
+  toggle:'공부 타이머와 열품타 같이 켜기',
+  notReady:'열품타 같이 켜기: 준비 안 됨 — 설정에서 확인',
+  rules:'공부 타이머를 시작하면 열품타를 열어 시작 버튼을 눌러 주고, 끝내고 담거나 취소하면 정지 버튼을 눌러 줘요. 잠깐 열품타가 앞에 나왔다가 돌아와요.',
+  rest:'휴식 중 열품타는 계속 돎 — 휴식은 LIFE BRICK 공부 시간에만 빠져요.',
+  accessOn:'접근성: 켜짐',accessOff:'접근성: 꺼짐 — "LIFE BRICK 열품타 연동"을 켜 주세요. 직접 설치한 앱이면 앱 정보에서 "제한된 설정 허용"이 먼저 필요할 수 있어요.',accessBtn:'접근성 설정 열기',
+  noApp:'열품타 앱을 찾지 못했어요. 설치한 뒤 "다시 확인"을 눌러 주세요.',
+  pick:n=>n+' 이 앱이 맞나요?',pickBtn:'이 앱이 맞아요',
+  app:n=>'열품타 앱: '+n,
+  learnStep:{START:'배우는 중 — 열품타의 시작 버튼을 직접 1번 눌러 주세요.',STOP:'배우는 중 — 이제 열품타의 정지 버튼을 직접 1번 눌러 주세요.'},
+  learned:'버튼: 시작·정지 둘 다 배웠어요',unlearned:'버튼: 아직 안 배웠어요',
+  learnBtn:'배우기 시작',relearnBtn:'다시 배우기',learnRule:'열품타가 열리면 시작 버튼을 1번, 정지 버튼을 1번 직접 눌러 주세요. 다른 곳을 누르면 그것을 배우니, 잘못 눌렀으면 다시 배우세요. 누른 버튼의 정보만 이 기기에 남아요.',
+  recheck:'다시 확인',
+  never:'마지막 결과: 아직 없음',
+  failCode:{NOT_INSTALLED:'열품타가 설치되어 있지 않음',BUTTON_NOT_FOUND:'버튼을 못 찾음',TIMEOUT:'5초 안에 못 누름'},
+});
+export function yptLastText(last){
+  if(!last)return YPT_TEXT.never;
+  const name=last.action==='start'?'시작':'정지',when=kstDateOf(last.at).slice(5)+' '+kstTimeOf(last.at);
+  return '마지막 결과: '+name+' '+(last.ok?'성공':'실패 — '+(YPT_TEXT.failCode[last.code]??'다시 시도해 주세요'))+' · '+when;
+}
+export function renderYptSettings(root,ctx){
+  const {h,br,kit}=ctx;if(!br||!br.available())return null;
+  const s=br.yptState();if(!s)return null;
+  const msg=h.el('p',null,'muted small');msg.setAttribute('role','status');
+  const sec=h.add(h.el('section',null,'panel native-settings'),h.el('h2',YPT_TEXT.title,'panel-title'));
+  h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle(YPT_TEXT.toggle,br.yptPrefs().on,on=>{br.setYpt(on);})),h.el('p',YPT_TEXT.rules,'muted small'),h.el('p',YPT_TEXT.rest,'muted small'));
+  h.add(sec,h.add(h.el('div',null,'native-row'),h.el('p',s.accessOn?YPT_TEXT.accessOn:YPT_TEXT.accessOff,'muted'),
+    s.accessOn?null:h.button(YPT_TEXT.accessBtn,()=>{const r=br.yptOpenAccessibilitySettings();if(!r.ok)msg.textContent=NATIVE_TEXT.fail;},'secondary')));
+  const appRow=h.el('div',null,'native-row');
+  if(s.package)h.add(appRow,h.el('p',YPT_TEXT.app(s.label??s.package),'muted'));
+  else{
+    const found=br.yptCandidates();
+    if(!found.length)h.add(appRow,h.el('p',YPT_TEXT.noApp,'muted'));
+    for(const c of found)h.add(appRow,h.el('p',YPT_TEXT.pick(c.label+' ('+c.package+')'),'muted'),h.button(YPT_TEXT.pickBtn,()=>{const r=br.yptConfirmPackage(c.package);if(r.ok)ctx.rerender?.();else msg.textContent=NATIVE_TEXT.fail;},'secondary'));
+  }
+  h.add(sec,appRow);
+  const both=s.startLearned&&s.stopLearned,learning=YPT_TEXT.learnStep[s.learning]??null;
+  h.add(sec,h.add(h.el('div',null,'native-row'),h.el('p',learning??(both?YPT_TEXT.learned:YPT_TEXT.unlearned),'muted'),
+    s.package&&s.accessOn?h.button(both?YPT_TEXT.relearnBtn:YPT_TEXT.learnBtn,()=>{const r=br.yptStartLearning();if(!r.ok)msg.textContent=NATIVE_TEXT.fail;},'secondary'):null),h.el('p',YPT_TEXT.learnRule,'muted small'));
+  h.add(sec,h.el('p',yptLastText(s.last),'muted small'),h.add(h.el('div',null,'native-row'),h.button(YPT_TEXT.recheck,()=>ctx.rerender?.(),'secondary')),msg);
   h.add(root,sec);return sec;
 }
