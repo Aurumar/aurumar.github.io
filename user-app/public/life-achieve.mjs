@@ -50,7 +50,8 @@ export const DIARY_WEIGHT=Object.freeze({DAY:0.25,REVIEW:0.5});
 export const DIARY_BONUS=Object.freeze({QUEST:1,REVIEW:1});
 export const DIARY_QUEST_DAYS=5,DIARY_HABIT_ID='hb-diary';
 export const DIARY_STREAK_PRIZES=Object.freeze([[3,15,0],[7,30,0],[30,100,3]]);   // [연속 일수, XP, ✦], 평생 한 번씩
-const seen=s=>typeof s==='string'&&/[^\s\p{C}]/u.test(s);   // 보이는 글자가 하나라도 있으면 참(공백·제어·서식 문자만이면 거짓)
+export const hasVisibleText=s=>typeof s==='string'&&/[^\s\p{C}]/u.test(s);   // 보이는 글자가 하나라도 있으면 참(공백·제어·서식 문자만이면 거짓). 주간 리뷰 "빈 값" 판정을 저장 쪽(life-quest·week-review)과 보상 쪽이 함께 쓴다(FIX50B C3)
+const seen=hasVisibleText;
 export const diaryRated=d=>Number.isInteger(d?.score);
 export const diaryWrote=d=>seen(d?.text);
 export const reviewCounts=r=>Boolean(r&&(r.pick!==null&&r.pick!==undefined||seen(r.next)));
@@ -74,6 +75,17 @@ export function levelOf(xp){
 }
 const mondayOf=date=>shiftDay(date,-((new Date(date+'T12:00:00Z').getUTCDay()+6)%7));
 const roundXp=(raw,mult10)=>Math.round(raw*mult10/10);
+// 일기 연속(FIX49C 규칙): 쓴 날을 센다. open 번째 날부터는 아직 끝나지 않은 일기 날이라 빠져도 끊지 않는다. 한 주(월~일)에 하루까지는 빠져도 끊지 않는다(세지는 않음).
+// FIX50A (HUNT49 C1): 엔진(compute)과 atDiaryDay가 같은 규칙을 쓴다.
+function diaryRun(n,wrote,weekOf,open){
+  const at=new Array(n).fill(0),missWeeks=new Set();let run=0;
+  for(let i=0;i<n;i++){
+    if(wrote(i))run++;
+    else if(i<open){const w=weekOf(i);if(run>0&&!missWeeks.has(w))missWeeks.add(w);else run=0;}
+    at[i]=run;
+  }
+  return at;
+}
 
 function compute(life,study,today,money=null){
   const defs=lifeDefs(life),visible=defs.habits.filter(h=>!h.hidden);
@@ -182,13 +194,7 @@ function compute(life,study,today,money=null){
     const sunday=typeof r?.monday==='string'?shiftDay(r.monday,6):null,i=sunday&&sunday>=first&&sunday<=today?dayNumber(sunday)-firstNo:-1;
     if(i>=0&&i<n&&reviewCounts(r.data))reviewAt[i]=true;
   }
-  const diaryStreakAt=new Array(n).fill(0),diaryMissWeeks=new Set();
-  let diaryStreak=0;
-  for(let i=0;i<n;i++){
-    if(diaryAt[i])diaryStreak++;
-    else if(i<n-1){const w=weekOf(i);if(diaryStreak>0&&!diaryMissWeeks.has(w))diaryMissWeeks.add(w);else diaryStreak=0;}
-    diaryStreakAt[i]=diaryStreak;
-  }
+  const diaryStreakAt=diaryRun(n,i=>Boolean(diaryAt[i]),weekOf,n-1);
   const diaryPaid=new Set(),diaryTotals={days:0,reviews:0,weight:0,bonus:0,xp:0,best:0};
 
   // 하루 XP와 주간 묶음
@@ -405,6 +411,19 @@ export function achieve({life=null,study=null,fin=null,today,money=null}){
   if(!fin)return memo.result;
   if(!(moneyMemo&&moneyMemo.base===memo.result&&moneyMemo.fin===fin))moneyMemo={base:memo.result,fin,result:withMoney(memo.result,fin,today)};
   return moneyMemo.result;
+}
+// FIX50A (HUNT49 C1): 일기 날(04:00 경계, life-model diaryOpenDate)이 엔진의 오늘(00:00 경계)보다 앞이면(00:00~03:59) 그날부터는 아직 쓸 수 있는 일기 날이다.
+// 그 날을 빠진 날로 세지 않은 일기 연속(diary.streak)만 바꾼 결과를 돌려준다. 하루별 값·최고 연속·XP·보상·메인 연속은 그대로다(엔진의 오늘은 바꾸지 않는다).
+// 바꿀 것이 없으면 같은 객체를 돌려준다. 같은 결과·같은 날이면 같은 객체(화면이 다시 그려도 새로 만들지 않는다).
+const diaryDayMemo=new WeakMap();
+export function atDiaryDay(ach,diaryDay){
+  if(!ach?.diary||typeof diaryDay!=='string'||!(diaryDay<ach.today))return ach;
+  const hit=diaryDayMemo.get(ach);if(hit?.day===diaryDay)return hit.result;
+  const days=ach.days,open=days.findIndex(d=>d.date>=diaryDay),weeks=days.map(d=>mondayOf(d.date));
+  const run=diaryRun(days.length,i=>Boolean(days[i].diary),i=>weeks[i],open<0?days.length:open);
+  const result={...ach,diary:{...ach.diary,streak:run.at(-1)??0}};
+  diaryDayMemo.set(ach,{day:diaryDay,result});
+  return result;
 }
 // 쌓기 전 예상: 오늘 화면의 입력(카드·공부 초안)을 쌓았다고 치고 계산한다. 아무것도 저장하지 않고 입력 객체도 바꾸지 않는다.
 export function previewAchieve({life=null,study=null,today,card=null,studyCard=null,money=null}){

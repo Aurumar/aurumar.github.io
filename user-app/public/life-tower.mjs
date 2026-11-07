@@ -1,8 +1,8 @@
 // 탑 탭 (B42): 2.5D 등각 SVG. 1층 = 1주(월~일), 맨 아래가 첫 주, 맨 위가 이번 주(공사 중). 합성 데이터로만 시험한다.
 // 화면 규칙: DOM 생성 함수만 쓴다(innerHTML·인라인 style·외부 라이브러리 없음). 색은 SVG 속성(과목 색)과 styles.css 클래스.
 // 읽기만 한다: 성취 엔진의 투영을 그릴 뿐 어떤 기록도 쓰지 않는다. 바텀시트는 ctx.sheet로 받는다(ui-kit이 app.mjs를 불러오므로 시험에서 이 파일만 따로 불러올 수 있게).
-import {achieve,AREAS,multText,brickTotalText,weekBonusTotal} from './life-achieve.mjs';
-import {kstDate,lifeDefs,dDay,shiftDay,MAX_EXAMS} from './life-model.mjs';
+import {achieve,atDiaryDay,AREAS,multText,brickTotalText,weekBonusTotal} from './life-achieve.mjs';
+import {kstDate,diaryOpenDate,lifeDefs,dDay,shiftDay,MAX_EXAMS} from './life-model.mjs';
 
 export const TOWER_MAX_FLOORS=60;
 export const BRIDGE_NOTICE='이번 주는 다리 위에 오래 있었어 · 수능 과목 1장부터 건너가 볼까';
@@ -309,7 +309,8 @@ function badgeList(h,badges){
 export function createTowerState(){return {scrollTop:0};}
 export function renderTower(root,ctx,st){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add}=h;
-  const whole=ctx.getWhole(),today=kstDate(ctx.now()),money=ctx.money?.(today)??null,ach=achieve({life:whole.life??null,study:whole.study??null,fin:whole.fin??null,today,money}),week=ach.currentWeek;
+  const whole=ctx.getWhole(),today=kstDate(ctx.now()),money=ctx.money?.(today)??null,engine=achieve({life:whole.life??null,study:whole.study??null,fin:whole.fin??null,today,money});
+  const ach=atDiaryDay(engine,diaryOpenDate(ctx.now())),week=ach.currentWeek;   // FIX50A (HUNT49 C1): 00:00~03:59에는 어제 일기 날이 아직 열려 있어 일기 연속을 끊지 않는다
   const seasons=ach.hasRecords?seasonsOf(ach,lifeDefs(whole.life??null).exams):[],line=houseLine(ach,seasons);
   const title=ctx.achvTitle?.({doc,ach,life:whole.life??null,money,storage:ctx.storage});   // Q1C: 칭호 칩과 3D 깃발 색(앱이 넘긴다, 표시만)
   const out=add(el('section',null,'panel life-tower-panel'),add(el('div',null,'tower-head'),el('span','탑','eyebrow'),el('h2','나의 집','panel-title'),title?.node));out.id='life-tower';

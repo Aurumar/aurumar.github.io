@@ -20,9 +20,20 @@ const DIARY_FIELDS=Object.freeze(['score','energy','good','bad','tomorrow','text
 // 일기의 바뀐 칸 이름(화면·시험용). base가 없으면 빈 일기와 비교한다(빈 일기는 새로 만들지 않는다).
 export function diffDiary(base,mine){const b=base??emptyDiary(''),m=mine??emptyDiary('');return {fields:DIARY_FIELDS.filter(k=>stable(b[k])!==stable(m[k]))};}
 export const diaryChanged=(base,mine)=>diffDiary(base,mine).fields.length>0;
+// FIX50A (HUNT49 A1·A5): 일기 초안은 "이 기기가 바꾼 칸 이름"(touched, 값 없음)을 함께 둔다(상자 암호문 안, 쓰기 본문에는 넣지 않는다).
+// 바꾸지 않은 칸은 base를 내 값으로 본다: 병합에서 언제나 최신(다른 기기) 값이 남는다. 다시 켠 뒤 base 글이 "모름"(가린 이력)이어도 건드리지 않은 글은 되돌리지 않는다.
+// touched가 없는 초안(이 수정 전 빌드가 만든 것)은 모든 칸을 바꾼 것으로 본다(예전 규칙 그대로).
+const touchedOK=t=>Array.isArray(t)&&t.every(k=>DIARY_FIELDS.includes(k));
+export function diaryKnownBase(date,base,mine,touched){
+  if(!touchedOK(touched))return base;
+  const out=structuredClone(base??emptyDiary(date));
+  for(const k of DIARY_FIELDS)if(!touched.includes(k))out[k]=structuredClone(mine[k]);
+  return out;
+}
 // 흐름의 종류 설정. rows = 그 종류의 쌓인 목록(lifeRawView), door = 확정 직전 쓰기 문 검사(새 기록만), maskedHistory = 이력 값이 가린 사본이라 base로 그대로 쓰면 안 됨(FIX49A 4.4).
-export const LIFE_KIND=Object.freeze({type:'LIFE_DAY',empty:emptyDay,rows:life=>life?.days??[],rebase,changed:hasChanges,diff:diffDay,draftReason:DRAFT_REASON,confirmReason:CONFIRM_REASON,door:false,maskedHistory:false});
-export const DIARY_KIND=Object.freeze({type:'DIARY_DAY',empty:emptyDiary,rows:life=>life?.diaries??[],rebase:rebaseDiary,changed:diaryChanged,diff:diffDiary,draftReason:DIARY_DRAFT_REASON,confirmReason:DIARY_CONFIRM_REASON,door:true,maskedHistory:true});
+// fields = 바꾼 칸 이름을 초안에 함께 두는 종류(FIX50A), knownBase = 그 목록으로 base를 고친다.
+export const LIFE_KIND=Object.freeze({type:'LIFE_DAY',empty:emptyDay,rows:life=>life?.days??[],rebase,changed:hasChanges,diff:diffDay,draftReason:DRAFT_REASON,confirmReason:CONFIRM_REASON,door:false,maskedHistory:false,fields:null,knownBase:null});
+export const DIARY_KIND=Object.freeze({type:'DIARY_DAY',empty:emptyDiary,rows:life=>life?.diaries??[],rebase:rebaseDiary,changed:diaryChanged,diff:diffDiary,draftReason:DIARY_DRAFT_REASON,confirmReason:DIARY_CONFIRM_REASON,door:true,maskedHistory:true,fields:DIARY_FIELDS,knownBase:diaryKnownBase});
 
 export class LifeFlow{
   #p;#k;
@@ -37,31 +48,37 @@ export class LifeFlow{
     return list.reduce((a,b)=>(b.createdAt>=a.createdAt?b:a));
   }
   #baseOf(date,heads){return heads.length?this.#p.revision(date,heads[0]):null;}
+  // FIX50A: 초안의 base. 바꾼 칸 목록이 있는 종류(일기)는 바꾸지 않은 칸을 초안 값으로 본다(diaryKnownBase).
+  #draftBase(date,draft){const base=this.#baseOf(date,draft.body.expectedHeads);return this.#k.knownBase?this.#k.knownBase(date,base,draft.body.data,draft.touched):base;}
   // 이 기기에만 있는 초안의 날짜들(오래된 순). 어제 쌓지 않은 초안을 찾는 데 쓴다.
   async draftDates(){return [...new Set((await this.#drafts()).map(d=>d.body.entityId))].sort();}
-  // NONE(카드 없음), CONFIRMED(금고에 있음, 초안 없음), LOCAL_DRAFT(이 기기에만 있는 초안).
+  // NONE(카드 없음), CONFIRMED(금고에 있음, 초안 없음), LOCAL_DRAFT(이 기기에만 있는 초안). touched = 초안의 바꾼 칸 목록(fields 종류만, 모르면 null).
   async state(date){
     const draft=await this.#draftFor(date),latest=this.#p.latest(date);
     if(draft){
-      const base=this.#baseOf(date,draft.body.expectedHeads);
-      return {status:'LOCAL_DRAFT',card:structuredClone(draft.body.data),base,baseHeads:[...draft.body.expectedHeads],draftId:draft.draftId,changes:this.#k.diff(base,draft.body.data)};
+      const base=this.#draftBase(date,draft);
+      return {status:'LOCAL_DRAFT',card:structuredClone(draft.body.data),base,baseHeads:[...draft.body.expectedHeads],draftId:draft.draftId,changes:this.#k.diff(base,draft.body.data),...(this.#k.fields?{touched:Array.isArray(draft.touched)?[...draft.touched]:null}:{})};
     }
-    return {status:latest.card?'CONFIRMED':'NONE',card:latest.card?structuredClone(latest.card):this.#k.empty(date),base:latest.card,baseHeads:[...latest.heads],draftId:null,changes:this.#k.diff(latest.card,latest.card)};
+    return {status:latest.card?'CONFIRMED':'NONE',card:latest.card?structuredClone(latest.card):this.#k.empty(date),base:latest.card,baseHeads:[...latest.heads],draftId:null,changes:this.#k.diff(latest.card,latest.card),...(this.#k.fields?{touched:[]}:{})};
   }
   // 입력 즉시 초안에 저장한다(연산 0). 검증에 걸리면 아무것도 바꾸지 않고 던진다. 변경이 base와 같아지면 초안을 지운다.
-  async edit(date,mutate,{input=null}={}){
+  // FIX50A (HUNT49 A1): from = {heads,card} 화면이 연 시점의 판(일기 시트). 초안이 없을 때만 그 판 위에 초안을 만든다(최신이 그 사이 바뀌었으면 확정 때 3자 병합으로 다른 기기 값이 남는다).
+  async edit(date,mutate,{input=null,from=null}={}){
     const alive=this.#alive();
     for(let round=1;;round++){
       if(round>1)alive.check();
-      const s=await this.state(date),next=structuredClone(s.card);
+      let s=await this.state(date);
+      if(!s.draftId&&from&&this.#k.fields)s={...s,card:structuredClone(from.card),base:from.heads.length?structuredClone(from.card):null,baseHeads:[...from.heads]};
+      const next=structuredClone(s.card);
       mutate(next);
       next.date=date;
       validateLifeData(this.#k.type,date,next);
+      const touched=this.#k.fields&&Array.isArray(s.touched)?this.#k.fields.filter(k=>s.touched.includes(k)||stable(s.card[k])!==stable(next[k])):undefined;
       try{
         if(!this.#k.changed(s.base,next)){if(s.draftId)await this.#p.drafts.discard(s.draftId,{input,date});else await this.#p.drafts.keep?.(date,{input,base:null});return this.state(date);}
         if(s.draftId&&stable(next)===stable(s.card)){await this.#p.drafts.keep?.(date,{input,base:s.draftId});return s;}
         const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:next,heads:s.baseHeads,reason:this.#k.draftReason});
-        await this.#p.drafts.save({type:'ENTITY',body},{input,base:s.draftId});
+        await this.#p.drafts.save({type:'ENTITY',body,...(touched?{touched}:{})},{input,base:s.draftId});
       }catch(e){if(e?.code===STALE_BASE&&round<EDIT_ROUNDS)continue;throw e;}
       if(s.draftId)await this.#p.drafts.discard(s.draftId,{input});
       return this.state(date);
@@ -93,7 +110,7 @@ export class LifeFlow{
       try{ended=Boolean(await this.#p.terminal?.(draft.body.requestId));}catch(e){return {status:'UNKNOWN',code:codeOf(e)};}
       const settled=await this.#settleSent(draft,ended);
       if(settled)return settled;
-      const latest=this.#p.latest(date),base=this.#baseOf(date,draft.body.expectedHeads);
+      const latest=this.#p.latest(date),base=this.#draftBase(date,draft);
       const rb=this.#k.rebase({date,base,mine:draft.body.data,latest:latest.card});
       if(rb.status==='REJECTED')return {status:'REJECTED',code:rb.code,notices:rb.notices};
       if(rb.status==='ALREADY_APPLIED'){await this.#p.drafts.discard(draft.draftId);return {status:'ALREADY_APPLIED',notices:rb.notices};}
@@ -101,7 +118,7 @@ export class LifeFlow{
       if(!(stable(draft.body.data)===stable(rb.card)&&sameHeads(draft.body.expectedHeads,latest.heads))||ended||this.#aborted.has(draft.body.requestId)){
         const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:rb.card,heads:latest.heads,reason:this.#k.confirmReason});
         let saved;
-        try{saved=await this.#p.drafts.save({type:'ENTITY',body},{base:draft.draftId});}
+        try{saved=await this.#p.drafts.save({type:'ENTITY',body,...(Array.isArray(draft.touched)?{touched:[...draft.touched]}:{})},{base:draft.draftId});}
         catch(e){if(codeOf(e)===STALE_BASE){if(attempt<maxAttempts)continue;return {status:'STALE',code:STALE_BASE,notices:rb.notices};}throw e;}
         await this.#p.drafts.discard(draft.draftId);
         target={draftId:saved.draftId,body};
@@ -165,7 +182,8 @@ export async function stackDay(date,{life,study=null}){
 // ctx: {api, getWhole(), getChanges(), syncForWrite(), hasPending(), reconcile(), receipt(), digest(), uid(), now(), cardDraftBox(), write(), session(), storage}
 // kind = LIFE_KIND(기본) 또는 DIARY_KIND(FIX49B). 일기 포트는 확정 직전 쓰기 문(doorOpen)도 준다.
 // 일기 이력 값은 글 칸을 뺀 사본이다(FIX49A, 이력 API·화면 가리기). 그래서 일기 base는 ① 지금 최신(heads가 그 판 하나) ② 이 실행에서 본 판 ③ 이력 사본 차례로 찾는다.
-// ③은 점수·에너지·칩은 정확하지만 글·내일 한 가지는 모른다: UNKNOWN_BASE_TEXT로 채워 rebaseDiary가 내 글을 쓰고 상대 글이 다르면 알림을 내게 한다(글을 이어 붙이지 않음, 상대 글은 이력에 남는다).
+// ③은 점수·에너지·칩은 정확하지만 글·내일 한 가지는 모른다: UNKNOWN_BASE_TEXT로 채운다. FIX50A (HUNT49 A5): 초안의 바꾼 칸 목록에 없는 글 칸은 base를 내 값으로 보므로(diaryKnownBase)
+// 다른 기기 글이 남는다. 이 기기가 실제로 바꾼 글 칸만 rebaseDiary가 내 글을 쓰고 상대 글이 다르면 알림을 낸다(글을 이어 붙이지 않음, 상대 글은 이력에 남는다).
 export const UNKNOWN_BASE_TEXT='\u0000LB_BASE_TEXT_UNKNOWN';
 const maskedBase=v=>typeof v?.text==='string'&&typeof v?.tomorrow==='string'?structuredClone(v):{date:v.date,score:v.score??null,energy:v.energy??null,good:[...(v.good??[])],bad:[...(v.bad??[])],tomorrow:UNKNOWN_BASE_TEXT,text:UNKNOWN_BASE_TEXT};
 const storageOf=ctx=>{try{return ctx.storage??globalThis.localStorage??null;}catch{return null;}};
@@ -196,7 +214,7 @@ export function createLifePorts(ctx,kind=LIFE_KIND){
     now:()=>ctx.now(),newRequestId:()=>ctx.uid(),
     drafts:mode==='DEVICE_BOX'?box.port(kind.type,{write}):{
       list:async()=>[...memoryDrafts.values()],
-      save:async({type,body})=>{const id='local'+(++seq);memoryDrafts.set(id,{draftId:id,type,body:structuredClone(body),createdAt:new Date().toISOString()+String(seq).padStart(6,'0')});return {draftId:id,status:'LOCAL_DRAFT'};},
+      save:async({type,body,touched})=>{const id='local'+(++seq);memoryDrafts.set(id,{draftId:id,type,body:structuredClone(body),...(Array.isArray(touched)?{touched:[...touched]}:{}),createdAt:new Date().toISOString()+String(seq).padStart(6,'0')});return {draftId:id,status:'LOCAL_DRAFT'};},
       discard:async id=>{memoryDrafts.delete(id);},
       commit:async id=>{const d=memoryDrafts.get(id);const r=await write(d.body);const status=r?.status==='LOCAL_SAVED'||r?.status==='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED'?'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED':r?.status;if(status==='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED')memoryDrafts.delete(id);return {...r,status};},
     },

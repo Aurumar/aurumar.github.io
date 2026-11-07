@@ -61,6 +61,10 @@ export const dateKeyOK=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&Nu
 export const kstDate=iso=>new Date(Date.parse(iso)+KST_MS).toISOString().slice(0,10);
 export const dayNumber=date=>Math.round(Date.parse(date+'T12:00:00Z')/DAY_MS);
 export const shiftDay=(date,days)=>new Date(Date.parse(date+'T12:00:00Z')+days*DAY_MS).toISOString().slice(0,10);
+// FIX50A (HUNT49 C1·A2): 일기 날짜(D49 3장)는 04:00(KST) 경계다. 00:00~03:59에는 어제 일기 날이 아직 열려 있다. 일기 날짜가 필요한 곳은 모두 이 함수를 쓴다.
+// 하루 카드·공부·보상 엔진의 "오늘"(kstDate, 00:00 경계)은 그대로다.
+export const DIARY_DAY_START_HOUR=4;
+export const diaryOpenDate=iso=>{const t=Date.parse(iso)+KST_MS,today=new Date(t).toISOString().slice(0,10);return new Date(t).getUTCHours()<DIARY_DAY_START_HOUR?shiftDay(today,-1):today;};
 // 기록 시각 'HH:MM'(00:00~23:59). 목표 시각은 취침 24:00도 허용한다.
 export const timeOK=v=>typeof v==='string'&&TIME.test(v);
 export const targetTimeOK=v=>timeOK(v)||v==='24:00';

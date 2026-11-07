@@ -1,6 +1,6 @@
 // 퀘스트 묶음 (Q1A, 설계 Q1D §4). 판정은 XP와 함께 계산해야 해서 성취 엔진(life-achieve)이 하고, 이 모듈은 오늘 줄 요약과 내 퀘스트 1칸 저장 경로를 맡는다.
 // 내 퀘스트는 새 기록 종류가 아니라 고정 id uq-1인 COUNT·주 단위 습관 하나다: 옛 빌드도 받고 오늘 격자의 +1을 그대로 쓴다. 보너스 벽돌·업적 없이 기존 습관 XP와 주간 목표 +15만 받는다.
-import {MY_QUEST_ID} from './life-achieve.mjs';
+import {MY_QUEST_ID,hasVisibleText} from './life-achieve.mjs';
 import {collectRows,saveDefinitions} from './life-flow.mjs';
 import {HABIT_AREAS,EMPTY_LIFE_VIEW,LIFE_LIMITS,MAX_NAME,MAX_GOAL_BRICKS,GAME_PROFILE_ID,lifeDefs,openRecordsDoor,recordsDoorState,requireRecordsDoor,shiftDay,validateLifeData} from './life-model.mjs';
 import {rebaseRecord,stable} from './life-rebase.mjs';
@@ -52,7 +52,7 @@ function recordRow(life,type,id){
   if(type==='WEEK_REVIEW')return (life?.weekReviews??[]).find(x=>x.id===id)??null;
   return life?.profile??null;
 }
-const recordEmpty=(type,d)=>type==='PLAN_GOAL'?d.goals.length===0:type==='WEEK_REVIEW'?d.pick===null&&!d.next.trim():type==='EXAM_RESULT'&&d.scores.length===0;
+const recordEmpty=(type,d)=>type==='PLAN_GOAL'?d.goals.length===0:type==='WEEK_REVIEW'?d.pick===null&&!hasVisibleText(d.next):type==='EXAM_RESULT'&&d.scores.length===0;
 async function saveRecord(ctx,type,id,{base=null,mine},reason){
   const whole=ctx.getWhole();
   requireRecordsDoor({life:whole.life,study:whole.study,storage:storageOf(ctx)});

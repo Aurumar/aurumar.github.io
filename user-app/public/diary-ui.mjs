@@ -8,7 +8,7 @@ import {sheet} from './ui-kit.mjs';
 import {LifeFlow,createLifePorts,DIARY_KIND,STACK_DONE} from './life-flow.mjs';
 import {PLAN_NOTICE_TEXT,planErrorText} from './life-plan.mjs';
 import {DIARY_GOOD_CHIPS,DIARY_BAD_CHIPS,MAX_DIARY_GOOD,MAX_DIARY_BAD,MAX_DIARY_TEXT,MAX_DIARY_TOMORROW,
-  emptyDiary,recordsDoorState,lifeDefs,entryDone,sumBricks,shiftDay} from './life-model.mjs';
+  emptyDiary,recordsDoorState,lifeDefs,entryDone,sumBricks,shiftDay,kstDate,diaryOpenDate} from './life-model.mjs';
 
 // 칩 글자(저장은 id만, D49 2.2). short = 칩 단추, full = 읽어 주는 글. 모르는 id(앞으로 생길 칩)는 "다른 항목".
 export const GOOD_CHIP_TEXT=Object.freeze({focus:['집중','집중이 잘 됨'],wrong:['오답','오답을 제대로 봄'],hard:['버팀','어려운 걸 버팀'],start:['시작','미룬 일을 시작함'],calm:['마음','마음을 다스림'],
@@ -36,8 +36,16 @@ export const DIARY_TEXT=Object.freeze({
   none:'아직 안 썼어요',draft:'이 기기에만 있는 임시 입력 · 아직 저장 전',typing:'입력 중 (아직 저장 전)',boxSaved:'이 기기에 저장됨 · 아직 저장 전 · 다른 기기에서는 안 보임',
   saved:'일기를 저장했어요 · 4기기에 암호화되어 동기화돼요',same:'바뀐 것이 없어 저장하지 않았어요',
   habit:' · 습관 "일기"를 켰어요(오늘 쌓기 때 함께 쌓여요)',
+  habitYesterday:' · 습관 "일기"를 어제 카드에 켰어요(어제 카드 쌓기로 함께 쌓여요)',
   scoreFirst:'하루 점수를 먼저 골라 주세요.',
 });
+// FIX50A (HUNT49 A2): 습관은 일기 날짜의 카드에 켠다(00:00~03:59에 쓴 어제 일기 = 어제 카드). [오늘 쌓기]는 달력 오늘 카드만 쌓으므로 안내도 그 카드를 말한다.
+// 오늘 화면의 "어제 카드를 아직 쌓지 않았어요 · [어제 카드 쌓기]" 줄(life-ui)과 같은 이름을 쓴다.
+export function diaryHabitText(date,today){
+  if(date===today)return DIARY_TEXT.habit;
+  if(date===shiftDay(today,-1))return DIARY_TEXT.habitYesterday;
+  return ' · 습관 "일기"를 '+dateText(date)+' 카드에 켰어요('+dateText(date)+' 카드 쌓기로 함께 쌓여요)';
+}
 const STATUS_TEXT=Object.freeze({
   UNKNOWN:'서버 응답을 확인하지 못했어요 · 입력은 이 기기에 그대로 있어요. 다시 저장을 누르면 결과를 확인한 뒤 이어서 처리해요(중복 저장 없음).',
   SYNC_FAILED:'서버에서 최신 기록을 받지 못했어요 · 입력은 이 기기에 그대로 있어요.',FAILED:'저장하지 못했어요 · 입력은 이 기기에 그대로 있어요.',
@@ -55,12 +63,17 @@ const WEEKDAY=['일','월','화','수','목','금','토'];
 const dateText=d=>{const t=new Date(d+'T12:00:00Z');return (t.getUTCMonth()+1)+'월 '+t.getUTCDate()+'일 ('+WEEKDAY[t.getUTCDay()]+')';};
 const hoursText=m=>{const h=Math.floor(m/60),r=m%60;return (h?h+'시간':'')+(h&&r?' ':'')+(r||!h?r+'분':'');};
 const charCount=s=>[...String(s??'')].length;
+// FIX50A (HUNT49 A4): 글자 수 상한은 검사기·글자 수 표시와 같은 코드 포인트로 센다(입력 처리기에서 자른다). HTML maxlength는 UTF-16 단위라
+// 코드 포인트 1개 = 최대 2단위인 2배 값을 바깥 울타리로만 둔다(이모지 글이 1,000자에서 막히지 않게). 8KB 한도는 저장 때 검사기가 본다(원인 안내).
+export const clipChars=(s,max)=>{const a=[...String(s??'')];return a.length>max?a.slice(0,max).join(''):String(s??'');};
+const unitCap=max=>String(max*2);
 const storageOf=ctx=>{try{return ctx.storage??globalThis.localStorage??null;}catch{return null;}};
 
-// 일기 날짜(D49 3장): 00:00~03:59(KST)에는 어제 일기를 연다(취침 목표 24:00, life-achieve 04:00 경계와 같음). 그 앞날은 새로 쓰지 않는다(이 기기 초안만 이어서 저장).
+// 일기 날짜(D49 3장): 00:00~03:59(KST)에는 어제 일기를 연다(취침 목표 24:00). 그 앞날은 새로 쓰지 않는다(이 기기 초안만 이어서 저장).
+// FIX50A (HUNT49 C1): 04:00 경계는 life-model diaryOpenDate 한 곳에 있다. 보상 엔진의 "오늘"은 00:00 경계이고, 일기 연속만 atDiaryDay(life-achieve)로 이 날짜를 따른다.
 export function diaryDateOf(nowIso){
-  const k=new Date(Date.parse(nowIso)+9*3600000),today=k.toISOString().slice(0,10),late=k.getUTCHours()<4;
-  return {date:late?shiftDay(today,-1):today,today,late};
+  const today=kstDate(nowIso),date=diaryOpenDate(nowIso);
+  return {date,today,late:date!==today};
 }
 export const diaryDoorOpen=ctx=>{const w=ctx.getWhole();return recordsDoorState({life:w?.life??null,study:w?.study??null,storage:storageOf(ctx)}).open;};
 // 입구·지난 일기 줄의 요약. 글은 넣지 않고 "글 있음"만.
@@ -143,6 +156,8 @@ export async function openDiarySheet(ctx,st,date,opts={}){
   const flow=ensureDiaryFlow(ctx,st),box=st.diaryPorts?.box??null,doc=ctx.document??globalThis.document,{el,add,button}=maker(doc);
   const whole=ctx.getWhole(),life=whole.life??null,defs=lifeDefs(life);
   const s=await flow.state(date),work=structuredClone(s.card);
+  // FIX50A (HUNT49 A1): 시트를 연 시점의 판. 초안이 없던 날은 첫 입력의 초안을 이 판 위에 만든다(그 사이 다른 기기가 저장했으면 확정 때 칸별로 합친다).
+  const from=s.status==='LOCAL_DRAFT'?null:{heads:[...s.baseHeads],card:structuredClone(s.card)},touched=new Set();
   // 자동 줄의 재료(읽기만): 그날 오늘 카드·공부 카드(초안 포함)
   let card=null,studyCard=null;
   try{const ls=await opts.lifeFlow?.state(date);card=ls&&ls.status!=='NONE'?ls.card:null;}catch{card=null;}
@@ -155,12 +170,14 @@ export async function openDiarySheet(ctx,st,date,opts={}){
   const state=el('p',null,'muted small diary-state'),err=el('p',null,'notice error diary-error');err.hidden=true;
   const stateText=()=>{const b=box?.statusFor(DIARY_KIND.type,date);if(b?.typing)return DIARY_TEXT.typing;if(b?.has)return b.dirty&&b.own?(box.ERROR_TEXT[b.own]??box.TEXT.failed):DIARY_TEXT.boxSaved;return s.status==='CONFIRMED'?'저장된 일기 · 고치면 다시 저장할 수 있어요':s.status==='LOCAL_DRAFT'?DIARY_TEXT.draft:'아직 저장 전';};
   const showErr=text=>{err.textContent=text;err.hidden=false;};
-  // 입력 → 초안(연산 0). 칸마다 따로가 아니라 시트 전체 값을 쓴다(마지막 입력이 이김, 600ms 디바운스). 상자가 없으면 메모리 초안.
-  const apply=c=>{c.score=work.score;c.energy=work.energy;c.good=[...work.good];c.bad=[...work.bad];c.tomorrow=work.tomorrow;c.text=work.text;};
+  // 입력 → 초안(연산 0). 시트에서 사용자가 실제로 건드린 칸만 쓴다(FIX50A A1: 시트를 연 뒤 다른 기기가 바꾼 칸을 연 시점 값으로 덮지 않는다). 마지막 입력이 이김, 600ms 디바운스. 상자가 없으면 메모리 초안.
+  const apply=c=>{for(const k of touched)c[k]=Array.isArray(work[k])?[...work[k]]:work[k];};
+  const touch=k=>{touched.add(k);persist();};
+  const opened=(o={})=>({...o,from});   // 흐름 edit 옵션 + 시트를 연 시점의 판
   let memTimer=null,memChain=Promise.resolve();
   const persist=()=>{
-    if(box){box.defer(DIARY_KIND.type+'|'+date+'|sheet',async input=>{try{await flow.edit(date,apply,{input});}catch(e){showErr(box.ERROR_TEXT[e?.code]??diaryErrorText(e?.code));}state.textContent=stateText();},{owned:true});state.textContent=stateText();return;}
-    clearTimeout(memTimer);memTimer=setTimeout(()=>{memChain=memChain.then(()=>flow.edit(date,apply)).catch(e=>showErr(diaryErrorText(e?.code)));},600);
+    if(box){box.defer(DIARY_KIND.type+'|'+date+'|sheet',async input=>{try{await flow.edit(date,apply,opened({input}));}catch(e){showErr(box.ERROR_TEXT[e?.code]??diaryErrorText(e?.code));}state.textContent=stateText();},{owned:true});state.textContent=stateText();return;}
+    clearTimeout(memTimer);memTimer=setTimeout(()=>{memChain=memChain.then(()=>flow.edit(date,apply,opened())).catch(e=>showErr(diaryErrorText(e?.code)));},600);
   };
   const flushNow=async()=>{if(box){try{await box.flush();}catch{/* 다른 초안의 실패는 저장을 막지 않는다: 아래 edit가 이 화면 값을 직접 쓴다 */}}else{clearTimeout(memTimer);await memChain;}};
 
@@ -169,27 +186,28 @@ export async function openDiarySheet(ctx,st,date,opts={}){
   for(const f of facts)add(auto,el('span',f.text,'diary-fact'+(f.none?' none':'')));
   const scale=(name,key,hintText)=>{
     const row=el('div',null,'diary-scale'),btns=[];
-    for(let v=1;v<=5;v++){const b=button(String(v),()=>{work[key]=work[key]===v?null:v;paint();persist();},'diary-num');b.setAttribute('aria-label',name+' '+v);btns.push([v,b]);add(row,b);}
+    for(let v=1;v<=5;v++){const b=button(String(v),()=>{work[key]=work[key]===v?null:v;paint();touch(key);},'diary-num');b.setAttribute('aria-label',name+' '+v);btns.push([v,b]);add(row,b);}
     return {node:add(el('div',null,'diary-field'),add(el('div',null,'diary-field-head'),el('span',name,'diary-label'),hintText?el('span',hintText,'muted small'):null),row),btns,key};
   };
   const score=scale('하루 점수','score','1 힘든 하루 · 5 좋은 하루'),energy=scale('에너지','energy','선택');
   const chipRow=(name,ids,key,max,good)=>{
     const row=el('div',null,'diary-chips'),btns=[];
-    for(const id of ids){const b=button(chipLabel(id,good),()=>{const list=work[key];if(list.includes(id))work[key]=list.filter(x=>x!==id);else if(list.length<max)work[key]=[...list,id];else{showErr(name+'은 '+max+'개까지 고를 수 있어요.');return;}err.hidden=true;paint();persist();},'lb-chip diary-chip');
+    for(const id of ids){const b=button(chipLabel(id,good),()=>{const list=work[key];if(list.includes(id))work[key]=list.filter(x=>x!==id);else if(list.length<max)work[key]=[...list,id];else{showErr(name+'은 '+max+'개까지 고를 수 있어요.');return;}err.hidden=true;paint();touch(key);},'lb-chip diary-chip');
       b.setAttribute('aria-label',name+': '+(good?GOOD_CHIP_TEXT:BAD_CHIP_TEXT)[id][1]);btns.push([id,b]);add(row,b);}
-    for(const id of work[key].filter(x=>!ids.includes(x))){const b=button(OTHER_CHIP,()=>{work[key]=work[key].filter(x=>x!==id);paint();persist();},'lb-chip diary-chip');b.setAttribute('aria-label',name+': '+OTHER_CHIP);btns.push([id,b]);add(row,b);}   // 다른 기기의 새 칩: 지우기만
+    for(const id of work[key].filter(x=>!ids.includes(x))){const b=button(OTHER_CHIP,()=>{work[key]=work[key].filter(x=>x!==id);paint();touch(key);},'lb-chip diary-chip');b.setAttribute('aria-label',name+': '+OTHER_CHIP);btns.push([id,b]);add(row,b);}   // 다른 기기의 새 칩: 지우기만
     return {node:add(el('div',null,'diary-field'),add(el('div',null,'diary-field-head'),el('span',name+' ('+max+'개까지)','diary-label')),row),btns,key};
   };
   const good=chipRow('잘한 것',DIARY_GOOD_CHIPS,'good',MAX_DIARY_GOOD,true),bad=chipRow('아쉬운 것',DIARY_BAD_CHIPS,'bad',MAX_DIARY_BAD,false);
 
   // 2단계: 질문 + 글 + 내일 한 가지
   const question=el('p',null,'diary-question');
-  const text=el('textarea',null,'diary-text');text.value=work.text;text.setAttribute('aria-label','일기 글');text.setAttribute('maxlength',String(MAX_DIARY_TEXT));text.setAttribute('rows','8');
+  const text=el('textarea',null,'diary-text');text.value=work.text;text.setAttribute('aria-label','일기 글');text.setAttribute('maxlength',unitCap(MAX_DIARY_TEXT));text.setAttribute('rows','8');
   const count=el('p',null,'muted small diary-count');
-  const tomorrow=el('input',null,'diary-tomorrow');tomorrow.type='text';tomorrow.value=work.tomorrow;tomorrow.setAttribute('aria-label','내일 한 가지');tomorrow.setAttribute('maxlength',String(MAX_DIARY_TOMORROW));tomorrow.setAttribute('placeholder','내일 한 가지 (선택, '+MAX_DIARY_TOMORROW+'자)');
+  const tomorrow=el('input',null,'diary-tomorrow');tomorrow.type='text';tomorrow.value=work.tomorrow;tomorrow.setAttribute('aria-label','내일 한 가지');tomorrow.setAttribute('maxlength',unitCap(MAX_DIARY_TOMORROW));tomorrow.setAttribute('placeholder','내일 한 가지 (선택, '+MAX_DIARY_TOMORROW+'자)');
   const paintCount=()=>{const n=charCount(text.value);count.textContent=n.toLocaleString('ko-KR')+' / '+MAX_DIARY_TEXT.toLocaleString('ko-KR')+'자';count.hidden=n<1800;};   // 글자 수는 1,800자부터(양을 부추기지 않게)
-  text.addEventListener('input',()=>{work.text=text.value;paintCount();paintSave();persist();});
-  tomorrow.addEventListener('input',()=>{work.tomorrow=tomorrow.value;persist();});
+  const clipInput=(n,max)=>{const v=clipChars(n.value,max);if(v!==n.value)n.value=v;return v;};
+  text.addEventListener('input',()=>{work.text=clipInput(text,MAX_DIARY_TEXT);paintCount();paintSave();touch('text');});
+  tomorrow.addEventListener('input',()=>{work.tomorrow=clipInput(tomorrow,MAX_DIARY_TOMORROW);touch('tomorrow');});
 
   let dlg=null,step=1,busy=false;
   const save=async()=>{
@@ -198,13 +216,16 @@ export async function openDiarySheet(ctx,st,date,opts={}){
     busy=true;err.hidden=true;
     const run=async()=>{
       await flushNow();
+      // FIX50A (HUNT49 A3): 입력을 초안에 담지 못했으면(검사 거절·상자 실패) 이 화면 입력은 아직 어디에도 없다. "입력은 그대로 있어요" 대신 원인을 보여 준다(시트·입력은 그대로 둔다).
+      try{await flow.edit(date,apply,opened());}
+      catch(e){showErr(box?.ERROR_TEXT[e?.code]??diaryErrorText(e?.code));state.textContent=stateText();return;}
       let r;
-      try{await flow.edit(date,apply);r=await flow.confirm(date);}catch(e){r={status:'FAILED',code:e?.code};}
+      try{r=await flow.confirm(date);}catch(e){r={status:'FAILED',code:e?.code};}
       if(STACK_DONE.includes(r.status)||r.status==='NOTHING_TO_CONFIRM'){
         if(r.status!=='NOTHING_TO_CONFIRM')await ctx.reload?.();
         let habit=false;
         if(r.status!=='NOTHING_TO_CONFIRM'){try{habit=await markDiaryHabit({flow:opts.lifeFlow,life:ctx.getWhole().life??null,date});}catch{habit=false;}}
-        st.diaryMessage={text:(r.status==='NOTHING_TO_CONFIRM'?DIARY_TEXT.same:DIARY_TEXT.saved)+(habit?DIARY_TEXT.habit:''),error:false};st.diaryNotices=r.notices??[];
+        st.diaryMessage={text:(r.status==='NOTHING_TO_CONFIRM'?DIARY_TEXT.same:DIARY_TEXT.saved)+(habit?diaryHabitText(date,kstDate(ctx.now())):''),error:false};st.diaryNotices=r.notices??[];
         dlg?.close?.();
         await opts.after?.();
         return;

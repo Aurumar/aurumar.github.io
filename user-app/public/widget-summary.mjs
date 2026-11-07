@@ -50,7 +50,7 @@ export function buildWidgetSummary({ach,planRows=[],today,at}){
   return {
     v:WIDGET_VERSION,date:today,at:whole(at,1,9999999999999),
     bricks,goal,
-    floors:whole(ach?.weeks?.length,0,9999),
+    floors:ach?.hasRecords?whole(ach.weeks?.length,0,9999):0,   // 쌓은 기록이 없으면 0층(탑 탭의 "첫 벽돌을 쌓으면 1층이 올라가요"와 같다, FIX50B B1)
     streak:whole(ach?.streak?.days,0,99999),mult10:whole(ach?.streak?.mult10,10,99),
     area:WIDGET_AREAS.includes(top)?top:null,level:whole(lv,1,9999),
     xp:whole(day&&day.date===today?ach?.todayXp:null,0,999999),xpGoal:whole(ach?.goalXp,0,999999),

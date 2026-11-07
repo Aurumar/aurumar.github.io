@@ -4,7 +4,7 @@
 // 공부 벽돌은 기존 공부 모듈(STUDY_DAY)의 세션으로 기록한다(ctx.study 포트).
 import {chip,toggle,sheet,xpBar,ring} from './ui-kit.mjs';
 import {LifeFlow,createLifePorts,saveDefinitions,DEFS_SEALED_TEXT,collectRows,stackDay,STACK_DONE} from './life-flow.mjs';
-import {achieve,previewAchieve,habitXpToday,multText} from './life-achieve.mjs';
+import {achieve,atDiaryDay,previewAchieve,habitXpToday,multText} from './life-achieve.mjs';
 import {todayQuestLine} from './life-quest.mjs';
 import {timerElapsedMin,timerRecordMin,liveTick} from './study-stage.mjs';
 import {OVERLAP_NOTICE,TIMER_OVERLAP_NOTICE} from './study-rebase.mjs';
@@ -13,7 +13,7 @@ import {dayRoomCard,CELEBRATED_KEY} from './study-room.mjs';
 import {examLineText,daySummary,barsText} from './life-plan.mjs';
 import {diaryEntryState,renderDiaryEntry,openDiarySheet,diaryDayRow,diaryErrorText} from './diary-ui.mjs';   // FIX49B: 일기 입구·시트(쓰기 문이 열렸을 때만)
 import {HABIT_KINDS,HABIT_AREAS,DAY_TYPES,MAX_NAME,MAX_NOTE,SUBJECT_COLOR_KEYS,HABIT_HINTS,
-  kstDate,shiftDay,dateKeyOK,dayNumber,hhmmFromIso,timeOK,targetTimeOK,lifeIdOK,
+  kstDate,diaryOpenDate,shiftDay,dateKeyOK,dayNumber,hhmmFromIso,timeOK,targetTimeOK,lifeIdOK,
   brickOf,sumBricks,entryDone,nearestExam,lifeDefs,weekCount,studyCodeOf,sessionIdFor,timerSessionId,timerTagFrom,subjectOfSession,emptyDay} from './life-model.mjs';
 
 export const LIFE_ERROR_TEXT=Object.freeze({
@@ -181,7 +181,7 @@ export function renderLifeToday(root,ctx,st){
   // 1) 머리: 날짜, 수능 + 다음 시험 D-day(FIX44, 계획 탭과 같은 글, 잠정 배지), 오늘 XP 링(쌓은 기록 기준), 연속·레벨 칩
   const exam=nearestExam(defs.exams,date),examText=examLineText(defs.exams,date);
   const examLine=examText?add(el('div',null,'life-exam'),el('strong',examText,'life-dday'),exam?.status==='잠정'?el('span','잠정','life-badge'):null):hint('시험 일정이 없습니다. 습관 편집에서 추가하세요.');
-  const money=ctx.money?.(date)??null,ach=achieve({life:whole.life??null,study:whole.study??null,fin:whole.fin??null,today:date,money}),topLevel=ach.levels[ach.topArea];
+  const money=ctx.money?.(date)??null,ach=atDiaryDay(achieve({life:whole.life??null,study:whole.study??null,fin:whole.fin??null,today:date,money}),diaryOpenDate(ctx.now())),topLevel=ach.levels[ach.topArea];   // FIX50A (HUNT49 C1): 일기 연속은 04:00 일기 날 기준
   const xpSlot=add(el('div',null,'life-xp-slot'),ring(ach.todayXp,ach.goalXp,{size:64}));xpSlot.id='xp-slot';xpSlot.setAttribute('aria-label','오늘 XP '+ach.todayXp+' / '+ach.goalXp);
   const chips=add(el('div',null,'life-chips'),el('span',ach.todayXp+' / '+ach.goalXp+' XP','life-xp-text'),(()=>{const n=el('span','연속 '+ach.streak.days+'일 '+multText(ach.streak.mult10),'life-chip-slot');n.id='streak-chip';return n;})(),(()=>{const n=el('span',AREA_TEXT[ach.topArea]+' Lv '+topLevel.level,'life-chip-slot');n.id='level-chip';return n;})());
   const title=ctx.achvTitle?.({doc,ach,life:whole.life??null,money,storage:ctx.storage});   // Q1C: 칭호 칩(앱이 넘긴다, 표시만)

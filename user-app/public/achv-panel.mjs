@@ -177,6 +177,9 @@ export const TITLE_KEY='lb.title.v1';
 const PICKABLE=TITLES.filter(x=>x.phase===1),PICKABLE_IDS=new Set(PICKABLE.map(x=>x.id));
 export function readTitleChoice(storage,st={},life=null){
   const vault=life?.profile?.data?.titleId;
+  // 임시 저장(봉인)으로 고른 칭호는 금고 값이 그대로인 동안 이 기기에서 먼저 보여 준다(FIX50B D1). 금고 값이 바뀌었으면(다른 기기 반영·저장 완료) 금고가 이긴다.
+  const sealed=st?.titleSealed;
+  if(sealed){if(sealed.base===vault&&(sealed.id===null||PICKABLE_IDS.has(sealed.id)))return sealed.id;delete st.titleSealed;}
   if(vault===null||PICKABLE_IDS.has(vault))return vault;   // 금고에 없거나 이 빌드가 모르는 칭호면 undefined라 기기 값으로 간다
   if(Object.hasOwn(st,'titleMemory'))return st.titleMemory;
   try{const raw=storage?.getItem(TITLE_KEY);return PICKABLE_IDS.has(raw)?raw:null;}catch{return null;}
@@ -208,7 +211,8 @@ export function titleSheetBody(args,after=()=>{}){
     void ctx.perform(async()=>{
       const r=await pickTitle(ctx,id,text=>{err.textContent=text;err.hidden=false;});
       if(r==='ERROR')return;
-      if(r==='SEALED')saveTitleChoice(storage,st,id);   // 임시 저장은 아직 금고에 없다: 이 기기 값으로 보여 준다
+      if(r==='SEALED'){saveTitleChoice(storage,st,id);st.titleSealed={id,base:life?.profile?.data?.titleId};}   // 임시 저장은 아직 금고에 없다: 금고에 칭호가 있어도 이 기기 값으로 보여 준다(금고 값이 바뀌면 금고가 이김)
+      else delete st.titleSealed;
       after();
     });
   };

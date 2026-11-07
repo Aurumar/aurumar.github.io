@@ -56,9 +56,10 @@ const num=v=>Number.isInteger(v)?String(v):(Math.round(v*10)/10).toFixed(1);
 const guard=fn=>{try{return fn();}catch{return null;}};
 
 // FIX49D: 주간 리뷰 화면도 이 계산을 그대로 부른다(today = 그 주 일요일). 내보내기 1절 숫자와 리뷰 화면 숫자가 같은 투영에서 나온다(D49 7.3).
-export function habitWindow(life,today){
+export function habitWindow(life,today,days=WINDOW_DAYS){
   if(!life)return null;
-  const defs=lifeDefs(life),dates=Array.from({length:WINDOW_DAYS},(_,i)=>shiftDay(today,i-(WINDOW_DAYS-1)));
+  const span=Number.isInteger(days)&&days>=1&&days<=WINDOW_DAYS?days:WINDOW_DAYS;   // 주 중간 리뷰는 월요일~오늘만 본다(FIX50B C4). 기본은 7일 그대로
+  const defs=lifeDefs(life),dates=Array.from({length:span},(_,i)=>shiftDay(today,i-(span-1)));
   const cards=new Map(life.days.filter(d=>dates.includes(d.date)).map(d=>[d.date,d.data]));
   const rows=[];
   for(const h of defs.habits.filter(x=>!x.hidden).slice(0,MAX_HABIT_ROWS)){
@@ -66,7 +67,7 @@ export function habitWindow(life,today){
     let goal,done;
     if(h.kind==='RECOVERY'){goal=1;done=Math.min(1,entries.filter(e=>entryDone(h,e)).length);}                       // 복구는 주 1번이 목표(연속을 이어 주는 습관)
     else if(h.target.per==='WEEK'){goal=h.target.count??1;const sum=entries.reduce((s,e)=>s+(entryDone(h,e)?(h.kind==='COUNT'?e.count??0:1):0),0);done=Math.min(goal,sum);}
-    else{goal=WINDOW_DAYS;done=entries.filter(e=>entryDone(h,e)).length;}
+    else{goal=span;done=entries.filter(e=>entryDone(h,e)).length;}
     rows.push({name:clean(h.name),done,goal});
   }
   return rows;

@@ -67,6 +67,12 @@ export const CARD_DRAFT_ERROR_TEXT=Object.freeze({
 // FIX35 (HUNT35 F1): 합칠 때 화면에 알릴 rebase 알림(다른 창 값이 덮였거나, 한쪽의 삭제가 되돌려짐). 타이머 겹침 알림은 확정 때 따로 보인다.
 // FIX49B: 일기 초안끼리 합칠 때의 알림(rebaseDiary, 칸 이름만 실림)도 같은 표시를 쓴다.
 export const MERGE_CONFLICT_NOTICES=Object.freeze(['REBASE_VALUE_OVERWRITTEN','REBASE_SCALAR_OVERWRITTEN','REBASE_CONFLICT_KEPT_LOCAL','REBASE_CONFLICT_KEPT_REMOTE','DIARY_VALUE_OVERWRITTEN','DIARY_TEXT_KEPT_MINE','DIARY_CHIPS_TRIMMED']);
+// FIX50A (HUNT49 A5): 초안의 "바꾼 칸 이름" 목록(일기 흐름만 넘긴다, 값 없음). 암호문 안에만 두고 확정 쓰기 본문(body)에는 넣지 않는다.
+// 모양이 틀리면 버린다(목록 없음 = 흐름이 모든 칸을 바꾼 것으로 본다). 이 칸을 모르는 옛 빌드는 읽을 때 무시한다(형식 이름 그대로).
+const TOUCHED_MAX=16,TOUCHED_RE=/^[A-Za-z]{1,16}$/;
+const touchedOf=t=>Array.isArray(t)&&t.length<=TOUCHED_MAX&&t.every(k=>typeof k==='string'&&TOUCHED_RE.test(k))?{touched:[...new Set(t)]}:{};
+// 두 창의 초안을 합친 본문은 양쪽이 바꾼 칸을 모두 바꾼 것으로 본다. 한쪽이라도 목록이 없으면 목록 없음.
+const touchedUnion=(a,b)=>Array.isArray(a)&&Array.isArray(b)?touchedOf([...a,...b]):{};
 
 const KEY_ID='key',UNREADABLE_PREFIX='UNREADABLE|',FLUSH_ROUNDS=8;
 const SCOPE_RE=/^v1:[A-Za-z0-9_-]{1,128}:[A-Za-z0-9_-]{1,128}$/,DATE_RE=/^\d{4}-\d{2}-\d{2}$/;
@@ -162,7 +168,7 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
       const pt=await cr.subtle.decrypt({name:'AES-GCM',iv:row.iv,additionalData:aad(row.kind,row.date,row.rev)},key.key,row.ct);
       const d=JSON.parse(dec.decode(pt));
       if(d?.format!==CARD_DRAFT_FORMAT||typeof d.draftId!=='string'||d.type!=='ENTITY'||d.body?.entityType!==row.kind||d.body.entityId!==row.date||typeof d.createdAt!=='string')throw fail('SHAPE');
-      return {draft:{draftId:d.draftId,type:d.type,body:d.body,createdAt:d.createdAt}};
+      return {draft:{draftId:d.draftId,type:d.type,body:d.body,...touchedOf(d.touched),createdAt:d.createdAt}};
     }catch{return {reason:'DAMAGED'};}
   }
   // 디스크를 읽어 메모리에 합친다. 이 창의 미저장(dirty) 항목은 그대로 두고(디스크로 덮지 않음), STALE 항목은 디스크 최신 기준값만 받는다.
@@ -408,19 +414,19 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
         if(isLocked()||!mergeRule)return;
         await load();
         const e=mem.get(scopeId+'|'+kind+'|'+date);
-        if(e?.stale&&!e.deleted)await api.save({type:e.draft.type,body:e.draft.body});
+        if(e?.stale&&!e.deleted)await api.save({type:e.draft.type,body:e.draft.body,touched:e.draft.touched});
       }),
       locked:()=>isLocked()||!unlocked(),   // B18 (H13-C05): 흐름이 재적용 회차 전에 로그아웃 잠금을 본다
       list:tracked(async()=>{if(isLocked())return [];await load();if(!unlocked())return [];return live().filter(e=>e.kind===kind).map(e=>structuredClone(e.draft));}),
       // B16: opts.input = defer 토큰(그 실행의 저장), opts.base = 이 카드를 계산한 초안의 draftId(없었으면 null). 둘 다 선택.
-      save:tracked(async({type,body},opts={})=>{
+      save:tracked(async({type,body,touched},opts={})=>{
         if(type!=='ENTITY'||body?.entityType!==kind||!DATE_RE.test(body?.entityId??''))throw fail('CARD_DRAFT_SHAPE');
         const hasBase=Boolean(opts)&&Object.hasOwn(opts,'base');
         const input=inputOf(kind+'|'+body.entityId+'|',opts?.input),refuse=input.refuse;   // 거부된 입력도 기록(호출자가 오류를 삼켜도 flush가 던짐)
         try{
           try{guardWrite();}catch(e){throw refuse(e.code);}   // 읽기 전용·잠김 거부도 같다
           await load();
-          const date=body.entityId,id=scopeId+'|'+kind+'|'+date,draft={draftId:'cd'+ids(),type,body:structuredClone(body),createdAt:now()};
+          const date=body.entityId,id=scopeId+'|'+kind+'|'+date,draft={draftId:'cd'+ids(),type,body:structuredClone(body),...touchedOf(touched),createdAt:now()};
           // B14 (R2-D1): 같은 칸의 더 새 입력이 이미 저장됐다 → 이 옛 입력은 mem·디스크를 바꾸지 않는다(가장 마지막에 받은 입력이 이긴다, 실패 아님).
           const superseded=()=>{input.ok();notify();return {draftId:mem.get(id)?.draft?.draftId??null,status:'LOCAL_DRAFT',superseded:true};};
           if(input.stale())return superseded();
@@ -429,7 +435,8 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
           if(was?.stale&&!was.deleted&&mergeRule){
             try{
               fresh=await onChain(async()=>{const {row,key}=await readRow(id);return {row,opened:row?await open(row,key):null};});
-              if(fresh.opened?.draft){const m=await mergedBody(draft.body,fresh.opened.draft.body,was.known);draft.body=structuredClone(m.body);notes=m.notices;}
+              if(fresh.opened?.draft){const m=await mergedBody(draft.body,fresh.opened.draft.body,was.known);draft.body=structuredClone(m.body);notes=m.notices;
+                delete draft.touched;Object.assign(draft,touchedUnion(touched,fresh.opened.draft.touched));}   // FIX50A: 합친 본문은 양쪽이 바꾼 칸
             }catch{throw refuse('CARD_DRAFT_MERGE_FAILED');}
             if(mem.get(id)!==was){input.rebased();throw fail('CARD_DRAFT_STALE_BASE');}   // 합치는 동안 이 창의 다른 입력이 먼저 저장됐다
             if(input.stale())return superseded();
