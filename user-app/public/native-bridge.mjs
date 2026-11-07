@@ -542,16 +542,18 @@ export const YPT_TEXT=Object.freeze({
   app:n=>'열품타 앱: '+n,
   learnStep:{START:'배우는 중 — 열품타 위의 판에서 시작 버튼 자리를 눌러 주세요.',STOP:'배우는 중 — 이제 판에서 일시정지 버튼 자리를 눌러 주세요.'},
   learned:'버튼: 시작·일시정지 둘 다 배웠어요',unlearned:'버튼: 아직 안 배웠어요',
-  learnBtn:'배우기 시작',relearnBtn:'다시 배우기',learnRule:'열품타 타이머를 멈춘 상태에서 시작하세요. 열품타가 열리면 반투명 판이 떠요. 시작 버튼 자리를 누르면 도우미가 그 자리를 실제로 눌러 타이머를 시작해요. 판이 다시 뜨면 일시정지 버튼 자리를 눌러 주세요. 도우미가 눌러서 멈춘 것을 확인하면 돌아와요. 60초 안에 안 누르거나 어느 단계가 실패하면 알림을 띄우고 돌아와요. 그때는 열품타 타이머가 돌고 있는지 봐 주세요. 잘못 눌렀으면 다시 배우세요. 누른 자리의 정보만 이 기기에 남아요.',
+  learnBtn:'배우기 시작',relearnBtn:'다시 배우기',learnRule:'열품타 타이머를 멈춘 상태에서 시작하세요. 열품타가 열리면 반투명 판이 떠요. 시작 버튼 자리를 누르면 도우미가 그 자리를 실제로 눌러 타이머를 시작해요. 판이 다시 뜨면 일시정지 버튼 자리를 눌러 주세요. 배우기 끝에 열품타가 멈췄는지 물어봐요. 멈췄으면 "네, 멈췄어요"를, 아니면 "아니요"를 눌러 주세요. 아니요면 일시정지 자리만 다시 눌러요(2번까지). 60초 안에 안 누르거나, 물음에 30초 안에 답이 없거나, 어느 단계가 실패하면 알림을 띄우고 돌아와요. 그때는 열품타 타이머가 돌고 있는지 봐 주세요. 잘못 눌렀으면 다시 배우세요. 누른 자리의 정보만 이 기기에 남아요.',
   recheck:'다시 확인',
   never:'마지막 결과: 아직 없음',
   failCode:{NOT_INSTALLED:'열품타가 설치되어 있지 않음',BUTTON_NOT_FOUND:'버튼을 못 찾음',TIMEOUT:'5초 안에 못 누름',SCREEN_CHANGED:'화면 상태가 달라 다시 배우기 필요',NOT_CHECKED:'열품타 화면을 확인하지 못해 누르지 않음',AD_LEFT:'광고가 떠서 멈춤'},
+  pausePressed:'일시정지 눌렀어요(확인은 열품타에서)',
   learnOk:'배우기 성공',learnTimeout:'배우기 시간 초과',learnFail:{LEARN_START_FAILED:'배우기 실패 — 시작 단계',LEARN_STOP_FAILED:'배우기 실패 — 일시정지 단계'},
 });
 export function yptLastText(last){
   if(!last)return YPT_TEXT.never;
   const when=kstDateOf(last.at).slice(5)+' '+kstTimeOf(last.at);
   if(last.action==='learn')return '마지막 결과: '+(last.ok?YPT_TEXT.learnOk:Object.hasOwn(YPT_TEXT.learnFail,last.code??'')?YPT_TEXT.learnFail[last.code]:YPT_TEXT.learnTimeout)+' · '+when;
+  if(last.ok&&last.action==='stop')return '마지막 결과: '+YPT_TEXT.pausePressed+' · '+when;
   const name=last.action==='start'?'시작':'일시정지';
   return '마지막 결과: '+name+' '+(last.ok?'성공':'실패 — '+(YPT_TEXT.failCode[last.code]??'다시 시도해 주세요'))+' · '+when;
 }

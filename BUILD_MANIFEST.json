@@ -701,8 +701,8 @@
     },
     {
       "path": "user-app/public/native-bridge.mjs",
-      "sourceSha256": "3de5ecf79d7e8c656b009858e188bf64a146295156bff78cf5114cbb6944e964",
-      "outputSha256": "3de5ecf79d7e8c656b009858e188bf64a146295156bff78cf5114cbb6944e964",
+      "sourceSha256": "dab28077df368c8ea05594f03affff3643800b84809f31d68f9eb4c0a7e87d9b",
+      "outputSha256": "dab28077df368c8ea05594f03affff3643800b84809f31d68f9eb4c0a7e87d9b",
       "dependencies": [],
       "transforms": []
     },
