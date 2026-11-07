@@ -1303,6 +1303,24 @@ button.fin-quick-need{background:transparent;color:var(--lb-ink-3)}
 .plan-sched-note{flex:none;font-size:12px}
 .plan-sched-more{justify-self:start;min-height:36px}
 @media(min-width:601px){.pm-cols-4{grid-template-columns:84px repeat(4,minmax(0,1fr)) 64px}.pm-cols-5{grid-template-columns:84px repeat(5,minmax(0,1fr)) 64px}.pm-cols-6{grid-template-columns:84px repeat(6,minmax(0,1fr)) 64px}.pm-grid{gap:4px}.pm-cell,.pm-sched{min-height:44px}.pm-subject{font-size:13px;gap:5px}.pm-total{font-size:13px}}
+/* 새 기록 화면(FIX46B): 과목 주간 목표 · 모의고사 결과 · 오답 문제집 */
+.pw-goals,.plan-results{display:grid;gap:var(--lb-s-2);min-width:0}
+.pw-goal-head,.plan-result-head{font-size:13px;color:var(--lb-ink-1)}
+.pw-goal-line{margin:0}
+.pw-goal-edit,.plan-result-add{justify-self:start}
+.pw-goal-rows{display:grid;gap:var(--lb-s-2)}
+.pw-goal-row{display:grid;grid-template-columns:minmax(0,1fr) 44px minmax(96px,auto) 44px;gap:var(--lb-s-2);align-items:center}
+.pw-goal-name{font-weight:700;color:var(--lb-ink-1);min-width:0;overflow-wrap:anywhere}
+.pw-goal-value{text-align:center;font-size:13px}
+.plan-result-list{display:grid;gap:var(--lb-s-2);min-width:0}
+.plan-result-row{display:block;width:100%;text-align:left;margin-top:var(--lb-s-2)}
+.plan-result-trend,.plan-result-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+.plan-result-trend th,.plan-result-trend td,.plan-result-table th,.plan-result-table td{padding:4px;text-align:center;border-bottom:1px solid var(--lb-gold-2);overflow-wrap:anywhere}
+.plan-result-table input{width:100%;min-width:0;min-height:36px;padding:2px;text-align:center;box-sizing:border-box}
+.plan-result-date{display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--lb-ink-3)}
+.study-ref-plain,.study-ref-book{display:grid;gap:var(--lb-s-2)}
+.study-ref-plain[hidden],.study-ref-book[hidden]{display:none}
+.records-door-state{margin:0}
 /* ===== 18. Fold 네이티브 다리 (B44B, native-bridge): 결제 알림 칩·초안 시트·설정 알림 절. 새 색 없음 — 토큰만 ===== */
 .native-pay-row{margin:var(--lb-s-2) 0}
 .native-pay-chip{min-height:40px;font-weight:700}

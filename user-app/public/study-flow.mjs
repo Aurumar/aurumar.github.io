@@ -2,7 +2,7 @@
 // hlt-flow(B3)와 같은 방식이며 확정 직전 rebase도 같은 규칙이다(study-rebase). 불러오는 모듈은 study-model·study-rebase·study-schedule뿐.
 // 초안 = 기존 오프라인 초안 저널(drafts.lbd)의 ENTITY 초안 1건: data=내 카드, expectedHeads=편집을 시작한 시점의 카드 heads(base).
 // 초안 입력은 연산 0, "확정" 1번 = 연산 1. 초안은 확정 성공을 확인한 뒤에만 지운다. 검증 거부·저장 실패·응답 불명이면 초안을 그대로 둔다.
-import {validateStudyData,kstDate,shiftDay} from './study-model.mjs';
+import {validateStudyData,hasNewBookRow,kstDate,shiftDay} from './study-model.mjs';
 import {rebase,emptyCard,hasChanges,diffCard,stable,LISTS,sessionMark} from './study-rebase.mjs';
 import {defaultReviewDue,suggestNext,reviewHistory} from './study-schedule.mjs';
 
@@ -42,6 +42,7 @@ export class StudyFlow{
     mutate(next);
     next.date=date;next.confirmCount=(s.base?.confirmCount??0)+1;
     validateStudyData('STUDY_DAY',date,next);
+    if(hasNewBookRow(s.base,next)&&!this.#p.recordsDoor?.())throw err('RECORDS_DOOR_CLOSED');   // 쓰기 문(D46 4.2): 포트가 없으면 닫힌 것으로 본다
     if(!hasChanges(s.base,next)){if(s.draftId)await this.#p.drafts.discard(s.draftId);return this.state(date);}
     if(s.draftId&&stable(next)===stable(s.card))return s;
     const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:next,heads:s.baseHeads,reason:DRAFT_REASON});
@@ -68,8 +69,9 @@ export class StudyFlow{
     throw err('NO_STARTED_SESSION');
   }
   // 오답 등록: 복습일 기본값 = 등록일(카드 날짜)의 다음 날. 소유자가 reviewDue를 넘기면 그 값.
-  addMistake(date,{subject,itemRef,errorCode,evidence,note='',reviewDue}){
-    return this.addRow(date,'mistakes',{subject,itemRef,errorCode,evidence,note,reviewDue:reviewDue??defaultReviewDue(date)});
+  // D46: 추가 과목(생물 등)은 세션과 같게 id에 과목을 넣는다(id=sessionIdFor('bio',새 id), subject는 'C' 그대로). 문제집 오답은 book을 함께 넘긴다.
+  addMistake(date,{id,subject,itemRef,errorCode,evidence,note='',reviewDue,book}){
+    return this.addRow(date,'mistakes',{...(id?{id}:{}),subject,itemRef,errorCode,evidence,note,reviewDue:reviewDue??defaultReviewDue(date),...(book!==undefined?{book}:{})});
   }
   // 복습 결과에 대한 다음 복습일 제안. 이력은 이전 카드 포함 전체 + 지금 편집 중인 초안 카드(같은 날짜의 확정본 대신 초안)에서 읽는다.
   async suggestReview(date,mistakeId,result,{exceptReviewId=null}={}){
@@ -101,6 +103,7 @@ export class StudyFlow{
       const settled=await this.#settleSent(draft,ended);
       if(settled)return settled;
       const latest=this.#p.latest(date),base=this.#baseOf(date,draft.body.expectedHeads);
+      if(hasNewBookRow(base,draft.body.data)&&!this.#p.recordsDoor?.())return {status:'REJECTED',code:'RECORDS_DOOR_CLOSED',notices:[]};   // 초안은 그대로 둔다
       const rb=rebase({date,base,mine:draft.body.data,latest:latest.card});
       if(rb.status==='REJECTED')return {status:'REJECTED',code:rb.code,itemId:rb.itemId??null,list:rb.list??null,notices:rb.notices};
       if(rb.status==='ALREADY_APPLIED'){await this.#p.drafts.discard(draft.draftId);return {status:'ALREADY_APPLIED',notices:rb.notices};}

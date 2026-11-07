@@ -1,13 +1,16 @@
 // 이 모듈과 life-rebase·life-flow는 어떤 모듈도 불러오지 않는다(화면과 서버가 같은 파일을 쓰도록 브라우저에서도 그대로 동작).
 function requireValue(ok,code){if(!ok)throw Object.assign(new Error(code),{code});}
 // LIFE 습관·오늘 모델 (MD03 앱, B41). 합성 데이터로만 시험한다. 엔티티 하나 저장 = 연산 하나(hlt-model·fin-model과 같은 방식).
-// 엔티티: HABIT_DEF(습관 정의, entityId=습관 id), LIFE_DAY(하루 1장, entityId=날짜), SUBJECT_DEF(과목, entityId=과목 id), EXAM_SCHEDULE(시험 일정, entityId='exams' 1개), PLAN_DAY(하루 계획, entityId=날짜, B43).
+// 엔티티: HABIT_DEF(습관 정의, entityId=습관 id), LIFE_DAY(하루 1장, entityId=날짜), SUBJECT_DEF(과목, entityId=과목 id), EXAM_SCHEDULE(시험 일정, entityId='exams' 1개), PLAN_DAY(하루 계획, entityId=날짜, B43),
+// PLAN_GOAL(과목 주간 목표, entityId=그 주 월요일), EXAM_RESULT(모의고사 결과, entityId=시험 id 또는 'x'+응시일), GAME_PROFILE(칭호, entityId='profile' 1개) (D46 2절).
+// DIARY_DAY(하루 일기, entityId=날짜), WEEK_REVIEW(주간 리뷰, entityId=그 주 월요일) (D49 4절, 기분 칸은 없다: 기분은 오늘 카드 값 그대로). 글은 이력 화면·이력 제목·알림·비서 내보내기에 내보내지 않는다.
 // 새 엔티티 종류를 받으면 옛 빌드는 HOLD한다(hlt-model.mjs 머리 주석과 같음). 설계: AUTOPILOT\design\LIFE_BRICK_REDESIGN_V3_20261104_V2.md §2, ADDENDUM A1·A2·A3·A4·A7.
+// 새 기록 3종의 검사는 시계·다른 기록을 보지 않는다(앱을 열 때마다 전체 이력을 재생하므로 오늘 날짜에 기댄 규칙은 지난 기록을 거절할 수 있다, D46 2절). 넓히기만 할 수 있으므로 처음을 좁게 잡는다.
 // 기본 습관·과목·시험 일정(아래 DEFAULT_*)은 화면에 보이는 코드 상수일 뿐이며 앱이 스스로 저장하지 않는다. 소유자가 편집 화면에서 "저장"을 누를 때만 엔티티가 된다.
 // 날짜 기준은 Asia/Seoul 고정(UTC+9, 서머타임 없음).
 
-export const LIFE_TYPES=Object.freeze(['HABIT_DEF','LIFE_DAY','SUBJECT_DEF','EXAM_SCHEDULE','PLAN_DAY']);
-export const LIFE_LIMITS=Object.freeze({HABIT_DEF:30,LIFE_DAY:3700,SUBJECT_DEF:20,EXAM_SCHEDULE:1,PLAN_DAY:3700});
+export const LIFE_TYPES=Object.freeze(['HABIT_DEF','LIFE_DAY','SUBJECT_DEF','EXAM_SCHEDULE','PLAN_DAY','PLAN_GOAL','EXAM_RESULT','GAME_PROFILE','DIARY_DAY','WEEK_REVIEW']);
+export const LIFE_LIMITS=Object.freeze({HABIT_DEF:30,LIFE_DAY:3700,SUBJECT_DEF:20,EXAM_SCHEDULE:1,PLAN_DAY:3700,PLAN_GOAL:600,EXAM_RESULT:120,GAME_PROFILE:1,DIARY_DAY:3700,WEEK_REVIEW:600});
 export const HABIT_KINDS=Object.freeze(['TIME','CHECK','DURATION','COUNT','RECOVERY']);
 export const HABIT_AREAS=Object.freeze(['BODY','HEAD','MONEY','HEART']);
 export const TARGET_PERS=Object.freeze(['DAY','WEEK']);
@@ -26,6 +29,22 @@ export const MAX_PLAN_TITLE=40;
 export const MAX_PLAN_BRICKS=8;
 export const PLAN_BLOCKS=Object.freeze(['M','A','E','N']);   // 오전·오후·저녁·밤
 export const MAX_ORDER=999;
+export const MAX_GOAL_ITEMS=20;
+export const MAX_GOAL_BRICKS=120;
+export const MAX_GOAL_BYTES=2048;
+export const MAX_SCORE_ITEMS=20;
+export const MAX_RESULT_BYTES=4096;
+export const GAME_PROFILE_ID='profile';
+export const MAX_DIARY_TEXT=2000;
+export const MAX_DIARY_TOMORROW=40;
+export const MAX_DIARY_GOOD=3;
+export const MAX_DIARY_BAD=2;
+export const MAX_DIARY_BYTES=8192;
+export const MAX_REVIEW_PICK=120;
+export const MAX_REVIEW_NEXT=40;
+// 지금 고를 수 있는 칩 id(저장은 id만, 화면 글자는 일기 화면이 맡는다). 검사기는 이 목록이 아니라 모양만 본다: 칩을 더해도 4기기 같은 날 배포가 필요 없다(D49 4.2).
+export const DIARY_GOOD_CHIPS=Object.freeze(['focus','wrong','hard','start','calm','rest','people','body','thanks']);
+export const DIARY_BAD_CHIPS=Object.freeze(['delay','phone','drift','overplan','tired','upset','conflict','spend']);
 // 벽돌 1장 = 확인된 집중 30분, 10~29분 = 조각(ADDENDUM A2).
 export const BRICK_MINUTES=30;
 export const PIECE_MIN_MINUTES=10;
@@ -36,6 +55,7 @@ const DAY_MS=86400000;
 const ID=/^[A-Za-z0-9_-]{1,40}$/;
 const RESERVED_IDS=new Set(['__proto__','constructor','prototype']);
 const TIME=/^(?:[01]\d|2[0-3]):[0-5]\d$/;
+const CHIP_ID=/^[a-z][a-z0-9-]{0,19}$/;
 export const lifeIdOK=v=>typeof v==='string'&&ID.test(v)&&!RESERVED_IDS.has(v);
 export const dateKeyOK=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v+'T12:00:00Z'))&&new Date(v+'T12:00:00Z').toISOString().slice(0,10)===v;
 export const kstDate=iso=>new Date(Date.parse(iso)+KST_MS).toISOString().slice(0,10);
@@ -127,12 +147,88 @@ function validatePlanDay(id,d){
   requireValue(cardBytes(d)<=MAX_PLAN_BYTES,'PLAN_CARD_TOO_LARGE');
 }
 
+// ---- PLAN_GOAL (D46 2.1): 과목 주간 목표. 저장 단위는 장 하나이고, 과목이 두 기기 합치기의 단위다. ----
+function validatePlanGoal(id,d){
+  shape(d,['monday','goals'],'INVALID_PLAN_GOAL');
+  requireValue(dateKeyOK(id)&&d.monday===id&&new Date(id+'T12:00:00Z').getUTCDay()===1,'INVALID_GOAL_WEEK');
+  requireValue(Array.isArray(d.goals),'INVALID_PLAN_GOAL');
+  requireValue(d.goals.length<=MAX_GOAL_ITEMS,'GOAL_ITEM_LIMIT');
+  const seen=new Set();
+  for(const x of d.goals){
+    shape(x,['subjectId','bricks'],'INVALID_GOAL_ITEM');
+    requireValue(lifeIdOK(x.subjectId)&&!seen.has(x.subjectId),'INVALID_GOAL_ITEM');
+    seen.add(x.subjectId);
+    requireValue(typeof x.bricks==='number'&&Number.isFinite(x.bricks)&&x.bricks>=0.5&&x.bricks<=MAX_GOAL_BRICKS&&Number.isInteger(x.bricks*2),'INVALID_GOAL_BRICKS');
+  }
+  requireValue(cardBytes(d)<=MAX_GOAL_BYTES,'PLAN_GOAL_TOO_LARGE');
+}
+
+// ---- EXAM_RESULT (D46 2.2): 시험 하나에 1건. 일정 밖 시험은 examId:null, entityId='x'+응시일. 메모·시험 이름 칸은 없다. ----
+function validateExamResult(id,d){
+  shape(d,['examId','takenOn','scores'],'INVALID_EXAM_RESULT');
+  requireValue(d.examId===null?id==='x'+d.takenOn:lifeIdOK(d.examId)&&id===d.examId,'INVALID_EXAM_RESULT');
+  requireValue(dateKeyOK(d.takenOn),'INVALID_EXAM_RESULT_DATE');
+  requireValue(Array.isArray(d.scores),'INVALID_EXAM_RESULT');
+  requireValue(d.scores.length<=MAX_SCORE_ITEMS,'EXAM_SCORE_LIMIT');
+  const seen=new Set();
+  for(const x of d.scores){
+    shape(x,['subjectId','raw','std','pct','grade'],'INVALID_EXAM_SCORE');
+    requireValue(lifeIdOK(x.subjectId)&&!seen.has(x.subjectId),'INVALID_EXAM_SCORE');
+    seen.add(x.subjectId);
+    requireValue(nullInt(x.raw,0,100)&&nullInt(x.std,0,200)&&nullInt(x.pct,0,100)&&nullInt(x.grade,1,9),'INVALID_EXAM_SCORE');
+    requireValue(x.raw!==null||x.std!==null||x.pct!==null||x.grade!==null,'INVALID_EXAM_SCORE');   // 줄마다 값 하나 이상
+  }
+  requireValue(cardBytes(d)<=MAX_RESULT_BYTES,'EXAM_RESULT_TOO_LARGE');
+}
+
+// ---- GAME_PROFILE (D46 2.5): 고른 칭호 1칸. 칭호 목록은 코드 상수라 참조를 확인하지 않는다(표시할 때 풀린 칭호가 아니면 자동으로 돌아간다). ----
+function validateGameProfile(id,d){
+  shape(d,['titleId'],'INVALID_GAME_PROFILE');
+  requireValue(id===GAME_PROFILE_ID,'INVALID_GAME_PROFILE_ID');
+  requireValue(d.titleId===null||lifeIdOK(d.titleId),'INVALID_GAME_PROFILE');
+}
+
+// ---- DIARY_DAY (D49 4.2): 하루 1건. 값이 하나도 없는 일기도 받는다: 지우는 길이 없어 "비운 내용을 저장"이 지우기다. 빈 기록을 새로 만들지 않는 것과 "점수 필수"는 저장 화면이 맡는다. ----
+function validateChips(list,max){
+  requireValue(Array.isArray(list)&&list.length<=max,'INVALID_DIARY_CHIP');
+  const seen=new Set();
+  for(const x of list){
+    requireValue(typeof x==='string'&&CHIP_ID.test(x)&&!seen.has(x),'INVALID_DIARY_CHIP');
+    seen.add(x);
+  }
+}
+function validateDiary(id,d){
+  shape(d,['date','score','energy','good','bad','tomorrow','text'],'INVALID_DIARY_DAY');
+  requireValue(dateKeyOK(id)&&d.date===id,'INVALID_DIARY_DATE');
+  requireValue(nullInt(d.score,1,5)&&nullInt(d.energy,1,5),'INVALID_DIARY_SCORE');
+  validateChips(d.good,MAX_DIARY_GOOD);validateChips(d.bad,MAX_DIARY_BAD);
+  for(const [v,max] of [[d.tomorrow,MAX_DIARY_TOMORROW],[d.text,MAX_DIARY_TEXT]])requireValue(typeof v==='string'&&v.isWellFormed()&&[...v].length<=max,'INVALID_DIARY_TEXT');
+  requireValue(cardBytes(d)<=MAX_DIARY_BYTES,'DIARY_TOO_LARGE');
+}
+
+// ---- WEEK_REVIEW (D49 4.2): 주 1건. 고른 문장은 일기를 가리키지 않고 복사한다(일기를 고쳐도 깨지지 않게). 칸 길이만으로 약 1KB라 크기 코드는 두지 않는다. ----
+function validateWeekReview(id,d){
+  shape(d,['monday','pick','next'],'INVALID_WEEK_REVIEW');
+  requireValue(dateKeyOK(id)&&d.monday===id&&new Date(id+'T12:00:00Z').getUTCDay()===1,'INVALID_REVIEW_WEEK');
+  if(d.pick!==null){
+    shape(d.pick,['date','text'],'INVALID_REVIEW_PICK');
+    const t=d.pick.text;
+    requireValue(dateKeyOK(d.pick.date)&&typeof t==='string'&&t.isWellFormed()&&t.trim().length>0&&[...t].length<=MAX_REVIEW_PICK,'INVALID_REVIEW_PICK');
+  }
+  text(d.next,MAX_REVIEW_NEXT);
+}
+
 export function validateLifeData(type,id,d){
   requireValue(LIFE_TYPES.includes(type)&&lifeIdOK(id),'INVALID_ENTITY_ID');
   if(type==='HABIT_DEF')validateHabit(id,d);
   else if(type==='LIFE_DAY')validateDay(id,d);
   else if(type==='SUBJECT_DEF')validateSubject(id,d);
   else if(type==='PLAN_DAY')validatePlanDay(id,d);
+  else if(type==='PLAN_GOAL')validatePlanGoal(id,d);
+  else if(type==='EXAM_RESULT')validateExamResult(id,d);
+  else if(type==='GAME_PROFILE')validateGameProfile(id,d);
+  else if(type==='DIARY_DAY')validateDiary(id,d);
+  else if(type==='WEEK_REVIEW')validateWeekReview(id,d);
   else validateExams(id,d);
 }
 
@@ -150,7 +246,20 @@ export function lifeTitle(v){
   if(v.entityType==='HABIT_DEF')return '습관 · '+d.name+(d.hidden?' · 숨김':'');
   if(v.entityType==='SUBJECT_DEF')return '과목 · '+d.name+(d.hidden?' · 숨김':'');
   if(v.entityType==='PLAN_DAY')return '하루 계획 · '+d.date;
+  if(v.entityType==='PLAN_GOAL')return '주간 목표 · '+d.monday;
+  if(v.entityType==='EXAM_RESULT')return '모의고사 결과 · '+d.takenOn;   // 이력 제목에 점수를 넣지 않는다
+  if(v.entityType==='GAME_PROFILE')return '칭호';
+  if(v.entityType==='DIARY_DAY')return '일기 · '+d.date;   // 이력 제목에 글·점수를 넣지 않는다
+  if(v.entityType==='WEEK_REVIEW')return '주간 리뷰 · '+d.monday;
   return '시험 일정';
+}
+// 이력 줄(wholeHistory)의 값(D49 4.4): 일기·리뷰의 글은 글자 수만 남긴 사본으로 바꾼다. 이력 화면의 "저장된 값" 칸과 이력 API가 이 값을 쓴다. 원본은 그대로이고 다른 종류는 받은 값 그대로다.
+const charCount=s=>[...String(s??'')].length;
+export function lifeHistoryValue(v){
+  const d=v?.data;
+  if(v?.entityType==='DIARY_DAY')return {...v,data:{date:d.date,score:d.score,energy:d.energy,good:d.good,bad:d.bad,tomorrowChars:charCount(d.tomorrow),textChars:charCount(d.text)}};
+  if(v?.entityType==='WEEK_REVIEW')return {...v,data:{monday:d.monday,pickChars:d.pick?charCount(d.pick.text):null,nextChars:charCount(d.next)}};
+  return v;
 }
 
 // ---- 기본값(코드 상수, 저장하지 않음) ----
@@ -186,6 +295,8 @@ export const DEFAULT_EXAMS=Object.freeze({items:Object.freeze([
   Object.freeze({id:'e-csat',name:'수능',date:'2027-11-18',status:'잠정'}),
 ])});
 export const emptyDay=date=>({date,habits:{},mood:null,note:'',dayType:'NORMAL'});
+export const emptyDiary=date=>({date,score:null,energy:null,good:[],bad:[],tomorrow:'',text:''});
+export const emptyWeekReview=monday=>({monday,pick:null,next:''});
 
 // ---- 계산(저장하지 않음) ----
 // 한 세션의 벽돌: 30분마다 1장, 나머지가 10분 이상이면 조각 1개, 9분 이하는 0(ADDENDUM A2).
@@ -250,7 +361,7 @@ export function timerSessionId(subjectId,startIso,tag){
 
 // wholeLifeView가 싣는 원자료: 엔티티 그대로(heads 포함). 하루 카드는 최신 날짜가 앞.
 export function lifeRawView(entities){
-  const habits=[],days=[],subjects=[],plans=[];let exams=null;
+  const habits=[],days=[],subjects=[],plans=[],goals=[],results=[],diaries=[],weekReviews=[];let exams=null,profile=null;
   for(const e of entities){
     const row={id:e.entityId,data:e.data,heads:e.heads??[],updatedAt:e.updatedAt??null};
     if(e.entityType==='HABIT_DEF')habits.push(row);
@@ -258,14 +369,39 @@ export function lifeRawView(entities){
     else if(e.entityType==='SUBJECT_DEF')subjects.push(row);
     else if(e.entityType==='EXAM_SCHEDULE')exams=row;
     else if(e.entityType==='PLAN_DAY')plans.push({date:e.entityId,...row});
+    else if(e.entityType==='PLAN_GOAL')goals.push({monday:e.entityId,...row});
+    else if(e.entityType==='EXAM_RESULT')results.push({...row,createdAt:e.createdAt??null});   // 업적 달성일 = 결과를 넣은 날(D46 6.3)
+    else if(e.entityType==='GAME_PROFILE')profile=row;
+    else if(e.entityType==='DIARY_DAY')diaries.push({date:e.entityId,...row});
+    else if(e.entityType==='WEEK_REVIEW')weekReviews.push({monday:e.entityId,...row});
   }
   days.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
   plans.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
+  goals.sort((a,b)=>a.monday<b.monday?1:a.monday>b.monday?-1:0);
+  diaries.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
+  weekReviews.sort((a,b)=>a.monday<b.monday?1:a.monday>b.monday?-1:0);
+  results.sort((a,b)=>a.data.takenOn<b.data.takenOn?1:a.data.takenOn>b.data.takenOn?-1:a.id<b.id?-1:a.id>b.id?1:0);
   habits.sort((a,b)=>a.data.order-b.data.order||(a.id<b.id?-1:1));
   subjects.sort((a,b)=>a.data.order-b.data.order||(a.id<b.id?-1:1));
-  return {habits,days,subjects,exams,plans};
+  return {habits,days,subjects,exams,plans,goals,results,profile,diaries,weekReviews};
 }
-export const EMPTY_LIFE_VIEW=Object.freeze({habits:[],days:[],subjects:[],exams:null,plans:[]});
+export const EMPTY_LIFE_VIEW=Object.freeze({habits:[],days:[],subjects:[],exams:null,plans:[],goals:[],results:[],profile:null,diaries:[],weekReviews:[]});
+
+// ---- 쓰기 문 (D46 4.2, 통제탑 ★2) ----
+// 옛 빌드는 새 기록을 받으면 멈춘다. 그래서 소유자가 네 기기 갱신을 확인하고 "켜기"를 누르기 전에는 새 기록을 쓰지 않는다. 읽기와 합치기는 항상 된다.
+// 열림 = ① 이 기기 저장소 lb.records.d46이 켜짐 ② 금고에 이미 새 기록이 있음(다른 기기가 켰다는 뜻이라 첫 기록을 받는 순간 자동으로 열린다). 저장소가 막힌 기기는 이번 실행 동안만 기억한다.
+export const RECORDS_DOOR_KEY='lb.records.d46';
+let memoryDoor=false;
+export function recordsDoorOn(storage){try{const v=storage?.getItem(RECORDS_DOOR_KEY);return v===null||v===undefined?memoryDoor:v==='1';}catch{return memoryDoor;}}
+export function openRecordsDoor(storage){try{storage.setItem(RECORDS_DOOR_KEY,'1');}catch{memoryDoor=true;}return recordsDoorOn(storage);}
+export function recordsInVault({life=null,study=null}={}){
+  return (life?.goals??[]).length>0||(life?.results??[]).length>0||Boolean(life?.profile)||(life?.diaries??[]).length>0||(life?.weekReviews??[]).length>0||(study?.days??[]).some(d=>d.data.mistakes.some(m=>Object.hasOwn(m,'book')));
+}
+export function recordsDoorState({life=null,study=null,storage=null}={}){
+  const device=recordsDoorOn(storage),vault=recordsInVault({life,study});
+  return {open:device||vault,device,vault};
+}
+export function requireRecordsDoor(views){requireValue(recordsDoorState(views).open,'RECORDS_DOOR_CLOSED');}
 
 // 화면이 쓰는 유효 정의: 저장된 정의가 있으면 저장본(숨김 포함), 없으면 코드 상수. usingDefaults = 아직 저장 전인 종류(끊긴 첫 저장 포함).
 export function lifeDefs(life){

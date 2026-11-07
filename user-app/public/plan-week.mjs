@@ -79,7 +79,7 @@ export function shortNames(subjects){
 export function weekGridModel({life=null,study=null,monday,today,draft=createWeekDraft()}){
   const defs=lifeDefs(life),subjects=new Map(defs.subjects.map(s=>[s.id,s])),letters=shortNames(defs.subjects);
   const ach=achieve({life,study,today}),weeks=new Map(ach.weeks.map(w=>[w.monday,w])),changed=new Set(changedDates(draft));
-  const days=[];let planned=0,actual=0,plannedToDate=0,achievedToDate=0,plannedLater=0;
+  const days=[],subjectActual=new Map();let planned=0,actual=0,plannedToDate=0,achievedToDate=0,plannedLater=0;
   for(let k=0;k<7;k++){
     const date=shiftDay(monday,k),items=sortedItems(dayItems(life,draft,date)),act=actualOf(weeks,date),pva=planVsActual(items,act);
     const left=new Map([...act.bySubject].map(([id,s])=>[id,s.value]));
@@ -88,11 +88,12 @@ export function weekGridModel({life=null,study=null,monday,today,draft=createWee
       return {...x,name:s?.name??'기타',color:s?.color??NO_SUBJECT_COLOR,letter:letters.get(x.subjectId)??'?',got};
     });
     planned+=pva.planned;actual+=act.total;
+    for(const [id,s] of act.bySubject)subjectActual.set(id,(subjectActual.get(id)??0)+s.value);
     if(date<=today){plannedToDate+=pva.planned;achievedToDate+=pva.achieved;}else plannedLater+=pva.planned;
     days.push({date,weekday:WEEKDAYS[k],cells:PLAN_BLOCKS.map(b=>rows.filter(r=>r.block===b)),planned:pva.planned,actual:act.total,isToday:date===today,past:date<today,changed:changed.has(date)});
   }
   const end=shiftDay(monday,6),state=monday>today?'FUTURE':end<today?'PAST':'NOW';
-  return {monday,end,state,days,planned,actual,plannedToDate,achievedToDate,plannedLater,rate:plannedToDate>0?achievedToDate/plannedToDate:null,
+  return {monday,end,state,days,subjectActual,planned,actual,plannedToDate,achievedToDate,plannedLater,rate:plannedToDate>0?achievedToDate/plannedToDate:null,
     changed:[...changed],subjects:defs.subjects.filter(s=>!s.hidden),maxDay:Math.max(1,...days.map(d=>Math.max(d.planned,d.actual)))};
 }
 // 머리 한 줄. 빈칸을 0으로 채우지 않는다(계획도 실제도 없으면 null).
@@ -199,6 +200,8 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
   const head=weekHeadText(m);
   const timeLine=ctx.weekTimeLine?.(monday,day0)??null;   // FIX45 (AUD1 #6): 이 주 공부 시간·그 전 주 비교(study-stats, 앱이 넘긴다)
   add(out,nav,head?el('p',head,'plan-sum pw-sum'):null,timeLine?el('p',timeLine,'muted small pw-time'):null,m.rate!==null?el('p',RATE_MEANING,'muted small pw-rate-note'):null);   // FIX44 (AUD1 #16): 달성률의 뜻
+  // FIX46B: 이번 주 과목 목표·"목표 대비" 줄(life-quest가 그린다, 앱이 넘겨 준다). 계획 달성률과 분모를 섞지 않는다.
+  add(out,ctx.weekGoals?.({monday,state:m.state,subjects:m.subjects,actual:m.subjectActual,report:(text,error,notices)=>{w.message=text;w.error=error;w.notices=notices;}})??null);
   if(w.message)add(out,el('p',w.message,w.error?'notice error pw-message':'notice pw-message'));
   for(const n of w.notices)add(out,el('p',PLAN_NOTICE_TEXT[n.code]??'알림을 읽지 못했어요'+' · 문의 코드 ▾\u2060'+n.code+'\u2060','notice plan-notice'));
 

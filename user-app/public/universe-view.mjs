@@ -3,7 +3,7 @@
 // 화면 규칙: DOM 생성 함수만 쓴다(innerHTML·인라인 style·외부 라이브러리 없음). 색은 styles.css 클래스(과목 토큰). 별 상세에는 과목·오답 코드·itemRef·복습 예정일만 있고 메모(note)는 읽지도 보이지도 않는다.
 import {projectStudy} from './study-projection.mjs';
 import {layoutUniverse,SUBJECT_INFO,STATE_TEXT,VIEW_2D,MAX_NODES} from './universe-layout.mjs';
-import {kstDate} from './study-model.mjs';
+import {kstDate,bookRefText} from './study-model.mjs';
 
 export const EMPTY_TEXT='공부 기록에 오답을 남기면 여기에 별이 생겨요';
 export const ERROR_TEXT='지식 우주를 계산하지 못했습니다(공부 기록 값 확인 필요).';
@@ -22,14 +22,17 @@ export function universeData(study,nowIso){
   return layoutUniverse({cards,proj:projectStudy(cards,kstDate(nowIso))});
 }
 
+// 생물 오답은 코드 C 그대로 별자리에 있고, 이름만 생물로 보인다(D46 2.4, id = lf_bio_...). 시중 문제집 번호는 "시중 문제집 · 12쪽 3번"으로 읽는다.
+const subjectName=n=>String(n.id).startsWith('lf_bio_')?'생물':SUBJECT_INFO[n.subject].name;
+const refText=n=>{const b=bookRefText(n.itemRef);return b?'시중 문제집 · '+b:n.itemRef;};
 // 별 하나의 상세 시트 내용: 과목·오답 코드·itemRef·복습 예정일·상태. (문제 내용·메모 필드는 모델에도 이 화면에도 없다.)
 export function nodeSheetBody(doc,node){
   const {el,add}=maker(doc),body=el('div',null,'universe-detail');
-  const rows=[['과목',SUBJECT_INFO[node.subject].name],['오답 코드',node.errorCode],['항목',node.itemRef],['복습 예정일',node.due??'정해진 날짜 없음'],['상태',STATE_TEXT[node.state]]];
+  const rows=[['과목',subjectName(node)],['오답 코드',node.errorCode],['항목',refText(node)],['복습 예정일',node.due??'정해진 날짜 없음'],['상태',STATE_TEXT[node.state]]];
   for(const [label,value] of rows)add(body,add(el('div',null,'universe-row'),el('span',label,'tower-stat-label'),el('strong',value,'tower-stat-value')));
   return body;
 }
-const nodeLabel=n=>SUBJECT_INFO[n.subject].name+' '+n.errorCode+' '+n.itemRef+' · '+STATE_TEXT[n.state];
+const nodeLabel=n=>subjectName(n)+' '+n.errorCode+' '+refText(n)+' · '+STATE_TEXT[n.state];
 
 // 2D 우주: 과목 6개 원 + 오답 점 + 같은 과목·같은 코드 링크. WebGL이 없거나 느릴 때의 대체이자 3D와 같은 데이터다.
 export function buildUniverseSvg(doc,data,{onNode=null}={}){
@@ -76,7 +79,7 @@ function renderUniversePanel(ctx,state){
     if(ctx.openStudy){const b=el('button','공부 기록으로 가기','secondary');b.type='button';b.addEventListener('click',()=>ctx.openStudy());add(out,b);}
     return out;
   }
-  const open=n=>ctx.sheet?.(SUBJECT_INFO[n.subject].name+' 오답 · '+n.errorCode,nodeSheetBody(doc,n));
+  const open=n=>ctx.sheet?.(subjectName(n)+' 오답 · '+n.errorCode,nodeSheetBody(doc,n));
   const summary='별 '+data.shown+'개 · 복습 늦음 '+data.counts.late+' · 기억함 '+data.counts.glow+' · 복습 예정 '+data.counts.due;
   add(out,el('p',summary,'universe-summary'));
   if(data.capped)add(out,el('p','최근 '+MAX_NODES+'개만 보여요(전체 '+data.total+'개)','notice universe-capped'));

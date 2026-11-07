@@ -3,6 +3,7 @@
 // 기본 제외: 자유 메모·일기 본문·건강 세부·거래 내역·가게 이름·카테고리 세부·계정·기기 식별자·토큰. 7절 "한 줄"은 기본 비공개이고
 // 소유자가 같은 화면의 토글을 켠 때만(최대 60자) 어제 카드의 한 줄을 싣는다. 값을 모르면 UNKNOWN(0과 구분).
 // 8절(공부 요약: 과목명과 숫자만)·9절(건강 요약: 수면·걸음 평균과 기록 일수만)은 토글이 기본 꺼짐이고, 소유자가 켠 절만 단추 내보내기와 쌓기 뒤 자동 내보내기에 들어간다(토글을 켠 것이 동의, 통제탑 결정 B61).
+// 시험 점수·등급(life.results)·주간 목표(life.goals)·칭호(life.profile)·책 이름과 쪽 번호는 읽지 않는다(통제탑 결정 D46 ★4, 넣으면 외부 AI 전송 범위 변경). 형식 v1 그대로다.
 // 형식 정본: AUTOPILOT\design\STATE_FORMAT_V1.md (8·9절 범위는 작업 B47 지시서가 정한다).
 import {lifeDefs,entryDone,nearestExam,dDay,shiftDay,kstDate,hhmmFromIso,subjectOfSession} from './life-model.mjs';
 import {achieve,SUBJECT_BY_CODE} from './life-achieve.mjs';
@@ -118,10 +119,10 @@ function studySummaryOf(life,study,today){
   for(const d of study.days){
     if(d.date<monday||d.date>today)continue;
     for(const s of d.data.sessions)if(s.state==='COMPLETED'&&nat(s.confirmedMin)&&s.confirmedMin<=1440)row(subjectOfSession(s.id)??SUBJECT_BY_CODE[s.subject]).minutes+=s.confirmedMin;
-    for(const m of d.data.mistakes)row(SUBJECT_BY_CODE[m.subject]).mistakes++;
+    for(const m of d.data.mistakes)row(subjectOfSession(m.id)??SUBJECT_BY_CODE[m.subject]).mistakes++;
   }
   const p=projectStudy(study.days.map(d=>d.data),today);
-  for(const r of [...p.dueToday,...p.overdue])row(SUBJECT_BY_CODE[r.subject]).due++;
+  for(const r of [...p.dueToday,...p.overdue])row(subjectOfSession(r.mistakeId)??SUBJECT_BY_CODE[r.subject]).due++;
   return {rows:[...by.values()].filter(r=>r.minutes||r.due||r.mistakes).sort((a,b)=>b.minutes-a.minutes||b.due-a.due||(a.name<b.name?-1:1))};
 }
 // 9절: 최근 7일의 수면(본잠 합계의 하루 평균)·걸음 평균·기록 일수만. 약·증상·기분·메모·습관 항목은 읽지 않는다. 기록 일수 = 수면 또는 걸음 기록이 있는 날.

@@ -5,7 +5,7 @@ import {finTitle,FIN_TYPES} from './fin-model.mjs';
 import {hltTitle,HLT_TYPES} from './public/hlt-model.mjs';
 import {hltRawView} from './public/hlt-projection.mjs';
 import {studyTitle,studyRawView,STUDY_TYPES} from './public/study-model.mjs';
-import {lifeTitle,lifeRawView,LIFE_TYPES} from './public/life-model.mjs';
+import {lifeTitle,lifeRawView,lifeHistoryValue,LIFE_TYPES} from './public/life-model.mjs';
 import {finView} from './fin-projection.mjs';
 import {WL_FORMAT,DOMAIN_CODES,DOMAIN_NAMES,effectiveActions,entityKey,emptyDomain,financeTotals,shiftDate,dateOK,shape} from './whole-life-model.mjs';
 
@@ -33,7 +33,7 @@ export function wholeHistory(graph,orderedOperations=null){
       if(v.format===FORMATS.definition){
         context.set(v.actionId,{title:v.title,domain:null});type='ACTION';title=v.title;
       }else if(v.format===WL_FORMAT){
-        type=v.entityType;domain=type==='DOMAIN'?v.entityId:type==='FINANCE'||type.startsWith('FIN_')?'E':type.startsWith('HLT_')?'B':type.startsWith('STUDY_')?'F':type==='LIFE_DAY'||type==='HABIT_DEF'?'C':type==='SUBJECT_DEF'||type==='EXAM_SCHEDULE'||type==='PLAN_DAY'?'F':v.data.domain??null;
+        type=v.entityType;domain=type==='DOMAIN'?v.entityId:type==='FINANCE'||type.startsWith('FIN_')?'E':type.startsWith('HLT_')?'B':type.startsWith('STUDY_')?'F':type==='LIFE_DAY'||type==='HABIT_DEF'||type==='DIARY_DAY'||type==='WEEK_REVIEW'?'C':type==='SUBJECT_DEF'||type==='EXAM_SCHEDULE'||type==='PLAN_GOAL'||type==='EXAM_RESULT'||type==='GAME_PROFILE'||type==='PLAN_DAY'?'F':v.data.domain??null;
         title=type==='DOMAIN'?DOMAIN_NAMES[v.entityId]:type==='FINANCE'?v.data.snapshotDate+' 재정 스냅샷':type==='PREFERENCES'?'표시 설정':type.startsWith('FIN_')?finTitle(v):type.startsWith('HLT_')?hltTitle(v):type.startsWith('STUDY_')?studyTitle(v):LIFE_TYPES.includes(type)?lifeTitle(v):v.data.title;
         if(type==='ACTION'){context.set(v.entityId,{title:v.data.title,domain:v.data.domain});actionId=v.entityId;}
       }else{
@@ -41,9 +41,10 @@ export function wholeHistory(graph,orderedOperations=null){
         title=current?.title??v.actionId;domain=current?.domain??null;
       }
       const currentHeads=heads.get(e.id)??[];
+      // D49 4.4: 일기·리뷰 글은 글자 수만 싣는다(이력 API와 이력 화면의 저장값 칸이 모두 이 값을 쓴다, 원본 기록은 그대로).
       rows.push({revisionId,parents:[...e.parents],sequence:op.seq,entityKey:e.id,actionId,type,domain,title,
         localDate:v.localDate??op.provenance.recordedLocalDate??null,
-        value:structuredClone(v),intent:e.intent,reason:op.provenance.reason,recordedAt:op.provenance.recordedAt,
+        value:lifeHistoryValue(structuredClone(v)),intent:e.intent,reason:op.provenance.reason,recordedAt:op.provenance.recordedAt,
         currentHeads,canCorrect:['RESULT','RESTART','MEASUREMENT'].includes(type)&&currentHeads.length===1&&currentHeads[0]===revisionId});
     });
   }

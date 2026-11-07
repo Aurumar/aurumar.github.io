@@ -24,6 +24,17 @@ export const PLAN_ERROR_TEXT=Object.freeze({
   MD_NOT_WRITE_READY:'지금은 서버에 저장할 수 없습니다. 입력은 이 화면에 남아 있습니다.',
   MD_PENDING_RECONCILE_REQUIRED:'이 저장이 서버에 반영됐는지 아직 모릅니다. 새로 저장하지 말고 더보기 > 고급에서 "결과 모르는 저장 확인"을 누르세요.',
   HOLD_UNKNOWN_SAVE:'저장 결과가 불명확합니다. 새로 저장하지 말고 먼저 확인하세요.',
+  // 새 기록(D46): 과목 주간 목표·모의고사 결과·칭호
+  INVALID_PLAN_GOAL:'과목 목표 모양이 올바르지 않습니다.',INVALID_GOAL_WEEK:'과목 목표는 그 주 월요일로 저장합니다.',INVALID_GOAL_ITEM:'과목 목표 줄이 올바르지 않습니다(같은 과목이 두 번 들어갈 수 없습니다).',
+  INVALID_GOAL_BRICKS:'목표는 0.5장 단위로 0.5~120장입니다.',GOAL_ITEM_LIMIT:'과목 목표는 20과목까지입니다.',PLAN_GOAL_TOO_LARGE:'과목 목표가 너무 큽니다.',
+  INVALID_EXAM_RESULT:'모의고사 결과 모양이 올바르지 않습니다.',INVALID_EXAM_RESULT_DATE:'시험 본 날은 YYYY-MM-DD 형식이어야 합니다.',
+  INVALID_EXAM_SCORE:'점수를 확인하세요: 원점수 0~100, 표준점수 0~200, 백분위 0~100, 등급 1~9, 정수만 넣을 수 있습니다.',EXAM_SCORE_LIMIT:'모의고사 결과는 20과목까지입니다.',EXAM_RESULT_TOO_LARGE:'모의고사 결과가 너무 큽니다.',
+  INVALID_GAME_PROFILE:'칭호 값이 올바르지 않습니다.',INVALID_GAME_PROFILE_ID:'칭호 값이 올바르지 않습니다.',INVALID_STUDY_BOOK:'책 이름은 1~20자이고 문장부호를 넣을 수 없습니다.',
+  RECORDS_DOOR_CLOSED:'아직 켜지 않았습니다 · 네 기기를 올린 뒤 더보기 > 설정에서 켜 주세요. 입력은 그대로 있습니다.',
+  // 일기·주간 리뷰(D49)
+  INVALID_DIARY_DAY:'일기 모양이 올바르지 않습니다.',INVALID_DIARY_DATE:'일기 날짜가 올바르지 않습니다.',INVALID_DIARY_SCORE:'점수와 에너지는 1~5로 고르세요.',INVALID_DIARY_CHIP:'잘한 것은 3개, 아쉬운 것은 2개까지 고를 수 있습니다.',
+  INVALID_DIARY_TEXT:'일기는 2,000자, 내일 한 가지는 40자까지 적을 수 있습니다.',DIARY_TOO_LARGE:'일기가 너무 큽니다(8KB). 글을 줄여 주세요.',
+  INVALID_WEEK_REVIEW:'주간 리뷰 모양이 올바르지 않습니다.',INVALID_REVIEW_WEEK:'주간 리뷰는 그 주 월요일로 저장합니다.',INVALID_REVIEW_PICK:'고른 문장은 1~120자여야 합니다.',
 });
 export const planErrorText=code=>PLAN_ERROR_TEXT[code]??(code?'처리하지 못했어요'+' · 문의 코드 ▾\u2060'+code+'\u2060':'저장하지 못했습니다.');
 // 결과를 모르는 오류: 다음 저장을 이어 가면 안 된다(H37-P3).
@@ -33,6 +44,16 @@ export const PLAN_NOTICE_TEXT=Object.freeze({
   PLAN_VALUE_OVERWRITTEN:'같은 계획 줄을 양쪽에서 고쳐서 내 값을 썼습니다 · 상대 값은 이력에 남아 있습니다.',
   PLAN_CONFLICT_KEPT_REMOTE:'내가 지운 줄을 다른 기기에서 고쳐서 상대 수정을 남겼습니다.',
   PLAN_CONFLICT_KEPT_LOCAL:'다른 기기에서 지운 줄을 내가 고쳐서 내 수정으로 되살렸습니다.',
+  RECORD_VALUE_OVERWRITTEN:'같은 과목을 양쪽에서 고쳐서 내 값을 썼습니다 · 상대 값은 이력에 남아 있습니다.',
+  RECORD_CONFLICT_KEPT_REMOTE:'내가 지운 과목을 다른 기기에서 고쳐서 상대 수정을 남겼습니다.',
+  RECORD_CONFLICT_KEPT_LOCAL:'다른 기기에서 지운 과목을 내가 고쳐서 내 수정으로 되살렸습니다.',
+  RECORD_DATE_OVERWRITTEN:'시험 본 날을 양쪽에서 다르게 고쳐서 내 값을 썼습니다 · 상대 값은 이력에 남아 있습니다.',
+  RECORD_LOCAL_DRAFT:'이 기기에 임시 저장됨 · 아직 동기화 전이라 화면에는 보이지 않습니다 · 연결한 뒤 연결 · 장치의 임시 저장 목록에서 "승인하고 쌓기"를 누르세요.',
+  DIARY_TEXT_KEPT_MINE:'일기 글을 양쪽에서 고쳐서 내 글을 썼습니다 · 다른 기기 글은 이전 판에 있어요.',
+  DIARY_VALUE_OVERWRITTEN:'같은 칸을 양쪽에서 고쳐서 내 값을 썼습니다 · 상대 값은 이전 판에 있어요.',
+  DIARY_CHIPS_MERGED:'칩을 양쪽에서 고쳐서 합쳤습니다.',
+  DIARY_CHIPS_TRIMMED:'칩을 합치니 개수를 넘어서 내 칩을 먼저 남겼습니다 · 나머지는 이전 판에 있어요.',
+  REVIEW_VALUE_OVERWRITTEN:'같은 칸을 양쪽에서 고쳐서 내 값을 썼습니다 · 상대 값은 이전 판에 있어요.',
 });
 
 // ---------- 날짜 계산 ----------
@@ -631,6 +652,8 @@ export function renderPlan(root,ctx,st){
   const data={life,ach,today,exams:defs.exams,subjects:subjectMap(defs)};
   const out=add(el('section',null,'panel plan-panel'),add(el('div',null,'plan-head'),el('span','PLAN','eyebrow'),el('h2','계획표','panel-title')));out.id='life-plan';
   add(out,...viewChips(h,ctx,st,today),examLine(h,ctx,st,defs.exams,today));
+  // FIX46B: 모의고사 결과(life-quest가 그린다, 앱이 넘겨 준다). 쓰기 문이 닫혀 있으면 안내 한 줄만.
+  add(out,ctx.examResults?.({exams:defs.exams,today,report:(text,error,notices)=>{st.message=text;st.error=error;st.notices=notices;}})??null);
   if(st.message)add(out,el('p',st.message,st.error?'notice error plan-message':'notice plan-message'));
   for(const n of st.notices??[])add(out,el('p',PLAN_NOTICE_TEXT[n.code]??'알림을 읽지 못했어요'+' · 문의 코드 ▾\u2060'+n.code+'\u2060','notice plan-notice'));
   const view={DAY:dayView,WEEK:weekView,MONTH:monthView,YEAR:yearView,CSAT:csatView}[st.view]??dayView;

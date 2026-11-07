@@ -1,7 +1,7 @@
 // 업적·칭호 (Q1A, 설계 Q1D §3·§5). 저장하지 않는 순수 투영이다: 성취 엔진 결과(achieve)와 기록만 보고 계산한다. 쓰기·시계·난수·저장소·네트워크 없음.
 // 조건은 현재 목표값·습관 수에 기대지 않고 고정 상수와 습관 id만 쓴다. 벽돌 수는 실제 벽돌만 센다(보너스 ✦ 제외). 기록을 고쳐 조건이 깨지면 업적도 풀린다.
 // 2단계(phase 2: 등급 업적 2개, 칭호 1개)는 새 기록 종류가 있어야 하므로 항상 잠겨 있고 개수에 넣지 않는다.
-import {entryDone,lifeDefs,dateKeyOK,dayNumber,shiftDay} from './life-model.mjs';
+import {entryDone,lifeDefs,dateKeyOK,dayNumber,shiftDay,kstDate} from './life-model.mjs';
 
 const a=(id,group,name,target,o={})=>Object.freeze({id,group,name,target,hidden:false,phase:1,...o});
 const EXAM_SUBJECTS=Object.freeze(['kor','math','eng','hist','soc','sci']),ALL_SUBJECTS=Object.freeze([...EXAM_SUBJECTS,'bio']);
@@ -129,6 +129,21 @@ export function achievements(ach,{life=null,money=null}={}){
   }
   const list=[...rows.values()],active=list.filter(r=>r.phase===1),count=(rs,hidden)=>rs.filter(r=>r.hidden===hidden);
   return {list,shownDone:count(active,false).filter(r=>r.done).length,shownTotal:count(active,false).length,hiddenDone:count(active,true).filter(r=>r.done).length,hiddenTotal:count(active,true).length};
+}
+// 등급 업적 2단계 해제 계산(D46 6.3). results = lifeRawView의 results. 아직 위 achievements()에 잇지 않았다({phase:2}를 떼는 것은 화면과 함께).
+// 낮아진 등급 = 같은 과목의 직전 등급 있는 시험보다 숫자가 작음. 순서는 응시일, 달성일은 결과를 넣은 날(둘을 비교하려면 둘 다 있어야 하므로 grade-up은 두 입력일 중 늦은 쪽). 여러 번이면 가장 이른 날.
+export function gradeFacts(results){
+  const order=[...(results??[])].sort((a,b)=>a.data.takenOn<b.data.takenOn?-1:a.data.takenOn>b.data.takenOn?1:a.id<b.id?-1:a.id>b.id?1:0);
+  const enteredOn=r=>r.createdAt?kstDate(r.createdAt):r.data.takenOn,last=new Map(),earlier=(x,y)=>x===null||y<x?y:x;
+  let one=null,up=null;
+  for(const r of order)for(const s of r.data.scores){
+    if(s.grade===null)continue;
+    const date=enteredOn(r),prev=last.get(s.subjectId);
+    if(s.grade===1)one=earlier(one,date);
+    if(prev&&s.grade<prev.grade)up=earlier(up,prev.date>date?prev.date:date);
+    last.set(s.subjectId,{grade:s.grade,date});
+  }
+  return {'grade-1':{done:one!==null,doneDate:one},'grade-up':{done:up!==null,doneDate:up}};
 }
 // 숨김 업적은 달성 전에 이름을 보이지 않는다.
 export const shownName=r=>r.hidden&&!r.done?HIDDEN_NAME:r.name;

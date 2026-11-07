@@ -26,6 +26,11 @@ export const MAX_CARD_BYTES=32768;
 export const MAX_LOCATOR=80;
 export const MAX_ITEMREF=60;
 export const MAX_NOTE=100;
+// 시중 문제집(D46 2.3): 출처 표기 3개 목록과 따로 둔다. 책 이름은 book 칸에 20자까지, 문장부호가 없어 문제 문장을 넣을 수 없다. 번호는 쪽·문항만(p12, n3, p12-n3). 표기와 book 칸은 반드시 함께 있거나 함께 없다.
+export const BOOK_TAG='COMMERCIAL_BOOK';
+export const MAX_BOOK=20;
+const BOOK_NAME=/^[가-힣A-Za-z0-9][가-힣A-Za-z0-9 +·-]{0,19}$/;
+const BOOK_ITEMREF=new RegExp('^'+BOOK_TAG+':(?:p[0-9]{1,5}(?:-n[A-Za-z0-9]{1,10})?|n[A-Za-z0-9]{1,10})$');
 // 문제 내용을 담을 수 있는 이름. 모델의 어느 층(카드·세션·오답·복습)에도 있으면 안 된다(시험이 각 층에 넣어 보고 거부를 확인).
 export const FORBIDDEN_KEY_NAMES=Object.freeze(['question','questionText','body','problem','problemText','choices','options','answer','answerText','correctAnswer','explanation','solution','passage','prompt','text']);
 const KST_MS=9*3600000;
@@ -63,10 +68,13 @@ function validateSession(s,date){
   if(Object.hasOwn(s,'at')){requireValue(isoOK(s.at),'INVALID_STUDY_TIME');requireValue(nearDate(date,s.at),'STUDY_TIME_OUTSIDE_CARD_DATE');}
 }
 function validateMistake(m){
-  shape(m,['id','subject','itemRef','errorCode','evidence','note'],['reviewDue'],'INVALID_STUDY_MISTAKE');
+  shape(m,['id','subject','itemRef','errorCode','evidence','note'],['reviewDue','book'],'INVALID_STUDY_MISTAKE');
   requireValue(studyIdOK(m.id),'INVALID_STUDY_ID');
   requireValue(SUBJECTS.includes(m.subject)&&ERROR_CODES.includes(m.errorCode)&&EVIDENCE_STATUS.includes(m.evidence),'INVALID_STUDY_MISTAKE');
-  requireValue(typeof m.itemRef==='string'&&m.itemRef.length<=MAX_ITEMREF&&ITEMREF.test(m.itemRef),'INVALID_STUDY_ITEMREF');
+  const tagged=typeof m.itemRef==='string'&&m.itemRef.startsWith(BOOK_TAG+':');
+  requireValue(typeof m.itemRef==='string'&&m.itemRef.length<=MAX_ITEMREF&&(tagged?BOOK_ITEMREF:ITEMREF).test(m.itemRef),'INVALID_STUDY_ITEMREF');
+  requireValue(tagged===Object.hasOwn(m,'book'),'INVALID_STUDY_BOOK');
+  if(tagged)requireValue(typeof m.book==='string'&&BOOK_NAME.test(m.book)&&m.book===m.book.trim(),'INVALID_STUDY_BOOK');
   text(m.note,MAX_NOTE);
   if(Object.hasOwn(m,'reviewDue'))requireValue(dateKeyOK(m.reviewDue),'INVALID_STUDY_DATE');
 }
@@ -84,6 +92,18 @@ function validateReview(r){
   }
 }
 export function cardBytes(d){return new TextEncoder().encode(JSON.stringify(d)).length;}
+// base에 없던 문제집 오답이 있는가: 옛 빌드가 멈추는 모양을 새로 쓰는지 본다(쓰기 문, D46 4.2). 이미 금고에 있는 줄을 다시 쓰는 것은 새 기록이 아니다.
+// 쪽·번호 입력 → itemRef 번호 부분(둘 중 하나만도 된다). 모양이 틀리면 null. 표시는 bookRefText("12쪽 3번").
+export function bookRefFrom(page,no){
+  const p=String(page??'').trim(),n=String(no??'').trim();
+  if((!p&&!n)||(p&&!/^[0-9]{1,5}$/.test(p))||(n&&!/^[A-Za-z0-9]{1,10}$/.test(n)))return null;
+  return BOOK_TAG+':'+[p?'p'+p:null,n?'n'+n:null].filter(Boolean).join('-');
+}
+export function bookRefText(itemRef){
+  const m=/^COMMERCIAL_BOOK:(?:p([0-9]+))?-?(?:n([A-Za-z0-9]+))?$/.exec(String(itemRef));
+  return m?[m[1]?m[1]+'쪽':null,m[2]?m[2]+'번':null].filter(Boolean).join(' '):null;
+}
+export const hasNewBookRow=(base,card)=>card.mistakes.some(m=>Object.hasOwn(m,'book')&&!(base?.mistakes??[]).some(b=>b.id===m.id&&b.book===m.book));
 function uniqueIds(list,code){const seen=new Set();for(const x of list){requireValue(!seen.has(x.id),code);seen.add(x.id);}}
 function validateDay(id,d){
   shape(d,['date','sessions','mistakes','reviews','confirmCount']);

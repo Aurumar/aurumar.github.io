@@ -5,7 +5,7 @@
 import {StudyFlow} from './study-flow.mjs';
 import {projectStudy} from './study-projection.mjs';
 import {reviewSummary,defaultReviewDue} from './study-schedule.mjs';
-import {SUBJECTS,SESSION_STATES,PROVENANCE,ERROR_CODES,EVIDENCE_STATUS,RESULTS,MAX_LOCATOR,MAX_NOTE,kstDate,shiftDay,dateKeyOK} from './study-model.mjs';
+import {SUBJECTS,SESSION_STATES,PROVENANCE,BOOK_TAG,MAX_BOOK,ERROR_CODES,EVIDENCE_STATUS,RESULTS,MAX_LOCATOR,MAX_NOTE,kstDate,shiftDay,dateKeyOK,bookRefFrom,bookRefText} from './study-model.mjs';
 
 export const STUDY_SWITCH_KEY='lb.study.enabled';
 let memorySwitch=true;   // B38: 저장값이 없으면 켜짐(명시적으로 끈 기기만 '0'으로 꺼짐)
@@ -26,8 +26,23 @@ export const subjectText=code=>SUBJECT_TEXT[code]??'기타 과목';
 export const errorCodeText=code=>ERROR_CODE_TEXT[code]??'기타 이유';
 // itemRef = 출처 표기:번호. 옛 카드도 같은 모양이다(모델이 검사). 모양이 다르면 그대로 보인다.
 export function itemRefText(ref){
+  const book=bookRefText(ref);if(book)return PROV_TEXT[BOOK_TAG]+' · '+book;
   const i=String(ref).indexOf(':'),text=i>0?PROV_TEXT[String(ref).slice(0,i)]:null;
   return text?text+' · '+String(ref).slice(i+1):String(ref);
+}
+// 오답 한 줄의 출처: 시중 문제집은 책 이름 + 쪽·번호("수능완성 12쪽 3번"). 책 이름은 투영에 없어 복습 줄은 카드에서 오답 id로 찾아 넘긴다.
+export const mistakeRefText=(itemRef,book)=>book?book+' '+(bookRefText(itemRef)??''):itemRefText(itemRef);
+// 오답의 과목 이름: 생물·추가 과목은 오답 id에 과목이 들어 있다(D46 ★1, 세션과 같은 규칙). 옛 C 오답은 어느 쪽인지 표지가 없어 코드 이름 그대로다.
+const mistakeSubject=(id,code,nameOf)=>nameOf?.(id)??subjectText(code);
+// 오답 입력의 과목 고르기: 저장 코드 6개 + 생물. 생물은 코드 C 그대로, id = lf_bio_...(형식 변경 없음, D46 ★1).
+export const BIO_PICK='bio';
+export const mistakeSubjectOptions=()=>[...SUBJECTS.map(c=>[c,c==='C'?'통합과학':subjectText(c)]),[BIO_PICK,'생물']];
+export const mistakeFieldsOf=(pick,newId)=>pick===BIO_PICK?{subject:'C',id:('lf_bio_'+newId()).slice(0,40)}:{subject:pick};
+// 최근 책 이름(새 기록을 늘리지 않고 카드를 훑어 계산한다, D46 2.3): 최근 카드부터 겹침 없이.
+export function recentBooks(cards,limit=5){
+  const out=[];
+  for(const c of [...cards].sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0))for(const m of c.mistakes)if(m.book&&!out.includes(m.book)){out.push(m.book);if(out.length>=limit)return out;}
+  return out;
 }
 // 번호 칸에 안내 글 모양 그대로 "KICE:2026-06-12"를 넣어도 받는다. 앞 글자는 출처로 읽고 저장 값은 그대로(출처 표기:번호)다.
 export function itemRefFrom(prov,number){
@@ -53,6 +68,7 @@ export const STUDY_ERROR_TEXT=Object.freeze({
   STUDY_CARD_TOO_LARGE:'카드가 너무 큽니다(32KB). 메모를 줄이거나 항목을 정리하세요 · 임시 입력은 그대로 있습니다.',
   REBASE_ID_COLLISION:'다른 기기에서 같은 번호로 다른 내용을 추가했습니다. 아무것도 저장하지 않았습니다 · 임시 입력은 그대로 있습니다.',
   INVALID_STUDY_ITEMREF:ITEM_NUMBER_GUIDE+' · 한글·빈칸은 넣을 수 없습니다(문제 문장을 저장하지 않으려는 규칙).',
+  INVALID_STUDY_BOOK:'책 이름은 1~20자이고 문장부호를 넣을 수 없습니다(문제 문장을 저장하지 않으려는 규칙).',STUDY_BOOK_REF:'쪽(숫자)이나 번호(영문·숫자) 중 하나는 적어 주세요.',RECORDS_DOOR_CLOSED:'시중 문제집 출처는 아직 켜지 않았습니다 · 네 기기를 올린 뒤 더보기 > 설정에서 켜 주세요. 임시 입력은 그대로 있습니다.',
   INVALID_STUDY_TEXT:'글자 수를 확인하세요.',INVALID_STUDY_DATE:'날짜는 YYYY-MM-DD 형식이어야 합니다.',INVALID_STUDY_NEXT_DUE:'다음 복습일은 복습한 날 이후여야 합니다.',
   INVALID_STUDY_SESSION:'세션 값을 확인하세요(분은 0~1440 정수).',NO_STARTED_SESSION:'시작한 세션이 없습니다. 먼저 "공부 시작"을 누르세요.',
   APP_ENTITY_LIMIT:'개수 한도에 닿았습니다.',STALE_HEADS:'다른 기기에서 먼저 바뀌었습니다. 다시 받아 합친 뒤 쌓으세요.',
@@ -75,7 +91,7 @@ const STATUS_TEXT=Object.freeze({
 export const CLOSE_WARNING='다음 복습일을 안 정하면 이 오답은 복습 목록에서 빠져요.';
 export const RESULT_TEXT=Object.freeze({RECALLED:'기억남',PARTIAL:'일부만 기억',FAILED:'못 떠올림'});
 const STATE_TEXT={PROPOSED:'제안',PREPARED:'준비',STARTED:'시작',ATTEMPTED:'풀이함',COMPLETED:'끝냄',VERIFIED:'확인됨'};
-const PROV_TEXT={AI_ORIGINAL_PRACTICE:'AI 창작 연습',OFFICIAL_KICE_SAMPLE:'평가원 공개 문항',OFFICIAL_OTHER_VERIFIED:'기타 공식(확인됨)'};
+const PROV_TEXT={AI_ORIGINAL_PRACTICE:'AI 창작 연습',OFFICIAL_KICE_SAMPLE:'평가원 공개 문항',OFFICIAL_OTHER_VERIFIED:'기타 공식(확인됨)',[BOOK_TAG]:'시중 문제집'};
 const EVIDENCE_TEXT={OBSERVED:'직접 확인',USER_REPORTED:'내가 말함',INFERENCE:'추정',UNKNOWN:'모름'};
 
 // ---- 포트: 앱의 api/기록 함수를 StudyFlow가 쓰는 모양으로 ----
@@ -94,6 +110,7 @@ export function createStudyPorts(ctx){
     cards:()=>study().days.map(d=>structuredClone(d.data)),
     revision(date,ref){const v=revisionMap().get(ref);return v?structuredClone(v):null;},
     sync:()=>ctx.syncForWrite(),
+    recordsDoor:()=>Boolean(ctx.recordsDoor?.()),   // 쓰기 문(D46 4.2): 앱이 못 넘기면 닫힌 것으로 본다(시중 문제집 오답은 거절, 나머지는 그대로)
     hasPending:()=>Boolean(ctx.hasPending?.()),reconcile:()=>ctx.reconcile?.(),
     // B19: 상자·메모리 경로는 저널의 SERVER_COMMITTED가 없다. ctx.receipt(requestId)(앱: 읽기 전용 /api/command/<requestId>, 이 기기 금고의 영수증)가 있으면
     // NOT_ESTABLISHED가 아닌 결말(COMMITTED·ABORTED·HOLD)을 '이미 결말 남'으로 알려 앱을 다시 연 뒤의 재확정도 원래 영수증에 수렴하게 한다. 서버 호출·쓰기 없음.
@@ -177,7 +194,8 @@ export function renderStudy(root,ctx,st){
 
   // 0) 복습 목록(맨 위): 오늘 도래·밀린 건수 + 목록 + 결과 기록
   let proj=null,sum=null;
-  try{proj=projectStudy(projectionCards(st.raw,fs),st.today);sum=reviewSummary(proj);}catch{proj=null;}
+  const seenCards=projectionCards(st.raw,fs),bookOf=new Map(seenCards.flatMap(c=>c.mistakes.filter(m=>m.book).map(m=>[m.id,m.book])));
+  try{proj=projectStudy(seenCards,st.today);sum=reviewSummary(proj);}catch{proj=null;}
   const rev=section('복습','복습 결과를 고르면 다음 복습일을 제안합니다(1·3·7·14·30·60·120일 사다리). 날짜는 바꿀 수 있습니다. 기록은 오늘 카드의 임시 입력에 들어갑니다.');
   rev.id='study-review';
   if(!sum)add(rev,el('p','복습 목록을 계산하지 못했습니다(카드 값 확인 필요).','notice error study-message'));
@@ -187,7 +205,7 @@ export function renderStudy(root,ctx,st){
     if(!sum.items.length)add(rev,hint('복습할 오답이 없습니다.'));
     for(const r of sum.items){
       const open=st.reviewForm?.mistakeId===r.mistakeId;
-      add(rev,row(subjectText(r.subject)+' · '+itemRefText(r.itemRef),dueText(r),isToday?add(el('div',null,'buttons'),...RESULTS.map(res=>button(RESULT_TEXT[res],act(async()=>{
+      add(rev,row(mistakeSubject(r.mistakeId,r.subject,nameOf)+' · '+mistakeRefText(r.itemRef,bookOf.get(r.mistakeId)),dueText(r),isToday?add(el('div',null,'buttons'),...RESULTS.map(res=>button(RESULT_TEXT[res],act(async()=>{
         if(dayMoved())return;
         const sug=await st.flow.suggestReview(st.today,r.mistakeId,res);
         st.reviewForm={mistakeId:r.mistakeId,result:res,nextDue:sug.nextDue,graduated:sug.graduated,intervalDays:sug.intervalDays,itemRef:r.itemRef};
@@ -257,14 +275,24 @@ export function renderStudy(root,ctx,st){
 
   // 3) 오답
   const mis=section('오답','문제 본문·정답·해설은 저장하지 않습니다. 출처와 번호, 틀린 이유, 짧은 메모만 남깁니다. 등록하면 복습일이 기본으로 다음 날로 들어갑니다.');
-  const mSub=select(subjectOptions(),SUBJECTS[0]),mProv=select(PROVENANCE.map(p=>[p,PROV_TEXT[p]]),PROVENANCE[0]),mNum=input('',{maxlength:'35',placeholder:'번호(영문·숫자·.-_)'}),
+  // 쓰기 문이 닫혀 있으면 시중 문제집 선택지가 없다(D46 4.2). 출처·책은 넣은 뒤에도 남겨 같은 책을 3번 안에 다시 넣는다.
+  const bookOpen=Boolean(st.ports?.recordsDoor?.()),provs=bookOpen?[...PROVENANCE,BOOK_TAG]:PROVENANCE,lastProv=provs.includes(st.lastProv)?st.lastProv:PROVENANCE[0];
+  const mSub=select(mistakeSubjectOptions(),SUBJECTS[0]),mProv=select(provs.map(p=>[p,PROV_TEXT[p]]),lastProv),mNum=input('',{maxlength:'35',placeholder:'번호(영문·숫자·.-_)'}),
+    mBook=input(st.lastBook??'',{maxlength:String(MAX_BOOK),placeholder:'책 이름(예: 수능완성)'}),mPage=input('',{inputmode:'numeric',maxlength:'5',placeholder:'쪽(숫자)'}),mItem=input('',{maxlength:'10',placeholder:'번호(영문·숫자)'}),
     mCode=select(ERROR_CODES.map(c=>[c,errorCodeText(c)]),ERROR_CODES[0]),mEv=select(EVIDENCE_STATUS.map(e=>[e,EVIDENCE_TEXT[e]]),'USER_REPORTED'),mNote=input('',{maxlength:String(MAX_NOTE),placeholder:'메모(최대 '+MAX_NOTE+'자)'}),mDue=input(defaultReviewDue(date),{inputmode:'numeric',maxlength:'10'});
-  for(const m of fs.card.mistakes)add(mis,row(subjectText(m.subject)+' · '+itemRefText(m.itemRef)+' · '+errorCodeText(m.errorCode),(m.note?m.note+' · ':'')+'증거: '+EVIDENCE_TEXT[m.evidence]+(m.reviewDue?' · 첫 복습 '+m.reviewDue:''),add(el('div',null,'buttons'),button('삭제',act(async()=>{await st.flow.removeRow(date,'mistakes',m.id);})))));
+  for(const m of fs.card.mistakes)add(mis,row(mistakeSubject(m.id,m.subject,nameOf)+' · '+mistakeRefText(m.itemRef,m.book)+' · '+errorCodeText(m.errorCode),(m.note?m.note+' · ':'')+'증거: '+EVIDENCE_TEXT[m.evidence]+(m.reviewDue?' · 첫 복습 '+m.reviewDue:''),add(el('div',null,'buttons'),button('삭제',act(async()=>{await st.flow.removeRow(date,'mistakes',m.id);})))));
   if(!fs.card.mistakes.length)add(mis,hint('이 카드에 등록한 오답이 없습니다.'));
-  add(mis,el('h3','오답 추가','panel-title'),field('과목',mSub),field('출처',mProv),field('번호',mNum),hint(ITEM_NUMBER_GUIDE),field('틀린 이유',mCode),field('증거',mEv),field('메모',mNote),field('첫 복습일',mDue),
+  const plainRef=add(el('div',null,'study-ref-plain'),field('번호',mNum),hint(ITEM_NUMBER_GUIDE));
+  const books=recentBooks(seenCards),chips=books.length?add(el('div',null,'buttons study-book-chips'),...books.map(name=>button(name,()=>{mBook.value=name;},'secondary study-book-chip'))):null;
+  const bookRef=add(el('div',null,'study-ref-book'),field('책 이름',mBook),chips,field('쪽',mPage),field('번호',mItem));
+  const showRef=()=>{const on=mProv.value===BOOK_TAG;plainRef.hidden=on;bookRef.hidden=!on;};
+  mProv.addEventListener('change',showRef);showRef();
+  add(mis,el('h3','오답 추가','panel-title'),field('과목',mSub),field('출처',mProv),bookOpen?null:hint('시중 문제집 출처 · 4기기 업데이트 뒤 켜기'),plainRef,bookRef,field('틀린 이유',mCode),field('증거',mEv),field('메모',mNote),field('첫 복습일',mDue),
     button('오답 넣기',act(async()=>{
-      const reviewDue=mDue.value.trim();
-      await st.flow.addMistake(date,{subject:mSub.value,itemRef:itemRefFrom(mProv.value,mNum.value),errorCode:mCode.value,evidence:mEv.value,note:mNote.value.trim(),...(reviewDue?{reviewDue}:{})});
+      const reviewDue=mDue.value.trim(),isBook=mProv.value===BOOK_TAG,ref=isBook?bookRefFrom(mPage.value,mItem.value):itemRefFrom(mProv.value,mNum.value);
+      if(ref===null){const e=new Error('STUDY_BOOK_REF');e.code='STUDY_BOOK_REF';throw e;}
+      await st.flow.addMistake(date,{...mistakeFieldsOf(mSub.value,st.ports.newId),itemRef:ref,errorCode:mCode.value,evidence:mEv.value,note:mNote.value.trim(),...(isBook?{book:mBook.value.trim()}:{}),...(reviewDue?{reviewDue}:{})});
+      st.lastProv=mProv.value;if(isBook)st.lastBook=mBook.value.trim();
       st.message='오답을 임시 입력에 넣었습니다.';
     }),'primary'));
   add(out,mis);
