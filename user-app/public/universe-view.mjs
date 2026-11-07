@@ -67,7 +67,7 @@ function legend(h,data){
 // 우주 패널 한 개. 3D는 WebGL2가 있을 때만 첫 장면이 그려진 뒤 SVG를 대신한다. 실패하면 SVG 그대로.
 function renderUniversePanel(ctx,state){
   const doc=ctx.document??globalThis.document,h={...maker(doc),doc},{el,add}=h;
-  const out=add(el('section',null,'panel universe-panel'),add(el('div',null,'tower-head'),el('span','KNOWLEDGE UNIVERSE','eyebrow'),el('h2','지식 우주','panel-title')));
+  const out=add(el('section',null,'panel universe-panel'),add(el('div',null,'tower-head'),el('span','우주','eyebrow'),el('h2','지식 우주','panel-title')));
   let data;
   try{data=universeData(ctx.getWhole().study??null,isoOf(ctx.now()));}catch{data=null;}
   if(!data){add(out,el('p',ERROR_TEXT,'notice error universe-message'));return out;}

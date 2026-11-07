@@ -47,19 +47,19 @@ export function minutesByName(cards,today,days,nameOf=null){
   return [...totals].sort((a,b)=>b[1]-a[1]||(a[0]<b[0]?-1:1));
 }
 export const STUDY_ERROR_TEXT=Object.freeze({
-  STUDY_SESSION_LIMIT:'한 카드에는 세션을 30개까지만 둘 수 있습니다. 자동으로 지우거나 나누지 않았습니다 · 초안은 그대로 있습니다.',
-  STUDY_MISTAKE_LIMIT:'한 카드에는 오답을 80개까지만 둘 수 있습니다 · 초안은 그대로 있습니다.',
-  STUDY_REVIEW_LIMIT:'한 카드에는 복습 기록을 200개까지만 둘 수 있습니다 · 초안은 그대로 있습니다.',
-  STUDY_CARD_TOO_LARGE:'카드가 너무 큽니다(32KB). 메모를 줄이거나 항목을 정리하세요 · 초안은 그대로 있습니다.',
-  REBASE_ID_COLLISION:'다른 기기에서 같은 번호로 다른 내용을 추가했습니다. 아무것도 저장하지 않았습니다 · 초안은 그대로 있습니다.',
+  STUDY_SESSION_LIMIT:'한 카드에는 세션을 30개까지만 둘 수 있습니다. 자동으로 지우거나 나누지 않았습니다 · 임시 입력은 그대로 있습니다.',
+  STUDY_MISTAKE_LIMIT:'한 카드에는 오답을 80개까지만 둘 수 있습니다 · 임시 입력은 그대로 있습니다.',
+  STUDY_REVIEW_LIMIT:'한 카드에는 복습 기록을 200개까지만 둘 수 있습니다 · 임시 입력은 그대로 있습니다.',
+  STUDY_CARD_TOO_LARGE:'카드가 너무 큽니다(32KB). 메모를 줄이거나 항목을 정리하세요 · 임시 입력은 그대로 있습니다.',
+  REBASE_ID_COLLISION:'다른 기기에서 같은 번호로 다른 내용을 추가했습니다. 아무것도 저장하지 않았습니다 · 임시 입력은 그대로 있습니다.',
   INVALID_STUDY_ITEMREF:ITEM_NUMBER_GUIDE+' · 한글·빈칸은 넣을 수 없습니다(문제 문장을 저장하지 않으려는 규칙).',
   INVALID_STUDY_TEXT:'글자 수를 확인하세요.',INVALID_STUDY_DATE:'날짜는 YYYY-MM-DD 형식이어야 합니다.',INVALID_STUDY_NEXT_DUE:'다음 복습일은 복습한 날 이후여야 합니다.',
   INVALID_STUDY_SESSION:'세션 값을 확인하세요(분은 0~1440 정수).',NO_STARTED_SESSION:'시작한 세션이 없습니다. 먼저 "공부 시작"을 누르세요.',
   APP_ENTITY_LIMIT:'개수 한도에 닿았습니다.',STALE_HEADS:'다른 기기에서 먼저 바뀌었습니다. 다시 받아 합친 뒤 쌓으세요.',
-  MD_NOT_WRITE_READY:'지금은 서버에 쌓을 수 없습니다. 초안은 이 기기에 남아 있습니다.',VERSION_CONFLICT:'다른 기기가 먼저 쌓았습니다. 다시 쌓기를 누르면 받아서 합칩니다.',
-  ABORTED:'서버가 이 쌓기를 받지 않았습니다(기록되지 않음) · 초안은 그대로 있습니다. 다시 쌓을 수 있습니다.',
+  MD_NOT_WRITE_READY:'지금은 서버에 쌓을 수 없습니다. 임시 입력은 이 기기에 남아 있습니다.',VERSION_CONFLICT:'다른 기기가 먼저 쌓았습니다. 다시 쌓기를 누르면 받아서 합칩니다.',
+  ABORTED:'서버가 이 쌓기를 받지 않았습니다(기록되지 않음) · 임시 입력은 그대로 있습니다. 다시 쌓을 수 있습니다.',
 });
-export const studyErrorText=code=>STUDY_ERROR_TEXT[code]??(code?'처리하지 못했습니다 ('+code+') · 초안은 그대로 있습니다.':'처리하지 못했습니다.');
+export const studyErrorText=code=>STUDY_ERROR_TEXT[code]??(code?'처리하지 못했어요 · 임시 입력은 그대로 있습니다.'+' · 문의 코드 ▾\u2060'+code+'\u2060':'처리하지 못했습니다.');
 export const NOTICE_TEXT=Object.freeze({
   REBASE_CONFLICT_KEPT_REMOTE:'내가 지운 항목을 다른 기기에서 고쳐서 삭제하지 않고 상대 수정을 남겼습니다.',
   REBASE_CONFLICT_KEPT_LOCAL:'다른 기기에서 지운 항목을 내가 고쳐서 내 수정으로 되살렸습니다.',
@@ -68,9 +68,9 @@ export const NOTICE_TEXT=Object.freeze({
   REBASE_TIMER_TIMER_OVERLAP:'두 기기의 타이머 시간이 서로 겹칩니다 · 같은 시간이 두 번 세어질 수 있어요(자동으로 지우지 않았어요) · 필요하면 한쪽을 지우세요.',
 });
 const STATUS_TEXT=Object.freeze({
-  CONFIRMED:'저장 및 동기화 확인됨 · 쌓았습니다.',ALREADY_APPLIED:'이미 반영되어 있습니다 · 새로 저장하지 않았습니다.',NOTHING_TO_CONFIRM:'쌓을 초안이 없습니다.',
-  UNKNOWN:'서버 응답을 확인하지 못했습니다 · 초안은 그대로 있습니다. 다시 쌓기를 누르면 결과를 확인한 뒤 이어서 처리합니다(중복 저장 없음).',
-  SYNC_FAILED:'서버에서 최신 기록을 받지 못했습니다 · 초안은 그대로 있습니다.',FAILED:'저장하지 못했습니다 · 초안은 그대로 있습니다.',STALE:'다른 기기와 계속 겹쳐 쌓지 못했습니다 · 초안은 그대로 있습니다.',
+  CONFIRMED:'저장 및 동기화 확인됨 · 쌓았습니다.',ALREADY_APPLIED:'이미 반영되어 있습니다 · 새로 저장하지 않았습니다.',NOTHING_TO_CONFIRM:'쌓을 임시 입력이 없습니다.',
+  UNKNOWN:'서버 응답을 확인하지 못했습니다 · 임시 입력은 그대로 있습니다. 다시 쌓기를 누르면 결과를 확인한 뒤 이어서 처리합니다(중복 저장 없음).',
+  SYNC_FAILED:'서버에서 최신 기록을 받지 못했습니다 · 임시 입력은 그대로 있습니다.',FAILED:'저장하지 못했습니다 · 임시 입력은 그대로 있습니다.',STALE:'다른 기기와 계속 겹쳐 쌓지 못했습니다 · 임시 입력은 그대로 있습니다.',
 });
 export const CLOSE_WARNING='다음 복습일을 안 정하면 이 오답은 복습 목록에서 빠져요.';
 export const RESULT_TEXT=Object.freeze({RECALLED:'기억남',PARTIAL:'일부만 기억',FAILED:'못 떠올림'});
@@ -178,7 +178,8 @@ export function renderStudy(root,ctx,st){
   // 0) 복습 목록(맨 위): 오늘 도래·밀린 건수 + 목록 + 결과 기록
   let proj=null,sum=null;
   try{proj=projectStudy(projectionCards(st.raw,fs),st.today);sum=reviewSummary(proj);}catch{proj=null;}
-  const rev=section('복습','복습 결과를 고르면 다음 복습일을 제안합니다(1·3·7·14·30·60·120일 사다리). 날짜는 바꿀 수 있습니다. 기록은 오늘 카드의 초안에 들어갑니다.');
+  const rev=section('복습','복습 결과를 고르면 다음 복습일을 제안합니다(1·3·7·14·30·60·120일 사다리). 날짜는 바꿀 수 있습니다. 기록은 오늘 카드의 임시 입력에 들어갑니다.');
+  rev.id='study-review';
   if(!sum)add(rev,el('p','복습 목록을 계산하지 못했습니다(카드 값 확인 필요).','notice error study-message'));
   else{
     add(rev,el('p',sum.line,sum.overdue?'study-chip study-overdue':'study-chip'));
@@ -204,7 +205,7 @@ export function renderStudy(root,ctx,st){
               if(v!==''&&!dateKeyOK(v)){const e=new Error('INVALID_STUDY_DATE');e.code='INVALID_STUDY_DATE';throw e;}
               if(v===''&&!f.graduated&&!(ctx.confirmDialog?.(CLOSE_WARNING+' 그래도 비워 둘까요?')??true))return;
               const r2=await st.flow.recordReview(st.today,{mistakeId:f.mistakeId,result:f.result,nextDue:v});
-              st.reviewForm=null;st.message=r2.closed?(f.graduated?'졸업으로 기록했습니다(초안).':'다음 복습일 없이 기록했습니다 · 이 오답은 복습 목록에서 빠집니다(초안).'):'복습을 초안에 기록했습니다.';
+              st.reviewForm=null;st.message=r2.closed?(f.graduated?'졸업으로 기록했습니다(임시 입력).':'다음 복습일 없이 기록했습니다 · 이 오답은 복습 목록에서 빠집니다(임시 입력).'):'복습을 임시 입력에 기록했습니다.';
             }),'primary'),
             button('취소',()=>{st.reviewForm=null;void ctx.rerender();})));
       }
@@ -213,14 +214,14 @@ export function renderStudy(root,ctx,st){
   add(out,rev);
 
   // 1) 상태·날짜
-  const head=section('공부 · 하루 1장','입력은 이 기기의 임시 저장(초안)에 모이고, "카드 쌓기"를 눌러야 금고에 기록됩니다.');
+  const head=section('공부 · 하루 1장','입력은 이 기기에 임시로 모이고, "카드 쌓기"를 눌러야 기록으로 쌓입니다.');
   const b=box?.statusFor('STUDY_DAY',date);
-  const chip=b?.typing?T.typing:b?.has?'이 기기에만 있는 초안 · '+(b.dirty?(b.failed?'아직 이 기기에 저장하지 못함':T.typing):T.saved)+(b.old?' · '+T.old:''):
-    fs.status==='LOCAL_DRAFT'?'이 기기에만 있는 초안 (아직 금고에 없음) · 초안 저장됨':fs.status==='CONFIRMED'?'쌓임 · 이 카드는 '+fs.latestConfirmCount+'번 쌓음':'아직 기록 없음';
+  const chip=b?.typing?T.typing:b?.has?'이 기기에만 있는 임시 입력 · '+(b.dirty?(b.failed?'아직 이 기기에 저장하지 못함':T.typing):T.saved)+(b.old?' · '+T.old:''):
+    fs.status==='LOCAL_DRAFT'?'이 기기에만 있는 임시 입력 (아직 쌓기 전) · 임시 저장됨':fs.status==='CONFIRMED'?'쌓임 · 이 카드는 '+fs.latestConfirmCount+'번 쌓음':'아직 기록 없음';
   const dateIn=input(date,{inputmode:'numeric',placeholder:'YYYY-MM-DD',maxlength:'10'});
   const go=d=>()=>{if(!dateKeyOK(d)){st.message='날짜는 YYYY-MM-DD 형식이어야 합니다.';st.error=true;void ctx.rerender();return;}st.date=d;st.form=null;st.reviewForm=null;st.message=null;st.notices=[];void ctx.perform(async()=>{await prepareStudy(ctx,st);await ctx.rerender();});};
   add(head,add(el('div',null,'buttons'),button('◀ 전날',()=>go(shiftDay(date,-1))()),dateIn,button('이동',()=>go(dateIn.value.trim())()),button('▶ 다음날',()=>go(shiftDay(date,1))()),button('오늘',()=>go(st.today)())),el('p',chip,'study-chip'));
-  if(st.ports?.persistent===false)add(head,hint('이 환경에는 임시 저장 저널이 없어 초안이 앱을 닫거나 새로고침하면 사라집니다. 쌓기 전에 닫지 마세요. (PC 앱에서는 초안이 기기에 암호화되어 남습니다.)'));
+  if(st.ports?.persistent===false)add(head,hint('이 환경에는 임시 저장 공간이 없어 임시 입력이 앱을 닫거나 새로고침하면 사라집니다. 쌓기 전에 닫지 마세요. (PC 앱에서는 임시 입력이 기기에 암호화되어 남습니다.)'));
   if(box){
     const s=box.status();
     add(head,hint(T.modeBox));
@@ -234,13 +235,13 @@ export function renderStudy(root,ctx,st){
   if(fs.latestConfirmCount+1>=3&&fs.status==='LOCAL_DRAFT')add(head,hint('이 카드는 이번이 '+(fs.latestConfirmCount+1)+'번째 쌓기입니다. 막지는 않지만, 모아서 한 번에 쌓는 편이 좋습니다.'));
   if(st.message&&st.message!==boxFailText())add(head,el('p',st.message,st.error?'notice error study-message':'notice study-message'));   // 위 빨간 줄과 같은 문구는 두 번 보이지 않는다
   if(st.notices.some(n=>n.code!=='REBASE_TIMER_CLAIM_OVERLAP')&&st.notices.some(n=>n.code!=='REBASE_TIMER_TIMER_OVERLAP'&&n.code!=='REBASE_TIMER_CLAIM_OVERLAP'))add(head,el('p','다른 기기에서 바뀐 내용이 있어 합쳤어요.','notice study-merged'));   // FIX34 (H6): 겹침 알림만 있으면 합친 것이 아니다
-  for(const n of st.notices)add(head,el('p',NOTICE_TEXT[n.code]??n.code,'notice study-notice'));
+  for(const n of st.notices)add(head,el('p',NOTICE_TEXT[n.code]??'알림을 읽지 못했어요'+' · 문의 코드 ▾\u2060'+n.code+'\u2060','notice study-notice'));
   add(out,head);
 
   // 2) 세션
   const ses=section('그날 세션','공부 시간은 내가 입력·확인한 분만 셉니다(자동 측정 없음). 세션 '+fs.card.sessions.length+'개');
   const sSel=select(subjectOptions(),SUBJECTS[0]),endMin=input('',{inputmode:'numeric',placeholder:'확인한 분'}),endLoc=input('',{maxlength:String(MAX_LOCATOR),placeholder:'이어하기 위치(선택)'});
-  add(ses,add(el('div',null,'buttons study-quick'),field('과목',sSel),button('공부 시작',act(async()=>{follow(await st.flow.quickStart(sSel.value),'세션을 시작으로 초안에 넣었습니다.');}),'primary')),
+  add(ses,add(el('div',null,'buttons study-quick'),field('과목',sSel),button('공부 시작',act(async()=>{follow(await st.flow.quickStart(sSel.value),'세션을 시작으로 임시 입력에 넣었습니다.');}),'primary')),
     add(el('div',null,'buttons study-quick'),field('확인한 분',endMin),field('이어하기 위치',endLoc),button('공부 끝',act(async()=>{
       const m=int(endMin.value);if(Number.isNaN(m)||m>1440){const e=new Error('INVALID_STUDY_SESSION');e.code='INVALID_STUDY_SESSION';throw e;}
       follow(await st.flow.quickEnd(m,endLoc.value.trim()===''?{}:{restartLocator:endLoc.value.trim()}),'세션을 끝으로 바꾸고 확인한 분을 넣었습니다.');
@@ -264,7 +265,7 @@ export function renderStudy(root,ctx,st){
     button('오답 넣기',act(async()=>{
       const reviewDue=mDue.value.trim();
       await st.flow.addMistake(date,{subject:mSub.value,itemRef:itemRefFrom(mProv.value,mNum.value),errorCode:mCode.value,evidence:mEv.value,note:mNote.value.trim(),...(reviewDue?{reviewDue}:{})});
-      st.message='오답을 초안에 넣었습니다.';
+      st.message='오답을 임시 입력에 넣었습니다.';
     }),'primary'));
   add(out,mis);
 
@@ -275,9 +276,9 @@ export function renderStudy(root,ctx,st){
       const r=await st.flow.confirm(date);st.notices=r.notices??[];
       if(r.status==='REJECTED'){st.message=studyErrorText(r.code);st.error=true;}
       else if(['UNKNOWN','SYNC_FAILED','FAILED','STALE'].includes(r.status)){st.message=(r.code&&STUDY_ERROR_TEXT[r.code])||STATUS_TEXT[r.status];st.error=true;}
-      else st.message=STATUS_TEXT[r.status]??r.status;
+      else st.message=STATUS_TEXT[r.status]??'처리하지 못했어요'+' · 문의 코드 ▾\u2060'+r.status+'\u2060';
     }),'primary'),
-    fs.status==='LOCAL_DRAFT'?button('초안 버리기',()=>{if(ctx.confirmDialog?.('이 날짜의 초안을 버릴까요? 금고에 쌓인 기록에는 영향이 없습니다.')??true)void act(async()=>{await st.ports.drafts.discard(fs.draftId);st.notices=[];})();}):null));
+    fs.status==='LOCAL_DRAFT'?button('임시 입력 버리기',()=>{if(ctx.confirmDialog?.('이 날짜의 임시 입력을 버릴까요? 쌓인 기록에는 영향이 없습니다.')??true)void act(async()=>{await st.ports.drafts.discard(fs.draftId);st.notices=[];})();}):null));
   add(out,fin);
 
   // 5) 요약(계산만, 연산 0)
@@ -293,6 +294,7 @@ export function renderStudy(root,ctx,st){
     if(proj.duplicates.length)add(sm,hint('같은 번호가 겹친 항목이 '+proj.duplicates.length+'건 있어 계산에서 뺐습니다.'));
   }
   add(out,sm);
+  ctx.studyStatsCard?.(root);   // FIX45 (AUD1 #6): 공부 통계는 이 화면 맨 위(앱이 그린다, 이 모듈은 공부 모델만 불러온다)
   root.append(out);
   return out;
 }
@@ -301,8 +303,8 @@ export function renderStudy(root,ctx,st){
 export function renderStudySwitch(ctx){
   const doc=ctx.document??globalThis.document,{el,add,button,section}=maker(doc);
   const on=studyEnabled(ctx.storage);
-  return add(section('공부 모듈','기본은 켜짐입니다. 끄면 이 기기에서만 공부 화면이 숨겨집니다(다른 기기에는 영향 없음, 기록은 그대로 안전). 모든 기기를 같은 빌드로 갱신한 뒤 쓰세요 — 갱신 안 된 기기는 공부 기록을 만나면 열리지 않고 멈춥니다(기록은 안전).'),
-    el('p',on?'지금: 켜짐':'지금: 꺼짐','study-switch-state'),button(on?'공부 모듈 끄기':'공부 모듈 켜기',()=>{setStudyEnabled(!on,ctx.storage);void ctx.onSwitch?.(!on);},on?'secondary':'primary'));
+  return add(section('공부 기능','기본은 켜짐입니다. 끄면 이 기기에서만 공부 화면이 숨겨집니다(다른 기기에는 영향 없음, 기록은 그대로 안전). 모든 기기를 같은 빌드로 갱신한 뒤 쓰세요 — 갱신 안 된 기기는 공부 기록을 만나면 열리지 않고 멈춥니다(기록은 안전).'),
+    el('p',on?'지금: 켜짐':'지금: 꺼짐','study-switch-state'),button(on?'공부 기능 끄기':'공부 기능 켜기',()=>{setStudyEnabled(!on,ctx.storage);void ctx.onSwitch?.(!on);},on?'secondary':'primary'));
 }
 // 홈 "오늘" 패널(B5)용 한 줄: 복습 건수 문구만(목록은 펼치지 않는다). prepareStudy를 먼저 불러 st.flowState가 있어야 한다(없으면 던진다 → 홈은 "확인할 수 없음").
 export function studyHomeLine(ctx,st){

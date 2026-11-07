@@ -14,7 +14,7 @@ export const ANALYSIS_TEXT=Object.freeze({
   title:'비서 분석',about:'사령부 비서가 남긴 분석 중 비서별 최신 1장입니다. 이 PC의 파일을 읽기만 합니다.',
   none:'최근 30일 안의 결과가 없습니다.',htmlOnly:'HTML 보고만 있어 앱에서 열지 않습니다.',
   basic:'이번 달 기본 분석',basicAbout:'앱 안에서 계산한 합계입니다. AI를 쓰지 않습니다. 지난달 대비는 지난달 전체 합계와 비교합니다.',
-  noData:'이번 달 소비 자료가 없습니다.',unknownOnly:'이번 달은 순액을 모르는 줄만 있어 합계를 내지 않습니다.',noTop:'이번 달에 순지출이 있는 분류가 없습니다.',
+  noData:'이번 달 소비 자료가 없습니다.',unknownOnly:'이번 달은 실제 금액을 모르는 줄만 있어 합계를 내지 않습니다.',noTop:'이번 달에 순지출이 있는 분류가 없습니다.',
   top:'분류별 상위 5개',current:'이번 달 소비',change:'지난달 대비',noCompare:'비교할 수 없음',same:'지난달과 같음',noRecurring:'등록 없음',noRecurringFoot:'"정기 결제" 화면에서 등록합니다',
 });
 
@@ -51,7 +51,7 @@ export function renderBasicAnalysis(root,ctx,a){
   const {h}=ctx,sec=h.add(h.el('section',null,'panel fin-analysis'),h.el('h2',ANALYSIS_TEXT.basic+' · '+a.month,'panel-title'),h.el('p',ANALYSIS_TEXT.basicAbout,'muted small'));
   const value=a.state==='NO_DATA'?'자료 없음':a.state==='UNKNOWN_ONLY'?'모름':formatWon(a.current);
   h.add(sec,h.add(h.el('div',null,'fin-analysis-grid'),
-    cell(h,ANALYSIS_TEXT.current,value,a.unknownRows?'순액 모름 '+a.unknownRows+'행 별도':null),
+    cell(h,ANALYSIS_TEXT.current,value,a.unknownRows?'실제 금액 모름 '+a.unknownRows+'행 별도':null),
     cell(h,ANALYSIS_TEXT.change,deltaText(a.diff),a.diff===null?null:a.prevMonth+' 전체와 비교'),
     cell(h,RECURRING_TEXT.total,a.recurring.count?formatWon(a.recurring.total):ANALYSIS_TEXT.noRecurring,a.recurring.count?'정기 결제 '+a.recurring.count+'개':ANALYSIS_TEXT.noRecurringFoot)));
   h.add(sec,h.el('h3',ANALYSIS_TEXT.top,'fin-analysis-head'));

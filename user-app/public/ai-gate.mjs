@@ -44,7 +44,9 @@ export function reportBlocks(text){
 const BLOCK_TAG=Object.freeze({head3:'h3',item:'p',row:'p',line:'p'});
 export const reportNodes=(h,text)=>reportBlocks(text).map(b=>h.el(BLOCK_TAG[b.kind],b.text,'ai-gate-'+b.kind));
 
-export function reportCard(ctx,r,{title=r.assistant}={}){
+// FIX45 (AUD1 #10): 화면 이름만 한글. 파일 이름에서 나온 값(r.assistant)과 고르는 기준은 그대로다.
+export const ASSISTANT_TEXT=Object.freeze({audit:'재화 감사',budget:'가계부 비서',dot:'도트 비서',spend:'소비 분석',study:'공부 진단',subscription:'구독 감사'});
+export function reportCard(ctx,r,{title=ASSISTANT_TEXT[r.assistant]??r.assistant}={}){
   const {h}=ctx,gone=ctx.gone??(()=>false),card=h.el('article',null,'lb-card ai-gate-card');
   const head=h.add(h.el('div',null,'ai-gate-head'),h.add(h.el('div',null,'ai-gate-title'),h.el('strong',title),h.el('small',r.date)));
   h.add(card,head);

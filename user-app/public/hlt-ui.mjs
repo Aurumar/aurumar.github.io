@@ -4,7 +4,7 @@
 // 화면 규칙: DOM 생성 함수만 쓴다(innerHTML·인라인 style·외부 라이브러리 없음). 비공개 습관은 "숨김 항목 보기"를 누른 뒤에만 보이고,
 // 앱을 다시 열면 다시 숨겨진다(저장하지 않음). 숨김 상태에서는 라벨뿐 아니라 횟수·시각·마지막 기록 후 n일·7·30일 횟수·알림 문구에도 나오지 않는다.
 import {HltFlow} from './hlt-flow.mjs';
-import {hltView,hltHomeLine} from './hlt-projection.mjs';
+import {hltView,hltHomeLine,stepsAverage,sleepStepsToday} from './hlt-projection.mjs';
 import {HLT_LIMITS,kstDate,kstMinutes,shiftDay,dateKeyOK,isoOK,UNITS,MEAL_KINDS,MEAL_SIZES,SLEEP_KINDS,CHANGE_KINDS,SYMPTOM_KINDS,MAX_NOTE,MAX_LABEL,MAX_ITEMS,ITEM_TYPES,MAX_STEPS,STEPS_ITEM_ID,nearDate,MAX_SLEEP_MS} from './hlt-model.mjs';
 
 const HLT_PROFILE_LIMIT=HLT_LIMITS.HLT_PROFILE;
@@ -14,19 +14,19 @@ export function hltEnabled(storage=globalThis.localStorage){try{const v=storage?
 export function setHltEnabled(on,storage=globalThis.localStorage){memorySwitch=Boolean(on);try{storage?.setItem(HLT_SWITCH_KEY,on?'1':'0');}catch{/* 저장소가 막혀 있으면 이번 실행 동안만 */}return hltEnabled(storage);}
 
 export const HLT_ERROR_TEXT=Object.freeze({
-  HLT_ITEM_LIMIT:'한 카드에는 항목을 120개까지만 둘 수 있습니다. 자동으로 지우거나 나누지 않았습니다 · 초안은 그대로 있습니다. 항목을 직접 줄인 뒤 다시 쌓으세요.',
-  REBASE_ID_COLLISION:'다른 기기에서 같은 항목 번호(걸음·Fold 수면 등)로 다른 내용을 추가했습니다. 아무것도 저장하지 않았습니다 · 초안은 그대로 있습니다. 초안에서 그 항목을 지우면 다시 쌓을 수 있습니다.',
-  UNKNOWN_HLT_PROFILE:'없는 프로필을 가리키는 항목이 있습니다. 항목을 고치거나 프로필을 먼저 만드세요.',
+  HLT_ITEM_LIMIT:'한 카드에는 항목을 120개까지만 둘 수 있습니다. 자동으로 지우거나 나누지 않았습니다 · 임시 입력은 그대로 있습니다. 항목을 직접 줄인 뒤 다시 쌓으세요.',
+  REBASE_ID_COLLISION:'다른 기기에서 같은 항목 번호(걸음·Fold 수면 등)로 다른 내용을 추가했습니다. 아무것도 저장하지 않았습니다 · 임시 입력은 그대로 있습니다. 임시 입력에서 그 항목을 지우면 다시 쌓을 수 있습니다.',
+  UNKNOWN_HLT_PROFILE:'없는 항목을 가리키는 항목이 있습니다. 항목을 고치거나 항목을 먼저 만드세요.',
   INVALID_HLT_STEPS:'걸음 수는 0~'+MAX_STEPS+' 사이의 정수여야 합니다.',
-  HLT_DOSE_NEEDS_MED_PROFILE:'복용 기록은 약·측정 프로필만 고를 수 있습니다.',HLT_HABIT_NEEDS_HABIT_PROFILE:'습관 기록은 습관 프로필만 고를 수 있습니다.',
+  HLT_DOSE_NEEDS_MED_PROFILE:'복용 기록은 약·측정 항목만 고를 수 있습니다.',HLT_HABIT_NEEDS_HABIT_PROFILE:'습관 기록은 습관 항목만 고를 수 있습니다.',
   HLT_CHECK_COUNT_MUST_BE_ONE:'했다/안했다 습관은 횟수가 1이어야 합니다.',HLT_OPEN_SLEEP_LIMIT:'끝나지 않은 수면은 카드당 하나만 둘 수 있습니다.',
   INVALID_HLT_SLEEP_SPAN:'수면 길이는 0~48시간이어야 하고 끝이 시작보다 빠를 수 없습니다.',HLT_TIME_OUTSIDE_CARD_DATE:'카드 날짜의 앞뒤 하루 안의 시각만 기록할 수 있습니다.',
-  HLT_PROFILE_IMMUTABLE:'프로필의 키·종류·방식은 바꿀 수 없습니다. 새로 만드세요.',HLT_PROFILE_REMOVED:'삭제한 프로필을 가리키는 항목이 있습니다. "삭제한 항목 보기"에서 복원하거나 그 항목을 지우세요 · 초안은 그대로 있습니다.',HLT_PROFILE_DISABLED:'사용을 중단한 프로필을 가리키는 항목이 있습니다. 다시 사용으로 바꾸거나 그 항목을 지우세요 · 초안은 그대로 있습니다.',
+  HLT_PROFILE_IMMUTABLE:'항목의 키·종류·방식은 바꿀 수 없습니다. 새로 만드세요.',HLT_PROFILE_REMOVED:'삭제한 항목을 가리키는 항목이 있습니다. "삭제한 항목 보기"에서 복원하거나 그 항목을 지우세요 · 임시 입력은 그대로 있습니다.',HLT_PROFILE_DISABLED:'사용을 중단한 항목을 가리키는 항목이 있습니다. 다시 사용으로 바꾸거나 그 항목을 지우세요 · 임시 입력은 그대로 있습니다.',
   APP_ENTITY_LIMIT:'개수 한도에 닿았습니다.',STALE_HEADS:'다른 기기에서 먼저 바뀌었습니다. 다시 받아 합친 뒤 쌓으세요.',BROKEN_HLT_WAKE_REFERENCE:'맑아짐 기록은 같은 카드의 기상 기록을 가리켜야 합니다.',
-  MD_NOT_WRITE_READY:'지금은 서버에 쌓을 수 없습니다. 초안은 이 기기에 남아 있습니다.',VERSION_CONFLICT:'다른 기기가 먼저 쌓았습니다. 다시 쌓기를 누르면 받아서 합칩니다.',
-  ABORTED:'서버가 이 쌓기를 받지 않았습니다(기록되지 않음) · 초안은 그대로 있습니다. 다시 쌓을 수 있습니다.',
+  MD_NOT_WRITE_READY:'지금은 서버에 쌓을 수 없습니다. 임시 입력은 이 기기에 남아 있습니다.',VERSION_CONFLICT:'다른 기기가 먼저 쌓았습니다. 다시 쌓기를 누르면 받아서 합칩니다.',
+  ABORTED:'서버가 이 쌓기를 받지 않았습니다(기록되지 않음) · 임시 입력은 그대로 있습니다. 다시 쌓을 수 있습니다.',
 });
-export const hltErrorText=code=>HLT_ERROR_TEXT[code]??(code?'쌓지 못했습니다 ('+code+') · 초안은 그대로 있습니다.':'쌓지 못했습니다.');
+export const hltErrorText=code=>HLT_ERROR_TEXT[code]??(code?'처리하지 못했어요 · 임시 입력은 그대로 있습니다.'+' · 문의 코드 ▾\u2060'+code+'\u2060':'쌓지 못했습니다.');
 export const NOTICE_TEXT=Object.freeze({
   REBASE_CONFLICT_KEPT_REMOTE:'내가 지운 항목을 다른 기기에서 고쳐서 삭제하지 않고 상대 수정을 남겼습니다.',
   REBASE_CONFLICT_KEPT_LOCAL:'다른 기기에서 지운 항목을 내가 고쳐서 내 수정으로 되살렸습니다.',
@@ -34,9 +34,9 @@ export const NOTICE_TEXT=Object.freeze({
   NOTE_OVERWRITTEN:'메모를 양쪽에서 고쳤습니다 · 내 메모를 썼고 상대 메모는 이력에 남아 있습니다.',
 });
 const STATUS_TEXT=Object.freeze({
-  CONFIRMED:'저장 및 동기화 확인됨 · 쌓았습니다.',ALREADY_APPLIED:'이미 반영되어 있습니다 · 새로 저장하지 않았습니다.',NOTHING_TO_CONFIRM:'쌓을 초안이 없습니다.',
-  UNKNOWN:'서버 응답을 확인하지 못했습니다 · 초안은 그대로 있습니다. 다시 쌓기를 누르면 결과를 확인한 뒤 이어서 처리합니다(중복 저장 없음).',
-  SYNC_FAILED:'서버에서 최신 기록을 받지 못했습니다 · 초안은 그대로 있습니다.',FAILED:'저장하지 못했습니다 · 초안은 그대로 있습니다.',STALE:'다른 기기와 계속 겹쳐 쌓지 못했습니다 · 초안은 그대로 있습니다.',
+  CONFIRMED:'저장 및 동기화 확인됨 · 쌓았습니다.',ALREADY_APPLIED:'이미 반영되어 있습니다 · 새로 저장하지 않았습니다.',NOTHING_TO_CONFIRM:'쌓을 임시 입력이 없습니다.',
+  UNKNOWN:'서버 응답을 확인하지 못했습니다 · 임시 입력은 그대로 있습니다. 다시 쌓기를 누르면 결과를 확인한 뒤 이어서 처리합니다(중복 저장 없음).',
+  SYNC_FAILED:'서버에서 최신 기록을 받지 못했습니다 · 임시 입력은 그대로 있습니다.',FAILED:'저장하지 못했습니다 · 임시 입력은 그대로 있습니다.',STALE:'다른 기기와 계속 겹쳐 쌓지 못했습니다 · 임시 입력은 그대로 있습니다.',
 });
 
 // ---- 시각 입력(KST 시:분 ↔ UTC ISO) ----
@@ -53,17 +53,17 @@ export function fellAsleepAt(hhmm,endAt){
 export const SLEEP_SHIFTS=Object.freeze([[15,'+15분'],[30,'+30분'],[60,'+1시간']]);
 const mmdd=date=>date.slice(5);
 export const SLEEP_TEXT=Object.freeze({
-  saved:p=>'취침 '+hhmmKst(p.item.startAt)+' · '+mmdd(p.date)+' 카드 초안에 적어 두었어요 · 기상을 누르면 수면으로 완성돼요.',
+  saved:p=>'취침 '+hhmmKst(p.item.startAt)+' · '+mmdd(p.date)+' 카드 임시 입력에 적어 두었어요 · 기상을 누르면 수면으로 완성돼요.',
   tip:'잠 버튼 = 잠자리에 든 시각, 실제 잠든 시각은 기상 때 고칠 수 있어요.',
-  pending:p=>'취침 기록 중 · '+hhmmKst(p.item.startAt)+' (KST) · '+mmdd(p.date)+' 카드 초안 — 기상을 누르면 수면으로 완성돼요.',
-  woke:'기상과 수면을 초안에 넣었습니다.',wakeOnly:'기상을 초안에 넣었습니다(수면은 직접 입력하세요).',
+  pending:p=>'취침 기록 중 · '+hhmmKst(p.item.startAt)+' (KST) · '+mmdd(p.date)+' 카드 임시 입력 — 기상을 누르면 수면으로 완성돼요.',
+  woke:'기상과 수면을 임시 입력에 넣었습니다.',wakeOnly:'기상을 임시 입력에 넣었습니다(수면은 직접 입력하세요).',
   moved:m=>mmdd(m.from)+' 카드에 있던 끝나지 않은 수면을 옮겨 왔어요'+(m.restack?' · 그 카드도 다시 쌓아 주세요.':'.'),
   stale:date=>'끝나지 않은 수면이 '+mmdd(date)+' 카드에 남아 있어요(48시간 넘음) · 그 카드에서 직접 고치세요.',
   fell:(startAt,how)=>'잠든 시각 '+hhmmKst(startAt)+' ('+how+')',button:'잠 버튼 누른 시각',typed:'직접 입력',watched:'워치 기록',
   shifted:(button,label)=>'잠 버튼 '+hhmmKst(button)+' '+label,
   watch:startAt=>'워치 기록: '+hhmmKst(startAt)+' 잠듦 · 이걸로 할까요?',useWatch:'워치 시각으로',
   typeLabel:'잠든 시각 (KST)',typeApply:'잠든 시각 넣기',badTime:'잠든 시각은 HH:MM(예: 23:40) 형식으로 적어 주세요.',
-  fixed:startAt=>'잠든 시각을 '+hhmmKst(startAt)+'(으)로 고쳐 초안에 넣었어요.',
+  fixed:startAt=>'잠든 시각을 '+hhmmKst(startAt)+'(으)로 고쳐 임시 입력에 넣었어요.',
   duplicate:'같은 밤 수면이 2개예요 · 하나를 지우세요.',
   stackOpen:'아직 끝나지 않은 수면이 들어 있어요 · 기상 뒤에 쌓으면 한 번에 정리돼요.',
 });
@@ -233,7 +233,7 @@ const durationText=m=>{const h=Math.floor(m/60),r=m%60;return h&&r?h+'시간 '+r
 const sleepAmount=items=>'수면 '+items.length+'개('+durationText(items.reduce((s,i)=>s+spanMinutes(i),0))+')';
 const FOLD_ID_PREFIX='hc-',fromFold=i=>typeof i.id==='string'&&i.id.startsWith(FOLD_ID_PREFIX);
 export const FOLD_TEXT=Object.freeze({
-  button:'Fold에서 가져오기',none:'Fold에 기록 없음',denied:'권한 꺼짐(Health Connect 설정에서 켤 수 있어요)',kept:'그대로 뒀어요',same:'이미 같은 값이에요',filled:'초안에 넣었어요',nap:'낮잠으로 넣었어요',
+  button:'Fold에서 가져오기',none:'Fold에 기록 없음',denied:'권한 꺼짐(Health Connect 설정에서 켤 수 있어요)',kept:'그대로 뒀어요',same:'이미 같은 값이에요',filled:'임시 입력에 넣었어요',nap:'낮잠으로 넣었어요',
   sleepOutside:'수면 기록이 날짜 범위를 벗어나 가져오지 않았어요',stepsBad:'값이 범위를 벗어나 가져오지 않았어요',
   permission:'걸음·수면 권한을 허용한 뒤 다시 눌러 주세요.',notYet:'아직 쌓기 전이에요 · 확인하고 "카드 쌓기"를 누르세요.',signedOut:'로그아웃되어 가져오지 않았어요.',
   // B58C (F3): 지워질 항목 수와 합계 시간을 보여 준다.
@@ -245,7 +245,7 @@ export const FOLD_TEXT=Object.freeze({
 });
 // B58C (F1·F2): 쌓기가 양쪽의 겹침을 만나 멈췄을 때 묻는 문구. 고르면 그 카드의 나머지 항목과 함께 쌓인다.
 export const CHOICE_TEXT=Object.freeze({
-  stopped:'아직 쌓지 않았어요 · 초안은 그대로 있습니다. 아래에서 어느 쪽을 남길지 골라 주세요.',
+  stopped:'아직 쌓지 않았어요 · 임시 입력은 그대로 있습니다. 아래에서 어느 쪽을 남길지 골라 주세요.',
   note:'고르지 않은 쪽만 이 카드에서 빠지고 나머지 항목은 함께 쌓입니다. 이미 쌓였던 값은 이력에 남습니다.',
   sleep:'다른 기기에 수면 기록이 있어요 · 어느 쪽을 남길까요',steps:'다른 기기에 걸음 기록이 있어요 · 어느 쪽을 남길까요',
   amount:(kind,items)=>kind==='steps'?items[0].count+'걸음':sleepAmount(items),
@@ -336,20 +336,20 @@ export function renderHealth(root,ctx,st){
   const out=el('div',null,'hlt-view');
 
   // 1) 상태·날짜
-  const head=section('건강 · 하루 1장','입력은 이 기기의 임시 저장(초안)에 모이고, "카드 쌓기"를 눌러야 금고에 기록됩니다.');
+  const head=section('건강 · 하루 1장','입력은 이 기기에 임시로 모이고, "카드 쌓기"를 눌러야 기록으로 쌓입니다.');
   const chipText=()=>{
     const b=box?.statusFor('HLT_DAY',date);
     if(st.form)return '입력 중 (아직 저장 전)';
     if(b?.typing)return T.typing;
-    if(b?.has)return '이 기기에만 있는 초안 · '+(b.dirty?(b.failed?'아직 이 기기에 저장하지 못함':T.typing):T.saved)+(b.old?' · '+T.old:'');
-    return fs.status==='LOCAL_DRAFT'?'이 기기에만 있는 초안 (아직 금고에 없음) · 초안 저장됨':fs.status==='CONFIRMED'?'쌓임 · 이 카드는 '+fs.latestConfirmCount+'번 쌓음':'아직 기록 없음';
+    if(b?.has)return '이 기기에만 있는 임시 입력 · '+(b.dirty?(b.failed?'아직 이 기기에 저장하지 못함':T.typing):T.saved)+(b.old?' · '+T.old:'');
+    return fs.status==='LOCAL_DRAFT'?'이 기기에만 있는 임시 입력 (아직 쌓기 전) · 임시 저장됨':fs.status==='CONFIRMED'?'쌓임 · 이 카드는 '+fs.latestConfirmCount+'번 쌓음':'아직 기록 없음';
   };
   const chipEl=el('p',chipText(),'hlt-chip');
   const dateIn=input(date,{inputmode:'numeric',placeholder:'YYYY-MM-DD',maxlength:'10'});
   const go=d=>()=>{if(!dateKeyOK(d)){st.message='날짜는 YYYY-MM-DD 형식이어야 합니다.';st.error=true;void ctx.rerender();return;}st.date=d;st.form=null;st.message=null;st.notices=[];void ctx.perform(async()=>{await prepareHealth(ctx,st);await ctx.rerender();});};
   add(head,add(el('div',null,'buttons'),button('◀ 전날',()=>go(shiftDay(date,-1))()),dateIn,button('이동',()=>go(dateIn.value.trim())()),button('▶ 다음날',()=>go(shiftDay(date,1))()),button('오늘',()=>go(st.today)())),
     chipEl);
-  if(st.ports?.persistent===false)add(head,hint('이 환경에는 임시 저장 저널이 없어 초안이 앱을 닫거나 새로고침하면 사라집니다. 쌓기 전에 닫지 마세요. (PC 앱에서는 초안이 기기에 암호화되어 남습니다.)'));
+  if(st.ports?.persistent===false)add(head,hint('이 환경에는 임시 저장 공간이 없어 임시 입력이 앱을 닫거나 새로고침하면 사라집니다. 쌓기 전에 닫지 마세요. (PC 앱에서는 임시 입력이 기기에 암호화되어 남습니다.)'));
   if(box){
     const s=box.status(),b=box.statusFor('HLT_DAY',date);
     add(head,hint(T.modeBox));
@@ -365,12 +365,12 @@ export function renderHealth(root,ctx,st){
   if(st.notices.length)add(head,el('p','다른 기기에서 바뀐 내용이 있어 합쳤어요.','notice hlt-merged'));
   for(const n of st.notices){
     const hiddenRef=n.profileKey&&!st.showPrivate&&!(all.get(n.profileKey)&&!all.get(n.profileKey).data.private);
-    add(head,el('p',hiddenRef?'숨김 항목과 관련된 알림이 있습니다 · "숨김 항목 보기"를 누르면 볼 수 있습니다.':(NOTICE_TEXT[n.code]??n.code),'notice hlt-notice'));
+    add(head,el('p',hiddenRef?'숨김 항목과 관련된 알림이 있습니다 · "숨김 항목 보기"를 누르면 볼 수 있습니다.':(NOTICE_TEXT[n.code]??'알림을 읽지 못했어요'+' · 문의 코드 ▾\u2060'+n.code+'\u2060'),'notice hlt-notice'));
   }
   add(out,head);
 
   // 2) 빠른 입력(연산 0)
-  const q=section('빠른 입력','누르면 지금 시각으로 초안에 들어갑니다.'),pend=st.pendingSleep.v;
+  const q=section('빠른 입력','누르면 지금 시각으로 임시 입력에 들어갑니다.'),pend=st.pendingSleep.v;
   // B17 (H12-N03): 빠른 입력은 언제나 오늘(지금 시각의 KST 날짜) 카드 초안에 들어간다. 다른 날짜를 보고 있었으면 화면을 그 초안의 날짜로 옮기고 한 줄 알린다
   // (확정 버튼은 늘 화면에 보이는 카드의 초안을 확정하므로, 빠른 입력 바로 뒤의 확정이 그 입력을 확정한다).
   const follow=(s,text=null)=>{const d=s?.card?.date,moved=Boolean(d)&&d!==date;if(moved){st.date=d;st.form=null;st.notices=[];}st.message=[text,moved?'빠른 입력은 오늘('+d+') 카드에 들어갑니다 · 화면을 그 날짜로 옮겼습니다.':null].filter(Boolean).join(' · ')||null;};
@@ -424,7 +424,7 @@ export function renderHealth(root,ctx,st){
   if(st.form){
     const f=itemForm(h,st.form.type,ctx,st,st.form.item);
     add(list,el('h3',itemLabel[st.form.type]+(st.form.id?' 수정':' 추가'),'panel-title'),f.node,add(el('div',null,'buttons'),
-      button('초안에 넣기',act(async()=>{const item=f.read();if(st.form.id)await st.flow.updateItem(date,{...item,id:st.form.id});else await st.flow.addItem(date,item);st.form=null;st.message='초안에 저장했습니다.';}),'primary'),
+      button('임시 입력에 넣기',act(async()=>{const item=f.read();if(st.form.id)await st.flow.updateItem(date,{...item,id:st.form.id});else await st.flow.addItem(date,item);st.form=null;st.message='임시 입력에 저장했습니다.';}),'primary'),
       button('취소',()=>{st.form=null;void ctx.rerender();})));
   }
   add(out,list);
@@ -445,14 +445,14 @@ export function renderHealth(root,ctx,st){
       if(r.status==='NEEDS_CHOICE')st.message=CHOICE_TEXT.stopped;
       else if(r.status==='REJECTED'){st.message=hltErrorText(r.code);st.error=true;}
       else if(['UNKNOWN','SYNC_FAILED','FAILED','STALE'].includes(r.status)){st.message=(r.code&&HLT_ERROR_TEXT[r.code])||STATUS_TEXT[r.status];st.error=true;}
-      else st.message=STATUS_TEXT[r.status]??r.status;
+      else st.message=STATUS_TEXT[r.status]??'처리하지 못했어요'+' · 문의 코드 ▾\u2060'+r.status+'\u2060';
       // K1 결정 3: 끝나지 않은 수면이 든 카드도 막지 않고 쌓되 한 줄 알린다.
       if(r.status==='CONFIRMED'&&fs.card.items.some(i=>i.type==='sleep'&&i.endAt===null))st.message+=' · '+SLEEP_TEXT.stackOpen;
     });
   add(fin,field('메모 (최대 '+MAX_NOTE+'자)',note),add(el('div',null,'buttons'),
-    button('메모를 초안에 넣기',act(async()=>{await st.flow.setNote(date,note.value);})),
+    button('메모를 임시 입력에 넣기',act(async()=>{await st.flow.setNote(date,note.value);})),
     button('카드 쌓기',stack(),'primary'),
-    fs.status==='LOCAL_DRAFT'?button('초안 버리기',()=>{if(ctx.confirmDialog?.('이 날짜의 초안을 버릴까요? 금고에 쌓인 기록에는 영향이 없습니다.')??true)void act(async()=>{await st.ports.drafts.discard(fs.draftId);st.notices=[];})();}):null));
+    fs.status==='LOCAL_DRAFT'?button('임시 입력 버리기',()=>{if(ctx.confirmDialog?.('이 날짜의 임시 입력을 버릴까요? 쌓인 기록에는 영향이 없습니다.')??true)void act(async()=>{await st.ports.drafts.discard(fs.draftId);st.notices=[];})();}):null));
   // B58C (F1·F2): 물은 뒤 초안이 바뀌면(다른 날짜로 가도) 질문을 내린다. 다시 쌓을 때 최신 내용으로 다시 묻는다. 겹침이 둘이면 하나씩 묻고 다 고르면 연산 1개로 쌓는다.
   const asked=st.choice?.draftId===fs.draftId?st.choice:null,c=asked?.choices.find(x=>!asked.answers[x.sig]);
   if(c){
@@ -464,31 +464,33 @@ export function renderHealth(root,ctx,st){
   // 5) 리듬 요약(계산만, 연산 0)
   const s=view.summary,rhythm=section('생활 리듬 요약','계산만 하며 저장하지 않습니다. 기준일 '+s.today+' · KST');
   for(const [name,w] of [['최근 7일',s.week],['최근 30일',s.month]])add(rhythm,row(name,'평균 기상 '+(w.avgWake??'기록 없음')+' · 평균 취침 '+(w.avgSleepStart??'기록 없음')+' · 평균 수면 '+(w.avgSleepMinutes===null?'기록 없음':Math.floor(w.avgSleepMinutes/60)+'시간 '+(w.avgSleepMinutes%60)+'분')+' · 첫 식사 '+(w.avgFirstMeal??'기록 없음')));
+  const walk=stepsAverage(view.days,s.today,7);   // FIX45 (AUD1 #9)
+  add(rhythm,row('걸음','최근 7일 평균 '+(walk.avg===null?'기록 없음':walk.avg.toLocaleString('ko-KR')+'걸음 · 기록 '+walk.days+'일')));
   for(const hb of s.habits)add(rhythm,row(hb.label,'마지막 기록 '+(hb.lastAgoDays===null?'없음':hb.lastAgoDays+'일 전')+' · 7일 '+hb.count7+'회 · 30일 '+hb.count30+'회'));
   add(out,rhythm);
 
   // 6) 프로필 관리
-  const prof=section('프로필 (약·측정 / 습관)','이름은 직접 정합니다. 키·종류·방식은 만든 뒤 바꿀 수 없습니다. 비공개는 켜고 끌 수 있습니다. 삭제하면 목록에서 사라지지만 지난 기록에는 이름이 남고, "삭제한 항목 보기"에서 복원할 수 있습니다. 삭제한 항목도 기록 보존을 위해 개수 한도('+HLT_PROFILE_LIMIT+'개)에 계속 셉니다(지금 '+raw.profiles.length+'개).');
+  const prof=section('약·습관 목록','이름은 직접 정합니다. 키·종류·방식은 만든 뒤 바꿀 수 없습니다. 비공개는 켜고 끌 수 있습니다. 삭제하면 목록에서 사라지지만 지난 기록에는 이름이 남고, "삭제한 항목 보기"에서 복원할 수 있습니다. 삭제한 항목도 기록 보존을 위해 개수 한도('+HLT_PROFILE_LIMIT+'개)에 계속 셉니다(지금 '+raw.profiles.length+'개).');
   const profileDetail=d=>(d.kind==='MED'?'약·측정 · 기본 '+d.defaultAmount+d.unit:'습관 · '+(d.mode==='CHECK'?'했다/안했다':'횟수'))+(d.enabled?'':' · 중단됨')+(d.private?' · 비공개':'');
   for(const p of view.profiles){
     const d=p.data;
     add(prof,row(d.label,profileDetail(d),add(el('div',null,'buttons'),
-      button(d.enabled?'사용 중단':'다시 사용',act(async()=>{await saveProfile(ctx,p.key,{...d,enabled:!d.enabled},p.heads,'건강 프로필 사용 여부',{field:'enabled'});},{draft:false})),
-      button(d.private?'공개로 바꾸기':'비공개로 바꾸기',act(async()=>{await saveProfile(ctx,p.key,{...d,private:!d.private},p.heads,'건강 프로필 비공개 여부');},{draft:false})),
-      button('프로필 삭제',()=>{if(ctx.confirmDialog?.('이 항목을 삭제할까요? 지운 항목은 목록에서 사라지고 지난 기록에는 이름이 남아요. 나중에 복원할 수 있어요.')??true)void act(async()=>{await saveProfile(ctx,p.key,{...d,removed:true},p.heads,'건강 프로필 삭제');},{draft:false})();}))));
+      button(d.enabled?'사용 중단':'다시 사용',act(async()=>{await saveProfile(ctx,p.key,{...d,enabled:!d.enabled},p.heads,'건강 항목 사용 여부',{field:'enabled'});},{draft:false})),
+      button(d.private?'공개로 바꾸기':'비공개로 바꾸기',act(async()=>{await saveProfile(ctx,p.key,{...d,private:!d.private},p.heads,'건강 항목 비공개 여부');},{draft:false})),
+      button('목록에서 삭제',()=>{if(ctx.confirmDialog?.('이 항목을 삭제할까요? 지운 항목은 목록에서 사라지고 지난 기록에는 이름이 남아요. 나중에 복원할 수 있어요.')??true)void act(async()=>{await saveProfile(ctx,p.key,{...d,removed:true},p.heads,'건강 목록에서 삭제');},{draft:false})();}))));
   }
   const nl=input('',{maxlength:String(MAX_LABEL),placeholder:'이름 (최대 '+MAX_LABEL+'자)'}),kindSel=select([['HABIT','습관'],['MED','약·측정']],'HABIT'),modeSel=select([['COUNT','횟수'],['CHECK','했다/안했다']],'COUNT'),amt=input('1',{inputmode:'decimal'}),unitSel=select(UNITS.map(u=>[u,u]),'mg'),priv=el('input');priv.type='checkbox';
-  add(prof,el('h3','프로필 추가','panel-title'),field('이름',nl),field('종류',kindSel),field('방식(습관)',modeSel),field('기본 용량(약·측정)',amt),field('단위(약·측정)',unitSel),add(el('label','비공개'),priv),
-    button('프로필 만들기',act(async()=>{
+  add(prof,el('h3','목록에 추가','panel-title'),field('이름',nl),field('종류',kindSel),field('방식(습관)',modeSel),field('기본 용량(약·측정)',amt),field('단위(약·측정)',unitSel),add(el('label','비공개'),priv),
+    button('항목 만들기',act(async()=>{
       const label=nl.value.trim(),key=(kindSel.value==='MED'?'med-':'hab-')+ctx.uid().slice(0,12);
       const data=kindSel.value==='MED'?{key,kind:'MED',label,defaultAmount:num(amt.value),unit:unitSel.value,enabled:true,private:priv.checked,removed:false}:{key,kind:'HABIT',label,mode:modeSel.value,enabled:true,private:priv.checked,removed:false};
-      await ctx.entity('HLT_PROFILE',key,data,[],'건강 프로필 추가');st.message='프로필을 만들었습니다.';
+      await ctx.entity('HLT_PROFILE',key,data,[],'건강 목록에 추가');st.message='항목을 만들었습니다.';
     },{draft:false}),'primary'));
   add(prof,el('h3','삭제한 항목','panel-title'),button(st.showRemoved?'삭제한 항목 숨기기':'삭제한 항목 보기',()=>{st.showRemoved=!st.showRemoved;void ctx.rerender();}));
   if(st.showRemoved){
     if(!view.removedProfiles.length)add(prof,hint('삭제한 항목이 없습니다.'));
     for(const p of view.removedProfiles)add(prof,row(p.data.label,profileDetail(p.data),add(el('div',null,'buttons'),
-      button('복원',act(async()=>{await saveProfile(ctx,p.key,{...p.data,removed:false},p.heads,'건강 프로필 복원');st.message='복원했습니다.';},{draft:false})))));
+      button('복원',act(async()=>{await saveProfile(ctx,p.key,{...p.data,removed:false},p.heads,'건강 항목 복원');st.message='복원했습니다.';},{draft:false})))));
   }
   add(out,prof);
 
@@ -502,9 +504,11 @@ export function renderHealth(root,ctx,st){
 export function renderHealthSwitch(ctx){
   const doc=ctx.document??globalThis.document,{el,add,button,hint,section}=maker(doc);
   const on=hltEnabled(ctx.storage);
-  return add(section('건강 모듈','기본은 켜짐입니다. 끄면 이 기기에서만 건강 화면이 숨겨집니다(다른 기기에는 영향 없음, 기록은 그대로 안전). 모든 기기를 같은 빌드로 갱신한 뒤 쓰세요 — 갱신 안 된 기기는 건강 기록을 만나면 열리지 않고 멈춥니다(기록은 안전).'),
-    el('p',on?'지금: 켜짐':'지금: 꺼짐','hlt-switch-state'),button(on?'건강 모듈 끄기':'건강 모듈 켜기',()=>{setHltEnabled(!on,ctx.storage);void ctx.onSwitch?.(!on);},on?'secondary':'primary'));
+  return add(section('건강 기능','기본은 켜짐입니다. 끄면 이 기기에서만 건강 화면이 숨겨집니다(다른 기기에는 영향 없음, 기록은 그대로 안전). 모든 기기를 같은 빌드로 갱신한 뒤 쓰세요 — 갱신 안 된 기기는 건강 기록을 만나면 열리지 않고 멈춥니다(기록은 안전).'),
+    el('p',on?'지금: 켜짐':'지금: 꺼짐','hlt-switch-state'),button(on?'건강 기능 끄기':'건강 기능 켜기',()=>{setHltEnabled(!on,ctx.storage);void ctx.onSwitch?.(!on);},on?'secondary':'primary'));
 }
 export {hltHomeLine};
+// FIX45 (AUD1 #9): 오늘 첫 화면 한 줄(쌓은 카드 기준, 자료 없으면 "기록 없음", 0걸음은 0).
+export const sleepStepsLine=(raw,date)=>{const {sleep,steps}=sleepStepsToday(raw,date);return '지난밤 수면 '+(sleep===null?'기록 없음':Math.floor(sleep/60)+':'+String(sleep%60).padStart(2,'0'))+' · 오늘 걸음 '+(steps===null?'기록 없음':steps.toLocaleString('ko-KR'));};
 // 홈 "오늘" 패널(B5)용 한 줄: 카드 수준 정보만(hltHomeLine). 스위치가 꺼져 있으면 호출하지 않는다.
 export const healthHomeLine=ctx=>hltHomeLine(ctx.getWhole().hlt,kstDate(ctx.now()),true);

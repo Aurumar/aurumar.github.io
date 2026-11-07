@@ -199,6 +199,6 @@ export function dayRoomCard(ctx,date){
   const scene=roomScene(doc,{stage,wings:false,label:'그날의 방'});scene.paint(m);
   const sec=el('section',null,'room-day');
   sec.append(el('strong','그날의 방','room-day-title'),scene.node,
-    el('p',inp.todayMin?'그날 공부 '+hmText(inp.todayMin)+' · 벽돌 '+inp.bricks.bricks+'장'+(inp.bricks.pieces?' + 조각 '+inp.bricks.pieces:'')+' · '+m.stage.id+' '+m.stage.label:'그날 쌓은 공부 기록이 없어요 · '+m.stage.id+' '+m.stage.label,'muted small room-day-note'));
+    el('p',inp.todayMin?'그날 공부 '+hmText(inp.todayMin)+' · 벽돌 '+inp.bricks.bricks+'장'+(inp.bricks.pieces?' + 조각 '+inp.bricks.pieces:'')+' · '+m.stage.label:'그날 쌓은 공부 기록이 없어요 · '+m.stage.id+' '+m.stage.label,'muted small room-day-note'));
   return sec;
 }

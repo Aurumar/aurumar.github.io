@@ -291,7 +291,7 @@ export function renderTower(root,ctx,st){
   const whole=ctx.getWhole(),today=kstDate(ctx.now()),money=ctx.money?.(today)??null,ach=achieve({life:whole.life??null,study:whole.study??null,fin:whole.fin??null,today,money}),week=ach.currentWeek;
   const seasons=ach.hasRecords?seasonsOf(ach,lifeDefs(whole.life??null).exams):[],line=houseLine(ach,seasons);
   const title=ctx.achvTitle?.({doc,ach,life:whole.life??null,money,storage:ctx.storage});   // Q1C: 칭호 칩과 3D 깃발 색(앱이 넘긴다, 표시만)
-  const out=add(el('section',null,'panel life-tower-panel'),add(el('div',null,'tower-head'),el('span','LIFE HOUSE','eyebrow'),el('h2','나의 집','panel-title'),title?.node));out.id='life-tower';
+  const out=add(el('section',null,'panel life-tower-panel'),add(el('div',null,'tower-head'),el('span','탑','eyebrow'),el('h2','나의 집','panel-title'),title?.node));out.id='life-tower';
   add(out,add(el('div',null,'tower-stats'),
     stat(h,'이번 주 벽돌',week.value+' / '+week.brickTarget),stat(h,'금벽돌',week.gold),stat(h,'보석',week.gems),stat(h,'연속',ach.streak.days+'일 '+multText(ach.streak.mult10))));
   if(line)add(out,el('p',line,'tower-house-line'));

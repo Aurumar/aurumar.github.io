@@ -18,6 +18,11 @@ export const RECURRING_TEXT=Object.freeze({
   // R33B (HUNT32 D2·D3): 겹침 판정에 걸려 버튼을 내지 않을 때 보이는 이유.
   overlapCandidate:'이미 등록한 같은 가게 정기 결제와 금액대(±10%)가 겹쳐 등록할 수 없어요',
   overlapAmount:'이 금액은 같은 가게의 다른 정기 결제와 금액대가 겹쳐 바꿀 수 없어요',
+  // FIX45 (AUD1 #11)
+  addManual:'직접 추가',addNote:'주기는 매달입니다. 결제일은 이 가게의 결제가 쌓이면 앱이 찾아서 맞춥니다(그 전에는 날짜 없이 예정으로 보입니다). 가게 이름이 결제 내역과 다르면 맞지 않으니 아래 목록에서 고르세요.',
+  // FIX48 (HUNT42 H1)
+  merchantLabel:'결제 내역의 가게 이름 (목록에서 고르거나 직접 입력)',
+  sameAs:name=>'직접 추가한 "'+name+'"와 같은 결제인가요?',
 });
 
 const POS=/^[1-9]\d{0,13}$/;
@@ -96,8 +101,9 @@ export function findCandidates(lines,today,{rules=[],hidden=new Set(),toleranceP
       const tail=c.at(-1),amount=tail.amount.toString(),id=chains.length>1?key+'|'+amount:key;
       if(hidden.has(id))continue;
       const members=c.flatMap(b=>b.members).sort((p,q)=>p.date.localeCompare(q.date)),last=members.at(-1);
+      const twin=unmatchedTwin(rules,lines,key,tail.amount);
       // R33B (HUNT32 D2): "정기로 등록"(기본 ±10%)이 addRule의 구간 겹침 판정에 걸리는 후보는 overlap:true(화면이 등록 버튼 대신 이유를 보인다).
-      out.push({key:id,merchantKey:key,merchant:last.merchant,amount,count:members.length,months:new Set(members.map(x=>x.date.slice(0,7))).size,total:all.length,lastDate:last.date,category:last.category,overlap:addBlocked(rules,key,tail.amount,TOLERANCE_DEFAULT)});
+      out.push({key:id,merchantKey:key,merchant:last.merchant,amount,count:members.length,months:new Set(members.map(x=>x.date.slice(0,7))).size,total:all.length,lastDate:last.date,category:last.category,overlap:addBlocked(rules,key,tail.amount,TOLERANCE_DEFAULT),...(twin?{sameAs:{id:twin.id,name:twin.name}}:{})});
     }
   }
   return out.sort((p,q)=>{const a=BigInt(p.amount),b=BigInt(q.amount);return a>b?-1:a<b?1:p.key.localeCompare(q.key);});
@@ -114,10 +120,30 @@ const centerBand=(r,a,pct)=>{const c=BigInt(r.match.amount);return within(a,c,r.
 // R33B (HUNT32 D2): addRule이 겹침으로 거부할 금액인가(후보 목록이 등록 버튼을 낼지 같은 판정으로 정한다).
 // FIX34 (HUNT34 H9): 숨긴 규칙은 겹침 검사에 넣지 않는다(amountBlocked와 같은 기준으로 통일). 대신 다시 보이기 때 겹침을 검사한다(setRuleHidden).
 const addBlocked=(rules,key,won,pct)=>rules.some(r=>!r.hidden&&r.match.merchant===key&&sameBand(r,won,pct));
+// FIX48 (HUNT42 H1-나): 다른 가게 이름으로 만든 규칙 중, 같은 금액대(±10%)이고 지금까지 자기 가게 결제와 한 번도 맞지 않은 규칙. 직접 추가한 이름이 카드 표기와 다를 때 같은 결제가 후보로 또 뜨는 경우를 알린다(등록을 막지 않는다).
+function unmatchedTwin(rules,lines,key,won){
+  return rules.find(r=>{
+    if(r.hidden||r.match.merchant===key||!sameBand(r,won,TOLERANCE_DEFAULT))return false;
+    const c=BigInt(r.match.amount),pct=r.match.tolerancePct;
+    return !lines.some(l=>{if(l.kind!=='EXPENSE'||recurringKey(l.merchant)!==r.match.merchant)return false;const a=wonOf(l.net);return a!==null&&within(a,c,pct);});
+  })??null;
+}
+// FIX48 (HUNT42 H1-가): 직접 추가 창이 고를 수 있는 거래 내역의 가게 이름. 정규화 키별로 가장 최근 표기 1개, 결제가 많은 순(같으면 이름순). skip(l)이 참인 줄(가린 가맹점)은 뺀다.
+export function merchantChoices(lines,{limit=100,skip=()=>false}={}){
+  const by=new Map();
+  for(const l of lines){
+    if(l.kind!=='EXPENSE'||typeof l.merchant!=='string'||typeof l.date!=='string'||skip(l))continue;
+    const key=recurringKey(l.merchant),name=l.merchant.trim();if(!key||!name||[...name].length>120)continue;
+    const e=by.get(key);
+    if(!e)by.set(key,{name,date:l.date,count:1});else{e.count++;if(l.date>=e.date){e.date=l.date;e.name=name;}}
+  }
+  return [...by.values()].sort((p,q)=>q.count-p.count||(p.name<q.name?-1:p.name>q.name?1:0)).slice(0,limit).map(e=>e.name);
+}
 // 규칙 하나를 목록에 더한 새 data를 만든다. 같은 가맹점·겹치는 금액대의 규칙이 이미 있으면 거부(후보에는 overlap:true로 보인다). 반환값은 validateFinData('FIN_RECURRING','recurring',data)를 통과하는 모양.
 export function addRule(data,{name,merchant,amount,tolerancePct=TOLERANCE_DEFAULT},{id,now}){
   const rules=rulesOf(data),key=recurringKey(merchant),won=wonOf(amount);
-  if(!key||won===null||!POS.test(won.toString()))throw finError('INVALID_FIN_RECURRING_AMOUNT');
+  if(!key)throw finError('INVALID_FIN_TEXT');   // FIX48 (HUNT42 H3): 이름·가게가 빈 값이면 금액 오류보다 먼저 글 오류(공백만 넣은 이름에 금액 안내가 뜨지 않게)
+  if(won===null||!POS.test(won.toString()))throw finError('INVALID_FIN_RECURRING_AMOUNT');
   if(!nameOK(name))throw finError('INVALID_FIN_TEXT');
   if(!Number.isInteger(tolerancePct)||tolerancePct<0||tolerancePct>TOLERANCE_MAX)throw finError('INVALID_FIN_RECURRING_TOLERANCE');
   if(rules.length>=RULE_MAX)throw finError('FIN_RECURRING_LIMIT');

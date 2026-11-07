@@ -66,6 +66,22 @@ export function hltView(raw,today,{showPrivate=false}={}){
   const habitProfiles=profiles.filter(p=>p.data.kind==='HABIT').map(p=>({key:p.key,label:p.data.label,mode:p.data.mode,private:p.data.private}));
   return {today,showPrivate,profiles,removedProfiles,days,summary:rhythmSummary(days,habitProfiles,today)};
 }
+// FIX45 (AUD1 #9): 최근 n일 걸음 평균과 기록 일수(자료 없음은 null, 0걸음은 실제 값). 화면과 사령부 내보내기(state-export)가 같은 계산을 쓴다. 걸음 항목만 읽는다.
+export function stepsAverage(days,today,n=7){
+  const from=shiftDay(today,-(n-1)),steps=[];
+  for(const d of days){if(d.date<from||d.date>today)continue;const it=d.data.items.find(i=>i.type==='steps'&&Number.isSafeInteger(i.count)&&i.count>=0);if(it)steps.push(it.count);}
+  return {days:steps.length,avg:steps.length?Math.round(steps.reduce((a,b)=>a+b,0)/steps.length):null};
+}
+// FIX45 (AUD1 #9): 오늘 첫 화면 한 줄의 값. 오늘 깬 본잠(오늘·어제 카드, 끝난 것만)의 합과 오늘 카드의 걸음. 쌓은 카드만 읽고 수면·걸음 항목 밖은 읽지 않는다(약·증상·습관·메모 제외). 없으면 null(0과 구분).
+export function sleepStepsToday(raw,today){
+  const cards=(raw?.days??[]).filter(d=>d.date===today||d.date===shiftDay(today,-1));
+  let sleep=null,steps=null;
+  for(const c of cards)for(const i of c.data.items){
+    if(i.type==='sleep'&&i.kind==='main'&&i.endAt!==null&&kstDate(i.endAt)===today)sleep=(sleep??0)+Math.round((Date.parse(i.endAt)-Date.parse(i.startAt))/60000);
+    if(i.type==='steps'&&c.date===today&&Number.isSafeInteger(i.count)&&i.count>=0)steps=i.count;
+  }
+  return {sleep,steps};
+}
 // 홈 요약 한 줄: 카드 수준 정보만(개별 습관·라벨·횟수는 쓰지 않는다). 모듈 꺼짐이면 null.
 export function hltHomeLine(raw,today,enabled){
   if(!enabled)return null;

@@ -343,7 +343,7 @@ export function todaySpendLine(fin,localDate){
   const prep=prepare(fin),day=prep.lines.filter(l=>l.date===localDate&&CONSUMPTION.has(l.kind));
   if(!day.length)return '오늘 지출 기록 없음';
   const t=aggregate({...prep,lines:day,residuals:[]},{from:null,to:null}).total;
-  const unknown=t.unknownRows?' · 순액 모름 '+t.unknownRows+'행 별도':'';
+  const unknown=t.unknownRows?' · 실제 금액 모름 '+t.unknownRows+'행 별도':'';
   // "모름"은 순액을 아는 줄이 하나도 없을 때만. 알려진 0원(예: 전액 취소)은 0원으로 쓰고 순액 모름은 따로 센다.
   if(!day.some(l=>l.net!==null))return '오늘 지출 모름'+unknown;
   return '오늘 지출 '+formatWon(t.spend)+(t.refund>0n?' · 환불 '+formatWon(t.refund):'')+unknown;

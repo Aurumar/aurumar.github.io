@@ -144,7 +144,7 @@ const leftWords=left=>left<0n?formatWon(-left)+' 모자람':formatWon(left)+' �
 function mainParts(x){
   if(x.state==='NO_BUDGET')return [t('이대로면 이번 달 지출 '),b(formatWon(x.projected)),t(' · 예산을 정하면 모자람도 계산함')];
   if(x.state==='NO_DATA'||x.state==='UNKNOWN_ONLY'){
-    const head=x.state==='NO_DATA'?'이번 달 소비 자료 없음 (0원 아님)':'이번 달 순액 모름 줄만 있음 (0원 아님)';
+    const head=x.state==='NO_DATA'?'이번 달 소비 자료 없음 (0원 아님)':'이번 달 실제 금액 모름 줄만 있음 (0원 아님)';
     return x.avg?[t(head+' · 최근 '+x.avg.months+'개월 평균 한 달 '),b(formatWon(x.avg.perMonth))]:[t(head)];
   }
   if(x.dl===0)return [t('오늘이 마지막 날 · 이번 달 '),b(leftWords(x.A))];
@@ -165,7 +165,7 @@ export function feelText(x){
   const parts=mainParts(x),main=parts.map(p=>p.t).join('');
   return {parts,main,cause:x.level&&x.level!=='ROOM'?causeSentence(x.cause):null,
     action:x.action&&!main.includes(x.action.text)?x.action:null,
-    notes:[...(x.unknownRows?['순액 모름 '+x.unknownRows+'행은 넣지 않음']:[]),...(x.avg?.unknownMonths?['순액 모름 줄이 있는 '+x.avg.unknownMonths+'개월은 최근 평균에서 뺌']:[])]};
+    notes:[...(x.unknownRows?['실제 금액 모름 '+x.unknownRows+'행은 넣지 않음']:[]),...(x.avg?.unknownMonths?['실제 금액 모름 줄이 있는 '+x.avg.unknownMonths+'개월은 최근 평균에서 뺌']:[])]};
 }
 // FIX37C (H37-M2): 금고 색과 예산 탭 "월말 예상"은 진단 카드와 같은 기준이다. 단계가 없으면(예산이 카드까지 못 감) 예전 속도 판정을 쓴다. T = budgetStatus().total.
 export function feelTone(x,T){

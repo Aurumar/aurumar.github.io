@@ -159,7 +159,7 @@ export function hltTransition(v,old,ctx){
 // 이력 화면·백업 요약 제목(항상 문자열). 비공개 프로필의 라벨은 제목에 쓰지 않는다.
 export function hltTitle(v){
   const d=v.data;
-  if(v.entityType==='HLT_PROFILE')return '건강 프로필 · '+(d.private?'비공개 항목':d.label)+(d.removed?' · 삭제됨':'');
+  if(v.entityType==='HLT_PROFILE')return '건강 항목 · '+(d.private?'비공개 항목':d.label)+(d.removed?' · 삭제됨':'');
   return '건강 기록 · '+d.date;
 }
 // 프로필을 두 기기가 고쳐 충돌(STALE_HEADS)하면 방금 저장하려던 값(mine)을 그대로 쓴다 — 합치는 규칙 없음(B3d, 비공개·삭제는 양방향 자유).

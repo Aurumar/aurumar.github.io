@@ -9,7 +9,6 @@ import {achieve} from './life-achieve.mjs';
 import {stable} from './life-rebase.mjs';
 import {planOf,sortedItems,actualOf,planVsActual,copyPlan,savePlanDay,planErrorText,unknownOutcome,PLAN_NOTICE_TEXT,barsText,rateText,RATE_MEANING,mondayOf,dateLabel,NO_SUBJECT_COLOR} from './life-plan.mjs';
 import {openChipSheet,blockLabel,BLOCK_SHORT,titleOr} from './plan-today.mjs';
-
 export const WEEKDAYS=Object.freeze(['월','화','수','목','금','토','일']);
 export const CELL_SHOW=3,LONG_PRESS_MS=450,TAP_BRICKS=1,TAP_STEP=0.5;
 const short=d=>Number(d.slice(5,7))+'/'+Number(d.slice(8,10));
@@ -130,10 +129,10 @@ export async function saveWeek(ctx,draft){
   return {ok,fail,notices,sealed};
 }
 export function saveText(r){
-  const kept=r.sealed?.length?r.sealed.length+'일은 '+PLAN_NOTICE_TEXT.PLAN_LOCAL_DRAFT+' 초안은 그대로 있습니다.':null;
+  const kept=r.sealed?.length?r.sealed.length+'일은 '+PLAN_NOTICE_TEXT.PLAN_LOCAL_DRAFT+' 임시 입력은 그대로 있습니다.':null;
   if(!r.fail.length)return kept?(r.ok.length?r.ok.length+'일 저장 · ':'')+kept:r.ok.length+'일 계획을 저장했습니다.';
   const why=planErrorText(r.fail[0].code);
-  const text=r.ok.length?r.ok.length+'일 저장 · '+r.fail.length+'일 다시 — '+why:why+' (바뀐 '+r.fail.length+'일은 초안에 그대로 있습니다)';
+  const text=r.ok.length?r.ok.length+'일 저장 · '+r.fail.length+'일 다시 — '+why:why+' (바뀐 '+r.fail.length+'일은 임시 입력에 그대로 있습니다)';
   return kept?text+' · '+kept:text;
 }
 
@@ -184,8 +183,8 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
   const change=code=>{if(code)say(planErrorText(code),true);else if(w.error)say(null);rerender();};
   const nameOf=id=>m.subjects.find(s=>s.id===id)?.name??'기타';
   const sheetFor=(date,block,item)=>()=>openChipSheet(ctx,{date,block,item,
-    onPut:(next,close)=>{const code=editDay(life,w,date,items=>{const i=items.findIndex(x=>x.id===item?.id);if(i>=0)items[i]=next;else items.push({...next,id:newItemId(items,ctx.uid)});return items;});if(code)return code;close();say('초안에 넣었습니다 · 아직 저장 전');rerender();return null;},
-    onDelete:item?close=>{const code=editDay(life,w,date,items=>items.filter(x=>x.id!==item.id));if(code)return code;close();say('초안에서 지웠습니다 · 아직 저장 전');rerender();return null;}:null});
+    onPut:(next,close)=>{const code=editDay(life,w,date,items=>{const i=items.findIndex(x=>x.id===item?.id);if(i>=0)items[i]=next;else items.push({...next,id:newItemId(items,ctx.uid)});return items;});if(code)return code;close();say('임시 입력에 넣었습니다 · 아직 저장 전');rerender();return null;},
+    onDelete:item?close=>{const code=editDay(life,w,date,items=>items.filter(x=>x.id!==item.id));if(code)return code;close();say('임시 입력에서 지웠습니다 · 아직 저장 전');rerender();return null;}:null});
   const tap=(date,block)=>()=>{if(!w.pick){sheetFor(date,block,null)();return;}change(tapCell(life,w,{date,block,subjectId:w.pick,name:nameOf(w.pick),uid:ctx.uid}));};
   // "+n": 그 칸의 줄 전체 목록. 줄을 누르면 목록을 닫고 그 줄의 칩 시트를 연다(H37-P4).
   const listFor=(date,block,rows)=>()=>{
@@ -198,9 +197,10 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
   const nav=add(el('div',null,'plan-nav'),button('◀',()=>{st.monday=shiftDay(monday,-7);rerender();},'secondary'),el('strong',short(monday)+' ~ '+short(m.end),'plan-nav-label'),button('▶',()=>{st.monday=shiftDay(monday,7);rerender();},'secondary'));
   if(monday!==mondayOf(day0))nav.append(button('이번 주',()=>{st.monday=mondayOf(day0);rerender();},'secondary'));
   const head=weekHeadText(m);
-  add(out,nav,head?el('p',head,'plan-sum pw-sum'):null,m.rate!==null?el('p',RATE_MEANING,'muted small pw-rate-note'):null);   // FIX44 (AUD1 #16): 달성률의 뜻
+  const timeLine=ctx.weekTimeLine?.(monday,day0)??null;   // FIX45 (AUD1 #6): 이 주 공부 시간·그 전 주 비교(study-stats, 앱이 넘긴다)
+  add(out,nav,head?el('p',head,'plan-sum pw-sum'):null,timeLine?el('p',timeLine,'muted small pw-time'):null,m.rate!==null?el('p',RATE_MEANING,'muted small pw-rate-note'):null);   // FIX44 (AUD1 #16): 달성률의 뜻
   if(w.message)add(out,el('p',w.message,w.error?'notice error pw-message':'notice pw-message'));
-  for(const n of w.notices)add(out,el('p',PLAN_NOTICE_TEXT[n.code]??n.code,'notice plan-notice'));
+  for(const n of w.notices)add(out,el('p',PLAN_NOTICE_TEXT[n.code]??'알림을 읽지 못했어요'+' · 문의 코드 ▾\u2060'+n.code+'\u2060','notice plan-notice'));
 
   const grid=el('div',null,'pw-grid');grid.setAttribute('role','grid');grid.setAttribute('aria-label',short(monday)+' 주 계획, 칸 = 그 날 그 시간대');
   grid.append(el('span',null,'pw-corner'));
@@ -242,7 +242,7 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
       dlg=ctx.sheet?.('다음 주 채우기',box)??null;
     },'secondary pw-next'));
   }
-  if(n)add(buttons,button('초안 버리기',()=>{st.week=createWeekDraft(sess);st.week.pick=w.pick;rerender();},'secondary pw-drop'));
+  if(n)add(buttons,button('임시 입력 버리기',()=>{st.week=createWeekDraft(sess);st.week.pick=w.pick;rerender();},'secondary pw-drop'));
   const save=button('저장 (바뀐 날 '+n+')',()=>{
     if(!changedDates(w).length)return;
     void ctx.perform(async()=>{

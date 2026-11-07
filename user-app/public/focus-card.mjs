@@ -161,7 +161,7 @@ export const FOCUS_TEXT=Object.freeze({
   privacy:'앱 이름·사이트 도메인으로만 나눕니다 · 창 제목·주소 경로는 읽자마자 버리고 저장하지 않아요.',
   otherDevice:'다른 기기 타이머는 빠지지 않아요 · 아직 이 기기에 오지 않은 타이머와 겹치면 쌓을 때 알려 드려요(자동으로 지우지 않아요).',
 });
-export const focusErrorText=code=>FOCUS_TEXT[code]??'측정값을 불러오지 못했어요 ('+code+')';
+export const focusErrorText=code=>FOCUS_TEXT[code]??'측정값을 불러오지 못했어요'+' · 문의 코드 ▾\u2060'+code+'\u2060';
 
 // ---- 화면 ----
 function maker(doc){
@@ -239,7 +239,7 @@ function openClaim(ctx,h,plan){
   }
   const subjects=ctx.subjects,pick=select(subjects.map(s=>[s.id,s.name]),subjects.some(s=>s.id===ctx.subjectId)?ctx.subjectId:subjects[0].id);
   pick.setAttribute('aria-label','과목');
-  add(body,add(el('label','과목'),pick),hint('담으면 오늘 공부 기록 초안에 들어가요(이 기기에만) · "오늘 쌓기"를 누르면 함께 쌓입니다.'),hint(FOCUS_TEXT.otherDevice));
+  add(body,add(el('label','과목'),pick),hint('담으면 오늘 공부 기록 임시 입력에 들어가요(이 기기에만) · "오늘 쌓기"를 누르면 함께 쌓입니다.'),hint(FOCUS_TEXT.otherDevice));
   let dlg=null;
   add(body,add(el('div',null,'buttons'),button('담기',()=>{
     const chosen=checks.filter(([,b])=>b.checked).map(([p])=>p);if(!chosen.length)return;
@@ -300,7 +300,7 @@ function openRules(ctx,h,done){
 export function renderFocusSettings(root,ctx){
   if(ctx.surface!=='APP_SHELL')return null;
   const {h,kit}=ctx,sec=h.add(h.el('section',null,'panel native-settings'),h.el('h2','PC 집중 측정 (ActivityWatch)','panel-title'));
-  h.add(sec,h.el('p','이 PC의 ActivityWatch(127.0.0.1:5600)에서 오늘 앱 이름·사이트 도메인만 읽어 공부·딴짓·기타 분으로 나눠 오늘 화면에 보여 줍니다. 창 제목과 주소 경로는 읽자마자 버리고, 금고·서버·다른 기기로 보내지 않습니다. 기록에 들어가는 것은 "확인하고 담기"를 누른 공부 세션(과목·분·끝 시각)뿐입니다. (이 기기 설정)','muted'));
+  h.add(sec,h.el('p','이 PC의 ActivityWatch에서 오늘 앱 이름·사이트 도메인만 읽어 공부·딴짓·기타 분으로 나눠 오늘 화면에 보여 줍니다. 창 제목과 주소 경로는 읽자마자 버리고, 기록·서버·다른 기기로 보내지 않습니다. 기록에 들어가는 것은 "확인하고 담기"를 누른 공부 세션(과목·분·끝 시각)뿐입니다. (이 기기 설정)','muted'));
   h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('PC 집중 측정 켜기',focusEnabled(ctx.storage),v=>{setFocusEnabled(ctx.storage,v);ctx.onSwitch?.();})));
   h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('인강 소리 규칙 · 공부 사이트 탭이 소리를 내면 자리 비움이어도 공부로 셈',audibleOn(ctx.storage),v=>{setAudibleOn(ctx.storage,v);})));
   h.add(root,sec);return sec;

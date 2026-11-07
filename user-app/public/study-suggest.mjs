@@ -96,12 +96,12 @@ const weekText=monday=>short(monday)+' ~ '+short(shiftDay(monday,6));
 
 function draftNodes(h,ctx,st,redraw){
   const out=h.el('div',null,'plan-suggest-draft');
-  h.add(out,h.el('h3','다음 주 초안 · '+weekText(st.draft.monday)),h.el('p','아직 저장되지 않았습니다. 날짜마다 내용을 확인하고 저장하면 그날 계획이 됩니다.','muted small'));
+  h.add(out,h.el('h3','다음 주 임시 입력 · '+weekText(st.draft.monday)),h.el('p','아직 저장되지 않았습니다. 날짜마다 내용을 확인하고 저장하면 그날 계획이 됩니다.','muted small'));
   for(const day of st.draft.days){
     const saved=()=>{if(!st.draft)return;st.draft.days=st.draft.days.filter(d=>d!==day);if(!st.draft.days.length)st.draft=null;};
     h.add(out,h.add(h.el('div',null,'plan-suggest-day'),h.add(h.el('div',null,'plan-suggest-day-text'),h.el('strong',dateLabel(day.date)),h.el('span',day.items.map(x=>x.name+' '+x.minutes+'분').join(' · '),'muted small')),h.button('확인하고 저장',()=>openPlanEditor(ctx,ctx.planSt,day.date,{seed:seedItems(day),onSaved:saved}),'secondary')));
   }
-  h.add(out,h.add(h.el('div',null,'buttons'),h.button('초안 버리기',()=>{st.draft=null;redraw();},'secondary')));
+  h.add(out,h.add(h.el('div',null,'buttons'),h.button('임시 입력 버리기',()=>{st.draft=null;redraw();},'secondary')));
   return out;
 }
 function reportNodesOf(h,ctx,st,redraw,gone,today){

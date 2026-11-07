@@ -11,7 +11,7 @@ import {csatTarget} from './life-plan.mjs';
 import {feelOfFin,feelExport,feelExportText} from './fin-feel.mjs';
 import {STACK_DONE} from './life-flow.mjs';
 import {projectStudy} from './study-projection.mjs';
-import {rhythmSummary} from './hlt-projection.mjs';
+import {rhythmSummary,stepsAverage} from './hlt-projection.mjs';
 
 export const STATE_FORMAT='v1';
 export const STATE_MAX_BYTES=8192,STATE_TARGET_BYTES=4096;
@@ -127,14 +127,12 @@ function studySummaryOf(life,study,today){
 // 9절: 최근 7일의 수면(본잠 합계의 하루 평균)·걸음 평균·기록 일수만. 약·증상·기분·메모·습관 항목은 읽지 않는다. 기록 일수 = 수면 또는 걸음 기록이 있는 날.
 function healthSummaryOf(hlt,today){
   if(!hlt)return null;
-  const from=shiftDay(today,-(WINDOW_DAYS-1)),days=hlt.days.filter(d=>d.date>=from&&d.date<=today),steps=[];
+  const from=shiftDay(today,-(WINDOW_DAYS-1)),days=hlt.days.filter(d=>d.date>=from&&d.date<=today);
   let recorded=0;
   for(const d of days){
-    const st=d.data.items.find(i=>i.type==='steps'&&nat(i.count));
-    if(st)steps.push(st.count);
-    if(st||d.data.items.some(i=>i.type==='sleep'&&i.kind==='main'&&i.endAt!==null))recorded++;
+    if(d.data.items.some(i=>i.type==='steps'&&nat(i.count)||i.type==='sleep'&&i.kind==='main'&&i.endAt!==null))recorded++;
   }
-  return {from,to:today,days:recorded,avgSleepMinutes:rhythmSummary(days,[],today).week.avgSleepMinutes,avgSteps:steps.length?Math.round(steps.reduce((a,b)=>a+b,0)/steps.length):null};
+  return {from,to:today,days:recorded,avgSleepMinutes:rhythmSummary(days,[],today).week.avgSleepMinutes,avgSteps:stepsAverage(days,today,WINDOW_DAYS).avg};
 }
 // views = {life,study,fin,hlt}(wholeLifeView의 같은 이름 항목, 없으면 null). now = ISO 시각 문자열. includeLine·includeStudy·includeHealth = 소유자가 켠 토글(끄면 그 값은 읽지도 않는다).
 export function snapshotFromViews({life=null,study=null,fin=null,hlt=null,now,includeLine=false,includeStudy=false,includeHealth=false,deviceName=DEVICE_NAME}){
@@ -289,7 +287,7 @@ export function renderStateExport(root,ctx){
   const {h,kit}=ctx,sec=h.add(h.el('section',null,'panel state-export'),h.el('h2','사령부로 상태 내보내기','panel-title'));
   h.add(root,sec);
   if(ctx.surface!=='APP_SHELL'){h.add(sec,h.el('p',EXPORT_TEXT.browser,'muted'));return sec;}
-  h.add(sec,h.el('p','숫자 요약 한 장을 사령부 폴더(AURUMAR_HQ\\state)에 덮어씁니다. 이 단추를 누르거나, 아래 자동 내보내기를 켜 두면 "오늘 쌓기"가 끝난 직후에만 보냅니다. 메모·건강 세부·거래 내역·가게 이름은 들어가지 않습니다.','muted'));
+  h.add(sec,h.el('p','숫자 요약 한 장을 사령부 폴더에 덮어씁니다. 이 단추를 누르거나, 아래 자동 내보내기를 켜 두면 "오늘 쌓기"가 끝난 직후에만 보냅니다. 메모·건강 세부·거래 내역·가게 이름은 들어가지 않습니다.','muted'));
   h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('어제 한 줄도 내보내기 (최대 60자 · 이 기기 설정)',lineEnabled(ctx.storage),on=>{setLineEnabled(on,ctx.storage);})));
   h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('쌓을 때 사령부 상태 자동 내보내기 (한 줄은 항상 비공개 · 이 기기 설정)',autoEnabled(ctx.storage),on=>{setAutoEnabled(on,ctx.storage);})));
   h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('공부 요약도 내보내기 (과목별 분·복습·오답 수 · 자동 내보내기에도 포함 · 이 기기 설정)',sectionEnabled('study',ctx.storage),on=>{setSectionEnabled('study',on,ctx.storage);})));

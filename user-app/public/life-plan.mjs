@@ -22,10 +22,10 @@ export const PLAN_ERROR_TEXT=Object.freeze({
   INVALID_LIFE_TEXT:'할 일은 1~'+MAX_PLAN_TITLE+'자로 적어 주세요.',APP_ENTITY_LIMIT:'개수 한도에 닿았습니다.',
   STALE_HEADS:'다른 기기에서 먼저 바뀌어 합치지 못했습니다. 입력은 그대로 있습니다. 다시 저장해 주세요.',
   MD_NOT_WRITE_READY:'지금은 서버에 저장할 수 없습니다. 입력은 이 화면에 남아 있습니다.',
-  MD_PENDING_RECONCILE_REQUIRED:'이 저장이 서버에 반영됐는지 아직 모릅니다. 새로 저장하지 말고 더보기 > 고급에서 "미확정 저장 결과 확인"을 누르세요.',
+  MD_PENDING_RECONCILE_REQUIRED:'이 저장이 서버에 반영됐는지 아직 모릅니다. 새로 저장하지 말고 더보기 > 고급에서 "결과 모르는 저장 확인"을 누르세요.',
   HOLD_UNKNOWN_SAVE:'저장 결과가 불명확합니다. 새로 저장하지 말고 먼저 확인하세요.',
 });
-export const planErrorText=code=>PLAN_ERROR_TEXT[code]??(code?'저장하지 못했습니다 ('+code+')':'저장하지 못했습니다.');
+export const planErrorText=code=>PLAN_ERROR_TEXT[code]??(code?'처리하지 못했어요'+' · 문의 코드 ▾\u2060'+code+'\u2060':'저장하지 못했습니다.');
 // 결과를 모르는 오류: 다음 저장을 이어 가면 안 된다(H37-P3).
 export const unknownOutcome=code=>typeof code==='string'&&(code==='MD_PENDING_RECONCILE_REQUIRED'||code.startsWith('HOLD_'));
 export const PLAN_NOTICE_TEXT=Object.freeze({
@@ -632,7 +632,7 @@ export function renderPlan(root,ctx,st){
   const out=add(el('section',null,'panel plan-panel'),add(el('div',null,'plan-head'),el('span','PLAN','eyebrow'),el('h2','계획표','panel-title')));out.id='life-plan';
   add(out,...viewChips(h,ctx,st,today),examLine(h,ctx,st,defs.exams,today));
   if(st.message)add(out,el('p',st.message,st.error?'notice error plan-message':'notice plan-message'));
-  for(const n of st.notices??[])add(out,el('p',PLAN_NOTICE_TEXT[n.code]??n.code,'notice plan-notice'));
+  for(const n of st.notices??[])add(out,el('p',PLAN_NOTICE_TEXT[n.code]??'알림을 읽지 못했어요'+' · 문의 코드 ▾\u2060'+n.code+'\u2060','notice plan-notice'));
   const view={DAY:dayView,WEEK:weekView,MONTH:monthView,YEAR:yearView,CSAT:csatView}[st.view]??dayView;
   add(out,view(h,ctx,st,data));
   // P1C: 옛 '달력' 화면의 하루·7일 목록 = 오늘·주 보기 아래 일정 줄(달 보기는 plan-month 안에).

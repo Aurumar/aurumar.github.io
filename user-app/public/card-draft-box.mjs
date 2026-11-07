@@ -41,27 +41,27 @@ export const OLD_DRAFT_DAYS=14;
 export const DRAFT_MODE=Object.freeze({JOURNAL:'JOURNAL',DEVICE_BOX:'DEVICE_BOX',MEMORY:'MEMORY'});
 export const CARD_DRAFT_TEXT=Object.freeze({
   typing:'입력 중 (아직 저장 전)',
-  saved:'이 기기에 암호화 저장됨 · 아직 금고에 없음 · 다른 기기에서는 안 보임',
+  saved:'이 기기에 암호화 저장됨 · 아직 쌓기 전 · 다른 기기에서는 안 보임',
   confirmed:'저장 및 동기화 확인됨',
   merged:'다른 기기에서 바뀐 내용이 있어 합쳤어요',
-  modeBox:'초안은 이 기기(브라우저)에 암호화되어 남습니다 · 브라우저 저장소를 지우면 사라짐 · 백업 아님 · 다른 기기에서는 안 보임.',
-  failed:'초안을 저장하지 못했어요 — 이 화면을 닫으면 사라져요',
-  resume:'이 기기에 저장된 초안이 있어요',resumeKeep:'이어서 쓰기',resumeDrop:'버리기',
-  dropConfirm:'이 기기에 저장된 초안을 버릴까요? 금고에 쌓인 기록에는 영향이 없습니다.',
-  old:'오래된 초안(14일 넘음)',
-  unreadable:'열 수 없는 초안이 이 기기에 보존되어 있어요(지우지 않았어요). 브라우저 저장소의 키가 바뀌었거나 손상되었을 수 있어요.',
+  modeBox:'임시 입력은 이 기기(브라우저)에 암호화되어 남습니다 · 브라우저 저장소를 지우면 사라짐 · 백업 아님 · 다른 기기에서는 안 보임.',
+  failed:'임시 입력을 저장하지 못했어요 — 이 화면을 닫으면 사라져요',
+  resume:'이 기기에 저장된 임시 입력이 있어요',resumeKeep:'이어서 쓰기',resumeDrop:'버리기',
+  dropConfirm:'이 기기에 저장된 임시 입력을 버릴까요? 쌓인 기록에는 영향이 없습니다.',
+  old:'오래된 임시 입력(14일 넘음)',
+  unreadable:'열 수 없는 임시 입력이 이 기기에 보존되어 있어요(지우지 않았어요). 브라우저 저장소의 키가 바뀌었거나 손상되었을 수 있어요.',
 });
-export const deviceOnlyLine=n=>'이 기기에만 있는 초안 '+n+'건';
+export const deviceOnlyLine=n=>'이 기기에만 있는 임시 입력 '+n+'건';
 export const CARD_DRAFT_ERROR_TEXT=Object.freeze({
-  CARD_DRAFT_LIMIT:'이 기기의 초안이 60건이라 새 날짜 초안을 저장하지 않았어요. 지우거나 줄이지 않았어요 · 오래된 초안을 쌓거나 버린 뒤 다시 하세요.',
-  CARD_DRAFT_TOO_LARGE:'초안이 너무 커서(96KB) 저장하지 않았어요 · 메모나 항목을 줄인 뒤 다시 하세요.',
-  CARD_DRAFT_READ_ONLY:'이 창은 읽기 전용이라 초안을 저장하지 않아요 · 기록하는 창에서 입력하세요.',
-  CARD_DRAFT_LOCKED:'잠겨 있어 초안을 저장하지 않았어요.',
-  STALE_DRAFT:'다른 창에서 같은 날짜 초안이 바뀌어 저장하지 못했어요 — 이 화면을 닫으면 사라져요',
-  CARD_DRAFT_MERGE_FAILED:'다른 창의 같은 날짜 초안과 합치지 못해 이 입력을 저장하지 않았어요 · 다른 창 초안은 그대로예요 — 이 화면을 다시 연 뒤 다시 입력해 주세요',
-  CARD_DRAFT_STALE_BASE:'그 사이 초안이 바뀌어 이 입력을 저장하지 못했어요 — 다시 입력해 주세요',
+  CARD_DRAFT_LIMIT:'이 기기의 임시 입력이 60건이라 새 날짜 임시 입력을 저장하지 않았어요. 지우거나 줄이지 않았어요 · 오래된 임시 입력을 쌓거나 버린 뒤 다시 하세요.',
+  CARD_DRAFT_TOO_LARGE:'임시 입력이 너무 커서(96KB) 저장하지 않았어요 · 메모나 항목을 줄인 뒤 다시 하세요.',
+  CARD_DRAFT_READ_ONLY:'이 창은 읽기 전용이라 임시 입력을 저장하지 않아요 · 기록하는 창에서 입력하세요.',
+  CARD_DRAFT_LOCKED:'잠겨 있어 임시 입력을 저장하지 않았어요.',
+  STALE_DRAFT:'다른 창에서 같은 날짜 임시 입력이 바뀌어 저장하지 못했어요 — 이 화면을 닫으면 사라져요',
+  CARD_DRAFT_MERGE_FAILED:'다른 창의 같은 날짜 임시 입력과 합치지 못해 이 입력을 저장하지 않았어요 · 다른 창 임시 입력은 그대로예요 — 이 화면을 다시 연 뒤 다시 입력해 주세요',
+  CARD_DRAFT_STALE_BASE:'그 사이 임시 입력이 바뀌어 이 입력을 저장하지 못했어요 — 다시 입력해 주세요',
   CARD_DRAFT_STALE_INPUT:'이미 끝난 입력이라 저장하지 않았어요 — 다시 입력해 주세요',
-  CARD_DRAFT_MERGED_CHANGED:'다른 창의 같은 날짜 초안과 합치면서 양쪽에서 바꾼 항목이 있었어요(같은 항목은 이 창 값으로 덮음 · 지운 항목이 남았을 수 있음) — 내용을 확인한 뒤 쌓아 주세요',
+  CARD_DRAFT_MERGED_CHANGED:'다른 창의 같은 날짜 임시 입력과 합치면서 양쪽에서 바꾼 항목이 있었어요(같은 항목은 이 창 값으로 덮음 · 지운 항목이 남았을 수 있음) — 내용을 확인한 뒤 쌓아 주세요',
 });
 // FIX35 (HUNT35 F1): 합칠 때 화면에 알릴 rebase 알림(다른 창 값이 덮였거나, 한쪽의 삭제가 되돌려짐). 타이머 겹침 알림은 확정 때 따로 보인다.
 export const MERGE_CONFLICT_NOTICES=Object.freeze(['REBASE_VALUE_OVERWRITTEN','REBASE_SCALAR_OVERWRITTEN','REBASE_CONFLICT_KEPT_LOCAL','REBASE_CONFLICT_KEPT_REMOTE']);

@@ -152,7 +152,7 @@ export function renderTodayPlan(ctx,{date=null,today=null,focus=null,draft=null,
   const plus=button('+',sheetFor(null),'secondary pt-add');plus.setAttribute('aria-label','계획 줄 넣기');
   add(out,add(el('div',null,'pt-head'),el('h3',m.title,'pt-title'),m.head?el('span',m.head,'pt-sum'):null,m.empty?null:plus));
   if(state.message&&state.date===d)add(out,el('p',state.message,state.error?'notice error pt-message':'notice pt-message'));
-  if(state.date===d)for(const n of state.notices??[])add(out,el('p',PLAN_NOTICE_TEXT[n.code]??n.code,'notice pt-notice'));
+  if(state.date===d)for(const n of state.notices??[])add(out,el('p',PLAN_NOTICE_TEXT[n.code]??'알림을 읽지 못했어요'+' · 문의 코드 ▾\u2060'+n.code+'\u2060','notice pt-notice'));
   const fm=focusMessage?focus?.message?.():null;if(fm)add(out,el('p',fm.text,fm.error?'notice error pt-message':'notice pt-message'));
   if(m.empty){
     const prevText=m.isToday?'어제처럼':'전날처럼';

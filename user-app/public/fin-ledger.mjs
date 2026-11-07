@@ -13,29 +13,29 @@ export const FIN_ERROR_TEXT=Object.freeze({
   INVALID_FIN_TAGS:'태그는 쉼표로 구분해 10개까지, 각 30자 이하로 쓰고 같은 태그를 두 번 쓰지 마세요.',
   INVALID_FIN_INSTALLMENTS:'할부 개월 수는 0부터 60 사이의 정수로 입력하세요(일시불은 0).',
   INVALID_FIN_ASSET_REF:'연결된 보유품 정보가 올바르지 않습니다.',
-  INVALID_FIN_ORIGINAL:'외화 원금은 통화 코드(영문 대문자 3자, KRW 제외)와 금액(소수 넷째 자리까지)을 함께 입력하세요.',
-  INVALID_FIN_SOURCE_REFS:'원천 행 연결 정보가 올바르지 않습니다.',
-  DUPLICATE_FIN_SOURCE_REF:'같은 원천 행을 한 거래에 두 번 연결할 수 없습니다.',
+  INVALID_FIN_ORIGINAL:'외화 원금은 통화 코드(영문 대문자 3자, 원화 제외)와 금액(소수 넷째 자리까지)을 함께 입력하세요.',
+  INVALID_FIN_SOURCE_REFS:'가져온 줄 연결 정보가 올바르지 않습니다.',
+  DUPLICATE_FIN_SOURCE_REF:'같은 가져온 줄을 한 거래에 두 번 연결할 수 없습니다.',
   FIN_TRANSFER_HAS_NO_CATEGORY:'이체와 선불 충전은 소비가 아니라서 분류를 붙이지 않습니다.',
   FIN_TRANSFER_TARGET:'이체는 보내는 계정과 다른 받는 계정을 골라야 합니다.',
   FIN_TARGET_ONLY_FOR_TRANSFER:'받는 계정은 이체에서만 고를 수 있습니다.',
   INVALID_FIN_CATEGORY:'거래 종류에 맞는 분류를 고르세요(수입은 수입 분류, 지출·환불은 지출 분류).',
   FIN_INSTALLMENTS_ONLY_FOR_EXPENSE:'할부는 지출에만 입력할 수 있습니다.',
-  INVALID_FIN_ROW:'가져온 원천 행의 형식이 맞지 않습니다. 계획 파일을 변환기로 다시 만드세요.',
-  INVALID_FIN_ROW_AMOUNT:'가져온 원천 행의 금액 형식이 맞지 않습니다. 계획 파일을 다시 만드세요.',
-  INVALID_FIN_ROW_DATE:'가져온 원천 행의 날짜가 묶음의 달과 맞지 않습니다. 계획 파일을 다시 만드세요.',
+  INVALID_FIN_ROW:'가져온 줄의 형식이 맞지 않습니다. 계획 파일을 변환기로 다시 만드세요.',
+  INVALID_FIN_ROW_AMOUNT:'가져온 줄의 금액 형식이 맞지 않습니다. 계획 파일을 다시 만드세요.',
+  INVALID_FIN_ROW_DATE:'가져온 줄의 날짜가 묶음의 달과 맞지 않습니다. 계획 파일을 다시 만드세요.',
   FIN_RESIDUAL_HAS_NO_DATE:'미배분 잔액 행에는 날짜를 붙일 수 없습니다.',
-  FIN_PARTIAL_NET_MUST_BE_UNKNOWN:'부분 취소 행의 순액은 "모름"이어야 합니다.',
-  FIN_FULL_CANCEL_NET_ZERO:'전액 취소 행의 순액은 0원이어야 합니다.',
-  FIN_NET_UNKNOWN_ONLY_FOR_PARTIAL:'순액 "모름"은 부분 취소 행에만 쓸 수 있습니다.',
-  FIN_ROW_SIGN:'원천 행의 상태와 금액 부호가 맞지 않습니다(취소·환불은 음수). 계획 파일을 다시 만드세요.',
+  FIN_PARTIAL_NET_MUST_BE_UNKNOWN:'부분 취소 행의 실제 금액은 "모름"이어야 합니다.',
+  FIN_FULL_CANCEL_NET_ZERO:'전액 취소 행의 실제 금액은 0원이어야 합니다.',
+  FIN_NET_UNKNOWN_ONLY_FOR_PARTIAL:'실제 금액 "모름"은 부분 취소 행에만 쓸 수 있습니다.',
+  FIN_ROW_SIGN:'가져온 줄의 상태와 금액 부호가 맞지 않습니다(취소·환불은 음수). 계획 파일을 다시 만드세요.',
   INVALID_FIN_BATCH:'가져오기 묶음의 출처 정보가 올바르지 않습니다.',
   INVALID_FIN_BATCH_CHUNK:'가져오기 묶음의 달 표기가 올바르지 않습니다.',
   FIN_BATCH_ROW_LIMIT:'한 묶음에는 1행 이상 2,000행 이하만 넣을 수 있습니다.',
   INVALID_FIN_BATCH_PART:'분할 묶음의 조각 번호가 올바르지 않습니다(조각 수 2~26, 번호 1~조각 수). 계획 파일을 다시 만드세요.',
   FIN_ROW_OUTSIDE_CHUNK:'묶음의 달과 다른 달의 행이 섞여 있습니다.',
   DUPLICATE_FIN_ROW:'한 묶음 안에 같은 행 ID가 두 번 있습니다.',
-  FIN_BATCH_CONTROL_MISMATCH:'묶음의 통제값(행 수·순액)이 행 합계와 다릅니다. 계획 파일이 손상되었을 수 있으니 다시 만드세요.',
+  FIN_BATCH_CONTROL_MISMATCH:'묶음의 통제값(행 수·실제 금액)이 행 합계와 다릅니다. 계획 파일이 손상되었을 수 있으니 다시 만드세요.',
   INVALID_FIN_RULE:'규칙 값이 올바르지 않습니다(가맹점 글자 1~60자, 우선순위 0~999, 지출 분류, 분류를 바꾸지 않으면 세부 분류도 비움).',
   FIN_RULE_NO_EFFECT:'규칙이 하는 일이 없습니다. 분류 바꾸기·고정/변동 지정·반복결제 포함/제외 중 하나 이상을 고르세요.',
   INVALID_FIN_BUDGET:'예산 시작 달 또는 분류가 올바르지 않습니다(달은 2026-11처럼, 분류는 지출 분류만).',
@@ -51,10 +51,10 @@ export const FIN_ERROR_TEXT=Object.freeze({
   FIN_RECURRING_REVEAL_OVERLAP:'같은 가게의 보이는 정기 결제와 금액대(허용 오차)가 겹쳐 다시 보이게 하지 않았습니다 · 한 결제가 두 번 잡힐 수 있어요. 겹치는 규칙을 숨기거나 금액을 바꾼 뒤 다시 하세요.',
   FIN_RECURRING_UNKNOWN_RULE:'없는 정기 결제 규칙입니다. 화면을 새로 고쳐 최신 목록을 확인하세요.',
   INVALID_ENTITY_ID:'항목 ID가 올바르지 않습니다.',
-  FIN_IMPORT_LOCAL_CAPACITY:'저장할 항목이 이 기기의 로컬 저장 용량(봉인 한 번 약 3.7MB)을 넘을 것으로 예상되어 시작하지 않습니다. 분할 저장(형식 5) 앱으로 업데이트한 뒤 가져오세요.',
+  FIN_IMPORT_LOCAL_CAPACITY:'저장할 항목이 이 기기의 저장 용량(저장 한 번 약 3.7MB)을 넘을 것으로 예상되어 시작하지 않습니다. 분할 저장(형식 5) 앱으로 업데이트한 뒤 가져오세요.',
   FIN_IMPORT_SESSION_BUDGET:'저장할 항목 수가 이번 실행에서 안전하게 저장할 수 있는 양을 넘을 것으로 예상되어 시작하지 않습니다. 앱을 닫았다가 다시 연 뒤 가져오세요.',
-  FIN_IMPORT_WRITE_PERMISSION:'기록 권한을 받지 못해 가져오기를 시작하지 않았습니다. 연결 · 장치에서 서버 로그인과 동기화 상태를 확인한 뒤 다시 누르세요. 저장된 항목은 그대로입니다.',
-  FIN_IMPORT_OP_LIMIT:'저장할 항목 수가 이 금고에 남은 저장 횟수보다 많아 시작하지 않습니다. 금고 이월(docs/FIN01_VAULT_MIGRATION.md)을 먼저 준비하세요.',
+  FIN_IMPORT_WRITE_PERMISSION:'저장 준비를 하지 못해 가져오기를 시작하지 않았습니다. 연결 · 장치에서 서버 로그인과 동기화 상태를 확인한 뒤 다시 누르세요. 저장된 항목은 그대로입니다.',
+  FIN_IMPORT_OP_LIMIT:'저장할 항목 수가 이 기록에 남은 저장 횟수보다 많아 시작하지 않습니다. 기록 이월을 먼저 준비하세요.',
   APP_ENTITY_LIMIT:'이 종류의 항목 한도에 도달했습니다(계정 60 · 거래 8,000 · 묶음 400 · 규칙 300).',
   FIN_BATCH_IMMUTABLE:'가져온 원천 묶음은 한 번 저장하면 바꿀 수 없습니다.',
   UNKNOWN_FIN_ACCOUNT:'없는 계정을 가리키고 있습니다. 계정을 먼저 만드세요.',
@@ -68,30 +68,30 @@ export const FIN_ERROR_TEXT=Object.freeze({
   FIN_TXN_CREATE_VOIDED:'새 거래를 무효 상태로 만들 수 없습니다.',
   DELETE_CONFIRMATION_REQUIRED:'무효화하려면 사유를 쓰고 확인란을 선택하세요.',
   VOID_MUST_PRESERVE_TXN:'무효화할 때는 거래 내용을 함께 바꿀 수 없습니다.',
-  UNKNOWN_FIN_SOURCE_ROW:'연결하려는 원천 행이 없습니다.',
-  FIN_SOURCE_ROW_ALREADY_CLAIMED:'이 원천 행은 이미 다른 거래가 대신하고 있습니다.',
-  FIN_CLAIM_ROW_NOT_CLAIMABLE:'순액을 모르거나 전액 취소된 원천 행은 거래로 대신할 수 없습니다.',
-  FIN_CLAIM_ACCOUNT_MISMATCH:'원천 행을 대신하는 거래는 원천 행과 같은 계정이어야 합니다.',
-  FIN_CLAIM_KIND_MISMATCH:'원천 행을 대신하는 거래의 종류가 맞지 않습니다(선불 행은 선불 충전, 그 밖은 지출·환불).',
-  FIN_CLAIM_AMOUNT_MISMATCH:'원천 행을 대신하는 거래의 금액은 원천 행 순액 합계와 1원까지 같아야 합니다.',
+  UNKNOWN_FIN_SOURCE_ROW:'연결하려는 가져온 줄이 없습니다.',
+  FIN_SOURCE_ROW_ALREADY_CLAIMED:'이 가져온 줄은 이미 다른 거래가 대신하고 있습니다.',
+  FIN_CLAIM_ROW_NOT_CLAIMABLE:'실제 금액을 모르거나 전액 취소된 가져온 줄은 거래로 대신할 수 없습니다.',
+  FIN_CLAIM_ACCOUNT_MISMATCH:'가져온 줄을 대신하는 거래는 가져온 줄과 같은 계정이어야 합니다.',
+  FIN_CLAIM_KIND_MISMATCH:'가져온 줄을 대신하는 거래의 종류가 맞지 않습니다(선불 행은 선불 충전, 그 밖은 지출·환불).',
+  FIN_CLAIM_AMOUNT_MISMATCH:'가져온 줄을 대신하는 거래의 금액은 가져온 줄 실제 금액 합계와 1원까지 같아야 합니다.',
   // 화면에서만 쓰는 코드
   FIN_DATE_REQUIRED:'날짜를 입력하세요.',
   FIN_NAME_REQUIRED:'계정 이름을 입력하세요.',
   FIN_MERCHANT_RULE_REQUIRED:'가맹점에 포함될 글자를 입력하세요.',
   FIN_RULE_PRIORITY:'우선순위는 0부터 999 사이의 정수로 입력하세요(작을수록 먼저 적용).',
   FIN_VOID_REASON_REQUIRED:'무효화 사유를 입력하세요.',
-  FIN_IMPORT_FILE:'계획 파일(JSON)을 읽지 못했습니다. fin-tools/spending-lab-import.mjs가 만든 파일인지 확인하세요.',
-  FIN_IMPORT_FORMAT:'가져오기 계획 형식(LB_FIN_IMPORT_PLAN_1)이 아닙니다.',
+  FIN_IMPORT_FILE:'계획 파일을 읽지 못했습니다. 과거 이력 변환기가 만든 파일인지 확인하세요.',
+  FIN_IMPORT_FORMAT:'가져오기 계획 파일 형식이 아닙니다.',
   FIN_IMPORT_CONTROL_MISMATCH:'통제값이 일치하지 않아 가져오기를 확정할 수 없습니다.',
   FIN_IMPORT_CONFLICT:'이미 있는 자료와 겹치는 항목이 있어 가져오기를 확정할 수 없습니다.',
-  FIN_IMPORT_DRAFT_MODE:'지금은 이 기기에 임시 저장만 됩니다. 가져오기는 연결하고 기록 권한을 받은 뒤 확정 저장으로만 합니다.',
+  FIN_IMPORT_DRAFT_MODE:'지금은 이 기기에 임시 저장만 됩니다. 가져오기는 연결하고 저장 준비를 마친 뒤 확정 저장으로만 합니다.',
   FIN_IMPORT_NOTHING:'저장할 항목이 없습니다. 이미 모두 가져왔습니다.',
-  FIN_IMPORT_ROW_INVALID:'계획 파일의 계정·묶음·원천 행 중 저장 규칙에 맞지 않는 것이 있습니다(항목 자세히의 이유 참고). 변환기로 계획 파일을 다시 만드세요.',
+  FIN_IMPORT_ROW_INVALID:'계획 파일의 계정·묶음·가져온 줄 중 저장 규칙에 맞지 않는 것이 있습니다(항목 자세히의 이유 참고). 변환기로 계획 파일을 다시 만드세요.',
 });
 export function finErrorText(code){
   if(typeof code!=='string')return null;
   if(Object.hasOwn(FIN_ERROR_TEXT,code))return FIN_ERROR_TEXT[code];
-  if(/^(INVALID_)?FIN_/.test(code))return '가계부 저장 규칙에 맞지 않아 저장하지 않았습니다 ('+code+').';
+  if(/^(INVALID_)?FIN_/.test(code))return '가계부 저장 규칙에 맞지 않아 저장하지 않았습니다.'+' · 문의 코드 ▾\u2060'+code+'\u2060';
   return null;
 }
 export function finError(code){return Object.assign(new Error(code),{code,finLocal:true});}
@@ -240,12 +240,12 @@ export function opsAfter(opCheck){
   return after>=0?{known:true,after,short:0,text:'가져온 뒤 남는 저장 횟수 '+opCount(after)+'개'}:{known:true,after:null,short:-after,text:'가져온 뒤 남는 저장 횟수 없음 · '+opCount(-after)+'개 부족(시작하지 않음)'};
 }
 export function opBudgetNotice(b){
-  if(!b?.known)return {stage:'UNKNOWN',tone:'muted',text:'남은 연산 확인 불가 · 이 기기에 검증한 원격 버전이 없습니다(서버 동기화 전이거나 서버 금고를 쓰지 않는 모드). 가져오기는 막지 않고 서버가 최종 판정합니다.'};
-  const left='남은 연산 '+opCount(b.remaining)+' / '+opCount(b.limit)+(b.pending?' (보내지 않은 임시 저장 '+opCount(b.pending)+'개 뺌)':'');
-  if(b.stage==='FULL')return {stage:b.stage,tone:'bad',text:left+' · 이 금고는 더 이상 새 기록을 받지 못합니다. 새 금고로 이월이 필요합니다.'};
-  if(b.stage==='CRITICAL')return {stage:b.stage,tone:'bad',text:left+' · 거의 다 찼습니다. 가져오기 같은 대량 저장을 미루고 금고 이월을 진행하세요.'};
-  if(b.stage==='WARN')return {stage:b.stage,tone:'warn',text:left+' · 금고 이월을 준비하세요. 가져오기 전에 저장할 항목 수와 남은 연산을 비교합니다.'};
-  if(b.stage==='PREPARE')return {stage:b.stage,tone:'info',text:left+' · 이월 준비 단계입니다. 남은 연산이 줄면 새 금고로 옮겨야 합니다.'};
+  if(!b?.known)return {stage:'UNKNOWN',tone:'muted',text:'남은 저장 횟수 확인 불가 · 이 기기에 확인한 서버 버전이 없습니다(서버 동기화 전이거나 서버 동기화를 쓰지 않는 모드). 가져오기는 막지 않고 서버가 최종 판정합니다.'};
+  const left='남은 저장 횟수 '+opCount(b.remaining)+' / '+opCount(b.limit)+(b.pending?' (보내지 않은 임시 저장 '+opCount(b.pending)+'개 뺌)':'');
+  if(b.stage==='FULL')return {stage:b.stage,tone:'bad',text:left+' · 이 기록은 더 이상 새 기록을 받지 못합니다. 새 기록으로 이월이 필요합니다.'};
+  if(b.stage==='CRITICAL')return {stage:b.stage,tone:'bad',text:left+' · 거의 다 찼습니다. 가져오기 같은 대량 저장을 미루고 기록 이월을 진행하세요.'};
+  if(b.stage==='WARN')return {stage:b.stage,tone:'warn',text:left+' · 기록 이월을 준비하세요. 가져오기 전에 저장할 항목 수와 남은 저장 횟수을 비교합니다.'};
+  if(b.stage==='PREPARE')return {stage:b.stage,tone:'info',text:left+' · 이월 준비 단계입니다. 남은 저장 횟수이 줄면 새 기록으로 옮겨야 합니다.'};
   return {stage:'OK',tone:'muted',text:left};
 }
 
@@ -283,20 +283,20 @@ export function capacityBudget(server,local){
 }
 const mb=n=>(n/1e6).toFixed(2)+'MB';
 export function localCapacityText(l){
-  if(!l?.known)return '로컬 용량 확인 불가 · 이 기기 저장소가 크기를 알려 주지 않습니다(옛 빌드이거나 서버 금고를 쓰지 않는 모드).';
+  if(!l?.known)return '이 기기 저장 용량 확인 불가 · 이 기기 저장소가 크기를 알려 주지 않습니다(옛 빌드이거나 서버 동기화를 쓰지 않는 모드).';
   const pct=' ('+(Math.floor(l.percent*10)/10)+'%)';
-  if(l.mode==='HEAD')return '로컬 머리 '+mb(l.bytes)+' / '+mb(l.limit)+pct+' · 분할 저장이라 전체 기록 용량 상한 없음'+(l.remainingOps!==null?' · 이번 실행에서 저장 가능 약 '+opCount(l.remainingOps)+'번(앱을 다시 열면 초기화)':'');
-  return '로컬 용량 '+mb(l.bytes)+' / '+mb(l.limit)+pct+(l.remainingOps!==null?' · 로컬로 남은 기록 약 '+opCount(l.remainingOps)+'개':'');
+  if(l.mode==='HEAD')return '이 기기 저장 사용량 '+mb(l.bytes)+' / '+mb(l.limit)+pct+' · 분할 저장이라 전체 기록 용량 상한 없음'+(l.remainingOps!==null?' · 이번 실행에서 저장 가능 약 '+opCount(l.remainingOps)+'번(앱을 다시 열면 초기화)':'');
+  return '이 기기 저장 용량 '+mb(l.bytes)+' / '+mb(l.limit)+pct+(l.remainingOps!==null?' · 이 기기에 남은 기록 약 '+opCount(l.remainingOps)+'개':'');
 }
 export function capacityNotice(server,local){
   const c=capacityBudget(server,local),s=opBudgetNotice(server),tone=c.stage==='FULL'||c.stage==='CRITICAL'?'bad':c.stage==='WARN'?'warn':c.stage==='PREPARE'?'info':'muted';
   const fewer=c.remaining!==null&&server?.known&&server.remaining>c.remaining;
-  const head=fewer&&c.limitedBy==='LOCAL'?'실제로 남은 기록 약 '+opCount(c.remaining)+'개(로컬 용량이 먼저 찹니다) · ':fewer&&c.limitedBy==='SESSION'?'이번 실행에서 남은 저장 약 '+opCount(c.remaining)+'번(앱을 다시 열면 초기화) · ':'';
+  const head=fewer&&c.limitedBy==='LOCAL'?'실제로 남은 기록 약 '+opCount(c.remaining)+'개(이 기기 저장 용량이 먼저 찹니다) · ':fewer&&c.limitedBy==='SESSION'?'이번 실행에서 남은 저장 약 '+opCount(c.remaining)+'번(앱을 다시 열면 초기화) · ':'';
   const pctOf=({PREPARE:'70',WARN:'85',CRITICAL:'95',FULL:'100'})[local?.stage];
-  const localAdvice=local?.known&&SEVERITY.indexOf(local.stage)>=SEVERITY.indexOf('PREPARE')?(local.mode==='HEAD'?' · 로컬 머리가 상한의 '+pctOf+'% 이상입니다(보통은 1MB 아래). 앱을 다시 열어 보고, 계속되면 기술 정보를 확인하세요.':' · 로컬 용량이 '+pctOf+'% 이상입니다. 가져오기 같은 대량 저장을 미루세요.'):'';
+  const localAdvice=local?.known&&SEVERITY.indexOf(local.stage)>=SEVERITY.indexOf('PREPARE')?(local.mode==='HEAD'?' · 이 기기 저장 사용량이 상한의 '+pctOf+'% 이상입니다(보통은 1MB 아래). 앱을 다시 열어 보고, 계속되면 기술 정보를 확인하세요.':' · 이 기기 저장 용량이 '+pctOf+'% 이상입니다. 가져오기 같은 대량 저장을 미루세요.'):'';
   return {stage:c.stage,tone,lines:[head+s.text,localCapacityText(local)+localAdvice],remaining:c.remaining,limitedBy:c.limitedBy};
 }
-const COMPACTION_REASON={STORE_HOLD:'저장소 보류 상태',NOT_OWNER:'이 창이 기록 권한 소유자가 아님',BLOCKED:'앞선 저장 오류',PENDING:'보내지 않은 기록이 있음',ENROLLMENT:'장치 등록 진행 중',NOT_SYNCED:'아직 동기화 전',DISK_UNKNOWN:'디스크 여유를 확인할 수 없음',DISK_SPACE:'디스크 여유 부족(현재 크기의 3배 필요)',BACKUP_CONFLICT:'이전 전 사본 자리에 다른 값이 있어 덮어쓰지 않음(기술 정보 확인 필요)',BACKUP_UNREADABLE:'이전 전 사본 자리를 읽을 수 없음'};
+const COMPACTION_REASON={STORE_HOLD:'저장소 보류 상태',NOT_OWNER:'이 창은 저장 준비를 한 창이 아님',BLOCKED:'앞선 저장 오류',PENDING:'보내지 않은 기록이 있음',ENROLLMENT:'장치 등록 진행 중',NOT_SYNCED:'아직 동기화 전',DISK_UNKNOWN:'디스크 여유를 확인할 수 없음',DISK_SPACE:'디스크 여유 부족(현재 크기의 3배 필요)',BACKUP_CONFLICT:'이전 전 사본 자리에 다른 값이 있어 덮어쓰지 않음(기술 정보 확인 필요)',BACKUP_UNREADABLE:'이전 전 사본 자리를 읽을 수 없음'};
 // 저장소 정리(record 형식 4) 상태 문구. 필요 없으면 null.
 export function compactionText(c){
   if(!c||typeof c!=='object')return null;
@@ -328,10 +328,10 @@ export function finFingerprintInput(fin){
 // 시작(창을 숨겨 권한이 끊긴 뒤 "이어서 가져오기"도 같은 버튼). BLOCKED: 이 화면에서 풀 수 없음 → 이유와 연결 · 장치 안내.
 export function importPermission({mdProfile=false,mdReady=false,autoOK=false,role='NONE',unlocked=false}={}){
   if(!mdProfile||mdReady)return {state:'READY',text:null};
-  if(autoOK)return {state:'ACQUIRE',text:'아직 기록 권한이 없습니다(창을 숨기거나 오프라인이 되면 권한이 끊깁니다). 아래 버튼을 누르면 최신 내용을 동기화하고 기록 권한을 받은 뒤 바로 가져옵니다.'};
-  if(role==='FOLLOWER')return {state:'BLOCKED',text:'이 창은 읽기 전용입니다(다른 LIFE BRICK 창이 기록 소유 중). 기록 소유 창에서 가져오세요.'};
-  if(!unlocked)return {state:'BLOCKED',text:'로컬 잠금해제가 필요합니다 · 연결 · 장치에서 잠금해제한 뒤 가져오세요.'};
-  return {state:'BLOCKED',text:'기록 권한을 받을 수 없는 상태입니다 · 연결 · 장치에서 서버 로그인 → 최신 내용 동기화 → 기록 권한 받기 순서로 확인하세요.'};
+  if(autoOK)return {state:'ACQUIRE',text:'아직 저장 준비가 안 됐습니다(창을 숨기거나 오프라인이 되면 권한이 끊깁니다). 아래 버튼을 누르면 최신 내용을 동기화하고 저장 준비를 마친 뒤 바로 가져옵니다.'};
+  if(role==='FOLLOWER')return {state:'BLOCKED',text:'이 창은 읽기 전용입니다(다른 LIFE BRICK 창이 저장 중). 저장 중인 창에서 가져오세요.'};
+  if(!unlocked)return {state:'BLOCKED',text:'이 기기 잠금해제가 필요합니다 · 연결 · 장치에서 잠금해제한 뒤 가져오세요.'};
+  return {state:'BLOCKED',text:'저장 준비를 할 수 없는 상태입니다 · 연결 · 장치에서 서버 로그인 → 최신 내용 동기화 → 저장 준비하기 순서로 확인하세요.'};
 }
 // 소유자 잠금 직후 정리한 임시 파일(stage-*.tmp) 개수. 0·모름이면 null.
 export function housekeepingText(h){
@@ -339,10 +339,10 @@ export function housekeepingText(h){
   if(Number.isSafeInteger(h.stagesRemoved)&&h.stagesRemoved>0)parts.push('중단된 저장의 임시 파일 '+h.stagesRemoved+'개를 정리했습니다(데이터 파일·사본은 건드리지 않음).');
   if(Number.isSafeInteger(h.orphanSegmentsRemoved)&&h.orphanSegmentsRemoved>0)parts.push('쓰이지 않는 조각 파일 '+h.orphanSegmentsRemoved+'개를 정리했습니다.');
   if(Number.isSafeInteger(h.orphanSegmentsKept)&&h.orphanSegmentsKept>0)parts.push('현재 기록보다 새 조각 파일 '+h.orphanSegmentsKept+'개는 보존했습니다(예전 기록으로 되돌린 상태일 수 있음).');
-  if(Number.isSafeInteger(h.orphanSegmentsFailed)&&h.orphanSegmentsFailed>0)parts.push('조각 파일 '+h.orphanSegmentsFailed+'개는 지우지 못했습니다('+(h.orphanCode??'UNKNOWN')+').');
-  else if(h.orphanSegmentsRemoved===null&&h.orphanCode)parts.push('조각 파일 정리를 하지 못했습니다('+h.orphanCode+') · 데이터는 그대로입니다.');
-  if(Number.isSafeInteger(h.stagesFailed)&&h.stagesFailed>0)parts.push('임시 파일 '+h.stagesFailed+'개는 지우지 못했습니다('+(h.code??'UNKNOWN')+') · 다음에 다시 시도합니다.');
-  else if(h.code&&h.code!=='SKIPPED_FIRST_PRIMARY'&&h.stagesRemoved===null)parts.push('임시 파일 정리를 하지 못했습니다('+h.code+') · 데이터는 그대로입니다.');
+  if(Number.isSafeInteger(h.orphanSegmentsFailed)&&h.orphanSegmentsFailed>0)parts.push('조각 파일 '+h.orphanSegmentsFailed+'개는 지우지 못했습니다.'+' · 문의 코드 ▾\u2060'+(h.orphanCode??'UNKNOWN')+'\u2060');
+  else if(h.orphanSegmentsRemoved===null&&h.orphanCode)parts.push('조각 파일 정리를 하지 못했습니다 · 데이터는 그대로입니다.'+' · 문의 코드 ▾\u2060'+h.orphanCode+'\u2060');
+  if(Number.isSafeInteger(h.stagesFailed)&&h.stagesFailed>0)parts.push('임시 파일 '+h.stagesFailed+'개는 지우지 못했습니다 · 다음에 다시 시도합니다.'+' · 문의 코드 ▾\u2060'+(h.code??'UNKNOWN')+'\u2060');
+  else if(h.code&&h.code!=='SKIPPED_FIRST_PRIMARY'&&h.stagesRemoved===null)parts.push('임시 파일 정리를 하지 못했습니다 · 데이터는 그대로입니다.'+' · 문의 코드 ▾\u2060'+h.code+'\u2060');
   return parts.length?parts.join(' '):null;
 }
 // 가져오기 예상 state 증가(AI_INFERENCE 모형, F8 실측 op당 7.2KB와 맞춘 계수): 항목마다 ≈ 25/9 × (요청 바이트 + 500) + 3,400.
@@ -356,7 +356,7 @@ export function estimateStateGrowth(items){return items.filter(i=>i.action==='SA
 export const CSV_HEADER=Object.freeze(['날짜','종류','소비 구분','순액(원)','행 상태','계정','받는 계정','가맹점','분류','세부 분류','출처','중복 의심','태그']);
 const CSV_CONSUMPTION={EXPENSE:'소비',REFUND:'소비(환불 차감)',TRANSFER:'이체 · 소비 아님',PREPAID_LOAD:'선불 전환 · 소비 아님',INCOME:'수입 · 소비 아님'};
 const CSV_KIND={EXPENSE:'지출',INCOME:'수입',REFUND:'환불',TRANSFER:'이체',PREPAID_LOAD:'선불 충전'};
-// 화면 FIN_ROW_TEXT(app.mjs)와 같은 글자. 전액 취소처럼 순액 0원인 행을 CSV에서도 알아볼 수 있게 한다.
+// 전액 취소처럼 순액 0원인 행을 CSV에서도 알아볼 수 있게 한다. FIX45: 화면 글자는 쉬운 말로 바뀌었고, CSV 머리글·값은 파일 형식이라 그대로 둔다.
 const CSV_ROW={PURCHASE:'승인',FULL_CANCEL:'전액 취소',REFUND:'환불',PARTIAL_UNKNOWN:'부분 취소 · 순액 모름',POSTED:'직접 입력'};
 export function csvSafe(v){
   const t=String(v??'');
@@ -437,7 +437,7 @@ export function planControl(entities){
 // fin-model.mjs ROW_FIELDS·rowsSignature와 같은 정의. 두 구현이 같은 지문을 내는지는 multi-device/tests/b9-fin-import-fixes.test.mjs가 확인한다.
 const ROW_FIELDS=['rowId','date','month','accountId','merchant','amount','net','status','role','installments','sourceCategory','confidence','sourceFile','sourceRow','duplicateGroup','item','note'];
 export const rowsSignature=rows=>JSON.stringify((rows??[]).map(r=>ROW_FIELDS.map(k=>r?.[k]??null)));
-export const CONTROL_LABELS=Object.freeze([['rows','원천 행 수'],['knownNet','순액을 아는 행 합계'],['unallocated','미배분 잔액'],['sourceNet','원천 순액 합계'],['prepaid','선불 전환'],['otherNet','선불 외 순액'],['unknownRows','순액 모름 행 수']]);
+export const CONTROL_LABELS=Object.freeze([['rows','가져온 줄 수'],['knownNet','실제 금액을 아는 행 합계'],['unallocated','미배분 잔액'],['sourceNet','가져온 금액 합계'],['prepaid','선불 전환'],['otherNet','선불 외 실제 금액'],['unknownRows','실제 금액 모름 행 수']]);
 const idOK=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,40}$/.test(v);
 const intOK=v=>Number.isSafeInteger(v)||typeof v==='string'&&/^(0|-?[1-9]\d{0,15})$/.test(v);
 const SIGNED=/^(0|-?[1-9]\d{0,13})$/;
@@ -461,8 +461,8 @@ function rowProblem(r,chunk,source,accountIds){
   if(!['PURCHASE','FULL_CANCEL','REFUND','PARTIAL_UNKNOWN','RESIDUAL'].includes(r.status)||!['SPEND','PREPAID'].includes(r.role)||!['HIGH','MEDIUM','LOW'].includes(r.confidence))return at+'상태·역할·신뢰도';
   if(r.status==='RESIDUAL'){if(r.date!==null||r.month!==null||r.net===null||!chunk.startsWith('RESIDUAL-')||source==='MANUAL')return at+'미배분 행 형식';}
   else if(!dateOK(r.date)||r.month!==r.date.slice(0,7)||r.month!==chunk)return at+'날짜와 묶음 달 불일치';
-  if(r.status==='PARTIAL_UNKNOWN'?r.net!==null:r.net===null)return at+'순액 모름은 부분 취소에만';
-  if(r.status==='FULL_CANCEL'&&r.net!=='0')return at+'전액 취소 순액은 0';
+  if(r.status==='PARTIAL_UNKNOWN'?r.net!==null:r.net===null)return at+'실제 금액 모름은 부분 취소에만';
+  if(r.status==='FULL_CANCEL'&&r.net!=='0')return at+'전액 취소 실제 금액은 0';
   const a=BigInt(r.amount),n=r.net===null?null:BigInt(r.net),abs=x=>x<0n?-x:x;
   const signOK=r.status==='PURCHASE'?a>0n&&n>0n&&n<=a:r.status==='REFUND'?a!==0n&&n<0n&&abs(n)<=abs(a):r.status==='RESIDUAL'?n===a&&a!==0n:a>0n;
   if(!signOK)return at+'상태와 금액 부호';

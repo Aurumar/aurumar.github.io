@@ -226,7 +226,7 @@ export function renderStatusView(root,ctx){
   // 2) 오늘 시간: 링·오늘 누적·다음 효과까지 (타이머가 돌면 "지금 - 시작"으로 다시 계산)
   const ringSlot=add(el('div',null,'st-ring-slot'),todayRing(h,today.minutes));
   const todayLine=el('strong','오늘 '+hmText(today.minutes),'st-today-time'),nextLine=el('span',nextEffectText(today.fx),'muted small st-today-next');
-  const noteLine=el('span',ctx.timer?'진행 중 타이머 포함':'아직 쌓지 않은 초안도 오늘 시간에 들어가요','muted small st-today-note');
+  const noteLine=el('span',ctx.timer?'진행 중 타이머 포함':'아직 쌓지 않은 임시 입력도 오늘 시간에 들어가요','muted small st-today-note');
   // B6: PC 집중 측정에서 담을 수 있는 분(앱이 계산해 넘긴다). 오늘 시간·효과에는 더하지 않고 흐린 글씨로만 보인다.
   const focusMin=Number.isInteger(ctx.focusExtraMin)&&ctx.focusExtraMin>0?ctx.focusExtraMin:0;
   const focusLine=focusMin?el('span','+'+hmText(focusMin)+' 담기 가능 · PC 집중 측정 (아직 더하지 않음)','muted small st-focus-extra'):null;

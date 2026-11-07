@@ -402,7 +402,7 @@ export class SequentialService {
  command(requestId){if(['LOCAL_PUBLICATION_HOLD','REMOTE_COMMITTED_LOCAL_HOLD'].includes(this.#state))return {status:this.#state,requestId};const p=this.pending;if(p?.intentId===requestId)return {status:this.#state,requestId};const receipt=this.#store.state.sequentialSync.receipts[requestId];if(receipt?.status==='ABORTED')return {status:'ABORTED',requestId};const op=this.#store.state.userApp.operations.find(x=>x.provenance.requestId===requestId);if(receipt?.status==='COMMITTED'&&op)return {...savedResult(op),status:'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED',remoteVersion:receipt.version,remoteHead:receipt.head};return {status:'NOT_ESTABLISHED',requestId};}
  today(){return today(this.#store.graph);}
  history(){return {changes:wholeHistory(this.#store.graph,this.#store.state.userApp.operations)};}
- view(){return {...wholeLifeView(this.#store.graph,undefined,this.#store.state.userApp.operations),settings:{storage:this.#store.storageKind,session:this.#state,profile:PROFILE,writeReady:this.status().writeReady,remoteCheckpoint:this.#store.state.sequentialSync.verified,localState:this.#store.localState??null,backup:this.#store.backupLocation??'SYNC_PRIMARY_WINDOWS_THEN_COLD_BACKUP',dataRoot:this.#store.location??'CURRENT_HTTPS_ORIGIN_INDEXEDDB',timings:this.timings(),lastSyncPublishReason:this.#lastSyncPublishReason,devices:this.#deviceRoster(),devicesRetirePending:retirePendingKeys(rosterRetireInputs(this))}};}
+ view(){return {...wholeLifeView(this.#store.graph,undefined,this.#store.state.userApp.operations),settings:{storage:this.#store.storageKind,session:this.#state,profile:PROFILE,writeReady:this.status().writeReady,remoteCheckpoint:this.#store.state.sequentialSync.verified,localState:this.#store.localState??null,backup:this.#store.backupLocation??'SYNC_PRIMARY_WINDOWS_THEN_COLD_BACKUP',dataRoot:this.#store.location??'CURRENT_HTTPS_ORIGIN_INDEXEDDB',timings:this.timings(),devicesLastAt:deviceLastRecordAt(this.#store.state.userApp.operations),lastSyncPublishReason:this.#lastSyncPublishReason,devices:this.#deviceRoster(),devicesRetirePending:retirePendingKeys(rosterRetireInputs(this))}};}
  #deviceRoster(){const s=this.#store.state;return deviceRosterView({rosterEvidence:this.#store.roster.evidence,operations:s.userApp.operations,retirements:s.sequentialSync.lifecycle?.retirements,selfDeviceId:this.#material.identity.public.deviceId,writeReady:this.status().writeReady});}
  // F12-2 진단용: 단계 이름→ms 숫자만(시간 숫자와 이름 외에는 아무것도 담지 않음). 내부 배열을 그대로 내보내지 않고 얕은 복제.
  timings(){return {open:this.#openTimings.map(r=>({...r})),save:this.#saveTimings.map(r=>({...r})),lastSaveFullReplays:this.#lastSaveFullReplays};}
@@ -422,6 +422,12 @@ export function deviceRosterView({rosterEvidence,operations,retirements,selfDevi
  if(stats)for(const op of operations){const s=stats.get(op.device)??{count:0,last:null},at=op.provenance?.recordedAt;s.count++;if(typeof at==='string'&&(s.last===null||at>s.last))s.last=at;stats.set(op.device,s);}
  return members.map(({member,role})=>{const self=member.deviceId===selfDeviceId,gone=retired.has(member.deviceId),s=stats?(stats.get(member.deviceId)??{count:0,last:null}):null;
   return {keyId8:member.keyId.slice(0,8),deviceId8:member.deviceId.slice(0,8),self,retired:gone,writeRole:gone?null:role,writeReady:self?writeReady===true:null,recordCount:s?s.count:null,lastRecordDate:s?.last?s.last.slice(0,10):null};});
+}
+// FIX45 (AUD1 #19): 기기(deviceId 앞 8자리)별 마지막 기록 시각. 화면이 KST로 보이려고 쓴다(deviceRosterView의 UTC 날짜 값은 그대로). 로컬 기록만 읽는다.
+export function deviceLastRecordAt(operations){
+ const out={};
+ if(Array.isArray(operations))for(const op of operations){const id=typeof op.device==='string'?op.device.slice(0,8):null,at=op.provenance?.recordedAt;if(id&&typeof at==='string'&&(out[id]===undefined||at>out[id]))out[id]=at;}
+ return out;
 }
 // B24: 해제 요청의 대상 deviceId. prepareRetirement가 만든 intent는 target={member,active,readOnly,sequence,digest}이다(target.member.deviceId).
 // 예전 형태(target.deviceId)도 읽는다.
