@@ -11,6 +11,7 @@ import {OVERLAP_NOTICE,TIMER_OVERLAP_NOTICE} from './study-rebase.mjs';
 import {renderLive,liveRecordMin,liveElapsedMin,liveSettings,REST_SPLIT_MS} from './study-live.mjs';
 import {dayRoomCard,CELEBRATED_KEY} from './study-room.mjs';
 import {examLineText,daySummary,barsText} from './life-plan.mjs';
+import {diaryEntryState,renderDiaryEntry,openDiarySheet,diaryDayRow,diaryErrorText} from './diary-ui.mjs';   // FIX49B: 일기 입구·시트(쓰기 문이 열렸을 때만)
 import {HABIT_KINDS,HABIT_AREAS,DAY_TYPES,MAX_NAME,MAX_NOTE,SUBJECT_COLOR_KEYS,HABIT_HINTS,
   kstDate,shiftDay,dateKeyOK,dayNumber,hhmmFromIso,timeOK,targetTimeOK,lifeIdOK,
   brickOf,sumBricks,entryDone,nearestExam,lifeDefs,weekCount,studyCodeOf,sessionIdFor,timerSessionId,timerTagFrom,subjectOfSession,emptyDay} from './life-model.mjs';
@@ -70,7 +71,7 @@ function maker(doc){
 }
 const int=s=>typeof s==='string'&&/^\d+$/.test(s.trim())?Number(s.trim()):NaN;
 
-export function createLifeState(){return {today:null,flow:null,ports:null,boxRef:null,flowState:null,studyCard:null,pending:[],subjectId:null,timer:null,message:null,error:false,notices:[],pastDate:null,editing:false,floatXp:null,liveOpen:false};}
+export function createLifeState(){return {today:null,flow:null,ports:null,boxRef:null,flowState:null,studyCard:null,pending:[],subjectId:null,timer:null,message:null,error:false,notices:[],pastDate:null,editing:false,floatXp:null,liveOpen:false,diary:null,diaryFlow:null,diaryPorts:null,diaryPortsOf:null,diaryMessage:null,diaryNotices:[]};}
 
 // B2C (DEFECT-6): 상자 쓰기 실패는 save가 던지지 않는다(설계). 버튼이 끝났을 때 오늘 카드·공부 벽돌 초안이 실패 상태면 성공 문구 대신 실패 문구를 보인다. 쌓기가 성공하면 초안이 지워져 has가 거짓이다.
 // R33B (HUNT32 S1): 그 칸 자체의 실패(own)만 본다. 다른 날짜·종류 초안의 실패는 위쪽 상자 전체 빨간 줄이 따로 알린다.
@@ -132,8 +133,9 @@ export async function prepareLife(ctx,st,gone=()=>false){
   const [flowState,dates]=await Promise.all([st.flow.state(st.today),st.flow.draftDates()]);
   let studyCard=null;
   try{const s=await studyFlow(ctx);if(s)studyCard=(await s.st.flow.state(st.today));}catch{studyCard=null;}
+  let diary;try{diary=await diaryEntryState(ctx,st);}catch{diary={open:false};}   // FIX49B: 문이 닫혀 있으면 {open:false}(입구 0, 옛 칸 그대로)
   if(gone())return st;
-  st.flowState=flowState;st.studyCard=studyCard;
+  st.flowState=flowState;st.studyCard=studyCard;st.diary=diary;
   st.pending=dates.filter(d=>d<st.today).slice(-3);
   currentTimer(st,ctx.storage??globalThis.localStorage);
   return st;
@@ -142,7 +144,7 @@ export async function prepareLife(ctx,st,gone=()=>false){
 export function lockLife(st){
   if(!st)return;
   st.liveStop?.();st.liveStop=null;st.endSheet=null;
-  st.timer=null;st.liveOpen=false;st.flowState=null;st.studyCard=null;st.pending=[];st.message=null;st.error=false;st.focusNote=null;
+  st.timer=null;st.liveOpen=false;st.flowState=null;st.studyCard=null;st.pending=[];st.message=null;st.error=false;st.focusNote=null;st.diary=null;st.diaryMessage=null;st.diaryNotices=[];
 }
 
 function entryFor(h,{now,minutes,count}={}){
@@ -282,6 +284,10 @@ export function renderLifeToday(root,ctx,st){
   const typeSel=h.select(DAY_TYPES.map(t=>[t,DAY_TYPE_TEXT[t]]),card.dayType);
   typeSel.setAttribute('aria-label','하루 종류');typeSel.addEventListener('change',act(async()=>{await st.flow.setDayType(date,typeSel.value);}));
   add(out,add(el('div',null,'life-mood-box'),el('h3','기분과 한 줄'),moodRow,add(el('div',null,'life-note-row'),note,typeSel)));
+  // 5-1) FIX49B: 일기 입구(쓰기 문이 열렸을 때만, D49 8.1). 기분·한 줄 칸은 그대로 둔다(결정 ★3). 일기는 시트로 연다(다시 그려도 글자가 끊기지 않게).
+  const openDiary=d=>void openDiarySheet(ctx,st,d,{today:date,lifeFlow:st.flow,plan:dd=>{try{return daySummary(life,ach,dd);}catch{return null;}},health:dd=>ctx.healthLine?.(dd)??null,
+    after:async()=>{await prepareLife(ctx,st);await ctx.rerender();}}).catch(e=>{st.diaryMessage={text:diaryErrorText(e?.code),error:true};void ctx.rerender();});
+  add(out,renderDiaryEntry(ctx,st,{open:openDiary}));
 
   // 6) 하단 고정: 오늘 쌓기. 담아 둔 공부 초안이 있으면 먼저 공부 카드를 쌓고 이어서 오늘 카드를 쌓는다(stackDay).
   const studyDirty=st.studyCard?.status==='LOCAL_DRAFT';
@@ -657,6 +663,7 @@ export function renderPastDays(root,ctx,st){
     if(!ids.length)add(sec,hint('습관 기록이 없습니다.'));
     add(sec,row('기분',day.mood===null?'기록 없음':MOODS.find(m=>m[0]===day.mood)[1]+' '+MOODS.find(m=>m[0]===day.mood)[2]),day.note?row('한 줄',day.note):null);
   }
+  add(sec,diaryDayRow(ctx,date));   // FIX49B: 그날 일기 줄(점수·칩, 글은 눌러야 보임). 문이 닫혀 있고 일기도 없으면 없음
   add(sec,dayRoomCard(ctx,date));   // S1B "그날의 방": 그날 공부 카드 + 그날까지의 평생 분(읽기만, 진행 중 타이머 없음)
   root.append(sec);
   return sec;

@@ -202,6 +202,7 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
   add(out,nav,head?el('p',head,'plan-sum pw-sum'):null,timeLine?el('p',timeLine,'muted small pw-time'):null,m.rate!==null?el('p',RATE_MEANING,'muted small pw-rate-note'):null);   // FIX44 (AUD1 #16): 달성률의 뜻
   // FIX46B: 이번 주 과목 목표·"목표 대비" 줄(life-quest가 그린다, 앱이 넘겨 준다). 계획 달성률과 분모를 섞지 않는다.
   add(out,ctx.weekGoals?.({monday,state:m.state,subjects:m.subjects,actual:m.subjectActual,report:(text,error,notices)=>{w.message=text;w.error=error;w.notices=notices;}})??null);
+  add(out,ctx.weekReview?.({monday,today:day0})??null);   // FIX49D: 이 주 돌아보기(지난 주·이번 주만, 쓰기 문이 열렸을 때만, week-review가 그린다)
   if(w.message)add(out,el('p',w.message,w.error?'notice error pw-message':'notice pw-message'));
   for(const n of w.notices)add(out,el('p',PLAN_NOTICE_TEXT[n.code]??'알림을 읽지 못했어요'+' · 문의 코드 ▾\u2060'+n.code+'\u2060','notice plan-notice'));
 

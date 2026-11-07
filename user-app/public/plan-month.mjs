@@ -1,7 +1,7 @@
 // P1C: 계획 탭 '월' 보기 = 과목 × 주차 표 + 일정(시험·EVENT) 줄. 앱이 ctx.planMonth로 넘겨 주면 life-plan의 월 보기가 이것을 그린다(못 받으면 옛 날짜 달력 그대로).
 // 설계: AUTOPILOT\design\P1D_PLAN_CALENDAR_DESIGN.md 2.1·2.4·5(P1C). 합성 데이터로만 시험한다. 화면 규칙: DOM 생성 함수만(innerHTML·인라인 style·외부 라이브러리 없음), 색은 styles.css 토큰.
 // 칸 색 = 그 주(이 달에 든 날만) 그 과목의 실제 벽돌, 칸 테두리 = 계획이 있던 칸. 월 경계 주는 이 달에 든 날만 세어서 두 달의 칸을 더하면 그 주 실제와 같다(겹치거나 빠지는 날 0).
-// 보기만 한다: 쓰기 0(일정 추가·고치기는 앱의 일정 시트, 계획 넣기는 주 보기). 이번 달 목표 줄(PLAN_GOAL)은 V4 결정대로 다른 새 종류와 한 번에 내므로 아직 그리지 않는다. 새 기록 종류·필드 0.
+// 보기만 한다: 쓰기 0(일정 추가·고치기는 앱의 일정 시트, 계획 넣기는 주 보기). "목표 달성 주" 한 줄(FIX46C)은 앱이 ctx.monthGoals로 넘겨 주면 머리 아래에 붙는다(과목 주간 목표 계산은 life-quest). 새 기록 종류·필드 0.
 import {shiftDay} from './life-model.mjs';
 import {actualOf,planOf,mondayOf,daysInMonth,heatLevel,barsText,scheduleBox,maker,NO_SUBJECT_COLOR} from './life-plan.mjs';
 
@@ -61,6 +61,7 @@ export function renderMonth(ctx,st,{data,ym,dateGrid,goWeek}){
   const text=monthHeadText(m),dates=Boolean(st.monthDates);
   const toggle=button(dates?'과목으로 보기':'날짜로 보기',()=>{st.monthDates=!dates;void ctx.rerender();},'secondary pm-toggle');toggle.dataset.navOnly='1';
   add(out,add(el('div',null,'pm-head'),text?el('p',text,'plan-sum pm-sum'):el('p','이 달은 쌓은 벽돌도 계획도 없습니다 · 계획은 주 보기에서 넣습니다.','muted small'),toggle));
+  add(out,ctx.monthGoals?.({ym,ach:data.ach,today:data.today})??null);   // FIX46C: "목표 달성 주 n / m" 한 줄(life-quest가 그린다, 앱이 넘겨 준다). 목표를 정한 주가 없으면 줄 없음
   if(dates)add(out,...dateGrid());
   else{
     const grid=el('div',null,'pm-grid pm-cols-'+m.cols.length);grid.setAttribute('role','grid');grid.setAttribute('aria-label',Number(ym.slice(5))+'월 과목별 주차 벽돌, 색이 진할수록 많이 쌓은 주, 테두리는 계획이 있던 칸');

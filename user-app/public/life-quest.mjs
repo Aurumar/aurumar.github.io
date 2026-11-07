@@ -4,7 +4,7 @@ import {MY_QUEST_ID} from './life-achieve.mjs';
 import {collectRows,saveDefinitions} from './life-flow.mjs';
 import {HABIT_AREAS,EMPTY_LIFE_VIEW,LIFE_LIMITS,MAX_NAME,MAX_GOAL_BRICKS,GAME_PROFILE_ID,lifeDefs,openRecordsDoor,recordsDoorState,requireRecordsDoor,shiftDay,validateLifeData} from './life-model.mjs';
 import {rebaseRecord,stable} from './life-rebase.mjs';
-import {maker,planErrorText,unknownOutcome,PLAN_NOTICE_TEXT} from './life-plan.mjs';
+import {maker,planErrorText,unknownOutcome,actualOf,PLAN_NOTICE_TEXT} from './life-plan.mjs';
 export {DEFS_SEALED_TEXT} from './life-flow.mjs';
 
 export const MY_QUEST_REASON='내 퀘스트 저장';
@@ -79,6 +79,43 @@ export function savePlanGoal(ctx,{monday,base,mine}){return saveRecord(ctx,'PLAN
 export function saveExamResult(ctx,{id,base,mine}){return saveRecord(ctx,'EXAM_RESULT',id,{base,mine},'모의고사 결과 저장');}
 export function saveGameProfile(ctx,titleId){return saveRecord(ctx,'GAME_PROFILE',GAME_PROFILE_ID,{mine:{titleId}},'칭호 저장');}
 export function saveWeekReview(ctx,{monday,base,mine}){return saveRecord(ctx,'WEEK_REVIEW',monday,{base,mine},'주간 리뷰 저장');}   // 사유는 고정 문구만(이력에 그대로 보인다)
+
+// ---- 칭호 고르기 저장(FIX46C, D46 2.5): 쓰기 문이 열려 있으면 금고(GAME_PROFILE)에 저장해 네 기기가 같은 칭호를 쓴다. 닫혀 있으면 지금처럼 이 기기에만 저장한다 ----
+export const TITLE_DEVICE_NOTE='이 기기에만 저장돼요 · 네 기기를 올리고 새 기록을 켜면 같은 칭호를 써요';
+// 앱이 넘긴 ctx에 저장 함수와 읽기가 모두 있고 문이 열려 있을 때만 참. 그 밖(시험·읽기 전용·문 닫힘)은 기기 저장으로 간다.
+export function titleVaultOn(ctx){
+  try{return typeof ctx?.entity==='function'&&typeof ctx.getWhole==='function'&&recordsOpen(ctx);}catch{return false;}
+}
+// 돌려주는 값: 'SAVED' | 'SEALED'(임시 저장이라 금고에는 아직 없음) | 'ERROR'(show에 문구를 넘김). 결과를 모르는 오류는 그대로 던진다(앱의 perform이 처리).
+export async function pickTitle(ctx,titleId,show){
+  let r;
+  try{r=await saveGameProfile(ctx,titleId);}
+  catch(e){if(unknownOutcome(e?.code))throw e;show(planErrorText(e?.code));return 'ERROR';}
+  return r.sealed?'SEALED':'SAVED';
+}
+
+// ---- 월 보기 "목표 달성 주"(FIX46C, D46 6.1) ----
+// 이 달에 월요일이 든 주 중 이미 시작했고 목표가 있는 주를 센다(월 경계 주를 쪼개지 않아 두 달에 겹치지 않는다). 달성 = 그 주 모든 과목이 목표를 채움(목표 대비 100%).
+export function monthGoalWeeks({life,ach,ym,today}){
+  const weeks=new Map((ach?.weeks??[]).map(w=>[w.monday,w]));let total=0,done=0;
+  for(const g of life?.goals??[]){
+    if(g.monday.slice(0,7)!==ym||g.monday>today)continue;
+    const actual=new Map();
+    for(let i=0;i<7;i++)for(const [id,s] of actualOf(weeks,shiftDay(g.monday,i)).bySubject)actual.set(id,(actual.get(id)??0)+s.value);
+    const p=goalProgress(g.data.goals,actual);
+    if(!(p.total>0))continue;
+    total++;if(p.got>=p.total)done++;
+  }
+  return {total,done};
+}
+// 앱이 ctx.monthGoals로 넘긴다. 문이 닫혀 있거나 이 달에 목표를 정한 주가 없으면 줄을 그리지 않는다(0으로 채우지 않음).
+export function renderMonthGoals(ctx,{ym,ach,today}){
+  if(!recordsOpen(ctx))return null;
+  const {total,done}=monthGoalWeeks({life:ctx.getWhole().life??null,ach,ym,today});
+  if(!total)return null;
+  const h=maker(ctx.document??globalThis.document);
+  return h.el('p','목표 달성 주 '+done+' / '+total+' · 월요일이 이 달인 주만 셉니다','muted small pm-goal-weeks');
+}
 
 // ---- 새 기록 화면(FIX46B, D46 4.2·6.1·6.2). 앱이 포트로 넘겨 설정·계획 탭에 그린다. 화면 규칙: DOM 생성 함수만. 쓰기는 시트의 "저장" 버튼에서 위 저장 함수로만 ----
 export const DOOR_TITLE='새 기록 (모의고사·주간 목표) · 일기',DOOR_BUTTON='4기기 업데이트 확인하고 켜기',DOOR_WAIT='4기기 업데이트 뒤 켜기';

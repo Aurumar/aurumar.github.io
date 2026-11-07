@@ -55,7 +55,8 @@ const num=v=>Number.isInteger(v)?String(v):(Math.round(v*10)/10).toFixed(1);
 // 절마다 따로 실패해도 그 절만 null(UNKNOWN)이 된다.
 const guard=fn=>{try{return fn();}catch{return null;}};
 
-function habitWindow(life,today){
+// FIX49D: 주간 리뷰 화면도 이 계산을 그대로 부른다(today = 그 주 일요일). 내보내기 1절 숫자와 리뷰 화면 숫자가 같은 투영에서 나온다(D49 7.3).
+export function habitWindow(life,today){
   if(!life)return null;
   const defs=lifeDefs(life),dates=Array.from({length:WINDOW_DAYS},(_,i)=>shiftDay(today,i-(WINDOW_DAYS-1)));
   const cards=new Map(life.days.filter(d=>dates.includes(d.date)).map(d=>[d.date,d.data]));

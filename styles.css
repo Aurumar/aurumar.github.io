@@ -970,6 +970,46 @@ button.fin-quick-need{background:transparent;color:var(--lb-ink-3)}
 .life-mood.selected{background:var(--lb-gold-1);border-color:var(--lb-gold-2);box-shadow:var(--lb-gold-glow)}
 .life-note-row{display:flex;gap:var(--lb-s-2);flex-wrap:wrap}
 .life-note-row input{flex:1 1 220px;min-width:0}
+/* FIX49B 일기 입구·시트(D49 8장). 760 미만은 1단계 평가 → 2단계 글, 760 이상은 2열 한 화면(저장 단추 1개). 누르는 칸은 44px 이상 */
+.diary-entry{display:grid;gap:var(--lb-s-2);padding-top:var(--lb-s-3);border-top:1px solid var(--lb-line-soft)}
+.diary-entry-head{display:flex;align-items:center;justify-content:space-between;gap:var(--lb-s-2)}
+.diary-entry-head h3{margin:0}
+.diary-entry-head .diary-open{min-height:44px;min-width:96px}
+.diary-entry-state,.diary-entry-tomorrow{margin:0}
+.diary-entry-tomorrow{font-weight:600;color:var(--lb-ink-1);overflow-wrap:anywhere}
+.diary-pending{display:flex;flex-wrap:wrap;align-items:center;gap:var(--lb-s-2)}
+.lb-sheet.diary-sheet{width:min(720px,100vw)}
+.diary-body{display:grid;gap:var(--lb-s-3)}
+.diary-state,.diary-question,.diary-count,.diary-privacy{margin:0}
+.diary-cols{display:grid;gap:var(--lb-s-3)}
+.diary-step{display:grid;gap:var(--lb-s-3);align-content:start;min-width:0}
+.diary-auto{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;padding:var(--lb-s-2) var(--lb-s-3);border-radius:var(--lb-r-2);background:var(--lb-surface-2);font-size:13px}
+.diary-auto-title{flex-basis:100%}
+.diary-fact{color:var(--lb-ink-2)}
+.diary-fact.none{color:var(--lb-ink-4)}
+.diary-field{display:grid;gap:6px}
+.diary-field-head{display:flex;align-items:baseline;gap:var(--lb-s-2);flex-wrap:wrap}
+.diary-label{font-weight:700;color:var(--lb-ink-1)}
+.diary-scale{display:grid;grid-template-columns:repeat(5,minmax(44px,1fr));gap:6px}
+.diary-num{min-height:44px;min-width:44px;padding:0;font-size:17px;font-weight:700;border-radius:var(--lb-r-2);background:var(--lb-surface-2);border:1px solid var(--lb-line);color:var(--lb-ink-2);box-shadow:none}
+button.diary-num:hover{background:var(--lb-surface-solid);border-color:var(--lb-gold-2)}
+button.diary-num.selected,button.diary-num.selected:hover{background:var(--lb-gold-1);border-color:var(--lb-gold-2);color:var(--lb-ink-1);box-shadow:var(--lb-gold-glow)}
+.diary-chips{display:flex;flex-wrap:wrap;gap:6px}
+.diary-chips .lb-chip{min-height:44px}
+.diary-actions{display:flex;gap:var(--lb-s-2);flex-wrap:wrap}
+.diary-actions button{flex:1 1 140px;min-height:48px}
+.diary-actions-rate{position:sticky;bottom:0;padding:var(--lb-s-2) 0;background:var(--lb-surface-solid)}
+.diary-question{font-weight:700;color:var(--lb-ink-1)}
+.diary-text{width:100%;min-height:160px;resize:vertical;box-sizing:border-box;font:inherit}
+.diary-tomorrow{width:100%;box-sizing:border-box}
+.diary-past summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:700}
+.diary-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--lb-s-2);padding:var(--lb-s-2) 0;border-top:1px solid var(--lb-line-soft)}
+.diary-row-main{display:grid;gap:2px;flex:1 1 200px;min-width:0}
+.diary-row-show{min-height:44px}
+.diary-row-text{flex-basis:100%}
+.diary-row-body{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:759px){.diary-sheet[data-step="1"] .diary-write,.diary-sheet[data-step="2"] .diary-rate,.diary-actions-wide{display:none}}
+@media(min-width:760px){.diary-cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.diary-actions-rate,.diary-actions-write{display:none}}
 .life-stack-bar{position:sticky;bottom:calc(var(--lb-s-2) + env(safe-area-inset-bottom));z-index:4;display:flex;align-items:center;gap:var(--lb-s-3);padding:var(--lb-s-2) var(--lb-s-3);border-radius:var(--lb-r-3);background:var(--lb-surface-solid);border:1px solid var(--lb-line);box-shadow:var(--lb-shadow-2)}
 .life-stack-btn{flex:1 1 auto;min-height:56px;font-size:17px;font-weight:800}
 .life-stack-note{white-space:nowrap}
@@ -1007,6 +1047,45 @@ button.fin-quick-need{background:transparent;color:var(--lb-ink-3)}
 .ss-table .ss-name{white-space:normal}
 .ss-dot{vertical-align:-1px;margin-right:6px}
 .pw-time{margin:0}
+/* FIX49D (D49 7장): 주간 돌아보기 — 오늘 카드·계획 주 단추·시트. 새 색 없음(토큰만), 칸 44px 이상 */
+.wr-entry{display:grid;gap:var(--lb-s-1)}
+.wr-entry-head{display:flex;align-items:center;justify-content:space-between;gap:var(--lb-s-2)}
+.wr-entry-head h3{margin:0}
+.wr-entry-open{min-height:44px;min-width:96px}
+.wr-entry-state{margin:0}
+.wr-plan{margin-top:var(--lb-s-1)}
+.wr-plan-open{min-height:44px}
+.lb-sheet.wr-sheet{width:min(720px,100vw)}
+.wr-body{display:grid;gap:var(--lb-s-3);min-width:0}
+.wr-body p{margin:0}
+.wr-nav{display:flex;align-items:center;justify-content:space-between;gap:var(--lb-s-2)}
+.wr-nav button{min-height:44px}
+.wr-range{font-variant-numeric:tabular-nums}
+.wr-last-next{font-weight:700;color:var(--lb-ink-1);overflow-wrap:anywhere}
+.wr-sub{margin:0;font-size:var(--lb-body)}
+.wr-graph{display:block;width:100%;height:auto;max-width:560px}
+.wr-grid{stroke:var(--lb-line-soft);stroke-width:1}
+.wr-tick{font-size:11px;fill:var(--lb-ink-3)}
+.wr-line{fill:none;stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+.wr-line.wr-score{stroke:var(--lb-gold-2)}
+.wr-line.wr-mood{stroke:var(--lb-ink-3);stroke-dasharray:4 4;stroke-width:1.5}
+.wr-dot.wr-score{fill:var(--lb-gold-2)}
+.wr-dot.wr-mood{fill:var(--lb-ink-3)}
+.wr-chips{display:grid;gap:4px}
+.wr-chip-line{overflow-wrap:anywhere}
+.wr-habits summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:700}
+.wr-pick{display:grid;gap:var(--lb-s-2)}
+.wr-pick-open,.wr-unpick{min-height:44px;justify-self:start}
+.wr-picked{display:flex;flex-wrap:wrap;align-items:center;gap:var(--lb-s-2)}
+.wr-picked-text{flex:1 1 200px;min-width:0;font-weight:600;overflow-wrap:anywhere}
+.wr-choices{display:grid;gap:6px}
+.wr-choice{min-height:44px;text-align:left;white-space:normal;overflow-wrap:anywhere;background:var(--lb-surface-2);border:1px solid var(--lb-line);color:var(--lb-ink-2);box-shadow:none}
+button.wr-choice:hover{background:var(--lb-surface-solid);border-color:var(--lb-gold-2)}
+button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-gold-1);border-color:var(--lb-gold-2);color:var(--lb-ink-1)}
+.wr-field{display:grid;gap:6px}
+.wr-label{font-weight:700;color:var(--lb-ink-1)}
+.wr-next{width:100%;box-sizing:border-box;min-height:44px}
+.wr-actions button{flex:1 1 140px;min-height:48px}
 .err-code{margin-top:2px;font-size:var(--lb-caption);color:var(--lb-ink-3)}
 .err-code summary{cursor:pointer;list-style:none}
 .err-code summary::-webkit-details-marker{display:none}
@@ -1051,6 +1130,9 @@ button.fin-quick-need{background:transparent;color:var(--lb-ink-3)}
 .tower-window{fill:var(--lb-gold-bright);stroke:var(--lb-gold-3);stroke-width:.6}
 .tower-brick{stroke:var(--lb-surface-solid);stroke-width:.5}
 .tower-brick-gold{stroke:var(--lb-gold-3);stroke-width:.8}
+.tower-brick-small{fill:var(--lb-gold-1);stroke:var(--lb-gold-2);stroke-width:.4}
+.tower-brick-small-review{stroke:var(--lb-gold-3);stroke-width:.8}
+.tower-brick-small.tower-brick-side{fill:var(--lb-gold-bright)}
 .tower-shade{fill:var(--lb-ink-1);fill-opacity:.2;pointer-events:none}
 .tower-light{fill:var(--lb-surface-solid);fill-opacity:.32;pointer-events:none}
 .tower-band{fill:var(--lb-gold-bright);stroke:var(--lb-gold-3);stroke-width:.5}
@@ -1753,6 +1835,7 @@ button.life-quest-open:hover .life-quest-more{color:var(--lb-gold-3)}
 .quest-row.done .lb-xp-head span{color:var(--lb-gold-3)}
 .quest-row.pending .lb-xp-head span{color:var(--lb-ink-4)}
 .quest-line{margin:0;overflow-wrap:anywhere}
+.quest-diary,.tower-diary-line{margin:0;color:var(--lb-gold-3);overflow-wrap:anywhere}
 .quest-mine{display:grid;gap:var(--lb-s-2);padding-top:var(--lb-s-2);border-top:1px solid var(--lb-line-soft);min-width:0}
 .quest-mine p{margin:0}
 .quest-form{display:grid;gap:var(--lb-s-2);min-width:0}

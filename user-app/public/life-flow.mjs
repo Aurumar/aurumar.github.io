@@ -1,25 +1,35 @@
-// LIFE_DAY 하루 1장 흐름(임시 저장 → 쌓기). hlt-flow와 같은 방식이다: 저장소·네트워크·시계·명령 서명(makeBody)은 ports로 주입한다.
+// LIFE_DAY 하루 1장 흐름(임시 저장 → 쌓기). FIX49B: 같은 흐름을 일기(DIARY_DAY)도 쓴다(종류 설정 LIFE_KIND·DIARY_KIND, 복사하지 않음). hlt-flow와 같은 방식이다: 저장소·네트워크·시계·명령 서명(makeBody)은 ports로 주입한다.
 // 하루 중 입력은 초안(이 기기의 암호화 상자 또는 메모리)에만 모이고 연산 0이다. "오늘 쌓기" 1번 = 확정 = 연산 1(같은 날 다시 쌓으면 연산 1 더).
 // 화면을 열거나 동기화하는 것만으로는 어떤 엔티티도 쓰지 않는다: 쓰기는 confirm()과 saveDefinitions()(습관·과목·시험 편집 저장)에서만 일어난다.
 // 초안은 확정 성공을 확인한 뒤에만 지운다. 검증 거부·저장 실패·응답 불명이면 초안을 그대로 둔다.
 // 건강·공부와 달리 PC 초안 저널(drafts.lbd)은 쓰지 않는다: 저널의 목록 응답이 LIFE_DAY 본문을 돌려주지 않는다. 상자(브라우저 IndexedDB 암호문) 또는 메모리다.
-import {validateLifeData,emptyDay,kstDate,lifeDefs,DEFAULT_HABITS,DEFAULT_SUBJECTS} from './life-model.mjs';
-import {rebase,hasChanges,diffDay,stable} from './life-rebase.mjs';
+import {validateLifeData,emptyDay,emptyDiary,kstDate,lifeDefs,recordsDoorState,DEFAULT_HABITS,DEFAULT_SUBJECTS} from './life-model.mjs';
+import {rebase,rebaseDiary,hasChanges,diffDay,stable} from './life-rebase.mjs';
 
 const codeOf=e=>typeof e?.code==='string'?e.code:(e?.message??'UNKNOWN');
-const REJECT_CODE=/^(INVALID_|LIFE_|HABIT_|EXAM_|APP_ENTITY_LIMIT|REBASE_|INVALID_WHOLE_LIFE)/;
+const REJECT_CODE=/^(INVALID_|LIFE_|HABIT_|EXAM_|APP_ENTITY_LIMIT|REBASE_|INVALID_WHOLE_LIFE|DIARY_|RECORDS_DOOR_CLOSED)/;
 export const DRAFT_REASON='오늘 카드 임시 저장';
 export const CONFIRM_REASON='오늘 카드 쌓기';
 const STALE_BASE='CARD_DRAFT_STALE_BASE',EDIT_ROUNDS=5;
 const flowError=code=>Object.assign(new Error(code),{code});
 const sameHeads=(a,b)=>a.length===b.length&&a.every((h,i)=>h===b[i]);
+// FIX49B (D49 5.2): 일기 저장 사유는 고정 문구만 쓴다(이력에 그대로 보인다, 글을 넣지 않는다). 합칠 것이 없으면 임시 입력 본문을 그대로 확정하므로 두 사유를 같게 둔다(이력에 '임시 저장'으로 보이지 않게).
+export const DIARY_CONFIRM_REASON='일기 저장';
+export const DIARY_DRAFT_REASON=DIARY_CONFIRM_REASON;
+const DIARY_FIELDS=Object.freeze(['score','energy','good','bad','tomorrow','text']);
+// 일기의 바뀐 칸 이름(화면·시험용). base가 없으면 빈 일기와 비교한다(빈 일기는 새로 만들지 않는다).
+export function diffDiary(base,mine){const b=base??emptyDiary(''),m=mine??emptyDiary('');return {fields:DIARY_FIELDS.filter(k=>stable(b[k])!==stable(m[k]))};}
+export const diaryChanged=(base,mine)=>diffDiary(base,mine).fields.length>0;
+// 흐름의 종류 설정. rows = 그 종류의 쌓인 목록(lifeRawView), door = 확정 직전 쓰기 문 검사(새 기록만), maskedHistory = 이력 값이 가린 사본이라 base로 그대로 쓰면 안 됨(FIX49A 4.4).
+export const LIFE_KIND=Object.freeze({type:'LIFE_DAY',empty:emptyDay,rows:life=>life?.days??[],rebase,changed:hasChanges,diff:diffDay,draftReason:DRAFT_REASON,confirmReason:CONFIRM_REASON,door:false,maskedHistory:false});
+export const DIARY_KIND=Object.freeze({type:'DIARY_DAY',empty:emptyDiary,rows:life=>life?.diaries??[],rebase:rebaseDiary,changed:diaryChanged,diff:diffDiary,draftReason:DIARY_DRAFT_REASON,confirmReason:DIARY_CONFIRM_REASON,door:true,maskedHistory:true});
 
 export class LifeFlow{
-  #p;
+  #p;#k;
   #sent=new Set();#aborted=new Set();
-  constructor(ports){this.#p=ports;ports.drafts?.mergeWith?.({rebase,ports});}   // FIX34 (HUNT34 H1): STALE 뒤 다음 쓰기는 디스크 초안과 합친다
+  constructor(ports,kind=LIFE_KIND){this.#p=ports;this.#k=kind;ports.drafts?.mergeWith?.({rebase:kind.rebase,ports});}   // FIX34 (HUNT34 H1): STALE 뒤 다음 쓰기는 디스크 초안과 합친다
   async #drafts(){
-    return (await this.#p.drafts.list()).filter(d=>d.type==='ENTITY'&&d.body?.entityType==='LIFE_DAY');
+    return (await this.#p.drafts.list()).filter(d=>d.type==='ENTITY'&&d.body?.entityType===this.#k.type);
   }
   async #draftFor(date){
     const list=(await this.#drafts()).filter(d=>d.body.entityId===date);
@@ -34,9 +44,9 @@ export class LifeFlow{
     const draft=await this.#draftFor(date),latest=this.#p.latest(date);
     if(draft){
       const base=this.#baseOf(date,draft.body.expectedHeads);
-      return {status:'LOCAL_DRAFT',card:structuredClone(draft.body.data),base,baseHeads:[...draft.body.expectedHeads],draftId:draft.draftId,changes:diffDay(base,draft.body.data)};
+      return {status:'LOCAL_DRAFT',card:structuredClone(draft.body.data),base,baseHeads:[...draft.body.expectedHeads],draftId:draft.draftId,changes:this.#k.diff(base,draft.body.data)};
     }
-    return {status:latest.card?'CONFIRMED':'NONE',card:latest.card?structuredClone(latest.card):emptyDay(date),base:latest.card,baseHeads:[...latest.heads],draftId:null,changes:diffDay(latest.card,latest.card)};
+    return {status:latest.card?'CONFIRMED':'NONE',card:latest.card?structuredClone(latest.card):this.#k.empty(date),base:latest.card,baseHeads:[...latest.heads],draftId:null,changes:this.#k.diff(latest.card,latest.card)};
   }
   // 입력 즉시 초안에 저장한다(연산 0). 검증에 걸리면 아무것도 바꾸지 않고 던진다. 변경이 base와 같아지면 초안을 지운다.
   async edit(date,mutate,{input=null}={}){
@@ -46,11 +56,11 @@ export class LifeFlow{
       const s=await this.state(date),next=structuredClone(s.card);
       mutate(next);
       next.date=date;
-      validateLifeData('LIFE_DAY',date,next);
+      validateLifeData(this.#k.type,date,next);
       try{
-        if(!hasChanges(s.base,next)){if(s.draftId)await this.#p.drafts.discard(s.draftId,{input,date});else await this.#p.drafts.keep?.(date,{input,base:null});return this.state(date);}
+        if(!this.#k.changed(s.base,next)){if(s.draftId)await this.#p.drafts.discard(s.draftId,{input,date});else await this.#p.drafts.keep?.(date,{input,base:null});return this.state(date);}
         if(s.draftId&&stable(next)===stable(s.card)){await this.#p.drafts.keep?.(date,{input,base:s.draftId});return s;}
-        const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:next,heads:s.baseHeads,reason:DRAFT_REASON});
+        const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:next,heads:s.baseHeads,reason:this.#k.draftReason});
         await this.#p.drafts.save({type:'ENTITY',body},{input,base:s.draftId});
       }catch(e){if(e?.code===STALE_BASE&&round<EDIT_ROUNDS)continue;throw e;}
       if(s.draftId)await this.#p.drafts.discard(s.draftId,{input});
@@ -74,6 +84,8 @@ export class LifeFlow{
         if(this.#p.hasPending?.())await this.#p.reconcile();
         await this.#p.sync();
       }catch(e){return {status:this.#p.hasPending?.()?'UNKNOWN':'SYNC_FAILED',code:codeOf(e)};}
+      // FIX49B (D49 5.2, FIX46A ★): 새 기록(일기)은 일반 저장 경로라 문이 없다. 최신을 받은 뒤(다른 기기가 연 문도 보이게) 쓰기 전에 문을 본다. 닫혀 있으면 아무것도 쓰지 않고 초안을 둔다.
+      if(this.#k.door&&!this.#p.doorOpen?.())return {status:'REJECTED',code:'RECORDS_DOOR_CLOSED'};
       const now=await this.#draftFor(date);
       if(!now)return {status:'NOTHING_TO_CONFIRM'};
       if(now.draftId!==draft.draftId){if(attempt<maxAttempts)continue;return {status:'STALE',code:STALE_BASE};}
@@ -82,12 +94,12 @@ export class LifeFlow{
       const settled=await this.#settleSent(draft,ended);
       if(settled)return settled;
       const latest=this.#p.latest(date),base=this.#baseOf(date,draft.body.expectedHeads);
-      const rb=rebase({date,base,mine:draft.body.data,latest:latest.card});
+      const rb=this.#k.rebase({date,base,mine:draft.body.data,latest:latest.card});
       if(rb.status==='REJECTED')return {status:'REJECTED',code:rb.code,notices:rb.notices};
       if(rb.status==='ALREADY_APPLIED'){await this.#p.drafts.discard(draft.draftId);return {status:'ALREADY_APPLIED',notices:rb.notices};}
       let target=draft;
       if(!(stable(draft.body.data)===stable(rb.card)&&sameHeads(draft.body.expectedHeads,latest.heads))||ended||this.#aborted.has(draft.body.requestId)){
-        const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:rb.card,heads:latest.heads,reason:CONFIRM_REASON});
+        const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:rb.card,heads:latest.heads,reason:this.#k.confirmReason});
         let saved;
         try{saved=await this.#p.drafts.save({type:'ENTITY',body},{base:draft.draftId});}
         catch(e){if(codeOf(e)===STALE_BASE){if(attempt<maxAttempts)continue;return {status:'STALE',code:STALE_BASE,notices:rb.notices};}throw e;}
@@ -150,24 +162,39 @@ export async function stackDay(date,{life,study=null}){
 }
 
 // ---- 포트: 앱의 api/기록 함수를 LifeFlow가 쓰는 모양으로 ----
-// ctx: {api, getWhole(), getChanges(), syncForWrite(), hasPending(), reconcile(), receipt(), digest(), uid(), now(), cardDraftBox(), write(), session()}
-export function createLifePorts(ctx){
+// ctx: {api, getWhole(), getChanges(), syncForWrite(), hasPending(), reconcile(), receipt(), digest(), uid(), now(), cardDraftBox(), write(), session(), storage}
+// kind = LIFE_KIND(기본) 또는 DIARY_KIND(FIX49B). 일기 포트는 확정 직전 쓰기 문(doorOpen)도 준다.
+// 일기 이력 값은 글 칸을 뺀 사본이다(FIX49A, 이력 API·화면 가리기). 그래서 일기 base는 ① 지금 최신(heads가 그 판 하나) ② 이 실행에서 본 판 ③ 이력 사본 차례로 찾는다.
+// ③은 점수·에너지·칩은 정확하지만 글·내일 한 가지는 모른다: UNKNOWN_BASE_TEXT로 채워 rebaseDiary가 내 글을 쓰고 상대 글이 다르면 알림을 내게 한다(글을 이어 붙이지 않음, 상대 글은 이력에 남는다).
+export const UNKNOWN_BASE_TEXT='\u0000LB_BASE_TEXT_UNKNOWN';
+const maskedBase=v=>typeof v?.text==='string'&&typeof v?.tomorrow==='string'?structuredClone(v):{date:v.date,score:v.score??null,energy:v.energy??null,good:[...(v.good??[])],bad:[...(v.bad??[])],tomorrow:UNKNOWN_BASE_TEXT,text:UNKNOWN_BASE_TEXT};
+const storageOf=ctx=>{try{return ctx.storage??globalThis.localStorage??null;}catch{return null;}};
+export function createLifePorts(ctx,kind=LIFE_KIND){
   const memoryDrafts=new Map();let seq=0,cache=null;
-  const life=()=>ctx.getWhole().life??{days:[]};
-  const revisionMap=()=>{const rows=ctx.getChanges();if(cache?.rows===rows)return cache.map;const m=new Map();for(const c of rows)if(c.type==='LIFE_DAY')m.set(c.revisionId,c.value.data);cache={rows,map:m};return m;};
+  const life=()=>ctx.getWhole().life??{days:[]},rowsNow=()=>kind.rows(life());
+  const revisionMap=()=>{const rows=ctx.getChanges();if(cache?.rows===rows)return cache.map;const m=new Map();for(const c of rows)if(c.type===kind.type)m.set(c.revisionId,c.value.data);cache={rows,map:m};return m;};
+  const seen=new Map();let seenOf=null;
+  const remember=()=>{const l=life();if(seenOf===l)return;seenOf=l;for(const r of rowsNow())if(r.heads?.length===1&&!seen.has(r.heads[0]))seen.set(r.heads[0],structuredClone(r.data));};
   const box=ctx.cardDraftBox?.()??null,mode=box?.available()?'DEVICE_BOX':'MEMORY';
   const write=body=>ctx.write?ctx.write(body):ctx.api('/api/entity',body);
   return {
     mode,persistent:mode!=='MEMORY',box:mode==='DEVICE_BOX'?box:null,
-    latest(date){const d=life().days.find(x=>x.date===date);return {card:d?structuredClone(d.data):null,heads:d?[...d.heads]:[]};},
-    revision(date,ref){const v=revisionMap().get(ref);return v?structuredClone(v):null;},
+    latest(date){if(kind.maskedHistory)remember();const d=rowsNow().find(x=>x.date===date);return {card:d?structuredClone(d.data):null,heads:d?[...d.heads]:[]};},
+    revision(date,ref){
+      if(!kind.maskedHistory){const v=revisionMap().get(ref);return v?structuredClone(v):null;}
+      remember();
+      const d=rowsNow().find(x=>x.date===date);if(d&&d.heads.length===1&&d.heads[0]===ref)return structuredClone(d.data);
+      if(seen.has(ref))return structuredClone(seen.get(ref));
+      const v=revisionMap().get(ref);return v?maskedBase(v):null;
+    },
+    doorOpen:()=>{const w=ctx.getWhole();return recordsDoorState({life:w.life??null,study:w.study??null,storage:storageOf(ctx)}).open;},
     sync:()=>ctx.syncForWrite(),
     session:()=>ctx.session?.()??null,
     hasPending:()=>Boolean(ctx.hasPending?.()),reconcile:()=>ctx.reconcile?.(),
     terminal:ctx.receipt?async rid=>(await ctx.receipt(rid))?.status!=='NOT_ESTABLISHED':()=>false,
-    makeBody:async({requestId,date,data,heads,reason})=>{const fields={entityType:'LIFE_DAY',entityId:date,expectedHeads:[...heads],data:structuredClone(data),reason,confirmed:false};return {requestId,commandDigest:await ctx.digest({type:'ENTITY',...fields}),...fields};},
+    makeBody:async({requestId,date,data,heads,reason})=>{const fields={entityType:kind.type,entityId:date,expectedHeads:[...heads],data:structuredClone(data),reason,confirmed:false};return {requestId,commandDigest:await ctx.digest({type:'ENTITY',...fields}),...fields};},
     now:()=>ctx.now(),newRequestId:()=>ctx.uid(),
-    drafts:mode==='DEVICE_BOX'?box.port('LIFE_DAY',{write}):{
+    drafts:mode==='DEVICE_BOX'?box.port(kind.type,{write}):{
       list:async()=>[...memoryDrafts.values()],
       save:async({type,body})=>{const id='local'+(++seq);memoryDrafts.set(id,{draftId:id,type,body:structuredClone(body),createdAt:new Date().toISOString()+String(seq).padStart(6,'0')});return {draftId:id,status:'LOCAL_DRAFT'};},
       discard:async id=>{memoryDrafts.delete(id);},

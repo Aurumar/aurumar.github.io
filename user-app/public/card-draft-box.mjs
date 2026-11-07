@@ -33,7 +33,8 @@
 // 보안 한계(정직하게): 키는 같은 브라우저 프로필 안에 있어 프로필 파일을 가진 사람에게는 저장된 로그인 세션과 같은 수준의 보호다. 앱 잠금이 암호문을 막지는 않는다.
 export const CARD_DRAFT_DB='LIFE_BRICK_CARD_DRAFTS_V1';
 export const CARD_DRAFT_FORMAT='LB_CARD_DRAFT_1';
-export const CARD_DRAFT_KINDS=Object.freeze(['HLT_DAY','STUDY_DAY','LIFE_DAY']);
+// FIX49B (D49 5.2): 일기(DIARY_DAY) 초안도 같은 상자에 둔다. 이 종류를 모르는 옛 빌드는 열 수 없는 초안으로 보존한다(지우지 않음, 아래 open·readAll).
+export const CARD_DRAFT_KINDS=Object.freeze(['HLT_DAY','STUDY_DAY','LIFE_DAY','DIARY_DAY']);
 export const CARD_DRAFT_LIMITS=Object.freeze({records:60,recordBytes:96*1024});
 export const CARD_DRAFT_EVENT='lb:card-drafts-changed';
 export const CARD_DRAFT_DEBOUNCE_MS=600;
@@ -64,7 +65,8 @@ export const CARD_DRAFT_ERROR_TEXT=Object.freeze({
   CARD_DRAFT_MERGED_CHANGED:'다른 창의 같은 날짜 임시 입력과 합치면서 양쪽에서 바꾼 항목이 있었어요(같은 항목은 이 창 값으로 덮음 · 지운 항목이 남았을 수 있음) — 내용을 확인한 뒤 쌓아 주세요',
 });
 // FIX35 (HUNT35 F1): 합칠 때 화면에 알릴 rebase 알림(다른 창 값이 덮였거나, 한쪽의 삭제가 되돌려짐). 타이머 겹침 알림은 확정 때 따로 보인다.
-export const MERGE_CONFLICT_NOTICES=Object.freeze(['REBASE_VALUE_OVERWRITTEN','REBASE_SCALAR_OVERWRITTEN','REBASE_CONFLICT_KEPT_LOCAL','REBASE_CONFLICT_KEPT_REMOTE']);
+// FIX49B: 일기 초안끼리 합칠 때의 알림(rebaseDiary, 칸 이름만 실림)도 같은 표시를 쓴다.
+export const MERGE_CONFLICT_NOTICES=Object.freeze(['REBASE_VALUE_OVERWRITTEN','REBASE_SCALAR_OVERWRITTEN','REBASE_CONFLICT_KEPT_LOCAL','REBASE_CONFLICT_KEPT_REMOTE','DIARY_VALUE_OVERWRITTEN','DIARY_TEXT_KEPT_MINE','DIARY_CHIPS_TRIMMED']);
 
 const KEY_ID='key',UNREADABLE_PREFIX='UNREADABLE|',FLUSH_ROUNDS=8;
 const SCOPE_RE=/^v1:[A-Za-z0-9_-]{1,128}:[A-Za-z0-9_-]{1,128}$/,DATE_RE=/^\d{4}-\d{2}-\d{2}$/;

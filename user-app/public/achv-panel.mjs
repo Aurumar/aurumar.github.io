@@ -1,9 +1,9 @@
 // 탑 탭 "업적·칭호" 패널, 달성 알림, 전체 목록 시트, 오늘 퀘스트 시트, 칭호 고르기·표시 (Q1A 자리, Q1B 화면, Q1C 칭호, 설계 Q1D §8).
-// 화면 규칙: DOM 생성 함수만 쓴다(innerHTML·인라인 style 없음). 앱이 혼자 기록을 쓰지 않는다: 내 퀘스트 저장만 소유자가 누를 때 한다. 이 기기 저장소에는 기기 장부(업적 id와 날짜)와 고른 칭호 id만 적는다.
+// 화면 규칙: DOM 생성 함수만 쓴다(innerHTML·인라인 style 없음). 앱이 혼자 기록을 쓰지 않는다: 내 퀘스트·칭호(쓰기 문이 열린 때만) 저장은 소유자가 누를 때만 한다. 이 기기 저장소에는 기기 장부(업적 id와 날짜)와 고른 칭호 id만 적는다.
 // life-tower는 이 파일을 불러오지 않는다: 앱이 ctx.achvPanel·ctx.achvMoment·ctx.questSheet·ctx.achvTitle로 넘겨 탑 모듈은 그대로 둔다.
 import {TITLES,achievements,titleOf,unlockedTitles,recentDone,nearDone,shownName,settleSeen,parseSeen,ACHV_SEEN_KEY,MONEY_OFF_TEXT,GROUP_TEXT} from './life-achv.mjs';
-import {todayQuestLine,myQuestOf,myQuestRows,saveMyQuest,DEFS_SEALED_TEXT} from './life-quest.mjs';
-import {MY_QUEST_ID} from './life-achieve.mjs';
+import {todayQuestLine,myQuestOf,myQuestRows,saveMyQuest,titleVaultOn,pickTitle,DEFS_SEALED_TEXT,TITLE_DEVICE_NOTE} from './life-quest.mjs';
+import {MY_QUEST_ID,brickTotalText,DIARY_STREAK_PRIZES} from './life-achieve.mjs';
 import {HABIT_AREAS,MAX_NAME,weekCount} from './life-model.mjs';
 
 const TIER_TEXT=Object.freeze({GOLD:'금',SILVER:'은',BRONZE:'동',HIDDEN:'숨김'});
@@ -141,6 +141,12 @@ function myQuestSection(h,args,after){
   draw(false);
   return box;
 }
+// FIX49C 일기 칸: 이번 주 일기 퀘스트(w.quests와 따로, 창문 없음) + 일기 연속·다음 연속 보상 한 줄. 점수·글은 보이지 않는다.
+function diaryQuestRows(h,kit,d){
+  const {el}=h,q=d.quest,next=DIARY_STREAK_PRIZES.find(([k])=>d.best<k);
+  return [questRow(h,kit,{label:q.label,value:q.value,target:q.target,unit:q.unit,state:q.done?'done':'todo',xp:q.xp}),
+    el('p','일기 연속 '+d.streak+'일 · 최고 '+d.best+'일'+(next?' · '+next[0]+'일이면 +'+next[1]+' XP':'')+' · 작은 벽돌 '+number(d.weight)+'장','quest-line quest-diary')];
+}
 export function questSheetBody(args,after=()=>{}){
   const {doc,ach,preview=null,kit=null}=args,h=maker(doc),{el,add}=h,body=el('div',null,'quest-sheet');
   const line=todayQuestLine(ach,preview);
@@ -150,6 +156,7 @@ export function questSheetBody(args,after=()=>{}){
   if(!line.total)add(body,el('p','오늘은 쉬는 날이에요','muted small'));
   add(body,el('h3','이번 주'));
   for(const q of ach.currentWeek.quests)add(body,questRow(h,kit,{label:q.label,value:q.value,target:q.target,unit:q.unit,state:q.done?'done':'todo',xp:q.xp}));
+  if(ach.diary)add(body,el('h3','일기'),...diaryQuestRows(h,kit,ach.diary));   // FIX49C: 일기·리뷰 기록이 하나라도 있을 때만
   const month=monthLine(ach),boss=bossLine(ach);
   if(month)add(body,el('h3','이달'),el('p',month,'quest-line'));
   if(boss)add(body,el('h3','다음 보스'),el('p',boss,'quest-line'));
@@ -164,10 +171,13 @@ export function openQuestSheet(args){
 }
 
 // ---------- 칭호 고르기·표시 (Q1C, 설계 §5·§8.2). 표시만 한다: XP·보너스·기록에 닿지 않는다(V4 결정 Q1D 1) ----------
-// 기기 설정 lb.title.v1 = 칭호 id만(기기마다 다를 수 있다). 저장소가 막혀 있으면 이번 실행 동안만(st에 보관). 메모리를 먼저 봐서 저장 실패 뒤 옛 값으로 돌아가지 않는다.
+// 고른 칭호 = 금고 값(life.profile, 쓰기 문이 열려 있을 때 저장, 네 기기 같음)이 먼저이고 없으면 기기 설정 lb.title.v1(칭호 id만, 기기마다 다를 수 있음). 금고 값이 null이면 자동을 골랐다는 뜻이다.
+// 기기 설정은 저장소가 막혀 있으면 이번 실행 동안만(st에 보관). 메모리를 먼저 봐서 저장 실패 뒤 옛 값으로 돌아가지 않는다.
 export const TITLE_KEY='lb.title.v1';
 const PICKABLE=TITLES.filter(x=>x.phase===1),PICKABLE_IDS=new Set(PICKABLE.map(x=>x.id));
-export function readTitleChoice(storage,st={}){
+export function readTitleChoice(storage,st={},life=null){
+  const vault=life?.profile?.data?.titleId;
+  if(vault===null||PICKABLE_IDS.has(vault))return vault;   // 금고에 없거나 이 빌드가 모르는 칭호면 undefined라 기기 값으로 간다
   if(Object.hasOwn(st,'titleMemory'))return st.titleMemory;
   try{const raw=storage?.getItem(TITLE_KEY);return PICKABLE_IDS.has(raw)?raw:null;}catch{return null;}
 }
@@ -179,23 +189,37 @@ export function saveTitleChoice(storage,st,id){
     delete st.titleMemory;
   }catch{/* 이번 실행 동안만 */}
 }
-export const currentTitle=({ach,life=null,money=null,storage=null,st={}})=>titleOf(viewOf(ach,life,money).list,readTitleChoice(storage,st));
+export const currentTitle=({ach,life=null,money=null,storage=null,st={}})=>titleOf(viewOf(ach,life,money).list,readTitleChoice(storage,st,life));
 const titleChip=({el},t)=>{const n=el('span',t.name,'title-chip tier-'+t.tier.toLowerCase());n.setAttribute('aria-label','칭호 '+t.name+' ('+TIER_TEXT[t.tier]+')');return n;};
 // 오늘 머리·탑 머리·상태 화면이 부른다(앱이 ctx.achvTitle로 넘긴다). 돌려주는 값 = {node,tier}, 칭호가 없으면 null. tier는 탑의 깃발 색에 쓴다.
 export function titleBadge(args){
   const t=currentTitle(args);
   return t?{node:titleChip(maker(args.doc),t),tier:t.tier}:null;
 }
-// 시트: 자동 1줄 + 풀린 칭호(표 순서) + 잠긴 칭호(접어 둠, 숨김은 이름 없이 ???). 누르면 이 기기에만 저장하고 after()를 부른다. 저장 버튼 없이 바로 적용되며 기록 쓰기는 0이다.
+// 시트: 자동 1줄 + 풀린 칭호(표 순서) + 잠긴 칭호(접어 둠, 숨김은 이름 없이 ???). 저장 버튼 없이 누르면 바로 적용하고 after()를 부른다.
+// 쓰기 문이 열려 있으면 금고에 저장해 네 기기가 같은 칭호를 쓰고(누른 칭호 1개 = 쓰기 1번), 닫혀 있으면 이 기기에만 저장하며 쓰기는 0이다(안내 한 줄).
 export function titleSheetBody(args,after=()=>{}){
-  const {doc,ach,life=null,money=null,storage=null,st={}}=args,h=maker(doc),{el,add,button}=h,body=el('div',null,'title-sheet');
-  const {list}=viewOf(ach,life,money),chosen=readTitleChoice(storage,st),shown=titleOf(list,chosen),open=unlockedTitles(list),auto=titleOf(list);
+  const {doc,ach,life=null,money=null,storage=null,st={},ctx=null}=args,h=maker(doc),{el,add,button}=h,body=el('div',null,'title-sheet');
+  const {list}=viewOf(ach,life,money),chosen=readTitleChoice(storage,st,life),shown=titleOf(list,chosen),open=unlockedTitles(list),auto=titleOf(list);
+  const vault=titleVaultOn(ctx),err=el('p',null,'notice error title-error');err.hidden=true;
+  const apply=id=>{
+    if(!vault){saveTitleChoice(storage,st,id);after();return;}
+    err.hidden=true;
+    void ctx.perform(async()=>{
+      const r=await pickTitle(ctx,id,text=>{err.textContent=text;err.hidden=false;});
+      if(r==='ERROR')return;
+      if(r==='SEALED')saveTitleChoice(storage,st,id);   // 임시 저장은 아직 금고에 없다: 이 기기 값으로 보여 준다
+      after();
+    });
+  };
   const pickRow=(id,on,...kids)=>{
-    const b=add(button(null,()=>{saveTitleChoice(storage,st,id);after();},'secondary title-pick'+(on?' on':'')),...kids);
-    b.dataset.navOnly='1';b.setAttribute('aria-pressed',on?'true':'false');   // 기록이 아니라 기기 설정이라 읽기 전용에서도 고른다
+    const b=add(button(null,()=>apply(id),'secondary title-pick'+(on?' on':'')),...kids);
+    b.dataset.navOnly='1';b.setAttribute('aria-pressed',on?'true':'false');   // 소유자가 누를 때만 저장하고, 읽기 전용에서도 고른다
     return b;
   };
   add(body,el('p','풀린 칭호 '+open.length+' / '+PICKABLE.length+' · 표시만 바뀌고 XP·벽돌은 그대로예요','muted small'));
+  if(!vault)add(body,el('p',TITLE_DEVICE_NOTE,'muted small title-device-note'));
+  add(body,err);
   if(chosen&&shown?.auto)add(body,el('p','고른 칭호가 지금은 풀려 있지 않아 자동으로 보여요','muted small'));
   add(body,pickRow(null,!shown||shown.auto,el('strong','자동'),el('span','가장 높은 등급 중 최근'+(auto?' · 지금 '+auto.name:''),'muted small')));
   for(const t of open)add(body,pickRow(t.id,shown?.id===t.id&&!shown.auto,titleChip(h,t),el('span',TIER_TEXT[t.tier]+' · '+t.doneDate,'muted small')));
@@ -221,7 +245,7 @@ export function openTitleSheet(args){
 export function renderAchvPanel(root,args){
   const {doc,ach,today,life=null,money=null,st={},kit=null,storage=null,toast=null}=args;
   const h=maker(doc),{el,add,button}=h;
-  const view=viewOf(ach,life,money),title=titleOf(view.list,readTitleChoice(storage,st));
+  const view=viewOf(ach,life,money),title=titleOf(view.list,readTitleChoice(storage,st,life));
   const s=settleAchv(view.list,today,storage,st);
   st.achvNote=s.note;   // HUNT36 H36-Q2: 그릴 때마다 덮는다(새 달성이 없으면 지워진다)
   if(s.count)void toast?.send(s.count);
@@ -229,8 +253,7 @@ export function renderAchvPanel(root,args){
   add(box,add(el('div',null,'achv-head'),el('h3','업적·칭호'),el('span',view.shownDone+' / '+view.shownTotal+' · 숨김 '+view.hiddenDone+' / '+view.hiddenTotal,'muted small')));
   if(s.note)add(box,noteLine(h,s));
   add(box,el('p',title?'칭호 · '+title.name+' ('+TIER_TEXT[title.tier]+')':'아직 칭호가 없어요 · 첫 벽돌을 쌓으면 열려요','achv-title'));
-  const bricks=ach.weeks.reduce((n,w)=>n+w.bricks,0);
-  add(box,el('p','벽돌 '+number(bricks)+'장 · 보너스 ✦'+number(ach.bonusTotal),'achv-bricks'));
+  add(box,el('p',brickTotalText(ach.weeks)+' · 보너스 ✦'+number(ach.bonusTotal),'achv-bricks'));   // FIX49C: 작은 벽돌 무게 포함(일기가 없으면 예전 글자 그대로)
   const recent=recentDone(view.list,2);
   if(recent.length){const row=add(el('div',null,'achv-row'),el('span','최근','muted small'));for(const r of recent)add(row,el('span','✦ '+shownName(r)+' · '+shortDate(r.doneDate),'achv-chip'));add(box,row);}
   for(const r of nearDone(view.list,2)){

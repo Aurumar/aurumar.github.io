@@ -10,6 +10,7 @@
 // - 로컬 알림 4종 토글은 이 기기 localStorage에만 저장하고, 켜고 끌 때마다 다리 scheduleReminders()에 "전체 목록"을 보낸다(부분 목록은 나머지를 취소함).
 // - 캘린더는 사용자가 단추를 눌렀을 때와, 사용자가 켠 거울 토글(P1D2, 기본 꺼짐)에서만 쓴다. 꺼져 있으면 거울은 다리를 전혀 부르지 않는다. 일정 key가 안정적이라 다시 써도 새로 만들지 않고 고친다.
 // - 걸음·수면(B58B, Health Connect): 건강 화면이 부를 때만 읽는다. 값은 메모리로만 지나가고 이 파일은 저장·로그하지 않는다. 다리의 readHealthDay는 pending 뒤 결과를 한 번만 주므로 여기서 짧게 되묻는다.
+// - 홈 위젯(P4C): 숫자 요약(widget-summary.mjs)을 setWidgetSummary로 넘기고, 잠금·로그아웃 때 clearWidget으로 지운다. 이 파일은 요약을 저장하지 않는다.
 // 모든 다리 호출은 try/catch로 감싸 실패해도 화면은 계속 돌아간다.
 export const NATIVE_KEYS=Object.freeze({reminders:'lb.native.reminders',seen:'lb.native.seen',calendar:'lb.native.calendar',added:'lb.native.added',unacked:'lb.native.unacked',mirror:'lb.native.mirror'});
 export const NATIVE_LIMITS=Object.freeze({seen:500,drafts:200,events:64,added:200,unacked:1000});
@@ -31,9 +32,10 @@ export const NATIVE_TEXT=Object.freeze({
 });
 export const REMINDER_LABELS=Object.freeze({morning:'아침 · 오늘 쌓기 전에',night:'밤 · 오늘 카드를 안 쌓았을 때',bed:'취침 목표 30분 전',weekly:'주간 리뷰 · 일요일'});
 export const REMINDER_DEFAULTS=Object.freeze({morning:{on:false,time:'08:00'},night:{on:false},bed:{on:false},weekly:{on:false}});
-// FIX45 (AUD1 #6): 일요일 알림은 공부 통계로 간다. 앱(BridgeInput TAB 형식 #[a-z][a-z0-9-]*)은 이 값을 그대로 주소에 붙이고, app.mjs HASH_ROUTES가 화면을 고른다.
-export const WEEKLY_TAB='#study-stats';
-const SAME_PAYMENT_MS=300000,NIGHT_TIME='21:30',WEEKLY_TIME='20:00',BED_LEAD_MIN=30,HM=/^([01]\d|2[0-3]):[0-5]\d$/;
+// FIX45 (AUD1 #6): 앱(BridgeInput TAB 형식 #[a-z][a-z0-9-]*)은 이 값을 그대로 주소에 붙이고, app.mjs HASH_ROUTES가 화면을 고른다.
+// FIX49D (D49 7.1): 일요일 알림은 주간 리뷰로 간다(오늘 화면을 그린 뒤 리뷰 시트, 쓰기 문이 닫혀 있으면 오늘 화면만). 웹 값이라 APK 변경 0, 알림 글자에 일기·리뷰 글 없음.
+export const WEEKLY_TAB='#week-review';
+const WIDGET_RESEND_MS=600000,SAME_PAYMENT_MS=300000,NIGHT_TIME='21:30',WEEKLY_TIME='20:00',BED_LEAD_MIN=30,HM=/^([01]\d|2[0-3]):[0-5]\d$/;
 
 // ---- 다리 호출(실패해도 던지지 않는다) ----
 export function callNative(native,name,...args){
@@ -236,8 +238,21 @@ export function createNativeBridge({native=globalThis.LifeBrickNative,storage,no
     }
     return out;
   };
+  // 홈 위젯(P4C): 요약은 widget-summary.mjs가 만들고 검사한다. 같은 내용(갱신 시각 빼고)이면 10분 안에는 다시 보내지 않는다.
+  let widgetSent=null,widgetSentAt=0;
   const api={
     available,
+    // 옛 APK(메서드 없음)는 BRIDGE_UNAVAILABLE로 조용히 끝난다(오류 아님). 실패해도 화면은 계속 돈다.
+    pushWidget(summary,{check=null}={}){
+      if(!available())return {ok:false,error:'BRIDGE_UNAVAILABLE'};
+      if(check&&!check(summary))return {ok:false,error:'BAD_WIDGET'};
+      let json,key;try{json=JSON.stringify(summary);key=JSON.stringify({...summary,at:0});}catch{return {ok:false,error:'BAD_WIDGET'};}
+      if(key===widgetSent&&now()-widgetSentAt<WIDGET_RESEND_MS)return {ok:true,skipped:true};
+      const r=callNative(native,'setWidgetSummary',json);
+      if(r.ok===true){widgetSent=key;widgetSentAt=now();}
+      return r;
+    },
+    clearWidget(){widgetSent=null;widgetSentAt=0;return available()?callNative(native,'clearWidget'):{ok:false,error:'BRIDGE_UNAVAILABLE'};},
     permissions(){const r=callNative(native,'permissionState');return r.ok?{notificationAccess:r.notificationAccess===true,notifications:r.notifications===true,calendar:r.calendar===true}:null;},
     error:()=>lastError,
     openAccessSettings:()=>callNative(native,'openNotificationAccessSettings'),

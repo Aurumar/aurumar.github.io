@@ -29,7 +29,9 @@ export function brickJitter(floor,col,k){
   return {w:1+JITTER.size*u(0),h:1+JITTER.size*u(1),rot:JITTER.rot*u(2),z:JITTER.z*u(3),shade:1+JITTER.shade*u(4)};
 }
 
-const dayHeight=d=>Math.min(MAX_ROWS,d.items.reduce((s,b)=>s+(b.half?0.5:1),0));
+// FIX49C: 작은 금빛 벽돌(일기 0.25·리뷰 0.5)도 무게만큼 그 칸 높이에 든다(2.5D 탑과 같은 규칙).
+const dayHeight=d=>Math.min(MAX_ROWS,d.items.reduce((s,b)=>s+(b.half?0.5:1),0)+(d.small??[]).reduce((s,b)=>s+b.weight,0));
+export const SMALL_COLORS=Object.freeze({DIARY:'#F2DC92',REVIEW:'#F7E7B0'});   // 금벽돌(GOLD)보다 옅은 금색. 진짜 벽돌 재질 묶음에 색만 입힌다
 const box=(x,y,z,sx,sy,sz,extra)=>({x,y,z,sx,sy,sz,...extra});
 
 // ---------- T2B 집 부품 슬롯: 날짜(시즌의 passed)와 투영으로만 정해진다. 기본 부품은 시간이 지나면 반드시 붙고, 달성률 60%/90%면 은/금 장식이 더해진다 ----------
@@ -94,11 +96,18 @@ export function towerScene(ach,{seasons=null,titleTier=null}={}){
         bricks.push(box(x,floorY+drawn*ROW_H+BRICK_GAP/2+sy/2,BRICK_Z+j.z,BRICK_W*j.w,sy*j.h,BRICK_D,{floor:f,col,half:b.half,gold:b.gold,color:b.gold?GOLD:b.color,subjectId:b.subjectId,today,rotY:j.rot,shade:j.shade}));
         drawn+=size;
       }
+      // FIX49C 작은 금빛 벽돌: 진짜 벽돌 위에 무게만큼. 줄눈도 무게에 맞춰 줄여 얇아도 보이게 한다.
+      for(const b of d.small??[]){
+        const size=b.weight;if(drawn+size>MAX_ROWS)break;
+        const gap=BRICK_GAP*size,sy=size*ROW_H-gap,j=brickJitter(f,col,k++);
+        bricks.push(box(x,floorY+drawn*ROW_H+gap/2+sy/2,BRICK_Z+j.z,BRICK_W*j.w,sy,BRICK_D,{floor:f,col,half:false,gold:false,small:b.kind,color:SMALL_COLORS[b.kind]??SMALL_COLORS.DIARY,subjectId:null,today,rotY:j.rot,shade:1}));
+        drawn+=size;
+      }
       if(today){todayTop=floorY+drawn*ROW_H;todayX=x;}
     });
     for(let i=0;i<w.windows;i++)windows.push(box(HALF_W+0.02,floorY+h/2,-HALF_D+0.5+i*0.75,0.06,Math.min(h*0.6,1),0.5,{floor:f,slot:i}));
     // Q1B 금빛 기둥: 그 주 보너스 ✦. 왼쪽 벽 앞줄에 붙이고 층 높이는 바꾸지 않는다(1개 = 1줄, 줄보다 많으면 눌러 담는다). 금벽돌과 달리 스스로 빛나는 재질로 그린다.
-    const nb=w.bonus?.total??0,cell=nb<=rows?ROW_H:h/Math.max(1,nb);
+    const nb=(w.bonus?.total??0)+(w.diary?.bonus??0),cell=nb<=rows?ROW_H:h/Math.max(1,nb);   // FIX49C: 일기 ✦도 같은 기둥
     for(let k=0;k<nb;k++)bonus.push(box(BONUS_X,floorY+(k+0.5)*cell,BRICK_Z,BONUS_W,cell-Math.min(BRICK_GAP,cell*0.2),BRICK_D,{floor:f,k,color:BONUS_COLORS[k%2]}));
     base=top;
   });
@@ -241,8 +250,13 @@ export function withBadges(scene,badges,{titleName=null}={}){
       if(stage>=2)add('AREA',t.x,t.top+0.02,t.z,TOWER_W+0.24,0.1,TOWER_W+0.24,GOLD,{area:t.area,goldRim:true});
     }
   }
-  return {...scene,badgeRows:rows,badgeLabels:labels,badgeTop:top,counts:{...scene.counts,badgeRows:rows.length},total:scene.total+rows.length};
+  // FIX49C 집 등불(최고 일기 연속 7·30·100일): 성문 양옆 기단 앞면에 기존 등(lamps, 빛 재질) 묶음으로 놓는다. 촛불 1개 → 등불 2개 → 금 등불 2개(조금 크게).
+  const diaryLamps=[],stage=badges?.lamp??0;
+  if(stage>0){const big=stage>=3?1.25:1;for(const a of stage>=2?[-1,1]:[1])diaryLamps.push(box(a*DIARY_LAMP_X,0.72,HALF_D+0.86,0.22*big,0.32*big,0.1,{badge:'DIARY',stage,diaryLamp:true,color:DIARY_LAMP_COLORS[stage-1]}));}
+  const lamps=diaryLamps.length?[...scene.lamps,...diaryLamps]:scene.lamps;
+  return {...scene,lamps,badgeRows:rows,badgeLabels:labels,badgeTop:top,counts:{...scene.counts,badgeRows:rows.length,lamps:lamps.length},total:scene.total+rows.length+diaryLamps.length};
 }
+export const DIARY_LAMP_X=1.35,DIARY_LAMP_COLORS=Object.freeze([KIT.flame,'#FFD27A',GOLD]);
 // 글자 겹침층에 올릴 표지(최대 MAX_LABELS, 앞 순서가 먼저 보인다): 현판·머릿돌 → 예상도 시즌 경계 → 지난 시즌·완공 현판(가까운 것부터).
 const dText=n=>n===0?'D-DAY':n>0?'D-'+n:'D+'+(-n);
 export function houseLabels(scene,bp=null){

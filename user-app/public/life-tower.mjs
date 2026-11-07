@@ -1,7 +1,7 @@
 // 탑 탭 (B42): 2.5D 등각 SVG. 1층 = 1주(월~일), 맨 아래가 첫 주, 맨 위가 이번 주(공사 중). 합성 데이터로만 시험한다.
 // 화면 규칙: DOM 생성 함수만 쓴다(innerHTML·인라인 style·외부 라이브러리 없음). 색은 SVG 속성(과목 색)과 styles.css 클래스.
 // 읽기만 한다: 성취 엔진의 투영을 그릴 뿐 어떤 기록도 쓰지 않는다. 바텀시트는 ctx.sheet로 받는다(ui-kit이 app.mjs를 불러오므로 시험에서 이 파일만 따로 불러올 수 있게).
-import {achieve,AREAS,multText} from './life-achieve.mjs';
+import {achieve,AREAS,multText,brickTotalText,weekBonusTotal} from './life-achieve.mjs';
 import {kstDate,lifeDefs,dDay,shiftDay,MAX_EXAMS} from './life-model.mjs';
 
 export const TOWER_MAX_FLOORS=60;
@@ -14,7 +14,8 @@ const NS='http://www.w3.org/2000/svg';
 const A=22,B=11,H=7,COLS=7,DEPTH=2,LEFT=74,VIEW_W=238,PAD_TOP=20,PAD_BOTTOM=6,SLAB=1,MIN_ROWS=3,MAX_ROWS=16,MAX_GEMS=3,MAX_WINDOWS=3;
 const DRAW_MARGIN=4,KST_HOUR_MS=9*3600*1000,LABEL_ON_BONUS=3;
 
-const dayHeight=d=>Math.min(MAX_ROWS,d.items.reduce((s,b)=>s+(b.half?0.5:1),0));
+// FIX49C: 작은 금빛 벽돌(일기 0.25·리뷰 0.5)도 무게만큼 그 칸 높이에 든다(층 높이 = 그 주 가장 높은 칸).
+const dayHeight=d=>Math.min(MAX_ROWS,d.items.reduce((s,b)=>s+(b.half?0.5:1),0)+(d.small??[]).reduce((s,b)=>s+b.weight,0));
 // 층마다 높이가 다르다: 그 주에 가장 높은 날에 맞춘다(최소 3줄, 최대 16줄). base = 그 층 바닥 높이(줄 단위).
 export function towerLayout(weeks){
   let z=0;
@@ -54,7 +55,7 @@ function drawFloor(s,layout,f,onFloor){
     poly([at(COLS,0,f.base),at(COLS,DEPTH,f.base),at(COLS,DEPTH,topZ),at(COLS,0,topZ)],{class:'tower-slab tower-slab-side'}),
   );
   // Q1B 금빛 기둥: 그 주 보너스 ✦를 층 왼쪽 칸에 쌓는다(진짜 벽돌·금벽돌과 섞이지 않게). 층 높이는 그대로: 1개 = 1줄, 줄보다 많으면 눌러 담는다. 요일 칸보다 먼저 그려 벽돌을 가리지 않는다.
-  const bonus=w.bonus?.total??0;
+  const bonus=weekBonusTotal(w);   // FIX49C: 일기 ✦도 같은 기둥
   for(let k=0,each=bonus<=f.rows?1:f.rows/bonus;k<bonus;k++){
     const z0=topZ+k*each,z1=z0+each;
     g.append(poly([at(-1,DEPTH,z0),at(0,DEPTH,z0),at(0,DEPTH,z1),at(-1,DEPTH,z1)],{class:'tower-bonus'}),poly([at(0,DEPTH-1,z0),at(0,DEPTH,z0),at(0,DEPTH,z1),at(0,DEPTH-1,z1)],{class:'tower-bonus tower-bonus-side'}));
@@ -72,11 +73,22 @@ function drawFloor(s,layout,f,onFloor){
       );
       z+=h;drawn+=h;
     }
+    // FIX49C 작은 금빛 벽돌: 진짜 벽돌 위에 무게만큼 얇게. 색은 styles.css 클래스(진짜 벽돌·금벽돌과 다른 옅은 금색).
+    let smallTop=false;
+    for(const b of d.small??[]){
+      const h=b.weight;if(drawn+h>MAX_ROWS)break;
+      const cls='tower-brick tower-brick-small tower-brick-small-'+b.kind.toLowerCase();
+      g.append(
+        poly([at(i,y1,z),at(i+1,y1,z),at(i+1,y1,z+h),at(i,y1,z+h)],{class:cls}),
+        poly([at(i+1,y0,z),at(i+1,y1,z),at(i+1,y1,z+h),at(i+1,y0,z+h)],{class:cls+' tower-brick-side'}),
+      );
+      z+=h;drawn+=h;smallTop=true;
+    }
     if(drawn>0){
-      const topFill=d.items[Math.max(0,d.items.length-1)];
+      const topFill=d.items[Math.max(0,d.items.length-1)],face=[at(i,y0,z),at(i+1,y0,z),at(i+1,y1,z),at(i,y1,z)];
       g.append(
         poly([at(i+1,y0,topZ),at(i+1,y1,topZ),at(i+1,y1,z),at(i+1,y0,z)],{class:'tower-shade'}),
-        poly([at(i,y0,z),at(i+1,y0,z),at(i+1,y1,z),at(i,y1,z)],{class:'tower-brick tower-brick-top',fill:topFill.gold?'url(#tower-gold)':topFill.color}),
+        smallTop?poly(face,{class:'tower-brick tower-brick-top tower-brick-small'}):poly(face,{class:'tower-brick tower-brick-top',fill:topFill.gold?'url(#tower-gold)':topFill.color}),
         poly([at(i,y0,z),at(i+1,y0,z),at(i+1,y1,z),at(i,y1,z)],{class:'tower-light'}),
       );
     }
@@ -136,22 +148,24 @@ function maker(doc){
   return {el,add};
 }
 const brickText=(bricks,pieces)=>bricks+'장'+(pieces?' + 조각 '+pieces:'');
-// Q1B: 층 상세의 보너스 한 줄. 벽돌 수와 합치지 않는다.
-export const bonusText=b=>b?.total?'보너스 ✦'+b.total+[['주간',b.weekly],['월간',b.month],['보스',b.boss]].filter(([,n])=>n).map(([t,n])=>' · '+t+' '+n).join(''):null;
+// Q1B: 층 상세의 보너스 한 줄. 벽돌 수와 합치지 않는다. FIX49C: 일기 ✦(diary)가 있으면 합계와 '일기' 항목에 넣는다.
+export const bonusText=(b,diary=0)=>{const total=(b?.total??0)+diary;return total?'보너스 ✦'+total+[['주간',b?.weekly],['월간',b?.month],['보스',b?.boss],['일기',diary]].filter(([,n])=>n).map(([t,n])=>' · '+t+' '+n).join(''):null;};
 // kit = ctx.kit(ui-kit의 bar 등). 없으면(시험에서 이 파일만 불러올 때) 예전 손수 만든 막대.
 function progressBar(h,kit,value,max,aria){
   const made=kit?.bar?.(value,max,aria);if(made)return made;
   const bar=h.el('progress');bar.className='lb-xp-bar';bar.max=max>0?max:1;bar.value=Math.min(value,bar.max);bar.setAttribute('aria-label',aria);return bar;
 }
-function questRow(h,q,kit){
+function questRow(h,q,kit,{reward='창문 1개',cls=''}={}){
   const {el,add}=h,bar=progressBar(h,kit,q.value,q.target,q.label+' '+q.value+' / '+q.target);
-  return add(el('div',null,'tower-quest'+(q.done?' done':'')),add(el('div',null,'lb-xp-head'),el('span',q.label+(q.done?' · 완료':'')),el('strong',q.value+' / '+q.target+q.unit)),bar,el('span','+'+q.xp+' XP · 창문 1개','muted small'));
+  return add(el('div',null,'tower-quest'+cls+(q.done?' done':'')),add(el('div',null,'lb-xp-head'),el('span',q.label+(q.done?' · 완료':'')),el('strong',q.value+' / '+q.target+q.unit)),bar,el('span','+'+q.xp+' XP · '+reward,'muted small'));
 }
 // 층 상세 시트의 내용(그 주 벽돌 수·과목별·금벽돌·보석·창문·퀘스트).
 export function floorDetail(doc,w,kit=null){
   const h=maker(doc),{el,add}=h,body=el('div',null,'tower-detail');
   add(body,add(el('div',null,'tower-stats'),stat(h,'벽돌',brickText(w.bricks,w.pieces)),stat(h,'금벽돌',w.gold),stat(h,'보석',w.gems),stat(h,'창문',w.windows),stat(h,'이 주 XP',w.xp)));
-  const bonus=bonusText(w.bonus);if(bonus)add(body,el('p',bonus,'tower-bonus-line'));
+  const bonus=bonusText(w.bonus,w.diary?.bonus??0);if(bonus)add(body,el('p',bonus,'tower-bonus-line'));
+  const diary=w.diary&&(w.diary.days||w.diary.review)?w.diary:null;   // FIX49C
+  if(diary)add(body,el('p',diaryWeekText(diary),'tower-diary-line'));
   const list=el('div',null,'tower-subjects');
   for(const x of w.subjects){
     const s=svgMaker(doc),dot=s('svg',{class:'life-dot',width:10,height:10,viewBox:'0 0 10 10','aria-hidden':'true'});dot.append(s('circle',{cx:5,cy:5,r:5,fill:x.color}));
@@ -159,8 +173,12 @@ export function floorDetail(doc,w,kit=null){
   }
   add(body,el('h3','과목별'),w.subjects.length?list:el('p','이 주에는 벽돌이 없습니다.','muted small'),el('h3','퀘스트'));
   for(const q of w.quests)add(body,questRow(h,q,kit));
+  if(diary)add(body,diaryQuestRow(h,diary.quest,kit));
   return body;
 }
+// FIX49C: 일기 줄과 일기 퀘스트 칸(창문은 주간 퀘스트만 낸다. 일기 퀘스트는 ✦1).
+export const diaryWeekText=d=>'일기 '+d.days+'일'+(d.review?' · 주간 리뷰':'')+' · 작은 벽돌 '+d.weight.toLocaleString('en-US')+'장';
+const diaryQuestRow=(h,q,kit)=>questRow(h,q,kit,{reward:'✦1',cls:' tower-quest-diary'});
 function stat(h,label,value){return h.add(h.el('div',null,'tower-stat'),h.el('span',label,'tower-stat-label'),h.el('strong',value,'tower-stat-value'));}
 
 // ---------- 영역 칸의 링과 최근 성취 시트 (A1A, 설계 M1D §2.3) ----------
@@ -236,7 +254,7 @@ const dText=n=>n===0?'D-DAY':n>0?'D-'+n:'D+'+(-n);
 export function houseLine(ach,seasons){
   if(!seasons?.length)return null;
   const end=seasons.at(-1);
-  if(end.passed){const built=ach.weeks.filter(w=>w.monday<=end.to);return '완공 '+end.date+' · '+built.length+'층 · 벽돌 '+built.reduce((s,w)=>s+w.bricks,0).toLocaleString('en-US')+'장';}
+  if(end.passed){const built=ach.weeks.filter(w=>w.monday<=end.to);return '완공 '+end.date+' · '+built.length+'층 · '+brickTotalText(built);}   // FIX49C: 작은 벽돌 무게 포함(일기가 없으면 예전 글자 그대로)
   const cur=seasons.find(s=>s.current)??seasons.find(s=>!s.passed);
   return cur.name+' 시즌 공사 중 · '+(end.weeksLeft>0?'완공까지 '+end.weeksLeft+'주':'이번 주 완공')+' · 예상 약 '+(ach.weeks.length+end.weeksLeft)+'층 · '+end.name+' '+dText(end.dDay);
 }
@@ -257,6 +275,7 @@ export const BADGE_RULES=Object.freeze({
   STREAK:Object.freeze([[7,'WHITE','흰색'],[30,'BLUE','파랑'],[100,'GOLD','금색']]),
   GOLD:Object.freeze([[10,'동'],[50,'은'],[200,'금']]),
   AREA:Object.freeze([[5,'깃발'],[10,'금 테']]),
+  DIARY:Object.freeze([[7,'촛불'],[30,'등불'],[100,'금 등불']]),   // FIX49C 집 등불: 최고 일기 연속(끊겨도 유지)
 });
 const BADGE_MAX_BOSS=12;
 const reached=(rules,value)=>rules.filter(r=>value>=r[0]).length;
@@ -271,13 +290,15 @@ export function houseBadges(ach,seasons=null){
   const bricks=ach.weeks.reduce((n,w)=>n+w.bricks,0),gold=ach.weeks.reduce((n,w)=>n+w.gold,0),streak=ach.days.reduce((n,d)=>Math.max(n,d.streak??0),0),boss=ach.days.filter(d=>d.boss).length,done=Boolean(seasons?.at(-1)?.passed);
   const areas=Object.fromEntries(AREAS.map(a=>[a,reached(BADGE_RULES.AREA,ach.levels[a]?.level??1)]));
   const row=(id,name,show,value,target)=>({id,name,show,value,target,done:value>=target});
+  const diary=ach.diary?.best??0;
   const list=[row('first','첫 벽돌','기단 머릿돌',bricks,1),
     ...BADGE_RULES.BRICKS.map(([n,,t])=>row('bricks-'+n,'벽돌 '+n.toLocaleString('en-US')+'장','성문 현판 ('+t+')',bricks,n)),
     ...BADGE_RULES.STREAK.map(([n,,t])=>row('streak-'+n,'최고 연속 '+n+'일','옥상 깃발 ('+t+')',streak,n)),
     ...BADGE_RULES.GOLD.map(([n,t])=>row('gold-'+n,'금벽돌 '+n+'장','성문 문장 ('+t+')',gold,n)),
     ...AREAS.flatMap(a=>BADGE_RULES.AREA.map(([n,t])=>row(a+'-'+n,AREA_TEXT[a]+' Lv '+n,'모퉁이 탑 '+t,ach.levels[a]?.level??1,n))),
-    row('boss','시험일 보스','꼭대기 시험 깃발 (최대 '+BADGE_MAX_BOSS+'개)',boss,1),row('done','완공','완공 현판',done?1:0,1)];
-  return {bricks,gold,streak,cornerstone:bricks>=1,plaque:BADGE_RULES.BRICKS[reached(BADGE_RULES.BRICKS,bricks)-1]?.[1]??null,streakFlag:BADGE_RULES.STREAK[reached(BADGE_RULES.STREAK,streak)-1]?.[1]??null,crest:reached(BADGE_RULES.GOLD,gold),areas,boss:Math.min(BADGE_MAX_BOSS,boss),done,title:houseTitle({bricks,areas,levels:ach.levels,done}),list};
+    row('boss','시험일 보스','꼭대기 시험 깃발 (최대 '+BADGE_MAX_BOSS+'개)',boss,1),row('done','완공','완공 현판',done?1:0,1),
+    ...BADGE_RULES.DIARY.map(([n,t])=>row('diary-'+n,'최고 일기 연속 '+n+'일','성문 '+t,diary,n))];
+  return {bricks,gold,streak,diary,lamp:reached(BADGE_RULES.DIARY,diary),cornerstone:bricks>=1,plaque:BADGE_RULES.BRICKS[reached(BADGE_RULES.BRICKS,bricks)-1]?.[1]??null,streakFlag:BADGE_RULES.STREAK[reached(BADGE_RULES.STREAK,streak)-1]?.[1]??null,crest:reached(BADGE_RULES.GOLD,gold),areas,boss:Math.min(BADGE_MAX_BOSS,boss),done,title:houseTitle({bricks,areas,levels:ach.levels,done}),list};
 }
 function badgeList(h,badges){
   const {el,add}=h,box=add(el('details',null,'tower-badges'),el('summary','집 장식 · 달성 '+badges.list.filter(r=>r.done).length+' / '+badges.list.length)),list=el('ul',null,'tower-badge-list');
@@ -295,7 +316,7 @@ export function renderTower(root,ctx,st){
   add(out,add(el('div',null,'tower-stats'),
     stat(h,'이번 주 벽돌',week.value+' / '+week.brickTarget),stat(h,'금벽돌',week.gold),stat(h,'보석',week.gems),stat(h,'연속',ach.streak.days+'일 '+multText(ach.streak.mult10))));
   if(line)add(out,el('p',line,'tower-house-line'));
-  if(ach.hasRecords)add(out,el('p','벽돌 '+ach.weeks.reduce((n,w)=>n+w.bricks,0).toLocaleString('en-US')+'장 · 보너스 ✦'+ach.bonusTotal.toLocaleString('en-US'),'tower-bonus-total muted small'));   // Q1B: 나란히만 보인다(합친 숫자 없음)
+  if(ach.hasRecords)add(out,el('p',brickTotalText(ach.weeks)+' · 보너스 ✦'+ach.bonusTotal.toLocaleString('en-US'),'tower-bonus-total muted small'));   // Q1B: 나란히만 보인다(합친 숫자 없음). FIX49C: 작은 벽돌 무게 포함
   if(week.bridgeHeavy)add(out,el('p',BRIDGE_NOTICE,'notice tower-bridge'));
   if(!ach.hasRecords)add(out,el('p',EMPTY_TEXT,'tower-empty'));
   else{
@@ -327,6 +348,7 @@ export function renderTower(root,ctx,st){
   }
   add(out,el('h3','영역 레벨'),levels,el('h3','이번 주 퀘스트'));
   for(const q of week.quests)add(out,questRow(h,q,ctx.kit));
+  if(week.diary)add(out,diaryQuestRow(h,week.diary.quest,ctx.kit));   // FIX49C: 일기·리뷰 기록이 하나라도 있을 때만
   ctx.achvPanel?.(out,{doc,ach,today,life:whole.life??null,money,st,kit:ctx.kit,storage:ctx.storage,sheet:ctx.sheet,ctx});   // Q1A: 업적·칭호 패널 자리(앱이 넘긴다, 시험에서는 없음). Q1B: 시트·내 퀘스트 저장용 ctx
   root.append(out);
   return out;

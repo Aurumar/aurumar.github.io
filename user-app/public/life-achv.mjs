@@ -1,6 +1,6 @@
 // 업적·칭호 (Q1A, 설계 Q1D §3·§5). 저장하지 않는 순수 투영이다: 성취 엔진 결과(achieve)와 기록만 보고 계산한다. 쓰기·시계·난수·저장소·네트워크 없음.
-// 조건은 현재 목표값·습관 수에 기대지 않고 고정 상수와 습관 id만 쓴다. 벽돌 수는 실제 벽돌만 센다(보너스 ✦ 제외). 기록을 고쳐 조건이 깨지면 업적도 풀린다.
-// 2단계(phase 2: 등급 업적 2개, 칭호 1개)는 새 기록 종류가 있어야 하므로 항상 잠겨 있고 개수에 넣지 않는다.
+// 조건은 현재 목표값·습관 수에 기대지 않고 고정 상수와 습관 id만 쓴다. 벽돌 수는 실제 벽돌만 센다(보너스 ✦·일기 작은 벽돌 제외). 기록을 고쳐 조건이 깨지면 업적도 풀린다.
+// 등급 업적 2개(grade-up·grade-1)와 칭호 40번은 모의고사 결과(EXAM_RESULT)의 등급으로 열린다(FIX46C, D46 6.3). phase 칸은 남겨 두며 지금은 모두 1이다.
 import {entryDone,lifeDefs,dateKeyOK,dayNumber,shiftDay,kstDate} from './life-model.mjs';
 
 const a=(id,group,name,target,o={})=>Object.freeze({id,group,name,target,hidden:false,phase:1,...o});
@@ -15,11 +15,12 @@ export const ACHIEVEMENTS=Object.freeze([
   a('dawn-30','HABIT','새벽 기상 30일',30),a('dawn-100','HABIT','새벽 기상 100일',100),a('sun-30','HABIT','아침 빛 30일',30),a('sleep-30','HABIT','자정 전 취침 30일',30),a('nolate-30','HABIT','야식 없는 30일',30),a('workout-100','HABIT','운동 100회',100),a('habit10-30','HABIT','열 칸의 날 30일',30),
   a('gem-1','GEM','첫 보석',1),a('gem-100','GEM','보석 100개',100),
   a('ledger-30','MONEY','장부 30일',30),a('budget-1','MONEY','예산 한 달',1),a('budget-3','MONEY','예산 3달 연속',3),a('budget-12','MONEY','예산 12달 연속',12),
-  a('boss-1','EXAM','첫 보스 처치',1),a('boss-season','EXAM','네 관문',4),a('grade-up','EXAM','등급 상승',1,{phase:2}),a('grade-1','EXAM','1등급',1,{phase:2}),
+  a('boss-1','EXAM','첫 보스 처치',1),a('boss-season','EXAM','네 관문',4),a('grade-up','EXAM','등급 상승',1),a('grade-1','EXAM','1등급',1),
   a('questfull-1','QUEST','주간 완주',1),a('questfull-10','QUEST','열 주 완주',10),a('month-3','QUEST','석 달 정복',3),a('floor-10','QUEST','탑 10층',10),a('floor-52','QUEST','탑 52층',52),
+  a('diary-1','DIARY','첫 장',1),a('diary-3','DIARY','사흘',3),a('diary-7','DIARY','일주일',7),a('diary-30','DIARY','한 달',30),a('diary-100','DIARY','백 일',100),a('diary-365','DIARY','한 해',365),a('review-10','DIARY','열 번 돌아봄',10),a('review-52','DIARY','한 해를 돌아봄',52),
   a('h-comeback','HIDDEN','돌아온 사람',1,{hidden:true}),a('h-exam-eve','HIDDEN','전날 밤',1,{hidden:true}),a('h-rest','HIDDEN','쉼을 아는 사람',10,{hidden:true}),a('h-allsub','HIDDEN','일곱 색의 하루',1,{hidden:true}),a('h-d100','HIDDEN','D-100',1,{hidden:true}),a('h-bridge','HIDDEN','건너간 다음 주',1,{hidden:true}),
 ]);
-export const GROUP_TEXT=Object.freeze({BRICK:'벽돌',STREAK:'연속',SUBJECT:'과목',HABIT:'습관',GEM:'보석',MONEY:'돈',EXAM:'시험',QUEST:'퀘스트·탑',HIDDEN:'숨김'});
+export const GROUP_TEXT=Object.freeze({BRICK:'벽돌',STREAK:'연속',SUBJECT:'과목',HABIT:'습관',GEM:'보석',MONEY:'돈',EXAM:'시험',QUEST:'퀘스트·탑',DIARY:'일기',HIDDEN:'숨김'});
 export const HIDDEN_NAME='???';
 export const MONEY_OFF_TEXT='가계부를 켜면 보여요';
 export const CSAT_DAY_OFFSET=100;
@@ -34,7 +35,8 @@ export const TITLES=Object.freeze([
   t(21,'일곱 별의 수험생','sub-all','GOLD'),t(22,'다리를 건넌 자','bridge-30','SILVER'),t(23,'새벽의 기록자','dawn-30','SILVER'),t(24,'여명의 주인','dawn-100','GOLD'),t(25,'아침 빛 수집가','sun-30','BRONZE'),
   t(26,'밤을 지킨 자','sleep-30','SILVER'),t(27,'야식을 벤 검','nolate-30','SILVER'),t(28,'강철 심장','workout-100','SILVER'),t(29,'열 칸의 규율','habit10-30','SILVER'),t(30,'오답 세공사','gem-100','SILVER'),
   t(31,'장부의 파수꾼','ledger-30','BRONZE'),t(32,'금고 지킴이','budget-3','SILVER'),t(33,'황금 금고의 주인','budget-12','GOLD'),t(34,'첫 보스 사냥꾼','boss-1','SILVER'),t(35,'네 관문의 정복자','boss-season','GOLD'),
-  t(36,'열 주의 완주자','questfull-10','SILVER'),t(37,'쉰두 층의 주인','floor-52','GOLD'),t(38,'돌아온 석공','h-comeback','HIDDEN'),t(39,'쉼을 아는 자','h-rest','HIDDEN'),t(40,'등급을 깨뜨린 자','grade-up','GOLD',2),
+  t(36,'열 주의 완주자','questfull-10','SILVER'),t(37,'쉰두 층의 주인','floor-52','GOLD'),t(38,'돌아온 석공','h-comeback','HIDDEN'),t(39,'쉼을 아는 자','h-rest','HIDDEN'),t(40,'등급을 깨뜨린 자','grade-up','GOLD'),
+  t(41,'하루를 적는 사람','diary-7','BRONZE'),t(42,'한 달의 기록자','diary-30','SILVER'),t(43,'스스로를 읽는 자','review-52','GOLD'),   // FIX49C 일기
 ]);
 const TIER_RANK=Object.freeze({GOLD:3,SILVER:2,HIDDEN:2,BRONZE:1});
 
@@ -54,10 +56,14 @@ export function achievements(ach,{life=null,money=null}={}){
   const exams=defs.exams?.items??[],eves=new Set(exams.map(x=>shiftDay(x.date,-1)));
   const csat=exams.find(x=>x.id==='e-csat')??exams.find(x=>x.name.includes('수능'))??null,d100=csat?shiftDay(csat.date,-CSAT_DAY_OFFSET):null;
   const subject=new Map(ALL_SUBJECTS.map(s=>[s,{row:rows.get('sub-'+s),bricks:0}]));
-  let bricks=0,gold=0,gems=0,bridged=0,bridgeDays=0,dawn=0,sun=0,sleep=0,nolate=0,workout=0,cells10=0,rest=0,lastRecord=null;
+  let bricks=0,gold=0,gems=0,bridged=0,bridgeDays=0,dawn=0,sun=0,sleep=0,nolate=0,workout=0,cells10=0,rest=0,lastRecord=null,diaries=0,reviews=0;
+  const diaryRows=[3,7,30,100,365].map(n=>rows.get('diary-'+n));
 
   for(let i=0;i<ach.days.length;i++){
     const d=ach.days[i],date=d.date,card=cards.get(date)??null;
+    // FIX49C 일기: 성취 엔진이 센 일기 날·일기 연속·주간 리뷰(첫 기록일 전 일기는 엔진이 넣지 않는다). 다른 업적 판정에는 닿지 않는다.
+    if(d.diary){diaries++;hit('diary-1',diaries,date);for(const r of diaryRows)reach(r,d.diaryStreak,date);}
+    if(d.weekReview){reviews++;hit('review-10',reviews,date);hit('review-52',reviews,date);}
     if(d.bricks){bricks+=d.bricks;for(const r of brickRows)reach(r,bricks,date);hit('day-8',d.bricks,date);hit('day-16',d.bricks,date);}
     if(d.gold){gold+=d.gold;hit('gold-1',gold,date);}
     if(d.streak)for(const r of streakRows)reach(r,d.streak,date);
@@ -109,6 +115,10 @@ export function achievements(ach,{life=null,money=null}={}){
   let monthsDone=0;
   for(const m of ach.months)if(m.done){monthsDone++;hit('month-3',monthsDone,m.doneDate);}
 
+  // 등급 업적: 모의고사 결과로만 계산한다. 결과를 고치거나 지워 조건이 깨지면 다시 잠긴다. 달성일 = 결과를 넣은 날(gradeFacts).
+  const grade=gradeFacts(life?.results);
+  for(const id of ['grade-up','grade-1'])if(grade[id].done)hit(id,1,grade[id].doneDate);
+
   const killed=ach.bosses.filter(b=>b.done);
   if(killed.length)hit('boss-1',1,killed[0].doneDate);
   const years=new Map();
@@ -130,7 +140,7 @@ export function achievements(ach,{life=null,money=null}={}){
   const list=[...rows.values()],active=list.filter(r=>r.phase===1),count=(rs,hidden)=>rs.filter(r=>r.hidden===hidden);
   return {list,shownDone:count(active,false).filter(r=>r.done).length,shownTotal:count(active,false).length,hiddenDone:count(active,true).filter(r=>r.done).length,hiddenTotal:count(active,true).length};
 }
-// 등급 업적 2단계 해제 계산(D46 6.3). results = lifeRawView의 results. 아직 위 achievements()에 잇지 않았다({phase:2}를 떼는 것은 화면과 함께).
+// 등급 업적 해제 계산(D46 6.3). results = lifeRawView의 results. 위 achievements()가 부른다.
 // 낮아진 등급 = 같은 과목의 직전 등급 있는 시험보다 숫자가 작음. 순서는 응시일, 달성일은 결과를 넣은 날(둘을 비교하려면 둘 다 있어야 하므로 grade-up은 두 입력일 중 늦은 쪽). 여러 번이면 가장 이른 날.
 export function gradeFacts(results){
   const order=[...(results??[])].sort((a,b)=>a.data.takenOn<b.data.takenOn?-1:a.data.takenOn>b.data.takenOn?1:a.id<b.id?-1:a.id>b.id?1:0);
