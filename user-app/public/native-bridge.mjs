@@ -380,11 +380,13 @@ export function createNativeBridge({native=globalThis.LifeBrickNative,storage,no
     // ---- 열품타(YPT1) ----
     yptPrefs:()=>({on:readJson(store,NATIVE_KEYS.ypt,null)?.on===true}),
     setYpt(on){return writeJson(store,NATIVE_KEYS.ypt,{on:on===true})?api.yptPrefs():null;},
-    // 옛 앱(메서드 없음)이면 null(설정 절이 숨는다).
+    // 옛 앱(메서드 없음)이면 null(설정 절이 숨는다). YPT2: 접근성은 도우미 앱에 있다. 도우미에 닿지 못하면 helper 칸이 붙는다(닿으면 칸이 없다).
     yptState(){
       const r=callNative(native,'yptState');if(r.ok!==true)return null;
       const l=r.last,last=l&&typeof l==='object'&&(l.action==='start'||l.action==='stop')&&Number.isSafeInteger(l.at)?{action:l.action,ok:l.ok===true,code:typeof l.code==='string'?l.code:null,at:l.at}:null;
-      return {accessOn:r.accessOn===true,package:typeof r.package==='string'?r.package:null,label:typeof r.label==='string'?r.label:null,startLearned:r.startLearned===true,stopLearned:r.stopLearned===true,learning:r.learning==='START'||r.learning==='STOP'?r.learning:'NONE',last};
+      const s={accessOn:r.accessOn===true,package:typeof r.package==='string'?r.package:null,label:typeof r.label==='string'?r.label:null,startLearned:r.startLearned===true,stopLearned:r.stopLearned===true,learning:r.learning==='START'||r.learning==='STOP'?r.learning:'NONE',last};
+      if(typeof r.helper==='string'&&Object.hasOwn(YPT_TEXT.helper,r.helper))s.helper=r.helper;
+      return s;
     },
     yptCandidates(){const r=callNative(native,'yptCandidates');return r.ok===true&&Array.isArray(r.candidates)?r.candidates.filter(c=>c&&typeof c.package==='string'&&typeof c.label==='string'):[];},
     yptConfirmPackage:name=>callNative(native,'yptConfirmPackage',name),
@@ -532,7 +534,8 @@ export const YPT_TEXT=Object.freeze({
   notReady:'열품타 같이 켜기: 준비 안 됨 — 설정에서 확인',
   rules:'공부 타이머를 시작하면 열품타를 열어 시작 버튼을 눌러 주고, 끝내고 담거나 취소하면 정지 버튼을 눌러 줘요. 잠깐 열품타가 앞에 나왔다가 돌아와요.',
   rest:'휴식 중 열품타는 계속 돎 — 휴식은 LIFE BRICK 공부 시간에만 빠져요.',
-  accessOn:'접근성: 켜짐',accessOff:'접근성: 꺼짐 — "LIFE BRICK 열품타 연동"을 켜 주세요. 직접 설치한 앱이면 앱 정보에서 "제한된 설정 허용"이 먼저 필요할 수 있어요.',accessBtn:'접근성 설정 열기',
+  helper:{NOT_INSTALLED:'LIFE BRICK 열품타 도우미 설치 필요 — 열품타 버튼은 도우미 앱이 대신 눌러 줘요. 설치한 뒤 "다시 확인"을 눌러 주세요.',BAD_KEY:'LIFE BRICK 열품타 도우미의 서명이 달라요 — 같은 키로 서명한 도우미를 다시 설치해 주세요.',NO_PERMISSION:'LIFE BRICK 열품타 도우미에 연결할 권한이 없어요 — LIFE BRICK을 같은 파일로 한 번 더 설치해 주세요.',NO_ANSWER:'LIFE BRICK 열품타 도우미가 답하지 않아요 — 잠시 뒤 "다시 확인"을 눌러 주세요.'},
+  accessOn:'접근성: 켜짐',accessOff:'접근성: 꺼짐 — "LIFE BRICK 열품타 연동"을 켜 주세요. 직접 설치한 도우미 앱은 앱 정보에서 "제한된 설정 허용"이 먼저 필요할 수 있어요.',accessBtn:'접근성 설정 열기',
   noApp:'열품타 앱을 찾지 못했어요. 설치한 뒤 "다시 확인"을 눌러 주세요.',
   pick:n=>n+' 이 앱이 맞나요?',pickBtn:'이 앱이 맞아요',
   app:n=>'열품타 앱: '+n,
@@ -553,6 +556,8 @@ export function renderYptSettings(root,ctx){
   const s=br.yptState();if(!s)return null;
   const msg=h.el('p',null,'muted small');msg.setAttribute('role','status');
   const sec=h.add(h.el('section',null,'panel native-settings'),h.el('h2',YPT_TEXT.title,'panel-title'));
+  // YPT2: 도우미에 닿지 못하면 그 이유와 "다시 확인"만 보인다(토글을 켜 두었어도 시작 때 준비 안 됨 알림으로 이어진다).
+  if(s.helper){h.add(sec,h.el('p',YPT_TEXT.helper[s.helper],'muted'),h.add(h.el('div',null,'native-row'),h.button(YPT_TEXT.recheck,()=>ctx.rerender?.(),'secondary')));h.add(root,sec);return sec;}
   h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle(YPT_TEXT.toggle,br.yptPrefs().on,on=>{br.setYpt(on);})),h.el('p',YPT_TEXT.rules,'muted small'),h.el('p',YPT_TEXT.rest,'muted small'));
   h.add(sec,h.add(h.el('div',null,'native-row'),h.el('p',s.accessOn?YPT_TEXT.accessOn:YPT_TEXT.accessOff,'muted'),
     s.accessOn?null:h.button(YPT_TEXT.accessBtn,()=>{const r=br.yptOpenAccessibilitySettings();if(!r.ok)msg.textContent=NATIVE_TEXT.fail;},'secondary')));
