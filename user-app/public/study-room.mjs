@@ -85,6 +85,43 @@ export function wingShapes(m,side){
   return {shelf,win};
 }
 
+// ---- DS1 (설계 V5 §2.8 d·h): 금 벽돌 스프라이트 하나. 오늘 벽돌 칸(공부 벽돌 패널·덮개)과 무대 양옆 벽돌 기둥이 같이 쓴다. ----
+// 금속 공식(styles.css --gold-metal: hi 0% · gold 38% · deep 72% · shadow 100%)을 SVG 띠 넷으로 그린다(그라데이션 id 없이 같은 입력 → 같은 DOM).
+// 못 쌓은 칸 = 아이보리 음각 + 0.5px 금선. fill = 0~1(조각 0.5는 반 칸). 색은 styles.css 30절 클래스만.
+export const PILLAR_CELLS=8;          // 기둥 한 쪽 칸 수(양쪽 16 = 더미 칸 상한 PILE_MAX와 같다)
+const r2=v=>Math.round(v*100)/100;
+const fillOf=v=>Number.isFinite(v)?Math.min(1,Math.max(0,v)):0;
+export function brickSprite(svg,x,y,w,h,fill){
+  const f=fillOf(fill),g=svg('g',{class:'lb-brick '+(f>=1?'is-full':f>0?'is-part':'is-empty')});
+  g.append(svg('rect',{class:'lb-brick-well',x,y,width:w,height:h,rx:1}),svg('line',{class:'lb-brick-groove',x1:r2(x+.75),y1:r2(y+.75),x2:r2(x+w-.75),y2:r2(y+.75)}));
+  if(f>0){
+    const fw=r2(w*f);
+    g.append(svg('rect',{class:'lb-brick-gold',x,y,width:fw,height:h,rx:1}),svg('rect',{class:'lb-brick-deep',x,y:r2(y+h*.62),width:fw,height:r2(h*.38)}),
+      svg('line',{class:'lb-brick-hi',x1:r2(x+.5),y1:r2(y+.5),x2:r2(x+Math.max(.5,fw-.5)),y2:r2(y+.5)}),svg('line',{class:'lb-brick-shadow',x1:x,y1:r2(y+h-.5),x2:r2(x+fw),y2:r2(y+h-.5)}));
+  }
+  return g;
+}
+// 오늘 벽돌 칸: 칸 수 = max(목표, 쌓은 값 올림), 1~max. 칸 i의 채움 = 값 − i(0~1). value = 벽돌 + 조각×0.5(liveState·sumBricks의 value와 같다).
+export function brickCellsOf(value,goal,max=16){
+  const v=Number.isFinite(value)&&value>0?value:0,gl=Number.isInteger(goal)&&goal>0?goal:0,n=Math.min(max,Math.max(1,gl,Math.ceil(v)));
+  return Array.from({length:n},(_,i)=>fillOf(v-i));
+}
+export function brickCells(doc,{value=0,goal=null,max=16,cls=''}={}){
+  const {svg}=maker(doc),cells=brickCellsOf(value,goal,max),W=14,H=8,G=3;
+  const n=svg('svg',{class:'lb-brick-row'+(cls?' '+cls:''),viewBox:'0 0 '+(cells.length*(W+G)-G)+' '+H,width:cells.length*(W+G)-G,height:H,'aria-hidden':'true',focusable:'false'});
+  cells.forEach((f,i)=>n.append(brickSprite(svg,i*(W+G),0,W,H,f)));
+  return n;
+}
+// 무대 양옆 벽돌 기둥(넓은 화면 날개 안, 무대 쪽 가장자리): 오늘 더미 칸을 왼쪽·오른쪽 번갈아 아래부터 채운다. 조각은 반 칸.
+export function pillarCells(pile,side){
+  const mine=(pile??[]).filter((_,i)=>i%2===(side==='l'?0:1)).slice(0,PILLAR_CELLS);
+  return Array.from({length:PILLAR_CELLS},(_,k)=>mine[k]?(mine[k].half?.5:1):0);
+}
+function pillarNodes(svg,pile,side){
+  const x=side==='l'?111:1,W=8,H=20,G=3,bottom=346;
+  return pillarCells(pile,side).map((f,k)=>brickSprite(svg,x,bottom-(k+1)*H-k*G,W,H,f));
+}
+
 // ---- 축하 중복 방지: 이 세션(startIso)에서 이미 축하한 벽돌 수·금벽돌. 다시 열거나 다른 탭에서 열어도 같은 벽돌을 다시 축하하지 않는다. ----
 // 화면이 꺼져 있던 동안 넘긴 벽돌은 돌아왔을 때 한 번에 묶어 1번. 반환 null = 축하할 것 없음.
 // FIX37C (H37-S5): 저장소에 쓰지 못한 값은 이번 실행 동안 메모리에 둔다(저장소가 막혀도 같은 벽돌을 매초 다시 축하하지 않게). 쓰기가 되면 지운다.
@@ -131,7 +168,7 @@ export function roomScene(doc,{stage=null,wings=true,label='공부방',win=null,
   const wingL=wings?svg('svg',{class:'room-wing room-wing-l',viewBox:'0 0 '+WING_VIEW.w+' '+WING_VIEW.h,preserveAspectRatio:'xMidYMax meet','aria-hidden':'true',focusable:'false'}):null;
   const wingR=wings?svg('svg',{class:'room-wing room-wing-r',viewBox:'0 0 '+WING_VIEW.w+' '+WING_VIEW.h,preserveAspectRatio:'xMidYMax meet','aria-hidden':'true',focusable:'false'}):null;
   const wg={};
-  if(wings){for(const [side,host] of [['l',wingL],['r',wingR]]){wg[side+'win']=svg('g',{class:'room-wing-window'});wg[side+'shelf']=svg('g',{class:'room-wing-shelf'});host.append(wg[side+'win'],wg[side+'shelf']);}}
+  if(wings){for(const [side,host] of [['l',wingL],['r',wingR]]){wg[side+'win']=svg('g',{class:'room-wing-window'});wg[side+'shelf']=svg('g',{class:'room-wing-shelf'});wg[side+'pillar']=svg('g',{class:'room-wing-pillar'});host.append(wg[side+'win'],wg[side+'shelf'],wg[side+'pillar']);}}
   const cheer=el('p',null,'room-cheer');cheer.setAttribute('aria-live','polite');cheer.hidden=true;
   node.append(...[wingL,stageNode,wingR,cheer].filter(Boolean));
   const make=([tag,attrs])=>svg(tag,attrs);
@@ -151,6 +188,7 @@ export function roomScene(doc,{stage=null,wings=true,label='공부방',win=null,
     if(wings&&(!last||last.spines!==m.spines||last.windowOn!==m.windowOn)){
       for(const side of ['l','r']){const w=wingShapes(m,side);wg[side+'shelf'].replaceChildren(...w.shelf.map(make));wg[side+'win'].replaceChildren(...w.win.map(make));}
     }
+    if(wings&&(!last||last.keys.bricks!==keys.bricks))for(const side of ['l','r'])wg[side+'pillar'].replaceChildren(...pillarNodes(svg,m.pile,side));   // DS1: 벽돌 기둥은 더미가 바뀔 때만
     node.className=roomClass(m,wings?' room-wide':'');
     node.setAttribute('aria-label',label+' '+m.stage.id+' '+m.stage.label+' · 벽돌 더미 '+m.pile.length+'칸'+(m.more?' (+'+m.more+')':''));
     last={keys,counts:Object.fromEntries(FRONT_LAYERS.map(k=>[k,shapes[k].length])),spines:m.spines,windowOn:m.windowOn,no:m.no};

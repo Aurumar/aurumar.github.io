@@ -88,9 +88,12 @@ export function rebaseRecord(type,{id,base,mine,latest}){
     if(theirState==='modified'){keep.set(subjectId,t);notices.push({code:'RECORD_CONFLICT_KEPT_REMOTE',subjectId,remote:t});}
   }
   const merged={...mine,[list]:[...keep.values()]};
+  // FIX59Q (HUNT57 HQ57-2, FIX58Q HQ9 규칙 대신): 금고에 없던 시험(base null)이면 응시일은 한쪽만 있으면 있는 값, 같으면 그대로,
+  // 둘 다 있고 다르면 내 값 + 알림(어느 쪽도 조용히 버리지 않는다. 봉인 승인은 알림이 있으면 쓰지 않고 초안을 남겨 사용자가 고른다).
   if(type==='EXAM_RESULT'&&latest){
     const sb=base?.takenOn,sm=mine.takenOn,st=latest.takenOn;
-    if(sm===sb)merged.takenOn=st;
+    if(!base){if(!sm)merged.takenOn=st;else if(st&&st!==sm)notices.push({code:'RECORD_DATE_OVERWRITTEN',remote:st,mine:sm});}
+    else if(sm===sb)merged.takenOn=st;
     else if(st!==sb&&st!==sm)notices.push({code:'RECORD_DATE_OVERWRITTEN',remote:st,mine:sm});
   }
   if(latest&&same(merged,latest))return {status:'ALREADY_APPLIED',notices};

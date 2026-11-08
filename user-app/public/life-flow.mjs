@@ -10,7 +10,9 @@ const codeOf=e=>typeof e?.code==='string'?e.code:(e?.message??'UNKNOWN');
 const REJECT_CODE=/^(INVALID_|LIFE_|HABIT_|EXAM_|APP_ENTITY_LIMIT|REBASE_|INVALID_WHOLE_LIFE|DIARY_|RECORDS_DOOR_CLOSED)/;
 export const DRAFT_REASON='오늘 카드 임시 저장';
 export const CONFIRM_REASON='오늘 카드 쌓기';
-const STALE_BASE='CARD_DRAFT_STALE_BASE',EDIT_ROUNDS=5;
+const STALE_BASE='CARD_DRAFT_STALE_BASE',EDIT_ROUNDS=5,DRAFT_GONE='CARD_DRAFT_NOT_FOUND';
+// FIX55C2 (HUNT53 HF9): 기록에 붙여 두는 알림 = "내 값을 썼다/지켰다" 종류만(상대 값을 남김·합침·잘림은 그 결과 카드에서만 사실이다).
+const MINE_NOTICE=/(OVERWRITTEN|KEPT_MINE|KEPT_LOCAL)$/;
 const flowError=code=>Object.assign(new Error(code),{code});
 const sameHeads=(a,b)=>a.length===b.length&&a.every((h,i)=>h===b[i]);
 // FIX49B (D49 5.2): 일기 저장 사유는 고정 문구만 쓴다(이력에 그대로 보인다, 글을 넣지 않는다). 합칠 것이 없으면 임시 입력 본문을 그대로 확정하므로 두 사유를 같게 둔다(이력에 '임시 저장'으로 보이지 않게).
@@ -36,12 +38,15 @@ export function diaryKnownBase(date,base,mine,touched){
 const basesOf=(b,touched)=>{const out={};if(b&&typeof b==='object'&&!Array.isArray(b)&&Array.isArray(touched))for(const k of touched)if(DIARY_FIELDS.includes(k)&&Object.hasOwn(b,k))out[k]=structuredClone(b[k]);return out;};
 // 흐름의 종류 설정. rows = 그 종류의 쌓인 목록(lifeRawView), door = 확정 직전 쓰기 문 검사(새 기록만), maskedHistory = 이력 값이 가린 사본이라 base로 그대로 쓰면 안 됨(FIX49A 4.4).
 // fields = 바꾼 칸 이름을 초안에 함께 두는 종류(FIX50A), knownBase = 그 목록으로 base를 고친다.
-export const LIFE_KIND=Object.freeze({type:'LIFE_DAY',empty:emptyDay,rows:life=>life?.days??[],rebase,changed:hasChanges,diff:diffDay,draftReason:DRAFT_REASON,confirmReason:CONFIRM_REASON,door:false,maskedHistory:false,fields:null,knownBase:null});
-export const DIARY_KIND=Object.freeze({type:'DIARY_DAY',empty:emptyDiary,rows:life=>life?.diaries??[],rebase:rebaseDiary,changed:diaryChanged,diff:diffDiary,draftReason:DIARY_DRAFT_REASON,confirmReason:DIARY_CONFIRM_REASON,door:true,maskedHistory:true,fields:DIARY_FIELDS,knownBase:diaryKnownBase});
+// chips = 상한이 있어 병합에서 잘릴 수 있는 칩 칸(FIX53B).
+export const LIFE_KIND=Object.freeze({type:'LIFE_DAY',empty:emptyDay,rows:life=>life?.days??[],rebase,changed:hasChanges,diff:diffDay,draftReason:DRAFT_REASON,confirmReason:CONFIRM_REASON,door:false,maskedHistory:false,fields:null,knownBase:null,chips:null});
+export const DIARY_KIND=Object.freeze({type:'DIARY_DAY',empty:emptyDiary,rows:life=>life?.diaries??[],rebase:rebaseDiary,changed:diaryChanged,diff:diffDiary,draftReason:DIARY_DRAFT_REASON,confirmReason:DIARY_CONFIRM_REASON,door:true,maskedHistory:true,fields:DIARY_FIELDS,knownBase:diaryKnownBase,chips:Object.freeze(['good','bad'])});
+// FIX53B (HUNT52 HF8): 칩 병합에서 상한 때문에 잘려 나간 칩. mergeChips는 내 칩을 먼저 남기므로(내 목록은 상한 안) 잘린 칩은 언제나 "최신이 더했고 내가 손대지 않은 칩"이다.
+const droppedChips=(b,m,t,out)=>{const B=new Set(b??[]),M=new Set(m??[]),O=new Set(out??[]);return (t??[]).filter(x=>!B.has(x)&&!M.has(x)&&!O.has(x));};
 
 export class LifeFlow{
   #p;#k;
-  #sent=new Set();#aborted=new Set();
+  #sent=new Set();#aborted=new Set();#notes=new Map();   // #notes: 보낸 뒤 결과 모름(UNKNOWN)인 본문의 알림. FIX55C2: 기록(종류|날짜)별 Map(코드|칸 → {n,v,rid}), rid = 그 알림을 실은 본문
   constructor(ports,kind=LIFE_KIND){this.#p=ports;this.#k=kind;ports.drafts?.mergeWith?.({rebase:kind.rebase,ports});}   // FIX34 (HUNT34 H1): STALE 뒤 다음 쓰기는 디스크 초안과 합친다
   async #drafts(){
     return (await this.#p.drafts.list()).filter(d=>d.type==='ENTITY'&&d.body?.entityType===this.#k.type);
@@ -95,11 +100,14 @@ export class LifeFlow{
       const touched=this.#k.fields&&Array.isArray(s.touched)?this.#k.fields.filter(k=>(s.touched.includes(k)||stable(s.card[k])!==stable(next[k]))&&(!(exact||Object.hasOwn(bases,k))||stable(was(k))!==stable(next[k]))):undefined;
       const sure=k=>Object.hasOwn(bases,k)||(!s.draftId||!s.baseHeads.length?known[k]!==UNKNOWN_BASE_TEXT:raw!==null&&raw[k]!==UNKNOWN_BASE_TEXT);
       const nextBases=touched?Object.fromEntries(touched.filter(sure).map(k=>[k,structuredClone(Object.hasOwn(bases,k)?bases[k]:!s.draftId||!s.baseHeads.length?known[k]:raw[k])])):undefined;
+      // FIX58F (HUNT55 HF12): 기록에 붙여 둔 "내 값" 알림(#notes)은 이 기록의 초안 줄기에 딸린다. 되돌려 초안을 버리면 지우고, 초안 없이 새로 시작하는 입력(앞 초안이 다른 곳에서 확정·폐기됨)도 지운다.
+      const key=this.#k.type+'|'+date;
       try{
-        if(!this.#k.changed(s.base,next)){if(s.draftId)await this.#p.drafts.discard(s.draftId,{input,date});else await this.#p.drafts.keep?.(date,{input,base:null});return this.state(date);}
+        if(!this.#k.changed(s.base,next)){if(s.draftId){await this.#p.drafts.discard(s.draftId,{input,date});this.#notes.delete(key);}else await this.#p.drafts.keep?.(date,{input,base:null});return this.state(date);}
         if(s.draftId&&stable(next)===stable(s.card)&&(!touched||touched.length===s.touched.length&&touched.every(k=>s.touched.includes(k)))){await this.#p.drafts.keep?.(date,{input,base:s.draftId});return s;}
         const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:next,heads:s.baseHeads,reason:this.#k.draftReason});
         await this.#p.drafts.save({type:'ENTITY',body,...(touched?{touched,bases:nextBases}:{})},{input,base:s.draftId});
+        if(!s.draftId)this.#notes.delete(key);
       }catch(e){if(e?.code===STALE_BASE&&round<EDIT_ROUNDS)continue;throw e;}
       if(s.draftId)await this.#p.drafts.discard(s.draftId,{input});
       return this.state(date);
@@ -116,58 +124,122 @@ export class LifeFlow{
   // 시도마다 나온 알림을 모아(코드+칸 이름으로 하나만, 같은 칸은 마지막 시도 값) 결과에 싣는다.
   // FIX52B (HUNT51 HF1·HF2·S-F1): 모은 알림은 본문을 실제로 보낸 결과(CONFIRMED, 보낸 뒤 UNKNOWN)에만 싣는다. 쓰기 0으로 끝나는 반환(FAILED·STALE·SYNC_FAILED·REJECTED·NOTHING_TO_CONFIRM)에는
   // "내 값을 썼다/지켰다" 알림을 싣지 않는다. ALREADY_APPLIED는 이번 시도의 병합 알림만(최신 그대로라 상대 값을 남겼다는 알림만 사실이다).
-  // 앞 시도 알림은 마지막으로 보낸 본문에서 그 칸 값이 그 시도에 보낸 값과 같을 때만 남긴다. 앞 시도가 남긴 초안이 아닌 초안(그 사이 입력)으로 넘어가면 모은 알림을 비운다.
+  // FIX53B (HUNT52 HF5·HF6): 시도 사이에 초안이 바뀌어도(그 사이 입력·STALE) 모은 알림을 비우지 않고, 마지막으로 보낸 본문(f = 그 시도의 base·mine·card)에 비춰 사실인 것만 남긴다.
+  //  "내 값을 썼다/지켰다"(OVERWRITTEN·KEPT_MINE·KEPT_LOCAL)와 합침 알림은 그 칸 값이 그 시도 값과 같을 때. 상대 값을 남김(KEPT_REMOTE)은 최종 카드에 그 값이 있고 내 변경이 들어가지 않았을 때.
+  //  칩 잘림(TRIMMED)은 그 시도에서 잘린 칩이 최종 목록에 아직 없을 때.
+  // FIX53B (HF7): 보낸 뒤 결과 모름(UNKNOWN)으로 끝난 본문의 알림은 requestId별로 기억해, 다시 저장에서 그 본문을 확인·적용한 결과(#settleSent)에 싣는다.
+  // FIX55C2 (HUNT53 HF9·HF9-b): 그 알림 중 "내 값을 썼다/지켰다"(MINE_NOTICE)는 requestId가 아니라 이 기록(종류+날짜)에 붙여 둔다. 사용자가 그 사이 다른 칸을 고쳐 본문(requestId)이 바뀌어도,
+  //  같은 기록의 다음 성공 결과(CONFIRMED·ALREADY_APPLIED)에서 이번 시도의 알림과 합쳐(같은 코드+칸은 이번 것) 그 결과 카드에 비춰 사실인 것만 한 번 싣고 지운다. 다른 날짜 결과에는 싣지 않는다.
+  //  그 본문이 적용되지 않은 것으로 확인되면(중단·STALE) 그 본문이 붙인 알림만 지운다(다음 병합이 새 알림을 낸다, FIX53B-14).
+  // FIX55C2 (HUNT53 HF10·HF10-b): 상자 확정이 CARD_DRAFT_NOT_FOUND(같은 기기 다른 창이 이 초안을 이미 바꿨거나 저장함)면 실패를 보이기 전에 1번 다시 읽는다(상자는 이미 디스크를 다시 읽었다).
+  //  새 초안이 있으면 그 위에서 1번 다시 시도하고, 초안이 없고 금고 최신에 내 변경이 이미 있으면(rebase ALREADY_APPLIED) ALREADY_APPLIED다. 그래도 안 되면 지금 실패. 다시 읽기는 확정 1번에 1번뿐이다.
   async confirm(date,{maxAttempts=3}={}){
-    const alive=this.#alive(),kept=new Map();let left=null;
+    const alive=this.#alive(),kept=new Map(),chips=this.#k.chips??[],key=this.#k.type+'|'+date;
     const valueOf=(card,n)=>stable(n.habitId!==undefined?card?.habits?.[n.habitId]:n.field!==undefined?card?.[n.field]:null);
-    const collect=rb=>{for(const n of rb.notices??[])kept.set(n.code+'|'+(n.field??n.habitId??n.subjectId??''),{n,v:valueOf(rb.card,n)});};
-    const sent=(r,card)=>({...r,notices:[...kept.values()].filter(x=>x.v===valueOf(card,x.n)).map(x=>x.n)});
-    for(let attempt=1;attempt<=maxAttempts;attempt++){
+    const keyOf=n=>n.code+'|'+(n.field??n.habitId??n.subjectId??'');
+    const collect=(rb,f)=>{for(const n of rb.notices??[])kept.set(keyOf(n),{n,v:valueOf(rb.card,n),...(n.code==='DIARY_CHIPS_TRIMMED'&&chips.includes(n.field)?{dropped:droppedChips(f.base[n.field],f.mine[n.field],f.latest[n.field],rb.card[n.field])}:{})});};
+    const holds=(x,f)=>{
+      if(x.dropped)return x.dropped.some(c=>!(f.card[x.n.field]??[]).includes(c));
+      const v=valueOf(f.card,x.n);
+      if(/KEPT_REMOTE$/.test(x.n.code))return v!==undefined&&(valueOf(f.mine,x.n)===valueOf(f.base,x.n)||v!==valueOf(f.mine,x.n));
+      return x.v===v;
+    };
+    const sent=(r,f)=>({...r,notices:[...kept.values()].filter(x=>holds(x,f)).map(x=>x.n)});
+    // FIX55C2: 이 기록에 붙여 둔 "내 값" 알림 중 이번 결과(f)에서 사실인 것(have = 이번 결과가 이미 가진 코드+칸은 뺌). 꺼내면 지운다.
+    const pend=(f,have)=>{const m=this.#notes.get(key);this.#notes.delete(key);return m?[...m].filter(([k,x])=>!have.has(k)&&MINE_NOTICE.test(x.n.code)&&holds(x,f)).map(([,x])=>x.n):[];};
+    const done=(r,f)=>{const out=sent(r,f);return {...out,notices:[...out.notices,...pend(f,new Set(kept.keys()))]};};
+    // 금고 최신에 내 변경이 이미 있음(쓰기 0): 이번 병합 알림 + 붙여 둔 "내 값" 알림(최신 카드에 비춰 거름).
+    const applied=(rb,base,mine,card)=>({status:'ALREADY_APPLIED',notices:[...rb.notices,...pend({base,mine,latest:card,card},new Set(rb.notices.map(keyOf)))]});
+    // 결과 모름: 이번 본문의 알림 전부(rid = 이 본문) + 앞 본문들에서 남은 "내 값" 알림을 이번 본문에 비춰 거른 뒤 기록에 붙이고 결과에도 싣는다.
+    const unknown=(r,f,rid)=>{
+      const m=new Map();
+      for(const [k,x] of kept)if(holds(x,f))m.set(k,{...x,rid});
+      for(const [k,x] of this.#notes.get(key)??[])if(!kept.has(k)&&MINE_NOTICE.test(x.n.code)&&holds(x,f))m.set(k,x);
+      this.#sent.add(rid);if(m.size)this.#notes.set(key,m);else this.#notes.delete(key);
+      return {...r,notices:[...m.values()].map(x=>x.n)};
+    };
+    let lost=null,limit=maxAttempts;   // FIX55C2: lost = CARD_DRAFT_NOT_FOUND로 사라진 본문의 {base,mine}(다시 읽기 1번)
+    const relook=(base,mine)=>{lost={base,mine};limit++;};
+    // FIX59F (HUNT57 HS57-2·HS57-3): lost가 있는데 초안이 사라졌거나 확정이 CARD_DRAFT_NOT_FOUND면 실패를 말하기 전에 금고 최신과 견준다.
+    //  최신에 내 변경이 이미 있으면(다른 창이 이 초안·합친 초안을 확정함) ALREADY_APPLIED + elsewhere(다른 창에서 이미 저장됨, 쓰기 0). 병합 알림은 그 카드에 비춰 사실인 것만.
+    //  없으면 FAILED. 이 날짜 초안에 내 변경이 남아 있으면 그대로(입력은 그대로 있음). 초안이 없으면 최신 위에 내 변경을 다시 얹은 초안을 두고 restored(연산 0).
+    //  다시 얹지 못하면 lostInput(입력이 어디에도 없음 = 화면이 "그대로 있다"고 말하지 않는다).
+    const gone=async()=>{
+      const empty=this.#k.empty(date),latest=this.#p.latest(date),rb=this.#k.rebase({date,base:lost.base,mine:lost.mine,latest:latest.card});
+      if(rb.status==='ALREADY_APPLIED'){
+        const card=latest.card??empty,f={base:lost.base??empty,mine:lost.mine,latest:card,card},out=applied(rb,f.base,lost.mine,card),have=new Set(out.notices.map(keyOf));
+        return {...out,elsewhere:true,notices:[...out.notices,...[...kept.values()].filter(x=>!have.has(keyOf(x.n))&&holds(x,f)).map(x=>x.n)]};
+      }
+      const fail={status:'FAILED',code:DRAFT_GONE},now=await this.#draftFor(date);
+      if(now)return this.#k.rebase({date,base:lost.base,mine:lost.mine,latest:now.body.data}).status==='ALREADY_APPLIED'?fail:{...fail,lostInput:true};
+      if(rb.status!=='MERGED')return {...fail,lostInput:true};
+      try{await this.#restore(date,lost,latest,rb.card);}catch{return {...fail,lostInput:true};}
+      return {...fail,restored:true};
+    };
+    for(let attempt=1;attempt<=limit;attempt++){
       if(attempt>1&&alive.gone())return {status:'FAILED',code:alive.code()};
-      const draft=await this.#draftFor(date);
-      if(!draft)return {status:'NOTHING_TO_CONFIRM'};
-      if(left!==null&&draft.draftId!==left)kept.clear();
+      let draft=await this.#draftFor(date);
+      if(!draft&&!lost)return {status:'NOTHING_TO_CONFIRM'};
+      // FIX58F (HUNT55 HF11): 다시 읽기에서 다른 창의 새 초안이 있으면 그 초안을 그대로 확정하지 않는다. 이 창이 잃은 변경(lost의 base→mine)을 새 초안 위에 3자 병합해
+      //  초안으로 다시 둔 뒤 확정한다(같은 칸이 다르면 rebase 규칙 = 내 값 + 덮어씀 알림). 병합 결과에 이 창 값이 없으면 지금 실패(시트를 닫지 않는다). 병합은 1번뿐이다.
+      if(draft&&lost&&!lost.merged){
+        const m=await this.#mergeLost(date,draft,lost);
+        if(m.fail)return gone();
+        if(m.retry){if(attempt<limit)continue;return {status:'STALE',code:STALE_BASE};}
+        lost.merged=true;if(m.rb)collect(m.rb,m.f);
+        draft=m.draft;if(!draft)return gone();
+      }
       try{
         if(this.#p.hasPending?.())await this.#p.reconcile();
         await this.#p.sync();
       }catch(e){return {status:this.#p.hasPending?.()?'UNKNOWN':'SYNC_FAILED',code:codeOf(e)};}
+      // FIX55C2 (HF10-b): 다른 창이 이 초안을 이미 저장(또는 버림)했다. 금고 최신에 내 변경이 그대로 있으면 성공, 아니면 지금 실패(FIX59F: 입력을 초안으로 다시 넣어 둠).
+      if(!draft)return gone();
       // FIX49B (D49 5.2, FIX46A ★): 새 기록(일기)은 일반 저장 경로라 문이 없다. 최신을 받은 뒤(다른 기기가 연 문도 보이게) 쓰기 전에 문을 본다. 닫혀 있으면 아무것도 쓰지 않고 초안을 둔다.
       if(this.#k.door&&!this.#p.doorOpen?.())return {status:'REJECTED',code:'RECORDS_DOOR_CLOSED'};
       const now=await this.#draftFor(date);
-      if(!now)return {status:'NOTHING_TO_CONFIRM'};
-      if(now.draftId!==draft.draftId){kept.clear();if(attempt<maxAttempts)continue;return {status:'STALE',code:STALE_BASE};}
+      if(!now)return lost?gone():{status:'NOTHING_TO_CONFIRM'};   // FIX58F: 잃은 변경이 있으면 "바뀐 것 없음"으로 닫지 않는다
+      if(now.draftId!==draft.draftId){if(attempt<limit)continue;return {status:'STALE',code:STALE_BASE};}
       let ended;
       try{ended=Boolean(await this.#p.terminal?.(draft.body.requestId));}catch(e){return {status:'UNKNOWN',code:codeOf(e)};}
       const settled=await this.#settleSent(draft,ended);
+      if(settled?.code===DRAFT_GONE&&!lost){relook(this.#draftBase(date,draft),draft.body.data);continue;}
+      if(settled?.code===DRAFT_GONE&&settled.status==='FAILED')return gone();   // FIX59F (HS57-2): 합친 초안을 다른 창이 확정했으면 금고와 견준다
       if(settled)return settled;
       const latest=this.#p.latest(date),base=this.#draftBase(date,draft);
       const rb=this.#k.rebase({date,base,mine:draft.body.data,latest:latest.card});
       if(rb.status==='REJECTED')return {status:'REJECTED',code:rb.code};
-      if(rb.status==='ALREADY_APPLIED'){await this.#p.drafts.discard(draft.draftId);return {status:'ALREADY_APPLIED',notices:rb.notices};}
+      const empty=this.#k.empty(date);
+      if(rb.status==='ALREADY_APPLIED'){await this.#p.drafts.discard(draft.draftId);return applied(rb,base??empty,draft.body.data,latest.card??empty);}
+      const f={base:base??empty,mine:draft.body.data,latest:latest.card??empty,card:rb.card};
       let target=draft;
       if(!(stable(draft.body.data)===stable(rb.card)&&sameHeads(draft.body.expectedHeads,latest.heads))||ended||this.#aborted.has(draft.body.requestId)){
         const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:rb.card,heads:latest.heads,reason:this.#k.confirmReason});
         let saved;
         // FIX52C: 다시 저장한 초안의 판은 최신이다. bases도 최신 판의 값으로 바꾼다(앞 판의 값을 두면 최신과 같아진 칸이 목록에 남는다).
-        const now0=latest.card??this.#k.empty(date);
-        try{saved=await this.#p.drafts.save({type:'ENTITY',body,...(Array.isArray(draft.touched)?{touched:[...draft.touched],...(this.#k.fields?{bases:Object.fromEntries(draft.touched.filter(k=>this.#k.fields.includes(k)).map(k=>[k,structuredClone(now0[k])]))}:{})}:{})},{base:draft.draftId});}
-        catch(e){if(codeOf(e)===STALE_BASE){kept.clear();if(attempt<maxAttempts)continue;return {status:'STALE',code:STALE_BASE};}throw e;}
+        // FIX53B (HUNT52 HF8): 칩 칸의 base에서는 이번에 잘려 나간 칩(다른 기기가 더한 칩)을 뺀다. 최신 판 그대로 두면 다음 병합에서 그 칩이 "내가 뺀 칩"이 되어
+        // 자리가 생겨도 지워진다. 빼 두면 그 칩은 다시 "상대가 더한 칩"이라 자리가 있으면 돌아온다. 내가 더한 칩·내가 뺀 칩(초안 값 ↔ base)은 그대로다.
+        const now0=f.latest,baseOf=k=>chips.includes(k)?now0[k].filter(x=>!droppedChips(f.base[k],f.mine[k],now0[k],rb.card[k]).includes(x)):structuredClone(now0[k]);
+        try{saved=await this.#p.drafts.save({type:'ENTITY',body,...(Array.isArray(draft.touched)?{touched:[...draft.touched],...(this.#k.fields?{bases:Object.fromEntries(draft.touched.filter(k=>this.#k.fields.includes(k)).map(k=>[k,baseOf(k)]))}:{})}:{})},{base:draft.draftId});}
+        catch(e){if(codeOf(e)===STALE_BASE){if(attempt<limit)continue;return {status:'STALE',code:STALE_BASE};}throw e;}
         await this.#p.drafts.discard(draft.draftId);
         target={draftId:saved.draftId,body};
       }
-      collect(rb);left=target.draftId;
+      collect(rb,f);
       let result;
       try{result=await this.#p.drafts.commit(target.draftId);}
       catch(e){
         const code=codeOf(e);
-        if(code==='STALE_HEADS'&&attempt<maxAttempts)continue;
-        if(this.#p.hasPending?.()){this.#sent.add(target.body.requestId);return sent({status:'UNKNOWN',code},rb.card);}
+        if(code==='STALE_HEADS'&&attempt<limit)continue;
+        if(code===DRAFT_GONE&&!lost){relook(target===draft?base:latest.card,target.body.data);continue;}   // FIX55C2 (HF10)
+        if(code===DRAFT_GONE&&!this.#p.hasPending?.())return gone();   // FIX59F: 다시 읽은 뒤에도 초안이 없으면 금고와 견준다(다시 확정하지 않음)
+        if(this.#p.hasPending?.())return unknown({status:'UNKNOWN',code},f,target.body.requestId);
         return {status:REJECT_CODE.test(code)?'REJECTED':'FAILED',code};
       }
       if(result?.status==='ABORTED'){this.#aborted.add(target.body.requestId);return {status:'FAILED',code:'ABORTED'};}
-      if(result?.status!=='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED'){this.#sent.add(target.body.requestId);return sent({status:'UNKNOWN',code:result?.status??'NO_RESULT'},rb.card);}
+      if(result?.status!=='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED')return unknown({status:'UNKNOWN',code:result?.status??'NO_RESULT'},f,target.body.requestId);
       this.#sent.delete(target.body.requestId);
-      return sent({status:'CONFIRMED',requestId:target.body.requestId},rb.card);
+      return done({status:'CONFIRMED',requestId:target.body.requestId},f);
     }
     return {status:'STALE',code:'STALE_HEADS'};
   }
@@ -181,16 +253,48 @@ export class LifeFlow{
     const rid=draft.body.requestId;
     if(this.#aborted.has(rid))return null;
     if(!(this.#sent.has(rid)||ended))return null;
+    // FIX53B (HF7): 이 본문의 알림(보낼 때 기억한 것)은 적용을 확인하면 싣고, 결과를 아직 모르면 UNKNOWN에 다시 싣는다. 버려진 본문(중단·STALE)이면 지운다(다음 병합이 새 알림을 낸다).
+    // FIX55C2: 알림은 기록(종류|날짜)에 붙어 있다. 이 본문의 알림 전부 + 앞 본문들에서 남은 "내 값" 알림을 싣고, 적용을 확인하면 그 기록의 알림을 지운다. 버려진 본문이면 그 본문이 붙인 것만 지운다.
+    const key=this.#k.type+'|'+draft.body.entityId,notes=()=>[...(this.#notes.get(key)?.values()??[])].filter(x=>x.rid===rid||MINE_NOTICE.test(x.n.code)).map(x=>x.n);
+    const drop=()=>{this.#sent.delete(rid);const m=this.#notes.get(key);if(!m)return;for(const [k,x] of [...m])if(x.rid===rid)m.delete(k);if(!m.size)this.#notes.delete(key);};
     let result;
     try{result=await this.#p.drafts.commit(draft.draftId);}
     catch(e){
       const code=codeOf(e);
-      if(code==='MD_TERMINAL_INTENT'||code==='STALE_HEADS'){this.#sent.delete(rid);this.#aborted.add(rid);return null;}
-      return {status:this.#p.hasPending?.()?'UNKNOWN':'FAILED',code};
+      if(code==='MD_TERMINAL_INTENT'||code==='STALE_HEADS'){drop();this.#aborted.add(rid);return null;}
+      return this.#p.hasPending?.()?{status:'UNKNOWN',code,notices:notes()}:{status:'FAILED',code};
     }
-    if(result?.status==='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED'){this.#sent.delete(rid);return {status:'ALREADY_APPLIED',requestId:rid,notices:[]};}
-    if(result?.status==='ABORTED'){this.#sent.delete(rid);this.#aborted.add(rid);return null;}
-    return {status:'UNKNOWN',code:result?.status??'NO_RESULT'};
+    if(result?.status==='REMOTE_COMMITTED_AND_LOCAL_CONFIRMED'){const out=notes();this.#sent.delete(rid);this.#notes.delete(key);return {status:'ALREADY_APPLIED',requestId:rid,notices:out};}
+    if(result?.status==='ABORTED'){drop();this.#aborted.add(rid);return null;}
+    return {status:'UNKNOWN',code:result?.status??'NO_RESULT',notices:notes()};
+  }
+  // FIX58F (HUNT55 HF11): 사라진 본문(lost = {base,mine})의 변경을 다른 창의 새 초안(draft) 위에 합친다. 돌려주는 값:
+  //  {draft} 새 초안에 이미 내 변경이 있음(그대로) · {draft,rb,f} 합친 초안을 새로 둠(rb·f = 병합 알림) · {fail} 합칠 수 없거나 합친 결과에 내 값이 없음 · {retry} 그 사이 초안이 또 바뀜.
+  //  합친 초안의 판(heads)은 새 초안 그대로다. 바꾼 칸 목록은 두 쪽 합집합이고, 내가 바꾼 칸의 base 값은 사라진 본문의 base 값이다(모르는 글은 두지 않음 = 예전 규칙).
+  async #mergeLost(date,draft,lost){
+    const lb=lost.base??this.#k.empty(date),theirs=draft.body.data;
+    const rb=this.#k.rebase({date,base:lost.base,mine:lost.mine,latest:theirs});
+    if(rb.status==='ALREADY_APPLIED')return {draft};
+    if(rb.status!=='MERGED'||this.#k.rebase({date,base:lost.base,mine:lost.mine,latest:rb.card}).status!=='ALREADY_APPLIED')return {fail:true};
+    const F=this.#k.fields;let extra={};
+    if(F&&Array.isArray(draft.touched)){
+      const mine=F.filter(k=>stable(lb[k])!==stable(lost.mine[k])),bases=basesOf(draft.bases,draft.touched);
+      for(const k of mine)if(!draft.touched.includes(k)&&lb[k]!==UNKNOWN_BASE_TEXT)bases[k]=structuredClone(lb[k]);
+      extra={touched:F.filter(k=>draft.touched.includes(k)||mine.includes(k)),bases};
+    }
+    const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:rb.card,heads:draft.body.expectedHeads,reason:this.#k.draftReason});
+    try{await this.#p.drafts.save({type:'ENTITY',body,...extra},{base:draft.draftId});}
+    catch(e){if(codeOf(e)===STALE_BASE)return {retry:true};throw e;}
+    await this.#p.drafts.discard(draft.draftId);
+    return {draft:await this.#draftFor(date),rb,f:{base:lb,mine:lost.mine,latest:theirs,card:rb.card}};
+  }
+  // FIX59F (HUNT57 HS57-3): 초안이 사라져 내 입력이 어디에도 없을 때 최신(latest) 위에 내 변경을 다시 얹은 카드(card)를 새 초안으로 둔다(연산 0, 확정은 사용자가 다시 누를 때).
+  //  판(heads)은 최신이고, 바꾼 칸 목록은 사라진 본문이 바꾼 칸, 그 base 값은 최신 판의 값이다(FIX52C와 같은 뜻).
+  async #restore(date,lost,latest,card){
+    const F=this.#k.fields,lb=lost.base??this.#k.empty(date),now=latest.card??this.#k.empty(date);
+    const touched=F?F.filter(k=>stable(lb[k])!==stable(lost.mine[k])):null;
+    const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:card,heads:latest.heads,reason:this.#k.draftReason});
+    await this.#p.drafts.save({type:'ENTITY',body,...(touched?{touched,bases:Object.fromEntries(touched.map(k=>[k,structuredClone(now[k])]))}:{})},{base:null});
   }
 }
 
@@ -259,20 +363,50 @@ export function createLifePorts(ctx,kind=LIFE_KIND){
 // FIX38 (R37C 위험 4): 임시 저장 모드에서는 봉인 초안으로만 들어가 목록에 안 보인다. 화면이 넘긴 memo의 sealed(그중 봉인된 줄 수)를 보고 성공이라고 말하지 않는다.
 // memo.as = 지난번에 봉인한 내용. 초안을 남기면 저장을 또 누를 수 있어서, 아직 임시 저장 모드면 같은 내용을 다시 봉인하지 않는다(H37-P1과 같은 방식).
 export const DEFS_SEALED_TEXT='임시 저장됨(동기화 전) · 아직 적용되지 않았고 입력은 그대로 있습니다 · 연결한 뒤 연결 · 장치의 임시 저장 목록에서 "승인하고 쌓기"를 누르세요.';
-export async function saveDefinitions(ctx,rows,reason,memo={}){
+// DSFIX D1 (HUNTDS): bases = 시트를 열 때(색 화면은 그릴 때) 값, 키 '종류|id'. 있으면 STALE_HEADS 재시도에서 3방향으로 얹는다:
+// 최신 값 위에 내가 바꾼 칸만(내가 안 바꾼 칸은 최신 유지). 같은 칸을 다른 기기도 다르게 바꿨으면 남은 줄을 하나도 쓰지 않고 DEFS_CHANGED_ELSEWHERE.
+// 쓰는 기록 모양(칸·종류)은 그대로다. bases가 없는 부르는 쪽(내 퀘스트 등)은 예전처럼 내 값을 그대로 쓴다.
+export const DEFS_CHANGED_ELSEWHERE='DEFS_CHANGED_ELSEWHERE';
+export function mergeDefinition(base,mine,latest){
+  const out={...latest};
+  for(const k of new Set([...Object.keys(base),...Object.keys(mine)])){
+    if(stable(mine[k])===stable(base[k]))continue;
+    if(stable(latest[k])!==stable(base[k])&&stable(latest[k])!==stable(mine[k]))throw Object.assign(new Error(DEFS_CHANGED_ELSEWHERE),{code:DEFS_CHANGED_ELSEWHERE,field:k});
+    if(mine[k]===undefined)delete out[k];else out[k]=mine[k];
+  }
+  return out;
+}
+export async function saveDefinitions(ctx,rows,reason,memo={},bases=null){
   let saved=0,sealed=0;
   for(const r of rows)validateLifeData(r.type,r.id,r.data);   // 한 줄이라도 틀리면 아무것도 쓰지 않는다(쓰다가 끊기면 저장본이 반쪽이 된다, H37-Q1)
   const key=stable(rows);
   memo.sealed=0;
   if(rows.length&&memo.as===key&&await ctx.draftMode?.()){memo.sealed=rows.length;return 0;}
-  for(const r of rows){
+  const todo=rows.map(r=>({...r}));
+  for(let i=0;i<todo.length;i++){
+    const r=todo[i];
+    if(r.same)continue;
     let w;
     try{w=await ctx.entity(r.type,r.id,r.data,r.heads,reason);}
     catch(e){
       if(e?.code!=='STALE_HEADS'||!ctx.reload)throw e;
       await ctx.reload();
-      const latest=lookup(ctx.getWhole().life,r.type,r.id);
-      w=await ctx.entity(r.type,r.id,r.data,latest?latest.heads:[],reason);
+      if(!bases){
+        const latest=lookup(ctx.getWhole().life,r.type,r.id);
+        r.heads=latest?latest.heads:[];
+      }else{
+        // 남은 줄을 모두 최신 위에 먼저 합쳐 본다: 하나라도 같은 칸이 부딪치면 아무것도 더 쓰지 않는다
+        const life=ctx.getWhole().life;
+        for(let j=i;j<todo.length;j++){
+          const x=todo[j],latest=lookup(life,x.type,x.id),base=bases[x.type+'|'+x.id];
+          if(!latest||!base){x.heads=latest?latest.heads:[];continue;}
+          const data=mergeDefinition(base,rows[j].data,latest.data);
+          validateLifeData(x.type,x.id,data);
+          Object.assign(x,{data,heads:latest.heads,same:stable(data)===stable(latest.data)});
+        }
+        if(r.same)continue;   // 내가 바꾼 칸이 이미 최신과 같다: 쓸 것 없음
+      }
+      w=await ctx.entity(r.type,r.id,r.data,r.heads,reason);
     }
     saved++;if(w?.status==='LOCAL_DRAFT')sealed++;
   }

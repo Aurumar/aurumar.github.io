@@ -251,7 +251,25 @@ export function maker(doc){
 }
 export function createPlanState(storage=null){
   let view='DAY';try{const v=storage?.getItem(VIEW_KEY);if(VIEWS.some(x=>x[0]===v))view=v;}catch{/* 저장소가 막혀 있으면 기본 보기 */}
-  return {view,date:null,monday:null,month:null,year:null,message:null,error:false,notices:[],far:FAR_VIEWS.includes(view)?view:null,examsOpen:false,week:null};
+  return {view,date:null,monday:null,month:null,year:null,message:null,error:false,notices:[],far:FAR_VIEWS.includes(view)?view:null,examsOpen:false,week:null,picked:{},shownToday:null};
+}
+// FIX53C (HUNT52 HW1): 계획 탭은 마지막으로 그린 "오늘"(st.shownToday, 계획 탭 날짜 규칙 kstDate)을 기억한다. 바뀌었으면 사용자가 직접 고르지 않은
+// 보기 날짜(date·monday·month·year)를 비워 새 오늘로 돌아간다. ◀▶·주 고르기로 고른 칸은 st.picked에 적어 그대로 두고, '오늘'·'이번 주'·'이번 달'·'올해'로 돌아오면 지운다.
+const PLAN_DATE_KEYS=['date','monday','month','year'];
+export function choosePlanDate(st,key,value,picked=true){
+  st[key]=value;const p=st.picked??={};
+  if(picked)p[key]=true;else delete p[key];
+}
+// FIX55C1 (HUNT53 HL2): 주 격자 초안(st.week, plan-week)에서 처음 고친 때와 다른 날 = 저장 안 한 입력(plan-week changedDates와 같은 규칙).
+export const weekDraftChanged=draft=>[...(draft?.items?.keys()??[])].filter(d=>stable(draft.items.get(d))!==stable(draft.base?.get(d)?.items??[])).sort();
+// 지금 보이는 주(고르지 않은 st.monday)에 저장 안 한 입력이 있으면 자정에 그 주를 따라가지 않는다(입력이 화면에서 사라지지 않게).
+const weekHeld=st=>{const m=st.monday;if(!m||st.picked?.monday)return false;const end=shiftDay(m,6);return weekDraftChanged(st.week).some(d=>d>=m&&d<=end);};
+// 날이 바뀌었을 때 비울 보기 날짜 키(상태를 바꾸지 않는 계산). eventQuery도 이것으로 같은 날짜를 읽는다(HL1).
+const followKeys=(st,today)=>st.shownToday!=null&&st.shownToday!==today?PLAN_DATE_KEYS.filter(k=>!st.picked?.[k]&&!(k==='monday'&&weekHeld(st))):[];
+export function followPlanToday(st,today){
+  const held=st.shownToday!=null&&st.shownToday!==today&&weekHeld(st);
+  for(const k of followKeys(st,today))st[k]=null;
+  if(!held)st.shownToday=today;   // HL2: 입력 때문에 머문 동안은 옛 "오늘"을 그대로 둔다 → 입력이 없어진(저장·버림) 뒤 그리면 그때 따라간다
 }
 function setView(st,ctx,view){
   st.view=view;
@@ -274,7 +292,7 @@ function viewChips(h,ctx,st,today){
     const row=h.el('div',null,cls);row.setAttribute('role','toolbar');row.setAttribute('aria-label',label);
     for(const [key,text] of list){
       const on=key==='FAR'?far:st.view===key;
-      const pick=()=>{if(key==='DAY')st.date=today;setView(st,ctx,key==='FAR'?(far?st.view:st.far??FAR_VIEWS[0]):key);if(FAR_VIEWS.includes(st.view))st.far=st.view;void ctx.rerender();};
+      const pick=()=>{if(key==='DAY')choosePlanDate(st,'date',today,false);setView(st,ctx,key==='FAR'?(far?st.view:st.far??FAR_VIEWS[0]):key);if(FAR_VIEWS.includes(st.view))st.far=st.view;void ctx.rerender();};
       const b=ctx.kit?.chip?ctx.kit.chip(text,{selected:on,onClick:pick}):h.button(text,pick,'lb-chip'+(on?' selected':''));
       b.setAttribute('aria-pressed',String(on));b.dataset.view=key;row.append(b);
     }
@@ -325,7 +343,7 @@ function navRow(h,label,onPrev,onNext,onNow,nowText='오늘',here=false){
 function dayView(h,ctx,st,ctxData){
   const {life,ach,today,subjects}=ctxData,date=st.date??=today,sum=daySummary(life,ach,date),timer=date===today?readTimerSubject(ctx):null;
   const out=h.el('section',null,'plan-card plan-day');
-  h.add(out,navRow(h,dateLabel(date)+(date===today?' · 오늘':''),()=>{st.date=shiftDay(date,-1);void ctx.rerender();},()=>{st.date=shiftDay(date,1);void ctx.rerender();},()=>{st.date=today;void ctx.rerender();},'오늘',date===today));
+  h.add(out,navRow(h,dateLabel(date)+(date===today?' · 오늘':''),()=>{choosePlanDate(st,'date',shiftDay(date,-1));void ctx.rerender();},()=>{choosePlanDate(st,'date',shiftDay(date,1));void ctx.rerender();},()=>{choosePlanDate(st,'date',today,false);void ctx.rerender();},'오늘',date===today));
   // P1B: 앱이 ctx.todayPlan을 넘겨 주면 오늘 화면과 같은 "오늘 계획" 카드(plan-today.mjs의 같은 함수)를 그린다. 줄이 곧 계획 vs 실제라 아래 표는 그리지 않는다. 못 받으면 아래 옛 보기.
   const card=ctx.todayPlan?.({date,today})??null;
   if(card){h.add(out,card,h.add(h.el('div',null,'button-row'),h.button('계획 편집',()=>openPlanEditor(ctx,st,date),'secondary')));return out;}
@@ -381,7 +399,7 @@ function weekView(h,ctx,st,data){
   if(grid)return grid;
   const sum=weekSummary(life,ach,monday),upto=weekToDate(sum,today);
   const out=h.el('section',null,'plan-card plan-week');
-  h.add(out,navRow(h,short(monday)+' ~ '+short(shiftDay(monday,6))+(monday===mondayOf(today)?' · 이번 주':''),()=>{st.monday=shiftDay(monday,-7);void ctx.rerender();},()=>{st.monday=shiftDay(monday,7);void ctx.rerender();},()=>{st.monday=mondayOf(today);void ctx.rerender();},'이번 주',monday===mondayOf(today)));
+  h.add(out,navRow(h,short(monday)+' ~ '+short(shiftDay(monday,6))+(monday===mondayOf(today)?' · 이번 주':''),()=>{choosePlanDate(st,'monday',shiftDay(monday,-7));void ctx.rerender();},()=>{choosePlanDate(st,'monday',shiftDay(monday,7));void ctx.rerender();},()=>{choosePlanDate(st,'monday',mondayOf(today),false);void ctx.rerender();},'이번 주',monday===mondayOf(today)));
   h.add(out,weekBars(h,sum,ach.goalBricks));
   h.add(out,h.el('p','계획 '+barsText(sum.planned)+' · 실제 '+barsText(sum.actual)+(upto.rate!==null?' · 계획 달성 '+rateText(upto.rate)+(upto.later>0?' · 남은 계획 '+barsText(upto.later):''):sum.planned>0?' · 남은 계획 '+barsText(upto.later):' · 이 주 계획 없음'),'plan-sum'),upto.rate!==null?h.el('p',RATE_MEANING,'muted small pw-rate-note'):null);
   if(sum.rows.length){
@@ -409,9 +427,9 @@ export function heatLevel(value,goal){
 function monthView(h,ctx,st,data){
   const {today}=data,ym=st.month??=today.slice(0,7);
   const out=h.el('section',null,'plan-card plan-month');
-  h.add(out,navRow(h,ym.slice(0,4)+'년 '+Number(ym.slice(5,7))+'월',()=>{st.month=shiftMonth(ym,-1);void ctx.rerender();},()=>{st.month=shiftMonth(ym,1);void ctx.rerender();},()=>{st.month=today.slice(0,7);void ctx.rerender();},'이번 달',ym===today.slice(0,7)));
+  h.add(out,navRow(h,ym.slice(0,4)+'년 '+Number(ym.slice(5,7))+'월',()=>{choosePlanDate(st,'month',shiftMonth(ym,-1));void ctx.rerender();},()=>{choosePlanDate(st,'month',shiftMonth(ym,1));void ctx.rerender();},()=>{choosePlanDate(st,'month',today.slice(0,7),false);void ctx.rerender();},'이번 달',ym===today.slice(0,7)));
   // P1C: 앱이 ctx.planMonth를 넘겨 주면 과목 × 주차 표(plan-month.mjs)를 그리고, 날짜 달력은 그 안의 "날짜로 보기"로 들어간다. 못 받으면 아래 날짜 달력 그대로.
-  const table=ctx.planMonth?.(st,{data,ym,dateGrid:()=>dateGrid(h,ctx,st,data,ym),goWeek:monday=>{st.monday=monday;setView(st,ctx,'WEEK');void ctx.rerender();}})??null;
+  const table=ctx.planMonth?.(st,{data,ym,dateGrid:()=>dateGrid(h,ctx,st,data,ym),goWeek:monday=>{choosePlanDate(st,'monday',monday);setView(st,ctx,'WEEK');void ctx.rerender();}})??null;
   h.add(out,...(table?[table]:dateGrid(h,ctx,st,data,ym)));
   return out;
 }
@@ -439,11 +457,12 @@ function dateGrid(h,ctx,st,data,ym){
 }
 // ----- 일정 줄 (P1C: '달력' 화면을 계획 탭에 합침): 앱이 읽어 준 일정(ctx.planCal)과 시험을 보여 주기만 한다. 일정 추가·고치기는 앱의 일정 시트(planCal.add·open) ------
 // 앱이 이 보기를 그리기 전에 읽을 범위(/api/calendar-view 요청 그대로). 먼 보기(연·수능까지)는 읽지 않는다.
+// FIX55C1 (HUNT53 HL1): 날이 바뀐 뒤 아직 그리기 전이어도 그릴 때와 같은 날짜(followPlanToday 규칙)로 읽는다. st는 바꾸지 않는다.
 export function eventQuery(st,nowIso){
-  const today=kstDate(nowIso);
-  if(st.view==='DAY')return {mode:'TODAY',date:st.date??today};
-  if(st.view==='WEEK')return {mode:'7_DAY',date:st.monday??mondayOf(today)};
-  if(st.view==='MONTH')return {mode:'MONTH',date:(st.month??today.slice(0,7))+'-01'};
+  const today=kstDate(nowIso),gone=followKeys(st,today),at=k=>gone.includes(k)?null:st[k];
+  if(st.view==='DAY')return {mode:'TODAY',date:at('date')??today};
+  if(st.view==='WEEK')return {mode:'7_DAY',date:at('monday')??mondayOf(today)};
+  if(st.view==='MONTH')return {mode:'MONTH',date:(at('month')??today.slice(0,7))+'-01'};
   return null;
 }
 // from~to 안의 시험과 일정을 날짜 순서로(같은 날은 시험 먼저, 그다음 종일, 시각 순).
@@ -496,7 +515,7 @@ function openDaySheet(ctx,st,data,date){
 function yearView(h,ctx,st,data){
   const {ach,today,exams}=data,year=st.year??=Number(today.slice(0,4)),weeks=weekIndex(ach);
   const out=h.el('section',null,'plan-card plan-year');
-  h.add(out,navRow(h,year+'년',()=>{st.year=year-1;void ctx.rerender();},()=>{st.year=year+1;void ctx.rerender();},()=>{st.year=Number(today.slice(0,4));void ctx.rerender();},'올해',year===Number(today.slice(0,4))));
+  h.add(out,navRow(h,year+'년',()=>{choosePlanDate(st,'year',year-1);void ctx.rerender();},()=>{choosePlanDate(st,'year',year+1);void ctx.rerender();},()=>{choosePlanDate(st,'year',Number(today.slice(0,4)),false);void ctx.rerender();},'올해',year===Number(today.slice(0,4))));
   const examWeeks=new Map();for(const x of exams.items)examWeeks.set(mondayOf(x.date),[...(examWeeks.get(mondayOf(x.date))??[]),x.name]);
   const months=Array.from({length:12},()=>[]);
   for(let m=mondayOf(year+'-01-01');m<=year+'-12-31';m=shiftDay(m,7)){
@@ -651,6 +670,7 @@ export function renderPlan(root,ctx,st){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add}=h;
   const whole=ctx.getWhole(),life=whole.life??null,today=kstDate(ctx.now()),defs=lifeDefs(life),ach=achieve({life,study:whole.study??null,today});
   const data={life,ach,today,exams:defs.exams,subjects:subjectMap(defs)};
+  followPlanToday(st,today);   // FIX53C (HW1)
   const out=add(el('section',null,'panel plan-panel'),add(el('div',null,'plan-head'),el('span','PLAN','eyebrow'),el('h2','계획표','panel-title')));out.id='life-plan';
   add(out,...viewChips(h,ctx,st,today),examLine(h,ctx,st,defs.exams,today));
   // FIX46B: 모의고사 결과(life-quest가 그린다, 앱이 넘겨 준다). 쓰기 문이 닫혀 있으면 안내 한 줄만.

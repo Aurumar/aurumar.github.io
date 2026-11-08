@@ -10,11 +10,13 @@ import {timerElapsedMin,timerRecordMin,liveTick} from './study-stage.mjs';
 import {OVERLAP_NOTICE,TIMER_OVERLAP_NOTICE} from './study-rebase.mjs';
 import {renderLive,liveRecordMin,liveElapsedMin,liveSettings,REST_SPLIT_MS} from './study-live.mjs';
 import {dayRoomCard,CELEBRATED_KEY} from './study-room.mjs';
+import {brickCells} from './study-room.mjs';   // DS1: 오늘 벽돌 칸(공부방 기둥과 같은 금 벽돌 스프라이트)
 import {examLineText,daySummary,barsText} from './life-plan.mjs';
 import {diaryEntryState,renderDiaryEntry,openDiarySheet,diaryDayRow,diaryErrorText} from './diary-ui.mjs';   // FIX49B: 일기 입구·시트(쓰기 문이 열렸을 때만)
 import {HABIT_KINDS,HABIT_AREAS,DAY_TYPES,MAX_NAME,MAX_NOTE,SUBJECT_COLOR_KEYS,HABIT_HINTS,
   kstDate,diaryOpenDate,shiftDay,dateKeyOK,dayNumber,hhmmFromIso,timeOK,targetTimeOK,lifeIdOK,
-  brickOf,sumBricks,entryDone,nearestExam,lifeDefs,weekCount,studyCodeOf,sessionIdFor,timerSessionId,timerTagFrom,subjectOfSession,emptyDay} from './life-model.mjs';
+  brickOf,sumBricks,entryDone,nearestExam,lifeDefs,weekCount,studyCodeOf,sessionIdFor,timerSessionId,timerTagFrom,subjectOfSession,emptyDay,
+  SUBJECT_PALETTE,NEW_SUBJECT_COLOR,subjectColor,defaultSubjectColor,parseSubjectHex,nearSubjectPairs} from './life-model.mjs';
 
 export const LIFE_ERROR_TEXT=Object.freeze({
   INVALID_LIFE_MINUTES:'분은 1~1440의 정수로 넣어 주세요.',STUDY_OFF:'공부 기능이 꺼져 있습니다. 설정에서 켜세요.',
@@ -26,6 +28,7 @@ export const LIFE_ERROR_TEXT=Object.freeze({
   APP_ENTITY_LIMIT:'개수 한도에 닿았습니다.',LIFE_HABIT_KIND_IMMUTABLE:'습관의 종류는 바꿀 수 없습니다. 새 습관을 만드세요.',
   INVALID_SUBJECT_DEF:'과목 정의가 올바르지 않습니다.',INVALID_EXAM_ITEM:'시험 일정이 올바르지 않습니다(이름 1~20자, 실제 날짜).',EXAM_ITEM_LIMIT:'시험 일정은 12개까지입니다.',
   STALE_HEADS:'다른 기기에서 먼저 바뀌었습니다. 다시 받아 합친 뒤 쌓으세요.',
+  DEFS_CHANGED_ELSEWHERE:'다른 기기에서 바뀌었어요 — 다시 열어 확인해 주세요. 같은 칸을 양쪽에서 고쳐 저장하지 않았어요.',   // DSFIX D1
   MD_NOT_WRITE_READY:'지금은 서버에 쌓을 수 없습니다. 입력은 이 기기에 남아 있습니다.',
   ABORTED:'서버가 이 쌓기를 받지 않았습니다(기록되지 않음) · 입력은 그대로 있습니다. 다시 쌓을 수 있습니다.',
   INVALID_TIMER_END:'끝난 시각은 시작 뒤 24시간 안이고 지금보다 앞이어야 합니다.',
@@ -44,6 +47,12 @@ const STATUS_TEXT=Object.freeze({
   CONFIRMED:'저장 및 동기화 확인됨 · 쌓았습니다.',ALREADY_APPLIED:'이미 반영되어 있습니다 · 새로 저장하지 않았습니다.',NOTHING_TO_CONFIRM:'쌓을 입력이 없습니다.',
   UNKNOWN:'서버 응답을 확인하지 못했습니다 · 입력은 그대로 있습니다. 다시 쌓기를 누르면 결과를 확인한 뒤 이어서 처리합니다(중복 저장 없음).',
   SYNC_FAILED:'서버에서 최신 기록을 받지 못했습니다 · 입력은 그대로 있습니다.',FAILED:'저장하지 못했습니다 · 입력은 그대로 있습니다.',STALE:'다른 기기와 계속 겹쳐 쌓지 못했습니다 · 입력은 그대로 있습니다.',
+});
+// FIX59F (HUNT57 HS57-2·HS57-3): 같은 기기 다른 창 때문의 CARD_DRAFT_NOT_FOUND 결과 문구. 흐름이 금고·초안을 견준 결과(elsewhere·restored·lostInput)대로만 말한다.
+export const DRAFT_GONE_TEXT=Object.freeze({
+  elsewhere:'다른 창에서 이미 저장됐어요 · 새로 저장하지 않았습니다.',
+  restored:'저장하지 못했어요 — 입력을 다시 넣어 두었어요, 다시 저장해 주세요.',
+  lostInput:'저장하지 못했어요 · 다른 창에서 이 입력을 바꾸거나 지웠어요. 화면을 확인하고 다시 입력해 주세요.',
 });
 export const TIMER_KEY='lb.life.timer',TIMER_END_KEY='lb.life.timer.end',TIMER_REST_KEY='lb.life.timer.rest',TIMER_TAG_KEY='lb.life.timer.tag';
 const MIN_MS=60000,KST_MS=9*3600000,MAX_TIMER_MS=1440*MIN_MS;
@@ -368,6 +377,8 @@ async function reportConfirm(ctx,st,r){
   st.notices=r.notices??[];
   if(r.status==='CONFIRMED'||r.status==='ALREADY_APPLIED')await ctx.reload?.();   // 쌓은 카드를 화면이 다시 읽는다(안 읽으면 방금 쌓은 카드가 비어 보인다)
   if(r.status==='REJECTED'){st.message=lifeErrorText(r.code);st.error=true;}
+  else if(r.status==='ALREADY_APPLIED'&&r.elsewhere)st.message=DRAFT_GONE_TEXT.elsewhere;
+  else if(r.status==='FAILED'&&(r.restored||r.lostInput)){st.message=r.restored?DRAFT_GONE_TEXT.restored:DRAFT_GONE_TEXT.lostInput;st.error=true;}
   else if(['UNKNOWN','SYNC_FAILED','FAILED','STALE'].includes(r.status)){st.message=(r.code&&LIFE_ERROR_TEXT[r.code])||STATUS_TEXT[r.status];st.error=true;}
   else st.message=STATUS_TEXT[r.status]??'처리하지 못했어요'+' · 문의 코드 ▾\u2060'+r.status+'\u2060';
   // B54: 쌓기 성공(STACK_DONE) 직후 사령부 상태 자동 내보내기. 성공 여부·표면(PC 앱)·토글 검사와 실패 문구 덧붙이기는 state-export.mjs의 exportAfterStack 안에 있다.
@@ -388,6 +399,7 @@ function pressable(node,onTap,onHold){
 
 // 기본 7색이 아닌 과목 색은 CSS 클래스로 표현할 수 없다(인라인 style 금지). SVG 속성(fill)으로 점을 그린다.
 function colorDot(doc,node,color){
+  if(typeof doc?.createElementNS!=='function'||!node.classList)return;   // DS2: SVG를 못 만드는 문서(시험용 최소 DOM)에서는 점 없이 칩만 둔다. 브라우저에는 항상 있다
   const NS='http://www.w3.org/2000/svg',svg=doc.createElementNS(NS,'svg'),c=doc.createElementNS(NS,'circle');
   svg.setAttribute('class','life-dot');svg.setAttribute('width','10');svg.setAttribute('height','10');svg.setAttribute('viewBox','0 0 10 10');svg.setAttribute('aria-hidden','true');
   c.setAttribute('cx','5');c.setAttribute('cy','5');c.setAttribute('r','5');c.setAttribute('fill',color);svg.append(c);
@@ -406,14 +418,19 @@ function renderBricks(ctx,st,h,defs,life,act,goalBricks,liveSlot=null){
   if(st.subjectId===null||!subjects.some(s=>s.id===st.subjectId))st.subjectId=subjects[0]?.id??null;
   const row=el('div',null,'life-chip-row');
   for(const s of subjects){
-    const key=SUBJECT_COLOR_KEYS[s.color.toUpperCase()]??null;
-    const c=chip(s.name+(s.bridge?' · 징검다리':''),{selected:st.subjectId===s.id,color:key,onClick:()=>{st.subjectId=s.id;void ctx.rerender();}});
-    c.dataset.subjectId=s.id;c.dataset.color=s.color;if(key===null)colorDot(ctx.document??globalThis.document,c,s.color);add(row,c);
+    const color=subjectColor(s.id,subjects),key=SUBJECT_COLOR_KEYS[color]??null;
+    const c=chip(s.name,{selected:st.subjectId===s.id,color:key,onClick:()=>{st.subjectId=s.id;void ctx.rerender();}});
+    c.dataset.subjectId=s.id;c.dataset.color=color;if(key===null)colorDot(ctx.document??globalThis.document,c,color);
+    add(row,s.bridge?add(el('span',null,'life-chip-wrap'),c,el('small','징검다리','life-chip-sub')):c);   // DS1 (V5 §2.8 g): 부제는 칩 밖 작은 글자
   }
   add(sec,row);
   const minutes=todayMinutes(st,ctx.getWhole(),date);
   const sum=sumBricks(minutes);
-  add(sec,xpBar(sum.value,goalBricks,{label:'오늘 벽돌 (장)'}),hint(sum.bricks+'장'+(sum.pieces?' + 조각 '+sum.pieces:'')+' · 30분 = 1장, 10~29분 = 조각, 9분 이하는 세지 않아요 · 오늘 목표 '+goalBricks+'장'));
+  // DS1 (V5 §2.8 d·e): "오늘 벽돌 n장 / 목표 m장" + 벽돌 칸(채움 비율, 덮개·공부방 기둥과 같은 스프라이트), 규칙 문장은 ⓘ로 접는다
+  const mark=el('summary','ⓘ','lb-info-mark');mark.setAttribute('aria-label','벽돌 규칙');
+  const rule=add(el('details',null,'lb-info life-bricks-rule'),mark,el('p','30분 = 1장, 10~29분 = 조각, 9분 이하는 세지 않아요','muted small'));
+  add(sec,add(el('div',null,'life-bricks-today'),el('strong','오늘 벽돌 '+sum.bricks+'장'+(sum.pieces?' + 조각 '+sum.pieces:'')+' / 목표 '+goalBricks+'장','life-bricks-count'),
+    brickCells(ctx.document??globalThis.document,{value:sum.value,goal:goalBricks}),rule));
   const {recordNow,finishTimer}=timerOps(ctx,st,act);
   return bricksTimer(ctx,st,h,defs,subjects,sec,act,recordNow,finishTimer,goalBricks,liveSlot);
 }
@@ -476,9 +493,14 @@ function bricksTimer(ctx,st,h,defs,subjects,sec,act,recordNow,finishTimer,goalBr
     const timerText=()=>(t.endIso?'담기 대기 · ':t.pausedAt?'휴식 중 · ':'집중 중 · ')+(ts?.name??'과목')+' · '+hhmmFromIso(t.startIso)+' 시작 · '+(rested?liveElapsedMin(t,ctx.now()):timerElapsedMin(t.startIso,ctx.now()))+'분',timerLabel=el('span',timerText(),'life-timer-text');
     liveTick(timerLabel,ctx.document??globalThis.document,()=>{timerLabel.textContent=timerText();});
     add(timerRow,timerLabel,
-      st.liveOpen?null:button('끝내고 담기',act(()=>finishTimer(ts??subject,t.startIso,rested?liveRecordMin(t,ctx.now()):timerRecordMin(t.startIso,ctx.now()))),'primary'),   // 덮개가 열려 있으면 그 안의 같은 단추를 쓴다
+      st.liveOpen?null:button('끝내고 담기',act(()=>finishTimer(ts??subject,t.startIso,rested?liveRecordMin(t,ctx.now()):timerRecordMin(t.startIso,ctx.now()))),'primary lb-btn-finish'),   // 덮개가 열려 있으면 그 안의 같은 단추를 쓴다
       button('취소',()=>{st.timer=null;writeTimer(store,null);st.liveOpen=false;void ctx.rerender();}));
-  }else add(timerRow,button('집중 시작',()=>{st.timer={subjectId:subject.id,startIso:ctx.now(),...newTimerTag(ctx)};writeTimer(store,st.timer);st.liveOpen=liveSettings(store).autoOpen;void ctx.rerender();},'primary'));
+  }else{
+    // DS1 (V5 §2.1): 집중 시작 = 전체 너비·높이 60px primary, 앞에 선택 과목 색 점
+    const go=button('집중 시작',()=>{st.timer={subjectId:subject.id,startIso:ctx.now(),...newTimerTag(ctx)};writeTimer(store,st.timer);st.liveOpen=liveSettings(store).autoOpen;void ctx.rerender();},'primary lb-btn-start');
+    go.textContent='';go.append(subjectDot(ctx.document??globalThis.document,subject),'집중 시작');
+    add(timerRow,go);
+  }
   // R36 (S1A + P1B): STUDY LIVE 덮개·휴식은 어느 단추로 시작한 타이머든 같다(오늘 계획 카드 [▶ 집중]으로 시작해도). 위 줄의 단추만 계획 카드와 나눈다.
   if(st.timer){
     const t=st.timer,ts=subjects.find(s=>s.id===t.subjectId)??defs.subjects.find(s=>s.id===t.subjectId);
@@ -505,10 +527,22 @@ function bricksTimer(ctx,st,h,defs,subjects,sec,act,recordNow,finishTimer,goalBr
     st.liveStop=live.stop;
     add(liveSlot??sec,live.card,live.dialog);
   }
+  // DS1 (V5 §2.1): "분 [ ] 담기" 한 줄. 담기는 입력이 있을 때만 켜진다(이름은 "분 입력으로 담기")
   const min=input('',{inputmode:'numeric',placeholder:'분','aria-label':'공부한 분'});
-  add(timerRow,min,button('분 입력으로 담기',act(async()=>{await recordNow(subject,int(min.value));min.value='';}),'secondary'));
-  add(sec,timerRow);
+  const put=button('담기',act(async()=>{await recordNow(subject,int(min.value));min.value='';put.disabled=true;}),'secondary life-min-add');
+  put.setAttribute('aria-label','분 입력으로 담기');put.disabled=true;
+  min.addEventListener('input',()=>{put.disabled=!String(min.value??'').trim();});
+  add(sec,timerRow,add(el('div',null,'life-min-row'),el('span','분','life-min-label'),min,put));
   return sec;
+}
+// DS1 (V5 §2.1): 집중 시작 단추 안의 과목 색 점. 기본 7색은 칩 색 변수(클래스), 그 밖의 색은 SVG fill 속성(인라인 style 금지).
+function subjectDot(doc,subject){
+  const key=SUBJECT_COLOR_KEYS[String(subject?.color??'').toUpperCase()]??null;
+  if(key){const n=doc.createElement('span');n.className='lb-dot lb-chip-'+key;n.setAttribute('aria-hidden','true');return n;}
+  const NS='http://www.w3.org/2000/svg',mk=t=>doc.createElementNS?doc.createElementNS(NS,t):doc.createElement(t),svg=mk('svg'),c=mk('circle');
+  for(const [k,v] of [['class','life-dot'],['width','10'],['height','10'],['viewBox','0 0 10 10'],['aria-hidden','true']])svg.setAttribute(k,v);
+  for(const [k,v] of [['cx','5'],['cy','5'],['r','5'],['fill',String(subject?.color??'')]])c.setAttribute(k,v);
+  svg.append(c);return svg;
 }
 
 // ---- P1B: 오늘 계획 카드의 집중 포트 ----
@@ -569,10 +603,17 @@ function openEntrySheet(ctx,st,hb,e){
   add(body,err,add(el('div',null,'buttons'),button('저장',()=>{try{apply(read());}catch(x){err.textContent=lifeErrorText(x.code);err.hidden=false;}},'primary'),e?button('지우기',()=>apply(null)):null));
 }
 
+// DSFIX D1: 3방향 병합의 기준 = 시트를 열 때(색 화면은 그릴 때) 보인 값. 저장본이 있으면 그 data, 없으면 보이던 기본값(collectRows와 같은 order).
+export function definitionBases(life,defs=lifeDefs(life)){
+  const out={},put=(type,stored,list)=>list.forEach((x,i)=>{const old=stored.find(s=>s.id===x.id);out[type+'|'+x.id]=structuredClone(old?old.data:{...x,order:i});});
+  put('HABIT_DEF',life?.habits??[],defs.habits);put('SUBJECT_DEF',life?.subjects??[],defs.subjects);
+  out['EXAM_SCHEDULE|exams']=structuredClone(defs.exams);
+  return out;
+}
 // ---- 습관·과목·시험 일정 편집 시트 ----
 export function openEditor(ctx,st){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,hint,input,select,field}=h;
-  const life=ctx.getWhole().life??{habits:[],days:[],subjects:[],exams:null},defs=lifeDefs(life);
+  const life=ctx.getWhole().life??{habits:[],days:[],subjects:[],exams:null},defs=lifeDefs(life),bases=definitionBases(life,defs);
   const work={habits:defs.habits.map(x=>structuredClone(x)),subjects:defs.subjects.map(x=>structuredClone(x)),exams:structuredClone(defs.exams)};
   let tab='HABITS';
   const body=el('div',null,'life-editor'),err=el('p',null,'notice error life-editor-error'),note=el('p',DEFS_SEALED_TEXT,'notice life-editor-note');err.hidden=true;note.hidden=true;
@@ -610,7 +651,7 @@ export function openEditor(ctx,st){
       add(body,add(el('div',null,'life-edit-row'),name,color,toggle('수능 과목',x.exam,on=>{x.exam=on;}),toggle('징검다리',x.bridge,on=>{x.bridge=on;}),toggle('숨김',x.hidden,on=>{x.hidden=on;}),button('▲',()=>{move(work.subjects,i,-1);rerender();},'secondary'),button('▼',()=>{move(work.subjects,i,1);rerender();},'secondary')));
     });
     const nn=input('',{maxlength:String(MAX_NAME),placeholder:'새 과목 이름'});
-    add(body,add(el('div',null,'life-edit-row'),nn,button('과목 추가',()=>{const name=nn.value.trim();if(!name){showErr('INVALID_LIFE_TEXT');return;}work.subjects.push({id:'s'+ctx.uid().slice(0,12),name,color:'#C9A227',exam:false,bridge:false,hidden:false,order:work.subjects.length});rerender();},'primary')),hint('생물은 수능 과목이 아니라 공부를 시작하게 만드는 징검다리 과목입니다.'));
+    add(body,add(el('div',null,'life-edit-row'),nn,button('과목 추가',()=>{const name=nn.value.trim();if(!name){showErr('INVALID_LIFE_TEXT');return;}work.subjects.push({id:'s'+ctx.uid().slice(0,12),name,color:NEW_SUBJECT_COLOR,exam:false,bridge:false,hidden:false,order:work.subjects.length});rerender();},'primary')),hint('생물은 수능 과목이 아니라 공부를 시작하게 만드는 징검다리 과목입니다.'));
   };
   const examsPane=()=>{
     work.exams.items.forEach((x,i)=>{
@@ -633,7 +674,7 @@ export function openEditor(ctx,st){
       void ctx.perform(async()=>{
         st.message=null;st.error=false;
         let sealed=false;
-        try{const n=await saveDefinitions(ctx,rows,'습관·과목·시험 일정 편집',memo);sealed=memo.sealed>0;st.message=sealed?DEFS_SEALED_TEXT:n?n+'건을 저장했습니다.':'바뀐 것이 없어 저장하지 않았습니다.';}
+        try{const n=await saveDefinitions(ctx,rows,'습관·과목·시험 일정 편집',memo,bases);sealed=memo.sealed>0;st.message=sealed?DEFS_SEALED_TEXT:n?n+'건을 저장했습니다.':'바뀐 것이 없어 저장하지 않았습니다.';}
         catch(x){st.message=lifeErrorText(x?.code);st.error=true;}
         await prepareLife(ctx,st);await ctx.rerender();
         if(sealed&&!ctx.locked?.()){note.hidden=false;open();}   // FIX38: 임시 저장은 성공이 아니다. 고친 내용이 든 시트를 다시 연다. 잠겼으면 열지 않는다(H37-S2)
@@ -641,6 +682,66 @@ export function openEditor(ctx,st){
     }catch(x){showErr(x?.code);}
   },'primary');
   open();
+}
+// ---- DS2 과목 색 설정(설정 → 공부 → 과목 색, V5 2.4) ----
+// 저장 = 기존 SUBJECT_DEF.color 칸(기기 간 동기화되는 과목 기록). 칸·종류를 더하지 않으므로 r52 이전 빌드도 그대로 받는다.
+// 고르기·직접 입력은 이 화면의 초안(st.colors)에만 모이고 "색 저장"을 눌러야 쓴다. 저장 범위는 편집 화면과 같은 collectRows 규칙이다
+// (과목을 한 번도 저장하지 않았으면 7과목을 한 번에 쓴다: 한 과목만 쓰면 나머지 기본 과목이 목록에서 빠진다).
+export const SUBJECT_COLOR_TEXT=Object.freeze({
+  title:'공부 · 과목 색',lead:'과목 칩·계획 격자·주간 그래프·공부 벽돌·탑과 우주가 같은 색을 써요. 저장한 색은 다른 기기에도 동기화돼요.',
+  custom:'직접 입력',apply:'적용',reset:'기본값으로',save:'색 저장',
+  badHex:'색 값은 #RRGGBB 형식이어야 해요(예: #D9823B) · 저장하지 않았어요.',near:'구분이 어려울 수 있어요',
+  none:'바뀐 색이 없어 저장하지 않았어요.',saved:n=>n+'건을 저장했어요.',
+});
+// 초안을 얹은 작업본. collectRows에 그대로 넘긴다(습관·시험 일정은 그대로라 쓰지 않는다).
+export function subjectColorWork(life,draft={}){
+  const defs=lifeDefs(life);
+  const subjects=defs.subjects.map(x=>({...structuredClone(x),color:Object.hasOwn(draft,x.id)?draft[x.id]:subjectColor(x.id,defs.subjects)}));
+  return {defs,work:{habits:defs.habits.map(x=>structuredClone(x)),subjects,exams:structuredClone(defs.exams)}};
+}
+// DSFIX M1: 저장된 과목이 하나도 없으면 [색 저장]은 바뀐 것이 없어도 지금 보이는 7과목(영어 주황 포함)을 모두 쓴다 — 옛 빌드 기기도 같은 색을 갖게.
+// 저장된 과목이 있으면 collectRows 그대로(바뀐 줄만). 누르기 전에는 아무것도 쓰지 않는다.
+export function subjectColorRows(work,life,defs=lifeDefs(life)){
+  const v=life??{habits:[],days:[],subjects:[],exams:null},rows=collectRows(work,v,defs);
+  if(v.subjects.length||rows.some(r=>r.type==='SUBJECT_DEF'))return rows;
+  return [...rows,...work.subjects.map((x,i)=>({type:'SUBJECT_DEF',id:x.id,data:{...x,name:String(x.name).trim(),order:i},heads:[]}))];
+}
+export function renderSubjectColors(ctx,st){
+  const doc=ctx.document??globalThis.document,{el,add,button,hint,input}=maker(doc);
+  const cs=st.colors??={draft:{},message:null,error:false};
+  const out=el('section',null,'panel subject-colors');
+  const draw=()=>{
+    const life=ctx.getWhole().life??null,{defs,work}=subjectColorWork(life,cs.draft);
+    out.replaceChildren(el('h2',SUBJECT_COLOR_TEXT.title,'panel-title'),hint(SUBJECT_COLOR_TEXT.lead));
+    const set=(id,hex)=>{cs.draft[id]=hex;cs.message=null;cs.error=false;draw();};
+    for(const s of work.subjects){
+      const row=add(el('div',null,'life-chip-row subject-color-row'),el('strong',s.name+(s.hidden?' · 숨김':'')));row.dataset.subjectId=s.id;row.dataset.color=s.color;
+      for(const p of SUBJECT_PALETTE){
+        const key=SUBJECT_COLOR_KEYS[p.hex]??null,c=chip(p.name,{selected:s.color===p.hex,color:key,onClick:()=>set(s.id,p.hex)});
+        c.dataset.color=p.hex;c.setAttribute('aria-label',s.name+' '+p.name+' '+p.hex);if(key===null)colorDot(doc,c,p.hex);add(row,c);
+      }
+      const box=input(s.color,{maxlength:'7','aria-label':s.name+' '+SUBJECT_COLOR_TEXT.custom,placeholder:'#RRGGBB'});
+      add(row,box,button(SUBJECT_COLOR_TEXT.apply,()=>{const hex=parseSubjectHex(box.value);if(!hex){cs.message=SUBJECT_COLOR_TEXT.badHex;cs.error=true;draw();return;}set(s.id,hex);}));
+      add(out,row);
+    }
+    for(const [a,b] of nearSubjectPairs(work.subjects))add(out,el('p',a+' · '+b+': '+SUBJECT_COLOR_TEXT.near,'notice subject-color-near'));
+    const msg=cs.message?el('p',cs.message,cs.error?'notice error':'notice'):null;
+    const reset=button(SUBJECT_COLOR_TEXT.reset,()=>{for(const s of work.subjects)cs.draft[s.id]=defaultSubjectColor(s.id);cs.message=null;cs.error=false;draw();});
+    const bases=definitionBases(life,defs);   // DSFIX D1: 그린 때 값 = 기준
+    const save=button(SUBJECT_COLOR_TEXT.save,()=>{
+      const rows=subjectColorRows(work,life,defs);
+      if(!rows.length){cs.draft={};cs.message=SUBJECT_COLOR_TEXT.none;cs.error=false;draw();return;}
+      void ctx.perform(async()=>{
+        const memo=cs.memo??={};   // 편집 시트처럼: 아직 임시 저장 모드면 같은 내용을 다시 봉인하지 않는다(H37-P1)
+        try{const n=await saveDefinitions(ctx,rows,'과목 색 설정',memo,bases);cs.message=memo.sealed>0?DEFS_SEALED_TEXT:n?SUBJECT_COLOR_TEXT.saved(n):SUBJECT_COLOR_TEXT.none;cs.error=false;if(!(memo.sealed>0))cs.draft={};}
+        catch(x){cs.message=lifeErrorText(x?.code);cs.error=true;}
+        await prepareLife(ctx,st);await ctx.rerender();
+      });
+    },'primary');
+    add(out,msg,add(el('div',null,'buttons'),reset,save));
+  };
+  draw();
+  return out;
 }
 // ---- 기록 탭: 지난 날짜 보기 ----
 export function renderPastDays(root,ctx,st){

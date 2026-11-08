@@ -6,6 +6,7 @@ import {STUDY_STAGES,FINAL_STAGE,GOLD_TIERS,goldTierOf,STAR_EVERY_HOURS,AVATAR_A
 import {achieve} from './life-achieve.mjs';
 import {kstDate} from './life-model.mjs';
 import {universeData} from './universe-view.mjs';
+import {todayEffectStrip} from './study-live.mjs';   // DS5: 오늘 효과 5단계 띠(작게 보기와 같은 함수)
 
 const NS='http://www.w3.org/2000/svg';
 const MAX_STAR_MARKS=12;
@@ -233,10 +234,12 @@ export function renderStatusView(root,ctx){
   const go=ctx.openStudy?el('button',ctx.timer?'집중 화면 보기':'공부 시작','primary st-today-go'):null;
   if(go){go.type='button';go.dataset.navOnly='1';go.addEventListener('click',()=>ctx.openStudy());}
   const todayCard=add(el('section',null,'panel st-today'),ringSlot,add(el('div',null,'st-today-text'),todayLine,nextLine,noteLine,focusLine),go);
+  // DS5: B65 미리보기 바로 옆(넓은 화면)·아래(좁은 화면) = 오른쪽 칸 맨 위. 상태 화면은 글자 칸만(썸네일 장면은 작게 보기에서), 분 단위로 다시 그린다
+  const effects=todayEffectStrip(doc,{grade:proj.stage.no,thumbs:false,cls:'panel st-effects'});effects.paint(today.minutes*60000);
 
   // 3) 금 장신구·전체 단계  4) 탑·우주 입구
   const doors=add(el('div',null,'st-doors'),door(h,'탑',towerSub(whole,date,money),ctx.openTower),door(h,'우주',universeSub(whole,nowIso),ctx.openUniverse));
-  add(out,add(el('div',null,'st-body'),avatar,add(el('div',null,'st-side'),todayCard,ladderCard(h,proj),doors)));
+  add(out,add(el('div',null,'st-body'),avatar,add(el('div',null,'st-side'),effects.node,todayCard,ladderCard(h,proj),doors)));
 
   const paint=()=>{
     const iso=String(ctx.now());
@@ -247,6 +250,7 @@ export function renderStatusView(root,ctx){
     ringSlot.replaceChildren(todayRing(h,today.minutes));
     todayLine.textContent='오늘 '+hmText(today.minutes);nextLine.textContent=nextEffectText(today.fx);badgeToday.textContent=todayBadge(today.fx);
     stage.className=fxClass(today.fx.level,artOn);
+    effects.paint(today.minutes*60000);   // DS5
     if(today.fx.art!==art){art=today.fx.art;const fresh=figureOf(art);figure.replaceWith?.(fresh);figure=fresh;}
   };
   const stop=liveTick(out,doc,paint);

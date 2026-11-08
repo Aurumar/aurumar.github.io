@@ -7,6 +7,11 @@ export const PALETTE=Object.freeze({bg:'#FBF7EE',gold1:'#F3E3B5',gold2:'#C9A227'
 export const SUBJECT_COLORS=Object.freeze({kor:'#8E6BC4',math:'#A6714E',eng:'#D9534F',hist:'#5BA66B',soc:'#D4B33C',sci:'#4F86C6',bio:'#3FA7A0'});
 export const AREA_COLORS=Object.freeze({body:'#5BA66B',head:'#4F86C6',money:'#C9A227',heart:'#C4709A'});
 
+// DS1 (설계 V5 §2.1): 버튼 종류는 셋뿐. primary = 금속 채움(--gold-metal, 한 화면 1개) / secondary = 금 테두리 / text = 글자만. 모양은 styles.css 3절.
+// 크기 표지(공부 화면): lb-btn-start 집중 시작 60px 전체 너비 · lb-btn-finish 끝내고 담기 64px(좁은 화면 56px) · lb-btn-pair 휴식(끝내고 담기와 같은 높이).
+export const BUTTON_KINDS=Object.freeze({primary:'primary',secondary:'secondary',text:'lb-btn-text'});
+export const BUTTON_SIZES=Object.freeze({start:'lb-btn-start',finish:'lb-btn-finish',pair:'lb-btn-pair'});
+
 const SVG='http://www.w3.org/2000/svg';
 const svg=(tag,attrs)=>{const n=document.createElementNS(SVG,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));return n;};
 const ratio=(value,max)=>{const v=Number(value),m=Number(max);return Number.isFinite(v)&&Number.isFinite(m)&&m>0?Math.min(1,Math.max(0,v/m)):0;};

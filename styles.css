@@ -51,8 +51,17 @@
   --lb-chart-rest:#7A6B52;--lb-chart-income:#2F6B45;--lb-chart-none:#BDB49A;--lb-chart-bar:#DCC37A;--lb-chart-line:#2A2113;--lb-chart-cum:#6B4A9A;--lb-chart-stroke:#FFFFFF;--lb-chart-label:#FFFFFF;
   /* 금고 금괴 */
   --lb-vault-today:#F3E3B5;--lb-vault-future:#D9B542;--lb-vault-past:#EADDB8;--lb-vault-spent:#C3AD7E;--lb-vault-spent-line:#9C875C;--lb-vault-over:#C27A62;
-  /* 옛 변수 이름(F13 달력 등이 쓰던 것) → 토큰 */
-  --ivory:var(--lb-bg);--cream:var(--lb-surface-solid);--cream-2:var(--lb-surface-tint);--gold-bright:var(--lb-gold-bright);--gold-mid:var(--lb-gold-3);--gold-deep:var(--lb-ink-1);--gold-line:var(--lb-line);--gold-line-soft:var(--lb-line-soft);--muted:var(--lb-ink-3);--line:var(--lb-line);
+  /* DS1 금빛 V5 (설계 LIFE_BRICK_GOLD_REDESIGN_V5 §2.7): 아이보리 3 · 잉크 3 · 금 4 · 상태 2 + 금속 공식 하나(버튼·벽돌·링 채움 공통) */
+  --ivory-0:#FBF8F1;--ivory-1:#F6F1E6;--ivory-2:#EFE7D6;
+  --ink-900:#2B2419;--ink-600:#6B5A3A;--ink-400:#9A8B6E;
+  --gold-hi:#FFF1C2;--gold:#E3B341;--gold-deep:#B07D18;--gold-shadow:#5C3D0A;
+  --danger:#B8433A;--ok:#4C8A5C;
+  --gold-metal:linear-gradient(135deg,var(--gold-hi) 0%,var(--gold) 38%,var(--gold-deep) 72%,var(--gold-shadow) 100%);
+  --gold-metal-edge:inset 0 1px 0 rgba(255,241,194,.9),0 2px 0 var(--gold-shadow);
+  /* 금고 카드 3층 (DS3, V5 설계 2.5): 금속 3단 + 그림자·쓴 몫 아이보리 음각·초과 테두리. 금고 카드(30절)만 쓴다 — DS1 병합 뒤 DS1 변수로 바꿀 자리 */
+  --lb-vault-gold-hi:#FFF1C2;--lb-vault-gold:#E3B341;--lb-vault-gold-deep:#B07D18;--lb-vault-gold-shadow:#5C3D0A;--lb-vault-ivory:#EFE7D6;--lb-vault-over-line:#B8433A;
+  /* 옛 변수 이름(F13 달력 등이 쓰던 것) → 토큰. DSFIX H1: 옛 --gold-deep(진한 글자색)은 DS1 금 --gold-deep(#B07D18)을 덮어 금속 금을 검게 칠했다 → 옛 자리는 --lb-ink-1을 직접 쓴다 */
+  --ivory:var(--lb-bg);--cream:var(--lb-surface-solid);--cream-2:var(--lb-surface-tint);--gold-bright:var(--lb-gold-bright);--gold-mid:var(--lb-gold-3);--gold-line:var(--lb-line);--gold-line-soft:var(--lb-line-soft);--muted:var(--lb-ink-3);--line:var(--lb-line);
   --cal-chip-bg:var(--lb-gold-soft);--cal-chip-bar:var(--lb-gold-2);--cal-chip-text:var(--lb-ink-2);--cal-chip-deadline-bg:var(--lb-gold-1);--cal-chip-deadline-bar:var(--lb-gold-3);--cal-chip-deadline-text:var(--lb-ink-1);--cal-sun:var(--lb-bad);--cal-sun-num:var(--lb-bad);--cal-sat:var(--lb-gold-3);--cal-today-ring:var(--lb-gold-3);--cal-today-tint:var(--lb-gold-1);
   --cal-serif:"Palatino Linotype","Book Antiqua",Palatino,Georgia,"Noto Serif KR","Noto Serif CJK KR","AppleMyungjo",Batang,serif;
   font-family:var(--lb-font);color:var(--lb-ink-2);background:var(--lb-bg);line-height:1.6;font-size:var(--lb-body);
@@ -76,12 +85,14 @@ p{margin:7px 0 12px}
 #page-title{overflow-wrap:normal}
 button,#page-title{word-break:keep-all}
 
-/* ===== 3. 버튼 (primary=금+글로우 / secondary=유리 / ghost) ===== */
-button{border:1px solid transparent;border-radius:var(--lb-r-1);padding:9px 16px;background:var(--lb-gold-grad);color:var(--lb-on-gold);cursor:pointer;font-weight:700;line-height:1.5;box-shadow:var(--lb-gold-glow);transition:transform .12s ease,box-shadow .15s ease,background-color .15s ease,border-color .15s ease}
-button:hover{background:var(--lb-gold-grad-hover)}
+/* ===== 3. 버튼 — DS1 (V5 §2.1) 종류 셋: primary = 금속 채움(--gold-metal) / secondary = 금 테두리 / text(lb-btn-text) = 글자. ghost는 옛 이름 ===== */
+button{border:1px solid transparent;border-radius:var(--lb-r-1);padding:9px 16px;background:var(--gold-metal);color:var(--ink-900);cursor:pointer;font-weight:700;line-height:1.5;box-shadow:var(--gold-metal-edge);transition:transform .12s ease,box-shadow .15s ease,background-color .15s ease,border-color .15s ease}
+button:hover{background:var(--gold-metal);box-shadow:var(--gold-metal-edge),var(--lb-gold-glow)}
 button:active{transform:scale(.97)}
-button.secondary,button.icon-button{background:var(--lb-surface-2);color:var(--lb-ink-2);border-color:var(--lb-line);box-shadow:none;font-weight:600}
-button.secondary:hover,button.icon-button:hover{background:var(--lb-surface-solid);border-color:var(--lb-gold-2)}
+button.secondary,button.icon-button{background:var(--ivory-0);color:var(--ink-900);border-color:var(--gold-deep);box-shadow:none;font-weight:600}
+button.secondary:hover,button.icon-button:hover{background:var(--ivory-1);border-color:var(--gold)}
+button.lb-btn-text{background:transparent;color:var(--gold-deep);border-color:transparent;box-shadow:none;font-weight:700;padding-inline:8px}
+button.lb-btn-text:hover{background:var(--ivory-1);color:var(--ink-900)}
 button.danger{color:var(--lb-bad);background:var(--lb-bad-bg);border-color:var(--lb-bad-line);box-shadow:none}
 button.lb-btn-ghost{background:transparent;color:var(--lb-gold-3);border-color:transparent;box-shadow:none;font-weight:600}
 button.lb-btn-ghost:hover{background:var(--lb-gold-soft)}
@@ -321,14 +332,14 @@ progress::-moz-progress-bar{background:var(--lb-gold-grad);border-radius:var(--l
 .calendar-cell.dim{background:var(--lb-surface-tint)}
 .calendar-cell.today{background:var(--lb-gold-soft)}
 .calendar-number{font-family:var(--cal-serif);font-weight:400;font-variant-numeric:lining-nums tabular-nums;color:var(--muted);font-size:16px;margin:0 0 8px;display:flex;align-items:center;justify-content:center;width:100%;min-width:24px}
-.calendar-cell.today .calendar-number{width:32px;height:32px;min-width:32px;margin:0 auto 8px;border-radius:50%;border:1px solid var(--cal-today-ring);background:var(--cal-today-tint);color:var(--gold-deep);font-weight:700}
+.calendar-cell.today .calendar-number{width:32px;height:32px;min-width:32px;margin:0 auto 8px;border-radius:50%;border:1px solid var(--cal-today-ring);background:var(--cal-today-tint);color:var(--lb-ink-1);font-weight:700}
 .calendar-grid .calendar-cell:nth-child(7n):not(.today) .calendar-number{color:var(--cal-sun-num)}
 .calendar-event{width:100%;text-align:left;line-height:1.45;margin:3px 0;overflow-wrap:anywhere;font-family:var(--lb-font);background:var(--cal-chip-bg);color:var(--cal-chip-text);border:0;border-left:2px solid var(--cal-chip-bar);border-radius:var(--lb-s-1);font-weight:500;font-size:11px;padding:4px 6px 4px 5px;box-shadow:none}
 .calendar-event:hover{background:var(--lb-gold-1)}
 .calendar-event.DEADLINE{background:var(--cal-chip-deadline-bg);color:var(--cal-chip-deadline-text);border-left-color:var(--cal-chip-deadline-bar)}
 .calendar-event.REVIEW,.calendar-event.APPOINTMENT{background:var(--cal-chip-bg);color:var(--cal-chip-text);border-left-color:var(--cal-chip-bar)}
 .calendar-title{text-align:center;margin:2px 0 10px;display:flex;align-items:baseline;justify-content:center;flex-wrap:wrap;gap:1px}
-.calendar-title .cal-title-num{font-family:var(--cal-serif);font-weight:400;font-size:24px;font-variant-numeric:lining-nums tabular-nums;color:var(--gold-deep)}
+.calendar-title .cal-title-num{font-family:var(--cal-serif);font-weight:400;font-size:24px;font-variant-numeric:lining-nums tabular-nums;color:var(--lb-ink-1)}
 .calendar-title .cal-title-unit{font-family:"Segoe UI","Malgun Gothic",sans-serif;font-size:var(--lb-caption);font-weight:500;color:var(--muted);letter-spacing:.01em;margin-right:2px}
 .date-group{margin:18px 0}
 .date-group h3{font-size:var(--lb-caption);color:var(--lb-ink-3);border-bottom:1px solid var(--lb-line-soft);padding-bottom:9px}
@@ -341,7 +352,7 @@ progress::-moz-progress-bar{background:var(--lb-gold-grad);border-radius:var(--l
 .date-field button{flex-shrink:0}
 .date-popup{position:absolute;top:100%;left:0;z-index:50;margin-top:4px;background:var(--lb-surface-solid);border:1px solid var(--lb-line);border-radius:var(--lb-r-2);box-shadow:var(--lb-shadow-2);padding:10px;width:min(300px,90vw)}
 .date-popup-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
-.date-popup-head strong{display:inline-flex;align-items:baseline;gap:1px;font-size:13px;color:var(--gold-deep)}
+.date-popup-head strong{display:inline-flex;align-items:baseline;gap:1px;font-size:13px;color:var(--lb-ink-1)}
 .date-popup-head strong .y,.date-popup-head strong .m{font-family:var(--cal-serif);font-size:18px;font-weight:400;font-variant-numeric:lining-nums tabular-nums}
 .date-popup-head strong .u{font-family:"Segoe UI","Malgun Gothic",sans-serif;font-size:12px;font-weight:500;color:var(--muted);letter-spacing:.01em;margin-right:2px}
 .date-popup-head button{border:1px solid var(--lb-line);background:var(--lb-surface-solid);color:var(--lb-gold-3);border-radius:var(--lb-r-full);width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:15px;box-shadow:none}
@@ -350,7 +361,7 @@ progress::-moz-progress-bar{background:var(--lb-gold-grad);border-radius:var(--l
 .date-popup-grid .calendar-day-name{padding:6px;font-size:13px}
 .date-popup-grid button.calendar-cell{width:36px;height:36px;min-width:36px;min-height:36px;max-width:36px;max-height:36px;aspect-ratio:1/1;box-sizing:border-box;flex:none;justify-self:center;margin:2px auto;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;font-weight:400;font-variant-numeric:lining-nums tabular-nums;font-size:17px;text-align:center;background:none;border:none;color:var(--lb-ink-1);box-shadow:none}
 .date-popup-grid button.calendar-cell:hover{background:var(--cal-today-tint)}
-.date-popup-grid button.calendar-cell.today{border:1px solid var(--cal-today-ring);background:var(--cal-today-tint);font-weight:400;color:var(--gold-deep)}
+.date-popup-grid button.calendar-cell.today{border:1px solid var(--cal-today-ring);background:var(--cal-today-tint);font-weight:400;color:var(--lb-ink-1)}
 .date-popup-grid button.calendar-cell.selected{background:var(--lb-gold-2);color:var(--lb-on-gold);font-weight:700;border-color:var(--lb-gold-2)}
 .date-popup-grid button.calendar-cell:nth-child(7n):not(.today):not(.selected){color:var(--cal-sun-num)}
 .date-popup-grid .calendar-cell.dim{min-height:36px;visibility:hidden;background:none}
@@ -956,8 +967,9 @@ button.fin-quick-need{background:transparent;color:var(--lb-ink-3)}
 /* B44B: 습관 칸의 분 칩은 세로로 쌓이지 않고 가로 한 줄로 스크롤한다(폭 390 습관 격자 첫 줄 높이 ≤ 120px) */
 .life-habit .life-chip-row{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px}
 .life-habit .life-chip-row>*{flex:0 0 auto}
-.life-chip-row button{min-height:40px}
-.life-chip-row .lb-chip{min-height:40px}
+/* DSFIX S4: 과목·습관 칩 터치 44px(이 줄이 좁은 화면 button 44 규칙을 특이도로 이기므로 여기서 44) */
+.life-chip-row button{min-height:44px}
+.life-chip-row .lb-chip{min-height:44px}
 .lb-chip-custom::before{display:none}
 .life-dot{flex:0 0 auto}
 .life-bricks,.life-mood-box{display:grid;gap:var(--lb-s-2);padding-top:var(--lb-s-3);border-top:1px solid var(--lb-line-soft)}
@@ -1296,7 +1308,7 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .pt-status.ignite,.pt-status.done{color:var(--lb-ok)}
 .pt-status.gold{color:var(--lb-gold-3)}
 .pt-status.doing{color:var(--lb-warn)}
-.pt-focus{min-height:36px;padding:4px 12px;white-space:nowrap}
+.pt-focus{min-height:44px;padding:4px 12px;white-space:nowrap}
 .pt-timer{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 4px;padding:6px 10px;border-left:3px solid var(--lb-gold-2);background:var(--lb-gold-soft);border-radius:0 var(--lb-r-1) var(--lb-r-1) 0}
 .pt-timer-text{flex:1 1 160px;font-size:13px;font-weight:700;color:var(--lb-ink-1)}
 .pt-empty{display:flex;gap:8px;flex-wrap:wrap}
@@ -1651,7 +1663,7 @@ button.finder-link{display:grid;gap:2px;justify-items:start;text-align:left;min-
 .live-mini.resting{opacity:.86}
 .live-mini-text{display:grid;gap:2px;min-width:0;flex:1 1 160px}
 .live-mini-text .eyebrow{margin:0}
-.live-clock{font-family:ui-monospace,"Cascadia Mono",Consolas,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums;font-weight:800;color:var(--lb-ink-1);letter-spacing:.02em;line-height:1.05}
+.live-clock{font-family:ui-monospace,"Cascadia Mono",Consolas,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums;font-weight:800;color:var(--ink-900);letter-spacing:.02em;line-height:1.05}
 .live-mini-clock{font-size:34px}
 dialog.live-dlg{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;margin:0;border:0;border-radius:0;padding:var(--lb-s-3) var(--lb-s-3) calc(var(--lb-s-3) + env(safe-area-inset-bottom));background:var(--lb-bg);overflow:auto}
 dialog.live-dlg::backdrop{background:var(--lb-bg)}
@@ -1672,16 +1684,19 @@ dialog.live-dlg::backdrop{background:var(--lb-bg)}
 .live-next{font-weight:700;color:var(--lb-ink-1)}
 .live-gold{color:var(--lb-ink-3)}
 .live-gold.done{color:var(--lb-gold-3);font-weight:700}
-.live-ring-track{fill:none;stroke:var(--lb-heat-0)}
-.live-ring-fill{fill:none;stroke:var(--lb-gold-2);stroke-linecap:round}
-.live-ring.gold .live-ring-fill{stroke:var(--lb-gold-bright)}
+.live-ring-track{fill:none;stroke:var(--ivory-2)}
+.live-ring-fill{fill:none;stroke:var(--gold);stroke-linecap:round}
+.live-ring-deep{fill:none;stroke:var(--gold-deep);stroke-linecap:round;opacity:.85}
+.live-ring-hi{fill:none;stroke:var(--gold-hi);stroke-linecap:round}
+.live-ring.gold .live-ring-fill{stroke:var(--gold)}
+.live-ring.gold .live-ring-track{stroke:var(--gold-hi)}
 .live-ring-tick{stroke:var(--lb-line);stroke-width:1.5}
-.live-ring-tick.piece{stroke:var(--lb-gold-3);stroke-width:2.5}
-.live-ring-text{fill:var(--lb-ink-1);font-size:13px;font-weight:800;text-anchor:middle;dominant-baseline:central}
+.live-ring-tick.piece{stroke:var(--gold-deep);stroke-width:2.5}
+.live-ring-text{fill:var(--ink-900);font-weight:800;text-anchor:middle;dominant-baseline:central}
 .live-chips{display:flex;flex-wrap:wrap;gap:var(--lb-s-1)}
 .live-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid var(--lb-line);border-radius:var(--lb-r-full);background:var(--lb-surface-2);color:var(--lb-ink-2);font-size:13px;font-variant-numeric:tabular-nums}
 .live-overlap,.live-rest-over{margin:0}
-.live-actions{position:sticky;bottom:0;display:flex;flex-wrap:wrap;gap:var(--lb-s-2);padding-top:var(--lb-s-2);background:var(--lb-bg)}
+.live-actions{position:sticky;bottom:0;display:flex;flex-wrap:wrap;gap:12px;padding-top:var(--lb-s-2);background:var(--ivory-0)}
 .live-actions button{flex:1 1 30%;min-height:48px}
 .live-dlg.resting .room-stage{opacity:.72}
 @media(min-width:701px){.live-body{grid-template-columns:minmax(0,5fr) minmax(0,7fr);align-items:start}.room-stage{height:min(78vh,720px)}.live-panel .live-clock{font-size:72px}.live-actions{position:static}}
@@ -1708,7 +1723,7 @@ dialog.live-dlg::backdrop{background:var(--lb-bg)}
 .room-stage .room-front,.room-stage .room-fx{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;overflow:visible}
 .room-stage .room-fx{z-index:1}
 .room-stage .room-front{z-index:2}
-.room-desk-top{fill:var(--lb-vault-spent);opacity:.62}
+.room-desk-top{fill:var(--ivory-2);opacity:.78}
 .room-desk-shade{fill:var(--lb-gold-3);opacity:.35}
 .room-desk-edge{stroke:var(--lb-gold-3);stroke-width:1.2}
 .room-desk-edge.gold{stroke:var(--lb-gold-bright);stroke-width:2}
@@ -1737,7 +1752,7 @@ dialog.live-dlg::backdrop{background:var(--lb-bg)}
 .room-flame-tip{fill:var(--lb-gold-bright);stroke:var(--lb-gold-2);stroke-width:.4;transform-box:fill-box;transform-origin:50% 100%;animation:room-flicker 1.2s ease-in-out infinite}
 .room-spark{fill:var(--lb-gold-bright);animation:room-steam 1.8s ease-in-out infinite}
 .room-spark-2{animation-delay:-.9s}
-.room-corner-frame,.room-wing-frame{fill:var(--lb-vault-spent);opacity:.72;stroke:var(--lb-gold-3);stroke-width:1}
+.room-corner-frame,.room-wing-frame{fill:var(--ivory-1);opacity:.9;stroke:var(--gold-deep);stroke-width:1}
 .room-corner-boards,.room-wing-boards{fill:none;stroke:var(--lb-gold-3);stroke-width:1.4}
 .room-halo-ring{fill:none;stroke:var(--lb-gold-bright);stroke-width:3;mix-blend-mode:screen;animation:st-breath 3s ease-in-out infinite}
 .room-halo-inner{stroke:var(--lb-gold-1);stroke-width:1.2}
@@ -1867,3 +1882,135 @@ button.life-quest-open:hover .life-quest-more{color:var(--lb-gold-3)}
 .tower-badge-list{margin:var(--lb-s-1) 0 0;padding-left:1.2em;display:grid;gap:2px}
 .tower-badge{color:var(--lb-ink-3);overflow-wrap:anywhere}
 .tower-badge.done{font-weight:700;color:var(--lb-ink-1)}
+
+/* ===== 30. 금빛 공부 화면 (DS1, 설계 V5 §2.1·§2.3·§2.7·§2.8): 새 색 없음 — :root DS1 토큰만. 좁은 화면 = 폭 ≤ 420px(Fold 접힘) ===== */
+/* 시계: 시·분·초·콜론 모두 --ink-900 한 색. 시·분 굵게, 초는 60%·가늘게, 콜론은 1초 주기로 1 → 0.6 */
+.live-clock-hm,.live-clock-h,.live-clock-m{color:var(--ink-900);font-weight:800}
+.live-colon{color:var(--ink-900);animation:live-colon 1s steps(1,end) infinite}
+.live-clock-s{color:var(--ink-900);opacity:.6;font-weight:300}
+@keyframes live-colon{0%{opacity:1}50%{opacity:.6}}
+/* 링 가운데: 숫자 크게(글자 크기는 SVG font-size 속성) + "벽돌" 작게 */
+.live-ring-unit{fill:var(--ink-600);font-weight:600}
+/* 버튼 크기: 집중 시작 60px 전체 너비 · 끝내고 담기 64px(좁은 화면 56px, 글자 20px) · 휴식은 같은 높이 · 터치 44×44 이상 · 간격 12px 이상 */
+/* DSFIX H2: 터치 44 규칙은 크기 규칙보다 앞에 둔다. 특이도가 같아(0,1,1) 뒤 줄이 이기므로, 뒤에 있으면 64px·넓은 화면 140px를 덮는다 */
+.live-actions button,.life-timer button,.life-min-row button,.live-sub-actions button{min-width:44px;min-height:44px}
+@media(min-width:1000px){.live-actions button{min-width:140px}}
+button.lb-btn-start{display:flex;flex:1 1 100%;align-items:center;justify-content:center;gap:10px;width:100%;min-height:60px;font-size:18px}
+button.lb-btn-finish{min-height:64px;font-size:20px}
+button.lb-btn-pair{min-height:64px;font-size:18px}
+/* DS1B: 휴식 중 휴식 단추는 보이는 글자만 data-face("다시 집중"). DOM 글자·aria-label("이어서")은 그대로. 좁은 화면 하단 고정 줄도 같은 단추·같은 글자 */
+button.lb-btn-pair[data-face]{font-size:0}
+button.lb-btn-pair[data-face]::after{content:attr(data-face);font-size:18px}
+.lb-dot{display:inline-block;flex:0 0 auto;width:12px;height:12px;border-radius:50%;background:var(--lb-chip-color);box-shadow:0 0 0 2px var(--ivory-0)}
+.life-timer,.life-min-row,.live-sub-actions{gap:12px}
+.live-sub-actions{display:flex;justify-content:center}
+.life-min-row{display:flex;flex-wrap:wrap;align-items:center}
+.life-min-row input{width:96px}
+.life-min-label{font-weight:600;color:var(--ink-600)}
+button.life-min-add:disabled{cursor:not-allowed}
+/* 과목 칩: 색 점 + 이름, 부제(징검다리)는 칩 밖 작은 글자 */
+.live-top .live-subject{margin-right:auto}
+.life-chip-wrap{display:inline-flex;flex-direction:column;align-items:center;gap:2px;min-width:0}
+.life-chip-sub{font-size:11px;line-height:1.2;color:var(--ink-400)}
+/* 오늘 벽돌 n장 / 목표 m장 + 벽돌 칸, 규칙 문장은 ⓘ 접기 */
+.life-bricks-today,.live-bricks-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;min-width:0}
+.life-bricks-count{color:var(--ink-900);font-variant-numeric:tabular-nums}
+.lb-brick-row{display:block;width:auto;height:14px;max-width:100%}
+.lb-info{display:inline-block;min-width:0}
+.lb-info>summary{display:inline-grid;place-items:center;min-width:44px;min-height:44px;list-style:none;cursor:pointer;color:var(--gold-deep);font-weight:700}
+.lb-info>summary::-webkit-details-marker{display:none}
+.lb-info>p{margin:2px 0 0}
+/* 금 벽돌 스프라이트(오늘 벽돌 칸·무대 양옆 기둥 공통): 금속 공식의 네 단 = hi 윗선 · gold 몸 · deep 아래 · shadow 바닥선. 못 쌓은 칸 = 아이보리 음각 + 0.5px 금선 */
+.lb-brick-well{fill:var(--ivory-2);stroke:var(--gold-deep);stroke-width:.5;vector-effect:non-scaling-stroke}
+.lb-brick-groove{stroke:var(--ink-400);stroke-width:.5;opacity:.45;vector-effect:non-scaling-stroke}
+.lb-brick-gold{fill:var(--gold)}
+.lb-brick-deep{fill:var(--gold-deep)}
+.lb-brick-hi{stroke:var(--gold-hi);stroke-width:1}
+.lb-brick-shadow{stroke:var(--gold-shadow);stroke-width:1}
+/* 좁은 화면: 시계 2줄(시:분 / 초 작게), 휴식·끝내고 담기는 하단 고정 */
+@media(max-width:420px){
+  .live-panel .live-clock{display:grid;justify-items:start;gap:2px}
+  .live-panel .live-colon-s{display:none}
+  .live-panel .live-clock-s{font-size:.42em}
+  dialog.live-dlg{padding-bottom:calc(104px + env(safe-area-inset-bottom))}
+  .live-actions.lb-bottom-dock{position:fixed;left:0;right:0;bottom:0;z-index:5;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:var(--ivory-0);border-top:.5px solid var(--gold-deep)}
+  button.lb-btn-finish,button.lb-btn-pair{min-height:56px}
+}
+@media(prefers-reduced-motion:reduce){.live-colon{animation:none}}
+
+/* ===== 31. 오늘 효과 5단계 띠 (DS5, 설계 V5 §2.2·§2.3): 새 색 없음 — :root DS1 토큰만. 좁은 화면(≤ 420px)은 지금 단계 ±1칸만, 초 숫자 번쩍임은 움직임 줄이기면 없음 ===== */
+.ds5-today{display:grid;gap:8px;min-width:0}
+.ds5-title{color:var(--ink-900);font-size:13px}
+.ds5-strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:0;padding:0;list-style:none;min-width:0}
+.ds5-cell{display:grid;gap:2px;justify-items:center;align-content:start;min-width:0;padding:4px;border:1px solid var(--ivory-2);border-radius:8px;background:var(--ivory-0);text-align:center;overflow-wrap:anywhere}
+.ds5-cell.done{border-color:var(--gold-deep)}
+.ds5-cell.now{border:2px solid var(--gold);box-shadow:var(--gold-metal-edge)}
+.ds5-thumb{justify-self:stretch;min-width:0}
+.ds5-thumb .room-stage{justify-self:stretch;width:100%;height:auto;max-width:100%}
+.ds5-range{font-size:12px;font-weight:700;color:var(--ink-900);font-variant-numeric:tabular-nums}
+.ds5-name{font-size:11px;line-height:1.25;color:var(--ink-600)}
+.ds5-left{font-size:11px;font-weight:700;color:var(--gold-deep);font-variant-numeric:tabular-nums}
+.ds5-left:empty{display:none}
+.live-mini .ds5-today{flex:1 1 100%}
+.live-effect{margin:0;font-weight:700;color:var(--ink-600);font-variant-numeric:tabular-nums}
+.live-clock-s.ds5-up{opacity:1;color:var(--gold-deep);animation:ds5-up 1s ease-out both}
+.live-clock-s.ds5-up-3,.live-clock-s.ds5-up-4{color:var(--gold)}
+.live-clock-s.ds5-up-5{color:var(--gold);text-shadow:0 0 6px var(--gold-hi)}
+@keyframes ds5-up{0%{opacity:.6}20%{opacity:1}100%{opacity:1}}
+@media(max-width:420px){
+  .ds5-strip{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
+  .ds5-cell.far{display:none}
+}
+@media(prefers-reduced-motion:reduce){.live-clock-s.ds5-up{animation:none}}
+/* ===== 32. 금속 채움 한 화면 1개 (DSFIX S5, V5 §2.1): 새 색 없음 — :root DS1 토큰만. 오늘 화면의 금속 채움은 공부 칸 단추(집중 시작·끝내고 담기) 하나, 나머지(오늘 쌓기·어제 카드 쌓기·습관 지금/+1·계획 ▶ 집중)는 secondary와 같은 금 테두리형 ===== */
+button.life-stack-btn,button.life-habit-btn,.life-habit .life-chip-row button.primary,button.pt-focus,.life-yesterday button.primary{background:var(--ivory-0);color:var(--ink-900);border-color:var(--gold-deep);box-shadow:none}
+button.life-stack-btn:hover,button.life-habit-btn:hover,.life-habit .life-chip-row button.primary:hover,button.pt-focus:hover,.life-yesterday button.primary:hover{background:var(--ivory-1);border-color:var(--gold);box-shadow:none}
+
+/* ===== 30. 금고 카드 3층 (DS3, fin-feel vaultCardNode · V5 설계 2.5·2.8 f): 색은 1절 --lb-vault-* 토큰만(DS1 병합 뒤 DS1 변수로 바꿀 자리). 좁은 화면(≤420)은 1층만 펼치고 금괴 벽은 6열 ===== */
+.vault-v5 .vault-head-side{flex:1 1 auto;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;min-width:0;max-width:100%}
+.vault-help{min-width:0;text-align:right}
+.vault-help[open]{text-align:left}
+.vault-help>summary{list-style:none;cursor:pointer;display:inline-grid;place-items:center;width:26px;height:26px;border-radius:var(--lb-r-full);border:1px solid var(--lb-line);color:var(--lb-ink-3);font-size:14px;line-height:1}
+.vault-help>summary::-webkit-details-marker{display:none}
+.vault-help[open]{flex-basis:100%}
+.vault-help>p{margin:6px 0 0;overflow-wrap:anywhere}
+.vault-l1{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;margin:10px 0 12px;padding:12px 14px;border:2px solid var(--lb-vault-gold);border-radius:var(--lb-r-2);background:var(--lb-surface-solid);min-width:0}
+.vault-l1.over{border-color:var(--lb-vault-over-line)}
+.vault-l1-main{display:flex;flex-direction:column;gap:2px;min-width:0}
+.vault-l1-label{font-size:var(--lb-caption);color:var(--lb-ink-3)}
+.vault-l1-amount{font-size:40px;font-weight:800;letter-spacing:-.04em;line-height:1.15;color:var(--lb-ink-1);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.vault-l1-foot{font-size:var(--lb-caption);color:var(--lb-ink-3);overflow-wrap:anywhere}
+.vault-l1-over{margin:4px 0 0;font-weight:700;color:var(--lb-vault-over-line)}
+/* DSFIX S1: 이달 마이너스 — 큰 숫자 "−금액 초과"·테두리·빈 금괴 테두리를 빨강 계열(DS1 --danger)로 */
+.vault-l1.minus{border-color:var(--danger)}
+.vault-l1.minus .vault-l1-amount{color:var(--danger)}
+.vault-ingot.minus .vault-ingot-ivory{stroke:var(--danger);stroke-width:1.6}
+.vault-l1-side{display:flex;flex-direction:column;align-items:center;gap:8px;min-width:0}
+.vault-ingot .fin-svg{display:block;width:120px;max-width:100%;height:auto}
+.vault-metal-hi{stop-color:var(--lb-vault-gold-hi)}
+.vault-metal-mid{stop-color:var(--lb-vault-gold)}
+.vault-metal-lo{stop-color:var(--lb-vault-gold-deep)}
+.vault-ingot-ivory,.vault-wall-ivory{fill:var(--lb-vault-ivory);stroke:var(--lb-vault-gold-deep);stroke-width:1;stroke-linejoin:round}
+.vault-ingot-gold,.vault-wall-gold{stroke:var(--lb-vault-gold-shadow);stroke-width:.8;stroke-linejoin:round}
+.vault-ingot-shine{stroke:var(--lb-vault-gold-hi);stroke-width:2.4;stroke-linecap:round}
+.vault-ingot.over .vault-ingot-ivory{stroke:var(--lb-vault-over-line);stroke-width:1.6}
+.vault-ingot.unknown .vault-ingot-ivory,.vault-wall-brick.unknown .vault-wall-ivory{stroke-dasharray:3 2}
+.vault-wall-frame{fill:none;stroke:var(--lb-vault-gold);stroke-width:2.4}
+.vault-wall-brick.over .vault-wall-ivory{stroke:var(--lb-vault-over-line)}
+.vault-l2{margin:0 0 10px;min-width:0}
+.vault-l2-sum{display:flex;flex-direction:column;gap:2px;cursor:pointer;list-style:none;min-width:0}
+.vault-l2-sum::-webkit-details-marker{display:none}
+.vault-l2:not([open])>.vault-l2-sum::after{content:"▸ 금괴 벽 보기";font-size:var(--lb-caption);color:var(--lb-ink-3)}
+.vault-l2-label{font-size:var(--lb-caption);color:var(--lb-ink-3)}
+.vault-l2-amount{font-size:24px;font-weight:800;letter-spacing:-.03em;color:var(--lb-ink-1);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.vault-card[data-tone=over] .vault-l2-amount{color:var(--lb-bad)}
+.vault-wall{margin:8px 0 6px;min-width:0}
+.vault-wall .fin-svg{display:block;width:100%;height:auto}
+.swatch.vault-sw5-future{background:var(--lb-vault-gold)}
+.swatch.vault-sw5-today{background:var(--lb-vault-gold-hi);border:2px solid var(--lb-vault-gold)}
+.swatch.vault-sw5-past{background:var(--lb-vault-gold-deep)}
+.swatch.vault-sw5-spent{background:var(--lb-vault-ivory);border:1px solid var(--lb-vault-gold-deep)}
+.vault-more{margin:4px 0 0;min-width:0}
+.vault-more>summary{cursor:pointer;color:var(--lb-ink-2);font-weight:600}
+.vault-more-line{margin:4px 0 0;overflow-wrap:anywhere}
+@media(max-width:420px){.vault-l1{grid-template-columns:minmax(0,1fr);justify-items:start}.vault-l1-amount{font-size:32px}.vault-l1-side{flex-direction:row;flex-wrap:wrap}.vault-wall .fin-svg{max-width:100%}}

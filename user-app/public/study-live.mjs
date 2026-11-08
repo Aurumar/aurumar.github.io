@@ -8,6 +8,9 @@ import {BRICK_MINUTES,PIECE_MIN_MINUTES,SUBJECT_COLOR_KEYS,brickOf,sumBricks,kst
 import {XP} from './life-achieve.mjs';
 import {sessionMark} from './study-rebase.mjs';
 import {liveRoom} from './study-room.mjs';
+import {brickCells} from './study-room.mjs';   // DS1: 오늘 벽돌 칸(공부방 기둥과 같은 금 벽돌 스프라이트)
+import {TODAY_EFFECTS,todayStepsOf,stepRangeText,leftClockText} from './study-stage.mjs';   // DS5: 오늘 효과 5단계 띠
+import {roomScene,roomModel,reducedMotion} from './study-room.mjs';   // DS5: 띠 썸네일 = 실제 무대 렌더 함수
 
 const SEC_MS=1000,MIN_MS=60000;
 export const MAX_LIVE_MS=1440*MIN_MS;          // 24시간(저장 상한 1440분과 같다)
@@ -128,28 +131,41 @@ function maker(doc){
 }
 const r2=v=>Math.round(v*100)/100;
 // 벽돌 링: 한 바퀴 = 벽돌 1장(BRICK_MINUTES). PIECE_MIN_MINUTES마다 눈금, 조각 경계 눈금은 따로 표시. 매초 바뀌는 것은 채움의 stroke-dasharray와 가운데 글자뿐.
+// DS1 (설계 V5 §2.8 b): 채움은 금속 공식(deep 바깥 띠 · gold 몸 · hi 안쪽 선, 같은 비율), 가운데는 숫자 크게 + "벽돌" 작게.
 function brickRing(h,size){
   const {svg}=h,stroke=Math.max(6,Math.round(size/12)),r=(size-stroke)/2-2,mid=size/2,c=2*Math.PI*r;
   const n=svg('svg',{class:'live-ring',width:size,height:size,viewBox:'0 0 '+size+' '+size,role:'img'});
-  const fill=svg('circle',{class:'live-ring-fill',cx:mid,cy:mid,r:r2(r),'stroke-width':stroke,'stroke-dasharray':'0 '+r2(c),transform:'rotate(-90 '+mid+' '+mid+')'});
-  n.append(svg('circle',{class:'live-ring-track',cx:mid,cy:mid,r:r2(r),'stroke-width':stroke}),fill);
+  const band=(cls,rr,w)=>({node:svg('circle',{class:cls,cx:mid,cy:mid,r:r2(rr),'stroke-width':r2(w),'stroke-dasharray':'0 '+r2(2*Math.PI*rr),transform:'rotate(-90 '+mid+' '+mid+')'}),c:2*Math.PI*rr});
+  const fill=band('live-ring-fill',r,stroke),deep=band('live-ring-deep',r+stroke*.3,stroke*.4),hi=band('live-ring-hi',r-stroke*.3,Math.max(1,stroke*.18)),bands=[fill,deep,hi];
+  n.append(svg('circle',{class:'live-ring-track',cx:mid,cy:mid,r:r2(r),'stroke-width':stroke}),fill.node,deep.node,hi.node);
   for(let m=0;m<BRICK_MINUTES;m+=PIECE_MIN_MINUTES){
     const a=m/BRICK_MINUTES*2*Math.PI-Math.PI/2,i=r-stroke/2-1,o=r+stroke/2+1;
     n.append(svg('line',{class:'live-ring-tick'+(m===PIECE_MIN_MINUTES?' piece':''),x1:r2(mid+i*Math.cos(a)),y1:r2(mid+i*Math.sin(a)),x2:r2(mid+o*Math.cos(a)),y2:r2(mid+o*Math.sin(a))}));
   }
-  const label=svg('text',{class:'live-ring-text',x:mid,y:mid});n.append(label);
+  const num=svg('text',{class:'live-ring-text live-ring-num',x:mid,y:r2(mid-size*.05),'font-size':Math.round(size*.32)}),unit=svg('text',{class:'live-ring-text live-ring-unit',x:mid,y:r2(mid+size*.22),'font-size':Math.max(9,Math.round(size*.11))});
+  unit.textContent='벽돌';n.append(num,unit);
   const paint=s=>{
-    fill.setAttribute('stroke-dasharray',r2(c*s.part)+' '+r2(c));
+    for(const b of bands)b.node.setAttribute('stroke-dasharray',r2(b.c*s.part)+' '+r2(b.c));
     n.setAttribute('class','live-ring'+(s.gold?' gold':''));
-    label.textContent='벽돌 '+s.bricks+'장';
+    num.textContent=String(s.bricks);
     n.setAttribute('aria-label','이번 세션 벽돌 '+s.bricks+'장'+(s.pieces?' + 조각 1':'')+(s.gold?' · 금벽돌':''));
   };
   return {node:n,paint};
 }
+// DS1 (설계 V5 §2.3): 시계 = 시·분(굵게) · 콜론(1초 주기 1→0.6) · 초(같은 색 60%·가늘게). 색은 셋 다 --ink-900 하나. 좁은 화면은 2줄(시:분 / 초).
+// 글자 전체(textContent)는 여전히 HH:MM:SS 그대로다.
+function clockNode(h,text,cls){
+  const {el}=h,n=el('strong',null,cls),hm=el('span',null,'live-clock-hm'),hh=el('span',null,'live-clock-h'),mm=el('span',null,'live-clock-m'),ss=el('span',null,'live-clock-s');
+  hm.append(hh,el('span',':','live-colon'),mm);n.append(hm,el('span',':','live-colon live-colon-s'),ss);
+  const set=t=>{const [a,b,c]=String(t).split(':');hh.textContent=a??'';mm.textContent=b??'';ss.textContent=c??'';};
+  set(text);
+  return {node:n,set};
+}
+// DS1 (설계 V5 §2.8 a): 과목 칩 = 색 점 + 이름(채운 칩 아님).
 function subjectChip(h,subject){
   const {el,svg}=h,key=SUBJECT_COLOR_KEYS[String(subject?.color??'').toUpperCase()]??null;
-  const n=el('span',subject?.name??'과목','lb-chip selected live-subject'+(key?' lb-chip-'+key:''));
-  if(!key&&subject?.color){const dot=svg('svg',{class:'life-dot',width:10,height:10,viewBox:'0 0 10 10','aria-hidden':'true'}),c=svg('circle',{cx:5,cy:5,r:5,fill:subject.color});dot.append(c);n.replaceChildren(dot,subject.name);}
+  const n=el('span',subject?.name??'과목','lb-chip live-subject'+(key?' lb-chip-'+key:''));
+  if(!key&&subject?.color){const dot=svg('svg',{class:'life-dot',width:10,height:10,viewBox:'0 0 10 10','aria-hidden':'true'}),c=svg('circle',{cx:5,cy:5,r:5,fill:subject.color});dot.append(c);n.textContent='';n.append(dot,subject.name);n.className+=' lb-chip-custom';}
   return n;
 }
 const stateText=(t,s)=>t.endIso?'담기 대기 · 끝 시각이 적혔어요':s.clock.overDay||s.oldStart?'오래 켜진 타이머 · 끝내고 담기를 누르면 끝난 시각을 물어요':t.pausedAt?'휴식 중 '+msText(s.clock.restNowMs):'집중 중';
@@ -159,6 +175,39 @@ const bricksText=s=>'오늘 벽돌 '+s.bricks.bricks+'장'+(s.bricks.pieces?' + 
 const examText=e=>e?e.name+' '+(e.dDay===0?'D-DAY':'D-'+e.dDay):'시험 일정 없음';
 const restOver=(t,s)=>Boolean(t.pausedAt)&&!t.endIso&&s.clock.restMs+s.clock.restNowMs>REST_SPLIT_MS;
 
+// ---- DS5 (설계 V5 §2.2·§2.3): 오늘 효과 5단계 띠 + 시계 아래 한 줄 + 단계가 오르는 순간 초 숫자 1초 금색. 저장 0·그림 파일 추가 0(투영만) ----
+// 칸마다 작은 무대 = roomScene에 roomModel({todayMin: 그 단계 첫 분})만 넣어 그린다(실제 무대와 같은 함수). 평생 등급 그림은 지금 등급(grade) 고정.
+// thumbs=false면 썸네일 없이 글자 칸만(상태 화면). 좁은 화면(≤ 420px)은 CSS가 지금 단계 ±1칸만 보인다(먼 칸 = far). 반환 {node, paint(todayMs), scenes()}.
+export const EFFECT_FLASH_MS=1000;
+export function todayEffectStrip(doc,{grade=1,useArt=false,thumbs=true,cls=''}={}){
+  const {el,add}=maker(doc),list=el('ol',null,'ds5-strip');list.setAttribute('aria-label','오늘 효과 5단계');
+  const cells=TODAY_EFFECTS.map(e=>{const thumb=thumbs?el('div',null,'ds5-thumb'):null,left=el('span',null,'ds5-left'),li=add(el('li',null,'ds5-cell'),thumb,el('span',stepRangeText(e),'ds5-range'),el('span',e.label,'ds5-name'),left);add(list,li);return {e,li,thumb,left};});
+  const scenes=[];
+  if(thumbs)for(const c of cells){
+    const fx=todayEffectOf(c.e.fromMin),stage=el('div',null,'room-stage ds5-stage');
+    if(useArt){const fig=el('img',null,'st-fig-art live-fig');fig.alt='';fig.setAttribute('aria-hidden','true');fig.src=artFile(grade,fx.art);fig.addEventListener('error',()=>{fig.hidden=true;});add(stage,fig);}
+    const scene=roomScene(doc,{stage,wings:false,label:'오늘 효과 '+c.e.level+'단계'});scene.paint(roomModel({todayMin:c.e.fromMin,effectLevel:fx.level}));
+    add(c.thumb,scene.node);scenes.push(scene);
+  }
+  let key=null;
+  const paint=todayMs=>{
+    const p=todayStepsOf(todayMs),k=p.level+'|'+p.toNextSec;if(k===key)return p;key=k;
+    cells.forEach((c,i)=>{const st=p.steps[i].state;c.li.className='ds5-cell '+st+(Math.abs(c.e.level-p.level)>1?' far':'');c.li.setAttribute('aria-current',st==='now'?'step':'false');
+      c.left.textContent=st!=='now'?'':p.top?'오늘 최고 단계':'다음 단계까지 '+leftClockText(p.toNextSec);});
+    return p;
+  };
+  const node=add(el('section',null,'ds5-today'+(cls?' '+cls:'')),el('strong','오늘 효과 5단계','ds5-title'),list);
+  return {node,paint,scenes:()=>scenes};
+}
+export const effectLineText=p=>p.top?'오늘 최고 단계 · '+p.label:'다음 효과까지 '+leftClockText(p.toNextSec)+' · '+p.next.label;
+// 단계가 오른 순간: 보이는 시계들의 초 숫자(시계의 셋째 칸)에 그 단계 금색 class를 1초. 움직임 줄이기면 하지 않는다.
+function effectFlash(win,clocks,level,setT=globalThis.setTimeout){
+  if(reducedMotion(win))return;
+  const secs=clocks.map(c=>c?.node?.children?.[2]).filter(Boolean);
+  for(const n of secs)n.className='live-clock-s ds5-up ds5-up-'+level;
+  const id=setT(()=>{for(const n of secs)if(n.className==='live-clock-s ds5-up ds5-up-'+level)n.className='live-clock-s';},EFFECT_FLASH_MS);id?.unref?.();
+}
+
 // 작은 카드(오늘 화면 맨 위) + 덮개(open일 때). 단추 동작은 on.* (life-ui). 반환: {card, dialog, stop}.
 // on = {finish, pause, resume, expand, collapse, storage}. 덮개를 닫아도(작게 보기) 타이머는 멈추지 않는다. note = 덮개에 보일 한 줄(R42: 덮개가 오늘 화면의 안내를 가리므로).
 export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=null,goalBricks=null,note=null,on={}}){
@@ -167,38 +216,48 @@ export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=nu
   let s=read();
   const startDate=s.date,last={bricks:s.session.bricks,gold:s.session.gold};
 
-  // 작은 카드: HH:MM:SS + 링 + 펼치기
-  const miniClock=el('strong',s.clock.text,'live-clock live-mini-clock'),miniState=el('span',stateText(timer,s),'muted small live-mini-state'),miniRing=brickRing(h,64);
-  const card=add(el('section',null,'panel live-mini'+(timer.pausedAt?' resting':'')),miniRing.node,add(el('div',null,'live-mini-text'),el('span','STUDY LIVE · '+(subject?.name??'과목'),'eyebrow'),miniClock,miniState),
-    button('펼치기',()=>on.expand?.(),'primary live-expand'));
+  // 작은 카드: HH:MM:SS + 링 + 펼치기. DS1 (V5 §2.8 a·h): "STUDY LIVE" 작은 글자 대신 과목 칩(색 점 + 이름), 펼치기는 secondary(화면의 primary는 끝내고 담기 하나)
+  const miniClockP=clockNode(h,s.clock.text,'live-clock live-mini-clock'),miniClock=miniClockP.node,miniState=el('span',stateText(timer,s),'muted small live-mini-state'),miniRing=brickRing(h,64);
+  const card=add(el('section',null,'panel live-mini'+(timer.pausedAt?' resting':'')),miniRing.node,add(el('div',null,'live-mini-text'),subjectChip(h,subject),miniClock,miniState),
+    button('펼치기',()=>on.expand?.(),'secondary live-expand'));
   card.id='live-mini';
+  const miniStrip=todayEffectStrip(doc,{grade:s.roomInputs.stageNo,useArt:ctx.avatarArt??AVATAR_ART_READY,cls:'live-mini-effects'});miniStrip.paint(s.todayMs);add(card,miniStrip.node);   // DS5: 작게 보기 안 오늘 효과 띠
+  let effLevel=todayStepsOf(s.todayMs).level,effLine=null;   // DS5: 시계 아래 한 줄(덮개가 열렸을 때만)
 
   let dialog=null,parts=null,showT=null;
   if(open){
-    const clock=el('strong',s.clock.text,'live-clock'),state=el('p',stateText(timer,s),'live-state'+(timer.pausedAt?' resting':timer.endIso?' waiting':''));
+    const clockP=clockNode(h,s.clock.text,'live-clock'),clock=clockP.node,state=el('p',stateText(timer,s),'live-state'+(timer.pausedAt?' resting':timer.endIso?' waiting':''));
     clock.setAttribute('role','timer');clock.setAttribute('aria-label','이번 세션 공부 시간');
+    effLine=el('p',effectLineText(todayStepsOf(s.todayMs)),'live-effect');   // DS5: 큰 시계 아래 "다음 효과까지 h:mm:ss · 다음 단계 이름"
     const todaySec=el('span','오늘 '+hmsShort(s.todayMs),'muted small live-today-sec'),ring=brickRing(h,120);
     const next=el('p',nextText(s),'live-next'),gold=el('p',goldText(s),'live-gold'+(s.session.gold?' done':''));
     const todayChip=el('span','오늘 '+hmText(s.todayMin),'live-chip'),weekChip=el('span','이번 주 '+hmText(s.weekMin),'live-chip');
     const examChip=add(el('span',examText(s.exam),'live-chip live-dday'),s.exam?.status==='잠정'?el('span','잠정','life-badge'):null);
-    const bricks=el('p',bricksText(s),'live-bricks'),overlap=el('p',null,'notice live-overlap'),restNote=el('p','30분 넘게 쉬었어요 · 이어서를 누르면 앞부분을 먼저 담고 새로 시작해요','notice live-rest-over');
+    const bricks=el('p',bricksText(s),'live-bricks'),cellSlot=el('div',null,'live-brick-cells'),overlap=el('p',null,'notice live-overlap'),restNote=el('p','30분 넘게 쉬었어요 · 다시 집중을 누르면 앞부분을 먼저 담고 새로 시작해요','notice live-rest-over');
     const paintBands=()=>{overlap.textContent=s.overlapMin?'다른 기기에서 담은 타이머 '+s.overlapMin+'분이 지금 시간과 겹쳐요 · 끝낼 때 한쪽만 담으세요':'';overlap.hidden=!s.overlapMin;restNote.hidden=!restOver(timer,s);};
     paintBands();
+    // DS1 (V5 §2.8 d): "오늘 벽돌 n장 / 목표 m장" 옆 벽돌 칸(채움 비율). 값이 바뀔 때만 다시 만든다
+    let cellKey=null;
+    const paintCells=()=>{const k=s.bricks.value+'/'+s.bricks.goal;if(k===cellKey)return;cellKey=k;cellSlot.replaceChildren(brickCells(doc,{value:s.bricks.value,goal:s.bricks.goal}));};
+    paintCells();
     // 장면 자리(S1B가 공부방 레이어를 얹는다). 지금은 기존 아바타 그림만. 그림을 못 불러오면 그림만 숨긴다.
     const stage=el('div',null,'room-stage');
     let fig=null;
     if(ctx.avatarArt??AVATAR_ART_READY){fig=el('img',null,'st-fig-art live-fig');fig.alt='';fig.setAttribute('aria-hidden','true');fig.src=artFile(s.roomInputs.stageNo,s.roomInputs.art);fig.addEventListener('error',()=>{fig.hidden=true;});add(stage,fig);}
     const room=liveRoom(ctx,{stage,state:s,timer,draftCard});   // S1B: 그림 위 앞 겹 + 넓은 화면 좌우 날개(study-room). liveState는 읽기만 한다
-    const restBtn=timer.endIso?null:button(timer.pausedAt?'이어서':'휴식',()=>{if(timer.pausedAt)on.resume?.();else on.pause?.();},'secondary live-rest');
+    // DS1 (V5 §2.1·§2.8 h): primary는 끝내고 담기 하나(금속 채움, 64px·좁은 화면 56px), 휴식은 같은 높이 secondary, 작게 보기는 text. 폭 ≤ 420px이면 휴식·끝내고 담기는 하단 고정(lb-bottom-dock)
+    const restBtn=timer.endIso?null:button(timer.pausedAt?'이어서':'휴식',()=>{if(timer.pausedAt)on.resume?.();else on.pause?.();},'secondary live-rest lb-btn-pair');
+    if(restBtn&&timer.pausedAt){restBtn.setAttribute('data-face','다시 집중');restBtn.setAttribute('aria-label','이어서');}   // DS1B (V5 §2.1): 휴식 중 보이는 글자만 "다시 집중"(styles.css 30절 data-face). DOM 글자·이름표는 "이어서" 그대로, 누르면 휴식 해제 그대로
     const full=doc.fullscreenEnabled?button('전체 화면',()=>{void dialog.requestFullscreen?.()?.catch?.(()=>{});},'secondary live-full'):null;
     const close=button('×',()=>on.collapse?.(),'secondary live-close');close.setAttribute('aria-label','작게 보기');
     dialog=add(el('dialog',null,'live-dlg'+(timer.pausedAt?' resting':'')),
-      add(el('div',null,'live-top'),subjectChip(h,subject),el('span','STUDY LIVE','eyebrow'),topExtra?.(h)??null,full,close),
+      add(el('div',null,'live-top'),subjectChip(h,subject),topExtra?.(h)??null,full,close),
       add(el('div',null,'live-body'),room.node,add(el('div',null,'live-panel'),
-        state,clock,todaySec,
+        state,clock,effLine,todaySec,
         add(el('div',null,'live-ring-row'),ring.node,add(el('div',null,'live-ring-side'),next,gold)),
-        add(el('div',null,'live-chips'),todayChip,weekChip,examChip),bricks,overlap,restNote,note?el('p',note,'notice live-note'):null,
-        add(el('div',null,'live-actions'),restBtn,button('끝내고 담기',()=>on.finish?.(),'primary live-finish'),button('작게 보기',()=>on.collapse?.(),'secondary live-small')))));
+        add(el('div',null,'live-chips'),todayChip,weekChip,examChip),add(el('div',null,'live-bricks-row'),bricks,cellSlot),overlap,restNote,note?el('p',note,'notice live-note'):null,
+        add(el('div',null,'live-sub-actions'),button('작게 보기',()=>on.collapse?.(),'lb-btn-text live-small')),
+        add(el('div',null,'live-actions lb-bottom-dock'),restBtn,button('끝내고 담기',()=>on.finish?.(),'primary live-finish lb-btn-finish')))));
     dialog.setAttribute('aria-label','STUDY LIVE 집중 화면');
     ring.paint(s.session);
     // Esc = 작게 보기(덮개만 접음). PC Space = 휴식/이어서. 끝내고 담기는 단축키가 없다(실수 방지).
@@ -209,7 +268,7 @@ export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=nu
       e.preventDefault?.();if(timer.pausedAt)on.resume?.();else on.pause?.();
     });
     dialog.addEventListener('keyup',e=>{if(e?.key===' '){const tag=String(e.target?.tagName??'').toUpperCase();if(tag!=='INPUT'&&tag!=='SELECT'&&tag!=='TEXTAREA')e.preventDefault?.();}});   // 초점이 단추에 있어도 Space가 그 단추를 누르지 않게
-    parts={clock,state,todaySec,ring,next,gold,todayChip,weekChip,bricks,fig,paintBands,room};
+    parts={clock:clockP,state,todaySec,ring,next,gold,todayChip,weekChip,bricks,fig,paintBands,paintCells,room};
     // 화면에 붙은 뒤에 모달로 띄운다(붙기 전에는 showModal을 부를 수 없다)
     const show=()=>{if(dialog.isConnected!==false&&!dialog.open){try{dialog.showModal?.();}catch{/* 이미 열림 등 */}}};
     showT=globalThis.setTimeout(show,0);showT?.unref?.();
@@ -222,11 +281,12 @@ export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=nu
     const iso=String(ctx.now());
     if(kstDate(iso)!==startDate){stopAll();void ctx.rerender?.();return;}   // 자정을 넘기면 오늘 카드부터 다시 읽는다
     s=read();
-    miniClock.textContent=s.clock.text;miniState.textContent=stateText(timer,s);miniRing.paint(s.session);
+    miniClockP.set(s.clock.text);miniState.textContent=stateText(timer,s);miniRing.paint(s.session);
+    {const p=miniStrip.paint(s.todayMs);if(effLine)effLine.textContent=effectLineText(p);if(p.level>effLevel)effectFlash(win,[miniClockP,parts?.clock],p.level);effLevel=p.level;}   // DS5
     if(parts){
-      parts.clock.textContent=s.clock.text;parts.state.textContent=stateText(timer,s);parts.todaySec.textContent='오늘 '+hmsShort(s.todayMs);
+      parts.clock.set(s.clock.text);parts.state.textContent=stateText(timer,s);parts.todaySec.textContent='오늘 '+hmsShort(s.todayMs);
       parts.ring.paint(s.session);parts.next.textContent=nextText(s);parts.gold.textContent=goldText(s);parts.gold.className='live-gold'+(s.session.gold?' done':'');
-      parts.todayChip.textContent='오늘 '+hmText(s.todayMin);parts.weekChip.textContent='이번 주 '+hmText(s.weekMin);parts.bricks.textContent=bricksText(s);parts.paintBands();
+      parts.todayChip.textContent='오늘 '+hmText(s.todayMin);parts.weekChip.textContent='이번 주 '+hmText(s.weekMin);parts.bricks.textContent=bricksText(s);parts.paintBands();parts.paintCells();
       if(parts.fig&&!parts.fig.hidden){const src=artFile(s.roomInputs.stageNo,s.roomInputs.art);if(parts.fig.src!==src&&!String(parts.fig.src).endsWith('/'+src))parts.fig.src=src;}
       parts.room.update(s);
     }

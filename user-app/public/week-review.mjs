@@ -9,7 +9,8 @@ import {achieve,hasVisibleText} from './life-achieve.mjs';
 import {mondayOf,weekSummary,rateText,planErrorText,unknownOutcome,PLAN_NOTICE_TEXT,maker} from './life-plan.mjs';
 import {weekMinutes,hoursText} from './study-stats.mjs';
 import {habitWindow} from './state-export.mjs';
-import {saveWeekReview} from './life-quest.mjs';
+import {saveWeekReview,sealedLeftText,SEALED_SAME_TEXT} from './life-quest.mjs';
+import {stable} from './life-rebase.mjs';
 import {chipLabel,clipGraphemes} from './diary-ui.mjs';
 
 export const TOP_CHIPS=3,MAX_CHOICES=20,LOW_AVG=2,LOW_MIN_DAYS=3,EVENING_HOUR=18;
@@ -127,7 +128,8 @@ export function openWeekReview(ctx,{monday=null,today=null}={}){
   let week=monday&&monday<=cur?monday:defaultReviewMonday(day0),busy=false;
   const drafts=new Map();   // 주별 이 시트 메모리(연산 0). base = 열 때 저장돼 있던 값(3자 병합의 기준)
   const draftOf=m=>{
-    if(!drafts.has(m)){const row=reviewRow(ctx.getWhole().life??null,m),base=row?structuredClone(row.data):null;drafts.set(m,{base,pick:base?.pick??null,next:base?.next??'',open:false,message:null,error:false,notices:[]});}
+    // own = 이 시트가 만든 봉인 초안 id, sealedAs = 마지막으로 봉인한 값(FIX53A HQ1·HQ2b)
+    if(!drafts.has(m)){const row=reviewRow(ctx.getWhole().life??null,m),base=row?structuredClone(row.data):null;drafts.set(m,{base,pick:base?.pick??null,next:base?.next??'',open:false,message:null,error:false,notices:[],own:[],sealedAs:null});}
     return drafts.get(m);
   };
   const body=el('div',null,'wr-body');
@@ -188,15 +190,17 @@ export function openWeekReview(ctx,{monday=null,today=null}={}){
     const d=draftOf(m),mine=reviewData(m,d.pick,d.next);
     try{validateLifeData('WEEK_REVIEW',m,mine);}catch(e){say(d,planErrorText(e?.code),true);draw();return;}
     if(!d.base&&mine.pick===null&&!hasVisibleText(mine.next)){say(d,WR.empty,false);draw();return;}   // 비어 있으면 기록을 만들지 않는다(연산 0)
+    if(d.sealedAs!==null&&stable(mine)===d.sealedAs){say(d,SEALED_SAME_TEXT,false);draw();return;}   // HQ2b: 봉인한 값 그대로면 다시 봉인하지 않는다(연산 0)
     busy=true;
     const run=async()=>{
       let r;
-      try{r=await saveWeekReview(ctx,{monday:m,base:d.base,mine});}
+      try{r=await saveWeekReview(ctx,{monday:m,base:d.base,mine,own:d.own});}
       catch(e){say(d,planErrorText(e?.code),true);draw();if(unknownOutcome(e?.code))throw e;return;}
-      if(r.sealed){say(d,PLAN_NOTICE_TEXT.RECORD_LOCAL_DRAFT,true);draw();return;}   // 임시 저장: 저장됐다고 말하지 않고 입력을 남긴다
+      if(r.sealed){d.sealedAs=stable(mine);say(d,PLAN_NOTICE_TEXT.RECORD_LOCAL_DRAFT+(r.sealedLeft?' · '+sealedLeftText(r.sealedLeft):''),false);draw();return;}   // 임시 저장: 저장됐다고 말하지 않고 입력을 남긴다(오류 모양 아님, HQ2b)
+      d.sealedAs=null;
       const row=reviewRow(ctx.getWhole().life??null,m),now=row?structuredClone(row.data):r.data?structuredClone(r.data):d.base;
       if(now){d.base=now;d.pick=now.pick;d.next=now.next;}
-      say(d,r.status==='SAVED'?WR.saved:WR.same,false);d.notices=(r.notices??[]).filter(n=>PLAN_NOTICE_TEXT[n.code]);
+      say(d,r.status==='SAVED'?WR.saved:r.sealedLeft?sealedLeftText(r.sealedLeft):WR.same,false);d.notices=(r.notices??[]).filter(n=>PLAN_NOTICE_TEXT[n.code]);   // HQ1: 지우지 못한 이 시트의 봉인 초안이 남으면 그 사실을 말한다
       draw();await ctx.rerender?.();
     };
     try{if(ctx.perform)await ctx.perform(run);else await run();}finally{busy=false;}

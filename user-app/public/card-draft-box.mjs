@@ -77,7 +77,10 @@ const touchedOf=(t,b)=>{
   return {touched,...(ok.length?{bases:Object.fromEntries(ok.map(k=>[k,structuredClone(b[k])]))}:{})};
 };
 // 두 창의 초안을 합친 본문은 양쪽이 바꾼 칸을 모두 바꾼 것으로 본다. 한쪽이라도 목록이 없으면 목록 없음.
-const touchedUnion=(a,b)=>Array.isArray(a)&&Array.isArray(b)?touchedOf([...a,...b]):{};
+// FIX53C (HUNT52 HC1): 두 초안의 expectedHeads가 같으면 base 값은 같은 판의 값이므로 합친다(같은 칸 값이 서로 다르면 그 칸만 버림). heads가 다르면 버린다(예전 규칙).
+const sameHeads=(a,b)=>Array.isArray(a)&&Array.isArray(b)&&sameVal([...a].sort(),[...b].sort());
+const basesUnion=(a,b)=>{const out={},bad=new Set();for(const x of [a,b])for(const [k,v] of Object.entries(x??{})){if(!Object.hasOwn(out,k))out[k]=v;else if(!sameVal(out[k],v))bad.add(k);}for(const k of bad)delete out[k];return out;};
+const touchedUnion=(a,b,bs=null)=>Array.isArray(a)&&Array.isArray(b)?touchedOf([...a,...b],bs?basesUnion(bs.mine,bs.disk):null):{};
 
 const KEY_ID='key',UNREADABLE_PREFIX='UNREADABLE|',FLUSH_ROUNDS=8;
 const SCOPE_RE=/^v1:[A-Za-z0-9_-]{1,128}:[A-Za-z0-9_-]{1,128}$/,DATE_RE=/^\d{4}-\d{2}-\d{2}$/;
@@ -440,8 +443,9 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
           if(was?.stale&&!was.deleted&&mergeRule){
             try{
               fresh=await onChain(async()=>{const {row,key}=await readRow(id);return {row,opened:row?await open(row,key):null};});
-              if(fresh.opened?.draft){const m=await mergedBody(draft.body,fresh.opened.draft.body,was.known);draft.body=structuredClone(m.body);notes=m.notices;
-                delete draft.touched;delete draft.bases;Object.assign(draft,touchedUnion(touched,fresh.opened.draft.touched));}   // FIX50A: 합친 본문은 양쪽이 바꾼 칸(FIX52C: base 값은 버린다 = 예전 규칙)
+              if(fresh.opened?.draft){const od=fresh.opened.draft,same=sameHeads(draft.body.expectedHeads,od.body.expectedHeads),mb=draft.bases;
+                const m=await mergedBody(draft.body,od.body,was.known);draft.body=structuredClone(m.body);notes=m.notices;
+                delete draft.touched;delete draft.bases;Object.assign(draft,touchedUnion(touched,od.touched,same?{mine:mb,disk:od.bases}:null));}   // FIX50A: 합친 본문은 양쪽이 바꾼 칸(FIX53C: heads가 같을 때만 base 값을 합침, 다르면 버림 = 예전 규칙)
             }catch{throw refuse('CARD_DRAFT_MERGE_FAILED');}
             if(mem.get(id)!==was){input.rebased();throw fail('CARD_DRAFT_STALE_BASE');}   // 합치는 동안 이 창의 다른 입력이 먼저 저장됐다
             if(input.stale())return superseded();

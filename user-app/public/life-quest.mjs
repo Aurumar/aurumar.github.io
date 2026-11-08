@@ -75,7 +75,41 @@ async function dropSealed(ctx,type,id,out){
   reg.delete(key);
   return gone?{...out,discarded:gone}:out;
 }
-async function saveRecord(ctx,type,id,{base=null,mine},reason){
+// FIX53A (HUNT52 HQ1·HQ2): 주간 리뷰·목표·모의고사 시트는 자기가 만든 봉인 초안 id만 own(시트가 넘기는 배열)에 기억한다.
+// 같은 시트에서 금고 값으로 되돌려 저장하면(ALREADY_APPLIED) own의 id만 지운다. 다른 시트·재시작 뒤의 초안은 건드리지 않는다(HUNT51 HB1 재발 0).
+// 같은 시트에서 같은 기록을 다시 봉인하면 새 초안 저장이 끝난 뒤 이 시트의 옛 초안(own)만 지운다(새 초안이 대신, 시트가 그 값을 들고 있음).
+// FIX55A (HUNT53 HQ5·HQ6-b·HU1): 다른 시트·재시작 전·옛 빌드가 만든 같은 기록 초안은 지우지 않는다. 새 시트는 금고 값에서 시작해 그 초안의 칸을 모르므로
+// 대신하면 그 칸이 말없이 사라진다. 남겨 두면 승인 때 sealBase로 병합되거나 SEALED_CONFLICT로 금고 값과 초안이 모두 지켜진다(FIX54).
+const SHEET_TYPES=new Set(['WEEK_REVIEW','PLAN_GOAL','EXAM_RESULT']);
+export const sealedLeftText=n=>'임시 저장 '+n+'건이 남아 있어요 · 승인하면 고르기가 나올 수 있어요';   // FIX61Q: 남은 초안이 같은 칸이면 승인이 바로 바꾸지 않고 고르기(지금 기록·임시 저장 내용)를 보인다
+export const SEALED_SAME_TEXT='이미 임시 저장했어요 · 연결 · 장치에서 승인하면 쌓여요';
+// 앞에서부터 지운다. 이미 없는 초안은 지운 것으로 본다. 처음 실패한 곳에서 멈추고 지운 수를 돌려준다(남은 것은 그대로 남는다).
+async function discardIds(ctx,ids){
+  let n=0;
+  for(const draftId of ids){try{await ctx.api('/api/md/draft-discard',{draftId,confirmed:true});}catch(e){if(e?.code!=='MD_DRAFT_NOT_FOUND')break;}n++;}
+  return n;
+}
+async function dropOwn(ctx,own,out){
+  if(!Array.isArray(own)||!own.length||typeof ctx.api!=='function')return out;
+  const n=await discardIds(ctx,own);own.splice(0,n);
+  return {...out,...(n?{discarded:n}:{}),...(own.length?{sealedLeft:own.length}:{})};
+}
+// 이 기기 저널의 같은 기록 봉인 초안 id(draft-list의 entity 칸, 값 없음). 저널 목록 통로가 없거나 읽지 못하면 null.
+async function journalIds(ctx,type,id){
+  if(typeof ctx.canDrafts!=='function'||!ctx.canDrafts()||typeof ctx.api!=='function')return null;
+  try{const r=await ctx.api('/api/md/draft-list',{});return r.drafts.filter(d=>d.status==='LOCAL_DRAFT'&&d.entity?.type===type&&d.entity?.id===id).map(d=>d.draftId);}catch{return null;}
+}
+// 돌려주는 sealedLeft = 새 초안 말고 남은 같은 기록 초안 수(이 기기 저널, 목록을 못 읽으면 지우지 못한 own). 시트는 "임시 저장 n건이 남아 있어요"로 알린다.
+async function replaceSealed(ctx,type,id,draftId,own){
+  if(!SHEET_TYPES.has(type)||typeof draftId!=='string')return {};
+  const old=Array.isArray(own)?own.filter(x=>x!==draftId):[];
+  const n=old.length&&typeof ctx.api==='function'?await discardIds(ctx,old):0,left=old.slice(n);
+  if(Array.isArray(own))own.splice(0,own.length,...left,draftId);
+  const rest=((await journalIds(ctx,type,id))??left).filter(x=>x!==draftId);
+  return {...(n?{replaced:n}:{}),...(rest.length?{sealedLeft:rest.length}:{})};
+}
+const dropFor=(ctx,type,id,own,out)=>type===SEAL_DROP_TYPE?dropSealed(ctx,type,id,out):dropOwn(ctx,own,out);
+async function saveRecord(ctx,type,id,{base=null,mine,own=null},reason){
   const whole=ctx.getWhole();
   requireRecordsDoor({life:whole.life,study:whole.study,storage:storageOf(ctx)});
   validateLifeData(type,id,mine);
@@ -85,22 +119,40 @@ async function saveRecord(ctx,type,id,{base=null,mine},reason){
     if(type!=='GAME_PROFILE'&&stable(latest)!==stable(base)){   // 칭호는 값 하나라 나중 저장이 남는다
       const rb=rebaseRecord(type,{id,base,mine,latest});
       if(rb.status==='REJECTED')throw recordError(rb.code);
-      if(rb.status==='ALREADY_APPLIED')return dropSealed(ctx,type,id,{status:'ALREADY_APPLIED',notices:rb.notices});
+      if(rb.status==='ALREADY_APPLIED')return dropFor(ctx,type,id,own,{status:'ALREADY_APPLIED',notices:rb.notices});
       data=rb.data;notices=rb.notices;
-    }else if(latest&&stable(latest)===stable(mine))return dropSealed(ctx,type,id,{status:'ALREADY_APPLIED',notices:[]});
-    if(!latest&&recordEmpty(type,data))return dropSealed(ctx,type,id,{status:'ALREADY_APPLIED',notices});   // 없는 기록을 빈 채로 만들지 않는다
+    }else if(latest&&stable(latest)===stable(mine))return dropFor(ctx,type,id,own,{status:'ALREADY_APPLIED',notices:[]});
+    if(!latest&&recordEmpty(type,data))return dropFor(ctx,type,id,own,{status:'ALREADY_APPLIED',empty:true,notices});   // 없는 기록을 빈 채로 만들지 않는다(empty: 시트가 "적은 … 없어" 문구를 고른다, HQ4)
     let w;
-    try{w=await ctx.entity(type,id,data,row?[...row.heads]:[],reason);}
+    // FIX54 (HUNT52 HQ3): 세 종류는 쓰기 직전 금고 값(latest = expectedHeads 판의 값)을 sealBase로 함께 넘긴다. 임시 저장이면 초안에 들어가 승인 때 md-backend가 3자 병합에 쓴다(정상 저장이면 쓰지 않음).
+    // 앱 ctx에 entityWithBase가 없으면(시험·옛 포트) 지금처럼 entity로 쓴다.
+    const based=SHEET_TYPES.has(type)&&typeof ctx.entityWithBase==='function';
+    try{w=await (based?ctx.entityWithBase(type,id,data,row?[...row.heads]:[],reason,latest):ctx.entity(type,id,data,row?[...row.heads]:[],reason));}
     catch(e){if(e?.code==='STALE_HEADS'&&attempt<3&&ctx.reload){await ctx.reload();continue;}throw e;}
-    if(w?.status==='LOCAL_DRAFT'){rememberSealed(ctx,type,id,w);return {status:'SAVED',sealed:true,notices:[...notices,{code:'RECORD_LOCAL_DRAFT'}],data};}
+    if(w?.status==='LOCAL_DRAFT'){rememberSealed(ctx,type,id,w);return {status:'SAVED',sealed:true,notices:[...notices,{code:'RECORD_LOCAL_DRAFT'}],data,...await replaceSealed(ctx,type,id,w.draftId,own)};}
     return {status:'SAVED',notices,data};
   }
   throw recordError('STALE_HEADS');
 }
-export function savePlanGoal(ctx,{monday,base,mine}){return saveRecord(ctx,'PLAN_GOAL',monday,{base,mine},'주간 목표 저장');}
-export function saveExamResult(ctx,{id,base,mine}){return saveRecord(ctx,'EXAM_RESULT',id,{base,mine},'모의고사 결과 저장');}
+export function savePlanGoal(ctx,{monday,base,mine,own}){return saveRecord(ctx,'PLAN_GOAL',monday,{base,mine,own},'주간 목표 저장');}
+export function saveExamResult(ctx,{id,base,mine,own}){return saveRecord(ctx,'EXAM_RESULT',id,{base,mine,own},'모의고사 결과 저장');}
 export function saveGameProfile(ctx,titleId){return saveRecord(ctx,'GAME_PROFILE',GAME_PROFILE_ID,{mine:{titleId}},'칭호 저장');}
-export function saveWeekReview(ctx,{monday,base,mine}){return saveRecord(ctx,'WEEK_REVIEW',monday,{base,mine},'주간 리뷰 저장');}   // 사유는 고정 문구만(이력에 그대로 보인다)
+export function saveWeekReview(ctx,{monday,base,mine,own}){return saveRecord(ctx,'WEEK_REVIEW',monday,{base,mine,own},'주간 리뷰 저장');}   // 사유는 고정 문구만(이력에 그대로 보인다)
+// 연결 · 장치의 임시 저장 줄 이름(FIX53A): 기록 종류와 주만 보인다(값은 싣지 않음). draft-list의 entity 칸이 없으면 null(앱이 옛 이름을 쓴다).
+const shortDay=d=>Number(d.slice(5,7))+'/'+Number(d.slice(8,10));
+export function sealedDraftLabel(d){
+  const t=d?.entity?.type,id=String(d?.entity?.id??''),week=/^\d{4}-\d{2}-\d{2}$/.test(id)?' · '+shortDay(id)+' 주':'';
+  const name=t==='WEEK_REVIEW'?'주간 리뷰'+week:t==='PLAN_GOAL'?'과목 목표'+week:t==='EXAM_RESULT'?'모의고사 결과':t==='GAME_PROFILE'?'칭호':null;
+  return name&&d.preUpdate===true?name+PRE_UPDATE_LABEL:name;   // FIX58Q (HU2): 업데이트 전 빌드가 만든 초안(sealBase 없음, draft-list preUpdate)은 같은 기록의 새 초안과 이름을 구별한다
+}
+export const PRE_UPDATE_LABEL=' · 업데이트 전 임시 저장';
+// FIX59Q (HU57-2): 사용자가 고르는 충돌 줄에 보이는 초안 내용(승인 응답 draftFields = 적용하면 바뀔 칸과 그 값). 이 기기 화면에만 보이고 목록·알림 경로로 나가지 않는다.
+const FIELD_NAME={pick:'고른 문장',next:'다음 주 한 가지',goals:'과목 목표',takenOn:'응시일',scores:'점수'};
+const rowText=x=>x&&typeof x==='object'?[x.subjectId,x.bricks??x.raw??x.grade].filter(y=>y!==undefined&&y!==null).join(' '):String(x);
+const fieldText=v=>v===null||v===undefined?'없음':Array.isArray(v)?(v.length?v.map(rowText).join(', '):'없음'):typeof v==='object'?String(v.text??v.date??''):String(v);
+export function sealedFieldsText(fields){
+  return Array.isArray(fields)&&fields.length?'임시 저장 내용: '+fields.map(f=>(FIELD_NAME[f.field]??f.field)+' '+fieldText(f.value)).join(' · '):'임시 저장 내용: 바뀐 칸 없음';   // 화면 글자는 FIX45-3a 금지 낱말을 쓰지 않는다
+}
 
 // ---- 칭호 고르기 저장(FIX46C, D46 2.5): 쓰기 문이 열려 있으면 금고(GAME_PROFILE)에 저장해 네 기기가 같은 칭호를 쓴다. 닫혀 있으면 지금처럼 이 기기에만 저장한다 ----
 export const TITLE_DEVICE_NOTE='이 기기에만 저장돼요 · 네 기기를 올리고 새 기록을 켜면 같은 칭호를 써요';
@@ -159,17 +211,27 @@ const num=v=>Number.isInteger(v)?String(v):v.toFixed(1);
 export const brickText=v=>{const min=v*30,h=Math.floor(min/60),m=min%60;return num(v)+'장 ('+[h?h+'시간':null,m?m+'분':null].filter(Boolean).join(' ')+')';};
 const noticeOf=n=>PLAN_NOTICE_TEXT[n.code]?n:null;
 // 시트 저장 공통: 닫고 저장한 뒤 성공이면 알림을 넘긴다. 오류·임시 저장은 입력을 남긴 채 같은 시트를 다시 연다(savePlanDay 시트와 같은 방식). 결과를 모르면 앱의 perform으로 넘긴다.
-function saveFromSheet(ctx,{title,body,err,close,run,done,report}){
+// 시트 아래 문구 한 줄. error=false면 오류 모양(error 클래스)을 빼고 안내 모양으로 보인다(FIX53A HQ2b: 임시 저장은 오류가 아니다).
+function sheetNote(err,text,error=true){
+  const cls=String(err.className??'').split(' ').filter(c=>c&&c!=='error');
+  if(error)cls.splice(1,0,'error');
+  err.className=cls.join(' ');err.textContent=text;err.hidden=false;
+}
+// sealed(mine) = 임시 저장이 끝났을 때 부른다(시트가 같은 값의 다시 봉인을 막는 데 쓴다).
+function saveFromSheet(ctx,{title,body,err,close,run,done,report,sealed=null}){
   close();
   void ctx.perform(async()=>{
-    const reopen=text=>{err.textContent=text;err.hidden=false;if(!ctx.locked?.())ctx.sheet?.(title,body);};
+    const reopen=(text,error=true)=>{sheetNote(err,text,error);if(!ctx.locked?.())ctx.sheet?.(title,body);};
     let r;
     try{r=await run();}
     catch(e){await ctx.rerender();reopen(planErrorText(e?.code));if(unknownOutcome(e?.code))throw e;return;}
-    if(r.sealed){await ctx.rerender();reopen(PLAN_NOTICE_TEXT.RECORD_LOCAL_DRAFT);return;}
+    if(r.sealed){sealed?.();await ctx.rerender();reopen(PLAN_NOTICE_TEXT.RECORD_LOCAL_DRAFT+(r.sealedLeft?' · '+sealedLeftText(r.sealedLeft):''),false);return;}
     report(done(r),false,r.notices.filter(noticeOf));await ctx.rerender();
   });
 }
+// ALREADY_APPLIED 문구: 지우지 못한 이 시트의 봉인 초안이 남았으면 그 사실을 먼저 말한다(HQ1). 빈 기록은 "적은 … 없어"(HQ4).
+const sameText=(r,same,empty)=>r.sealedLeft?sealedLeftText(r.sealedLeft):r.empty?empty:same;
+export const GOAL_EMPTY_TEXT='적은 목표가 없어 저장하지 않았어요',EXAM_EMPTY_TEXT='적은 점수가 없어 저장하지 않았어요';
 
 // ----- 과목 주간 목표(D46 6.1) -----
 export const goalRow=(life,monday)=>(life?.goals??[]).find(x=>x.id===monday)??null;
@@ -205,13 +267,15 @@ function openGoalSheet(ctx,{monday,subjects,names,report}){
   };
   draw();
   const title='과목 목표 · '+Number(monday.slice(5,7))+'/'+Number(monday.slice(8,10))+' 주';
-  let dlg=null;
+  let dlg=null,sealedAs=null;const own=[];   // FIX53A: 이 시트가 만든 봉인 초안 id, 마지막으로 봉인한 값
   const like=button('지난주처럼',()=>{values.clear();for(const g of last.goals)values.set(g.subjectId,g.bricks);err.hidden=true;draw();},'secondary pw-goal-last');
   if(!last?.goals.length){like.disabled=true;like.setAttribute('aria-disabled','true');}
   const save=button('저장',()=>{
     const mine={monday,goals:ids().filter(id=>values.has(id)).map(id=>({subjectId:id,bricks:values.get(id)}))};
-    try{validateLifeData('PLAN_GOAL',monday,mine);}catch(e){err.textContent=planErrorText(e?.code);err.hidden=false;return;}
-    saveFromSheet(ctx,{title,body,err,close:()=>dlg?.close?.(),run:()=>savePlanGoal(ctx,{monday,base,mine}),done:r=>r.status==='SAVED'?'과목 목표를 저장했습니다.':'이미 같은 목표가 저장되어 있습니다.',report});
+    try{validateLifeData('PLAN_GOAL',monday,mine);}catch(e){sheetNote(err,planErrorText(e?.code));return;}
+    if(sealedAs!==null&&stable(mine)===sealedAs){sheetNote(err,SEALED_SAME_TEXT,false);return;}   // HQ2b: 같은 값을 다시 봉인하지 않는다
+    saveFromSheet(ctx,{title,body,err,close:()=>dlg?.close?.(),run:()=>savePlanGoal(ctx,{monday,base,mine,own}),sealed:()=>{sealedAs=stable(mine);},
+      done:r=>{sealedAs=null;return r.status==='SAVED'?'과목 목표를 저장했습니다.':sameText(r,'이미 같은 목표가 저장되어 있습니다.',GOAL_EMPTY_TEXT);},report});
   },'primary pw-goal-save');
   add(body,el('p','과목마다 0.5장씩 정합니다 · 1장 = 30분 · 없음은 저장하지 않습니다','muted small'),add(el('div',null,'buttons'),like,save),err,rows);
   dlg=ctx.sheet?.(title,body)??null;
@@ -263,33 +327,42 @@ export function renderExamResults(ctx,{exams,today,report}){
 function openExamSheet(ctx,{exams,today,report,id=null}){
   const h=maker(ctx.document??globalThis.document),{el,add,button}=h,life=ctx.getWhole().life??null,results=life?.results??[],defs=lifeDefs(life),{all,first}=examChoices(exams,results,today);
   const body=el('div',null,'pt-sheet plan-result-sheet'),err=el('p',null,'notice error plan-result-error'),picks=el('div',null,'pt-chips plan-result-picks'),form=el('div',null,'plan-result-form');err.hidden=true;
-  let pick=all.find(x=>x.id===id)??first,dlg=null,read=null;
+  let pick=all.find(x=>x.id===id)??first,dlg=null,read=null,keep=null;
+  // FIX55A (HUNT53 HQ6-a): 시험(칩)마다 이 시트에 적은 칸 글자를 기억한다(메모리만). 칩을 오가도 금고 값으로 다시 그리지 않아,
+  // 봉인 값이 화면에서 사라지거나 그 상태의 [저장]이 "되돌림"으로 오판되어 봉인 초안을 지우는 일이 없다. 금고 값으로 직접 고친 것만 되돌림이다.
+  const kept=new Map();
   const title='모의고사 결과';
   const draw=()=>{
     picks.replaceChildren();form.replaceChildren();err.hidden=true;
-    for(const x of all){const b=button(x.name.replace(/\(.*\)/,''),()=>{pick=x;draw();},'lb-chip plan-result-pick'+(x.id===pick?.id?' selected':''));b.setAttribute('aria-pressed',String(x.id===pick?.id));b.dataset.examId=x.id;add(picks,b);}
-    if(!pick){add(form,el('p','시험 일정이 없습니다. 오늘 탭의 습관 편집에서 추가하세요.','muted small'));read=null;return;}
-    const row=results.find(r=>r.id===pick.id)??null,old=new Map((row?.data.scores??[]).map(s=>[s.subjectId,s]));
+    for(const x of all){const b=button(x.name.replace(/\(.*\)/,''),()=>{keep?.();pick=x;draw();},'lb-chip plan-result-pick'+(x.id===pick?.id?' selected':''));b.setAttribute('aria-pressed',String(x.id===pick?.id));b.dataset.examId=x.id;add(picks,b);}
+    if(!pick){add(form,el('p','시험 일정이 없습니다. 오늘 탭의 습관 편집에서 추가하세요.','muted small'));read=null;keep=null;return;}
+    const row=results.find(r=>r.id===pick.id)??null,old=new Map((row?.data.scores??[]).map(s=>[s.subjectId,s])),mem=kept.get(pick.id)??null;
     const ids=[...new Set([...defs.subjects.filter(s=>s.exam&&!s.hidden).map(s=>s.id),...old.keys()])],names=new Map(defs.subjects.map(s=>[s.id,s.name]));
-    const date=el('input');date.type='text';date.value=row?.data.takenOn??pick.date;date.setAttribute('maxlength','10');date.setAttribute('inputmode','numeric');date.setAttribute('aria-label','시험 본 날');date.disabled=pick.examId===null;   // 일정 밖 시험은 날짜가 곧 기록 이름이라 고치지 않는다
+    const date=el('input');date.type='text';date.value=mem?mem.date:row?.data.takenOn??pick.date;date.setAttribute('maxlength','10');date.setAttribute('inputmode','numeric');date.setAttribute('aria-label','시험 본 날');date.disabled=pick.examId===null;   // 일정 밖 시험은 날짜가 곧 기록 이름이라 고치지 않는다
     add(form,add(el('label',null,'plan-result-date'),el('span','시험 본 날'),date));
     const table=el('table',null,'plan-result-table'),headRow=el('tr'),cells=new Map();
     add(headRow,el('th','과목'),...SCORE_FIELDS.map(([,t])=>el('th',t)));add(table,headRow);
     for(const sid of ids){
       const tr=el('tr'),slot={};tr.dataset.subjectId=sid;add(tr,el('th',names.get(sid)??'기타'));
-      for(const [k,t] of SCORE_FIELDS){const n=el('input');n.type='text';n.setAttribute('inputmode','numeric');n.setAttribute('maxlength','3');n.setAttribute('aria-label',(names.get(sid)??'기타')+' '+t);n.dataset.field=k;n.value=old.get(sid)?.[k]??'';slot[k]=n;add(tr,add(el('td'),n));}
+      for(const [k,t] of SCORE_FIELDS){const n=el('input');n.type='text';n.setAttribute('inputmode','numeric');n.setAttribute('maxlength','3');n.setAttribute('aria-label',(names.get(sid)??'기타')+' '+t);n.dataset.field=k;n.value=mem?mem.cells.get(sid)?.[k]??'':old.get(sid)?.[k]??'';slot[k]=n;add(tr,add(el('td'),n));}
       cells.set(sid,slot);add(table,tr);
     }
     add(form,table);
-    read=()=>({base:row?structuredClone(row.data):null,mine:{examId:pick.examId,takenOn:date.value.trim(),scores:scoresFrom([...cells].map(([sid,slot])=>[sid,Object.fromEntries(SCORE_FIELDS.map(([k])=>[k,slot[k].value]))]))}});
+    const texts=()=>[...cells].map(([sid,slot])=>[sid,Object.fromEntries(SCORE_FIELDS.map(([k])=>[k,slot[k].value]))]);
+    const at=pick.id;keep=()=>kept.set(at,{date:date.value,cells:new Map(texts())});
+    read=()=>({base:row?structuredClone(row.data):null,mine:{examId:pick.examId,takenOn:date.value.trim(),scores:scoresFrom(texts())}});
   };
   draw();
+  const owns=new Map(),sealedAs=new Map();   // FIX53A: 시험(기록 id)마다 이 시트가 만든 봉인 초안 id와 마지막으로 봉인한 값
   const save=button('저장',()=>{
     if(!read)return;
     const {base,mine}=read(),rid=mine.examId??pick.id;
-    if(!mine.scores.length&&!base){err.textContent='적은 점수가 없습니다. 한 칸 이상 적어 주세요.';err.hidden=false;return;}
-    try{validateLifeData('EXAM_RESULT',rid,mine);}catch(e){err.textContent=planErrorText(e?.code);err.hidden=false;return;}
-    saveFromSheet(ctx,{title,body,err,close:()=>dlg?.close?.(),run:()=>saveExamResult(ctx,{id:rid,base,mine}),done:r=>r.status==='SAVED'?'모의고사 결과를 저장했습니다.':'이미 같은 결과가 저장되어 있습니다.',report});
+    if(!mine.scores.length&&!base){sheetNote(err,'적은 점수가 없습니다. 한 칸 이상 적어 주세요.');return;}
+    try{validateLifeData('EXAM_RESULT',rid,mine);}catch(e){sheetNote(err,planErrorText(e?.code));return;}
+    if(sealedAs.get(rid)===stable(mine)){sheetNote(err,SEALED_SAME_TEXT,false);return;}   // HQ2b
+    if(!owns.has(rid))owns.set(rid,[]);
+    saveFromSheet(ctx,{title,body,err,close:()=>dlg?.close?.(),run:()=>saveExamResult(ctx,{id:rid,base,mine,own:owns.get(rid)}),sealed:()=>sealedAs.set(rid,stable(mine)),
+      done:r=>{sealedAs.delete(rid);return r.status==='SAVED'?'모의고사 결과를 저장했습니다.':sameText(r,'이미 같은 결과가 저장되어 있습니다.',EXAM_EMPTY_TEXT);},report});
   },'primary plan-result-save');
   add(body,picks,el('p','빈칸은 비워 두면 됩니다 · 등급만 적어도 저장됩니다','muted small'),add(el('div',null,'buttons'),save),err,form);
   dlg=ctx.sheet?.(title,body)??null;

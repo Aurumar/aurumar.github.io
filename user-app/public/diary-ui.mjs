@@ -38,6 +38,9 @@ export const DIARY_TEXT=Object.freeze({
   habit:' · 습관 "일기"를 켰어요(오늘 쌓기 때 함께 쌓여요)',
   habitYesterday:' · 습관 "일기"를 어제 카드에 켰어요(어제 카드 쌓기로 함께 쌓여요)',
   scoreFirst:'하루 점수를 먼저 골라 주세요.',
+  // FIX60F (HUNT58 F58-1): 흐름이 lostInput(입력이 초안·금고 어디에도 없음)을 돌려주면 "입력은 그대로 있어요"라고 말하지 않는다. 시트 글은 지우지 않아 복사할 수 있다.
+  lostInput:'저장하지 못했어요 · 다른 창에서 이 입력을 바꾸거나 지웠어요. 이 화면의 글은 아직 어디에도 저장되지 않았어요 · 닫기 전에 보이는 글을 복사해 두세요.',
+  lostState:'저장되지 않은 입력 · 이 기기에도 임시 저장되어 있지 않아요 · 보이는 글을 복사해 두세요',
 });
 // FIX50A (HUNT49 A2): 습관은 일기 날짜의 카드에 켠다(00:00~03:59에 쓴 어제 일기 = 어제 카드). [오늘 쌓기]는 달력 오늘 카드만 쌓으므로 안내도 그 카드를 말한다.
 // 오늘 화면의 "어제 카드를 아직 쌓지 않았어요 · [어제 카드 쌓기]" 줄(life-ui)과 같은 이름을 쓴다.
@@ -218,7 +221,8 @@ export async function openDiarySheet(ctx,st,date,opts={}){
 
   const body=el('div',null,'diary-body');
   const state=el('p',null,'muted small diary-state'),err=el('p',null,'notice error diary-error');err.hidden=true;
-  const stateText=()=>{const b=box?.statusFor(DIARY_KIND.type,date);if(b?.typing)return DIARY_TEXT.typing;if(b?.has)return b.dirty&&b.own?(box.ERROR_TEXT[b.own]??box.TEXT.failed):DIARY_TEXT.boxSaved;return s.status==='CONFIRMED'?'저장된 일기 · 고치면 다시 저장할 수 있어요':s.status==='LOCAL_DRAFT'?DIARY_TEXT.draft:'아직 저장 전';};
+  let lost=false;   // FIX60F: 마지막 저장이 lostInput였다(초안이 다시 생기면 상자 상태가 먼저 말한다)
+  const stateText=()=>{const b=box?.statusFor(DIARY_KIND.type,date);if(b?.typing)return DIARY_TEXT.typing;if(b?.has)return b.dirty&&b.own?(box.ERROR_TEXT[b.own]??box.TEXT.failed):DIARY_TEXT.boxSaved;if(lost)return DIARY_TEXT.lostState;return s.status==='CONFIRMED'?'저장된 일기 · 고치면 다시 저장할 수 있어요':s.status==='LOCAL_DRAFT'?DIARY_TEXT.draft:'아직 저장 전';};
   const showErr=text=>{err.textContent=text;err.hidden=false;};
   // 입력 → 초안(연산 0). 시트에서 사용자가 실제로 건드린 칸만 쓴다(FIX50A A1: 시트를 연 뒤 다른 기기가 바꾼 칸을 연 시점 값으로 덮지 않는다). 마지막 입력이 이김, 600ms 디바운스. 상자가 없으면 메모리 초안.
   const apply=c=>{for(const k of touched)c[k]=Array.isArray(work[k])?[...work[k]]:work[k];};
@@ -266,7 +270,7 @@ export async function openDiarySheet(ctx,st,date,opts={}){
   const save=async()=>{
     if(busy)return;
     if(work.score===null){showErr(DIARY_TEXT.scoreFirst);setStep(1);return;}   // ★5: 점수는 화면에서 필수(검사기는 null을 받는다, FIX49A 판단)
-    busy=true;err.hidden=true;
+    busy=true;err.hidden=true;lost=false;
     const run=async()=>{
       await flushNow();
       // FIX50A (HUNT49 A3): 입력을 초안에 담지 못했으면(검사 거절·상자 실패) 이 화면 입력은 아직 어디에도 없다. "입력은 그대로 있어요" 대신 원인을 보여 준다(시트·입력은 그대로 둔다).
@@ -284,6 +288,7 @@ export async function openDiarySheet(ctx,st,date,opts={}){
         await opts.after?.();
         return;
       }
+      if(r.status==='FAILED'&&r.lostInput){lost=true;showErr(DIARY_TEXT.lostInput);state.textContent=stateText();return;}   // FIX60F: 시트·입력은 그대로 둔다
       showErr(r.code&&(DIARY_ERROR_TEXT[r.code]||r.status==='REJECTED')?diaryErrorText(r.code):STATUS_TEXT[r.status]??diaryErrorText(r.code));
       state.textContent=stateText();
     };

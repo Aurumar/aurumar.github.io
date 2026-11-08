@@ -7,7 +7,7 @@
 import {lifeDefs,kstDate,shiftDay,validateLifeData,SUBJECT_COLOR_KEYS,PLAN_BLOCKS} from './life-model.mjs';
 import {achieve} from './life-achieve.mjs';
 import {stable} from './life-rebase.mjs';
-import {planOf,sortedItems,actualOf,planVsActual,copyPlan,savePlanDay,planErrorText,unknownOutcome,PLAN_NOTICE_TEXT,barsText,rateText,RATE_MEANING,mondayOf,dateLabel,NO_SUBJECT_COLOR} from './life-plan.mjs';
+import {planOf,sortedItems,actualOf,planVsActual,copyPlan,savePlanDay,planErrorText,unknownOutcome,PLAN_NOTICE_TEXT,barsText,rateText,RATE_MEANING,mondayOf,dateLabel,NO_SUBJECT_COLOR,choosePlanDate,followPlanToday,weekDraftChanged} from './life-plan.mjs';
 import {openChipSheet,blockLabel,BLOCK_SHORT,titleOr} from './plan-today.mjs';
 export const WEEKDAYS=Object.freeze(['월','화','수','목','금','토','일']);
 export const CELL_SHOW=3,LONG_PRESS_MS=450,TAP_BRICKS=1,TAP_STEP=0.5;
@@ -18,8 +18,8 @@ const num=v=>Number.isInteger(v)?String(v):v.toFixed(1);
 // base = 그 날을 처음 고친 순간의 저장된 계획(3자 병합의 기준), items = 내 초안 줄. session = 만든 때의 로그아웃 세대. sealed = 임시 저장(봉인 초안)으로 들어간 날의 내용(같은 내용을 또 쌓지 않으려고).
 export const createWeekDraft=(session=null)=>({session,base:new Map(),items:new Map(),sealed:new Map(),pick:null,message:null,error:false,notices:[],failed:[]});
 export const dayItems=(life,draft,date)=>draft.items.has(date)?draft.items.get(date):planOf(life,date)?.items??[];
-// 바뀐 날 = 초안이 처음 고친 때의 계획과 다른 날(넣었다 지워 되돌린 날은 빠진다).
-export const changedDates=draft=>[...draft.items.keys()].filter(d=>stable(draft.items.get(d))!==stable(draft.base.get(d)?.items??[])).sort();
+// 바뀐 날 = 초안이 처음 고친 때의 계획과 다른 날(넣었다 지워 되돌린 날은 빠진다). FIX55C1: 자정 따라가기(life-plan followPlanToday)와 같은 규칙을 함께 쓴다.
+export const changedDates=weekDraftChanged;
 // 그 날 초안에 change를 적용한다. 계획 규칙(20줄·0.5~8장·할 일 1~40자)에 걸리면 초안을 바꾸지 않고 오류 코드를 돌려준다.
 export function editDay(life,draft,date,change){
   const cur=structuredClone(dayItems(life,draft,date)),next=change(cur);
@@ -176,6 +176,7 @@ function subjectChip(h,s,on,pick){
 export function renderWeekGrid(ctx,st,{today=null}={}){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button}=h,day0=today??kstDate(ctx.now()),sess=ctx.session?.()??null;
   if(!st.week||st.week.session!==sess)st.week=createWeekDraft(sess);
+  followPlanToday(st,day0);   // FIX53C (HW1): 날이 바뀌었으면 고르지 않은 주는 이번 주로. FIX55C1 (HL2): 그 주에 저장 안 한 입력이 있으면 머문다
   const w=st.week,monday=st.monday??=mondayOf(day0),whole=ctx.getWhole(),life=whole.life??null;
   const m=weekGridModel({life,study:whole.study??null,monday,today:day0,draft:w});
   if(w.pick&&!m.subjects.some(s=>s.id===w.pick))w.pick=null;
@@ -195,8 +196,8 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
   };
 
   const out=el('section',null,'plan-card pw-week');out.id='plan-week';out.dataset.monday=monday;
-  const nav=add(el('div',null,'plan-nav'),button('◀',()=>{st.monday=shiftDay(monday,-7);rerender();},'secondary'),el('strong',short(monday)+' ~ '+short(m.end),'plan-nav-label'),button('▶',()=>{st.monday=shiftDay(monday,7);rerender();},'secondary'));
-  if(monday!==mondayOf(day0))nav.append(button('이번 주',()=>{st.monday=mondayOf(day0);rerender();},'secondary'));
+  const nav=add(el('div',null,'plan-nav'),button('◀',()=>{choosePlanDate(st,'monday',shiftDay(monday,-7));rerender();},'secondary'),el('strong',short(monday)+' ~ '+short(m.end),'plan-nav-label'),button('▶',()=>{choosePlanDate(st,'monday',shiftDay(monday,7));rerender();},'secondary'));
+  if(monday!==mondayOf(day0))nav.append(button('이번 주',()=>{choosePlanDate(st,'monday',mondayOf(day0),false);rerender();},'secondary'));
   const head=weekHeadText(m);
   const timeLine=ctx.weekTimeLine?.(monday,day0)??null;   // FIX45 (AUD1 #6): 이 주 공부 시간·그 전 주 비교(study-stats, 앱이 넘긴다)
   add(out,nav,head?el('p',head,'plan-sum pw-sum'):null,timeLine?el('p',timeLine,'muted small pw-time'):null,m.rate!==null?el('p',RATE_MEANING,'muted small pw-rate-note'):null);   // FIX44 (AUD1 #16): 달성률의 뜻
@@ -242,7 +243,7 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
   if(ctx.suggest){
     add(buttons,button('다음 주 채우기',()=>{
       const box=el('div',null,'pw-suggest');let dlg=null;
-      ctx.suggest(box,{fillWeek:plan=>{const r=fillFromSuggest(ctx.getWhole().life??null,w,plan,ctx.uid);st.monday=plan.monday;say(r.bad.length?planErrorText(r.bad[0].code)+' (넣은 날 '+r.n+'일)':'제안을 '+r.n+'일에 넣었습니다 · 확인하고 저장하세요',r.bad.length>0);dlg?.close?.();rerender();}});
+      ctx.suggest(box,{fillWeek:plan=>{const r=fillFromSuggest(ctx.getWhole().life??null,w,plan,ctx.uid);choosePlanDate(st,'monday',plan.monday);say(r.bad.length?planErrorText(r.bad[0].code)+' (넣은 날 '+r.n+'일)':'제안을 '+r.n+'일에 넣었습니다 · 확인하고 저장하세요',r.bad.length>0);dlg?.close?.();rerender();}});
       dlg=ctx.sheet?.('다음 주 채우기',box)??null;
     },'secondary pw-next'));
   }

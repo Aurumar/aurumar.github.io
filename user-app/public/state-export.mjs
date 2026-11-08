@@ -5,8 +5,9 @@
 // 8절(공부 요약: 과목명과 숫자만)·9절(건강 요약: 수면·걸음 평균과 기록 일수만)은 토글이 기본 꺼짐이고, 소유자가 켠 절만 단추 내보내기와 쌓기 뒤 자동 내보내기에 들어간다(토글을 켠 것이 동의, 통제탑 결정 B61).
 // 시험 점수·등급(life.results)·주간 목표(life.goals)·칭호(life.profile)·책 이름과 쪽 번호는 읽지 않는다(통제탑 결정 D46 ★4, 넣으면 외부 AI 전송 범위 변경). 형식 v1 그대로다.
 // 형식 정본: AUTOPILOT\design\STATE_FORMAT_V1.md (8·9절 범위는 작업 B47 지시서가 정한다).
-import {lifeDefs,entryDone,nearestExam,dDay,shiftDay,kstDate,hhmmFromIso,subjectOfSession} from './life-model.mjs';
-import {achieve,SUBJECT_BY_CODE} from './life-achieve.mjs';
+import {lifeDefs,entryDone,nearestExam,dDay,shiftDay,kstDate,hhmmFromIso,subjectOfSession,diaryOpenDate} from './life-model.mjs';
+import {achieve,SUBJECT_BY_CODE,studyBricks,smallWeight} from './life-achieve.mjs';
+import {todayPlanModel} from './plan-today.mjs';
 import {moneyFacts} from './life-money-facts.mjs';
 import {csatTarget} from './life-plan.mjs';
 import {feelOfFin,feelExport,feelExportText} from './fin-feel.mjs';
@@ -316,5 +317,56 @@ export function renderStateExport(root,ctx){
     dlg=kit.sheet('사령부로 내보낼 내용',body);
   };
   h.add(sec,h.add(h.el('div',null,'buttons'),h.button('미리보기 후 내보내기',preview,'primary')),result);
+  return sec;
+}
+
+// ---- 바탕화면 위젯 숫자 파일(ST1): PC·노트북 바탕화면 위젯(사령부 DW1)이 읽는 widget_status.json 한 장. 숫자와 칭호 이름만 ----
+// 칸은 DW1 설계안 형식 그대로(host widget-status-writer.mjs WIDGET_KEYS와 같다, 시험이 대조). 값은 화면이 이미 쓰는 계산(achieve·오늘 계획 카드·칭호)에서만 가져온다.
+// 일기 글·내일 한 가지·금액·잔고·계좌·건강 수치·과목 이름·할 일 글자 칸은 없다. 일기는 엔진 결과(achieve 하루 줄)의 "그날 일기 있음"만 본다(일기 기록을 직접 읽지 않는다).
+// 이 모듈은 파일을 쓰지 않고 시계·타이머를 쓰지 않는다: now·칭호·마지막 동기화 시각은 부른 쪽(app.mjs)이 넘기고, 쓰는 때(앱 열 때·저장 뒤 30초·04:00 일기 날짜 넘김·종료)도 app.mjs가 정한다.
+export const WIDGET_FILE_KEYS=Object.freeze(['v','device','exported_at','diary_day','level','xp','xp_next','title','bricks_total','bricks_week','streak_days','diary_done','plan_done','plan_total','last_sync_at']);
+export const WIDGET_FILE_DEVICES=Object.freeze(['PC','LAPTOP']);
+export const WIDGET_FILE_ROUTE='/api/widget-status',WIDGET_FILE_WAIT_MS=30000,WIDGET_TITLE_MAX=20;
+export const WIDGET_SWITCH_KEYS=Object.freeze({on:'lb.widget.file',laptop:'lb.widget.laptop'});
+// 이 기기 설정 2개: 파일 쓰기(기본 켬), 이 기기가 노트북인지(기본 끔 = PC). 저장소가 막혀 있으면 이번 실행 동안만.
+const memoryWidget={on:true,laptop:false};
+export function widgetSwitch(which,storage){try{const v=storage?.getItem(WIDGET_SWITCH_KEYS[which]);return v===null||v===undefined?memoryWidget[which]:v==='1';}catch{return memoryWidget[which];}}
+export function setWidgetSwitch(which,on,storage){memoryWidget[which]=Boolean(on);try{storage?.setItem(WIDGET_SWITCH_KEYS[which],on?'1':'0');}catch{/* 이번 실행 동안만 */}return widgetSwitch(which,storage);}
+export const widgetDevice=storage=>widgetSwitch('laptop',storage)?'LAPTOP':'PC';
+
+const isoOf=v=>{if(typeof v!=='string')return null;const t=Date.parse(v);return Number.isFinite(t)?new Date(t).toISOString():null;};
+const titleText=t=>{if(typeof t!=='string')return null;const s=clean(t,WIDGET_TITLE_MAX);return s||null;};
+// views = {life,study,fin}(wholeLifeView 항목), money = moneyFacts(fin,오늘)(탑·Fold 위젯과 같은 입력), now = ISO 시각, title(ach) = 지금 칭호 이름(achv-panel currentTitle, 없으면 null).
+// 레벨·XP = 가장 높은 영역의 레벨과 다음 레벨까지(탑 탭 "Lv n · into / need XP"), 전체 벽돌 = 공부 벽돌 + 작은 벽돌(brickTotalText와 같은 합), 이번 주 = 이번 주 쌓은 양(Fold 위젯 week.done과 같다),
+// 오늘 계획 = 오늘 계획 카드 머리줄의 쌓은 양 / 계획한 양(벽돌), 일기 = 일기 날짜(04:00 경계)의 일기가 쌓였는지. 칸마다 따로 실패해도 그 칸만 null.
+export function widgetStatusOf({life=null,study=null,fin=null,money=null,now,device='PC',title=null,lastSyncAt=null}){
+  const at=isoOf(now);if(!at)throw new Error('BAD_NOW');
+  const today=kstDate(at),diaryDay=diaryOpenDate(at);
+  const ach=life?guard(()=>achieve({life,study,fin,today,money})):null,top=ach?.levels?.[ach.topArea]??null;
+  const plan=life?guard(()=>todayPlanModel({life,study,date:today,today})):null;
+  const day=ach?.days?.find(d=>d.date===diaryDay)??null;
+  return {v:1,device:WIDGET_FILE_DEVICES.includes(device)?device:'PC',exported_at:at,diary_day:diaryDay,
+    level:top?.level??null,xp:top?.into??null,xp_next:top?.need??null,title:ach&&typeof title==='function'?titleText(guard(()=>title(ach))):null,
+    bricks_total:ach?guard(()=>studyBricks(ach.weeks)+smallWeight(ach.weeks)):null,bricks_week:ach?.currentWeek?.value??null,streak_days:ach?.streak?.days??null,
+    diary_done:Boolean(day?.diary),plan_done:plan?.achieved??null,plan_total:plan?.planned??null,last_sync_at:isoOf(lastSyncAt)};
+}
+// FIX58Q (HUNT55 HS2): 잠금·로그아웃 때 바로 덮어쓰는 빈 숫자 파일. 칸 15개 그대로(형식 변경 없음): 숫자·칭호·마지막 동기화는 null, 일기 false. 어느 프로필의 숫자도 싣지 않는다.
+export function widgetLockedStatus({now,device='PC'}){return widgetStatusOf({now,device});}
+// 쓰는 때 정하기(순수). last = 마지막으로 쓴 값(없으면 null), next = 지금 값, reason = 'open'|'change'|'day'|'close'.
+// 처음·종료·일기 날짜가 바뀐 때는 바로(NOW), 내용이 같으면(시각 빼고) 건너뜀(SKIP), 그 밖의 바뀜은 부른 쪽이 WIDGET_FILE_WAIT_MS 뒤에 쓴다(LATER).
+const sameButTime=(a,b)=>WIDGET_FILE_KEYS.every(k=>k==='exported_at'||a[k]===b[k]);
+export function widgetWriteWhen(last,next,reason){
+  if(!next)return 'SKIP';
+  if(!last||reason==='open'||reason==='close'||last.diary_day!==next.diary_day)return 'NOW';
+  return sameButTime(last,next)?'SKIP':'LATER';
+}
+// 설정 안의 작은 카드. PC 앱(APP_SHELL)이 아니면 아무것도 그리지 않는다(Fold·iPad·브라우저는 쓰지 않는다). h={el,add}, kit={toggle}.
+export function renderWidgetFile(root,ctx){
+  if(ctx.surface!=='APP_SHELL')return null;
+  const {h,kit}=ctx,sec=h.add(h.el('section',null,'panel widget-file'),h.el('h2','바탕화면 위젯 숫자 파일','panel-title'));
+  h.add(sec,h.el('p','바탕화면 위젯이 읽을 숫자(레벨·XP·칭호·벽돌·연속일·오늘 일기 여부·오늘 계획 양·마지막 동기화 시각)만 사령부 상태 폴더의 widget_status.json 한 파일에 덮어씁니다. 앱을 열 때·저장 뒤·새벽 4시·저장 후 종료 때 씁니다. 일기 글·금액·건강 수치·과목 이름은 들어가지 않습니다.','muted'));
+  h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('바탕화면 위젯 숫자 파일 쓰기 (이 기기 설정)',widgetSwitch('on',ctx.storage),on=>{setWidgetSwitch('on',on,ctx.storage);ctx.changed?.();})));
+  h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('이 기기는 노트북 (끄면 PC · 이 기기 설정)',widgetSwitch('laptop',ctx.storage),on=>{setWidgetSwitch('laptop',on,ctx.storage);ctx.changed?.();})));
+  h.add(root,sec);
   return sec;
 }

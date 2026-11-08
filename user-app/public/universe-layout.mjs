@@ -6,11 +6,20 @@ import {SUBJECTS} from './study-model.mjs';
 import {orderedResults,stageOf} from './study-schedule.mjs';
 
 export const MAX_NODES=1500,MAX_LINKS=3000,MAX_LINKS_PER_NODE=3;
-// 과목 코드(K·M·E·H·S·C) → 표시 이름·색. 색은 설계 문서의 과목 색(life-model DEFAULT_SUBJECTS·styles.css --lb-subj-*와 같은 값).
+// 과목 코드(K·M·E·H·S·C) → 표시 이름·기본색. 기본색은 life-model DEFAULT_SUBJECTS와 같은 값(DS2: 영어 주황, 시험 ds2가 같은지 본다).
 export const SUBJECT_INFO=Object.freeze({
-  K:Object.freeze({name:'국어',color:'#8E6BC4'}),M:Object.freeze({name:'수학',color:'#A6714E'}),E:Object.freeze({name:'영어',color:'#D9534F'}),
+  K:Object.freeze({name:'국어',color:'#8E6BC4'}),M:Object.freeze({name:'수학',color:'#A6714E'}),E:Object.freeze({name:'영어',color:'#D9823B'}),
   H:Object.freeze({name:'한국사',color:'#5BA66B'}),S:Object.freeze({name:'사회',color:'#D4B33C'}),C:Object.freeze({name:'과학',color:'#4F86C6'}),
 });
+// DS2: 과목 코드 ↔ 과목 id(life-model STUDY_CODE_BY_SUBJECT의 기본 과목). 소유자가 설정에서 바꾼 색 = 저장된 SUBJECT_DEF.color. 이 파일은 life-model을 불러오지 않으므로 저장본 목록을 받아 읽는다.
+// styles.css --lb-subj-* 토큰 값(.universe-subj-* 클래스가 칠하는 색). 과목 색이 이 값과 같을 때만 클래스로 그리고, 다르면 SVG fill·stroke 속성으로 그린다(시험 ds2가 CSS와 같은지 본다).
+export const SUBJECT_TOKEN_COLORS=Object.freeze({K:'#8E6BC4',M:'#A6714E',E:'#D9534F',H:'#5BA66B',S:'#D4B33C',C:'#4F86C6'});
+export const SUBJECT_ID_OF_CODE=Object.freeze({K:'kor',M:'math',E:'eng',H:'hist',S:'soc',C:'sci'});
+// subjects = 저장된 과목 정의(SUBJECT_DEF data 목록, 숨김 포함). 저장본이 없거나 값이 틀린 과목은 기본색.
+export function universeColors(subjects=[]){
+  const by=new Map((Array.isArray(subjects)?subjects:[]).map(s=>[s?.id,String(s?.color??'').toUpperCase()]));
+  return Object.fromEntries(Object.keys(SUBJECT_INFO).map(code=>{const c=by.get(SUBJECT_ID_OF_CODE[code]);return [code,/^#[0-9A-F]{6}$/.test(c??'')?c:SUBJECT_INFO[code].color];}));
+}
 export const STATE_TEXT=Object.freeze({due:'복습 예정',late:'복습 늦음',glow:'기억함'});
 export const VIEW_2D=Object.freeze({width:360,height:264});
 const RING_MIN=11,Y_STEP=2.2,CELL_W=120,CELL_H=132,CELL_R=44,GOLDEN=2.399963;
@@ -70,8 +79,9 @@ function linkNodes(nodes){
   return links;
 }
 
-export function layoutUniverse({cards,proj}){
+export function layoutUniverse({cards,proj,colors=null}){
   if(!Array.isArray(cards)||!proj||!Array.isArray(proj.overdue)||!Array.isArray(proj.dueToday))throw new TypeError('INVALID_UNIVERSE_INPUT');
+  const colorOf=code=>/^#[0-9A-F]{6}$/.test(colors?.[code]??'')?colors[code]:SUBJECT_INFO[code].color;
   const all=collect(cards,proj),total=all.length,capped=total>MAX_NODES;
   // 상한을 넘으면 최근 오답(카드 날짜, 같으면 id)을 우선한다.
   const kept=capped?[...all].sort((a,b)=>compare(b.date,a.date)||compare(b.id,a.id)).slice(0,MAX_NODES):all;
@@ -80,7 +90,7 @@ export function layoutUniverse({cards,proj}){
   const maxR=Math.max(...SUBJECTS.map(c=>clusterRadius(perSubject[c]))),ring=Math.max(RING_MIN,2.1*maxR);
   const clusters=SUBJECTS.map((code,index)=>{
     const angle=(index/SUBJECTS.length)*2*Math.PI-Math.PI/2,count=perSubject[code];
-    return {code,name:SUBJECT_INFO[code].name,color:SUBJECT_INFO[code].color,index,count,due:0,late:0,glow:0,
+    return {code,name:SUBJECT_INFO[code].name,color:colorOf(code),index,count,due:0,late:0,glow:0,
       x:r4(Math.cos(angle)*ring),y:r4((index%2?1:-1)*Y_STEP/2),z:r4(Math.sin(angle)*ring),radius:r4(clusterRadius(count)),
       cx:CELL_W/2+CELL_W*(index%3),cy:52+CELL_H*Math.floor(index/3),r:CELL_R};
   });

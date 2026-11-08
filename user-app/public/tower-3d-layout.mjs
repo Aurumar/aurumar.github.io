@@ -4,8 +4,25 @@
 // T2A: 진짜 벽돌 비율(앞면 0.92×0.28 ≈ 3.3:1, 깊이 0.46), 들어간 줄눈, 결정적 크기 편차, 점토·구조벽·대지 픽셀, 시각별 하늘, 날아와 놓이는 모션, 성능 등급. 시계는 입력(hour)으로만 받는다.
 // T2B: 나의 집(성). 본채 깊이 7(정사각), 기단, 시즌(시험 일정 구간)마다 붙는 부품, 정원, 크레인·비계, 지붕 3단, 완공 예상도. 시즌은 화면(life-tower)이 계산해 넘기고 여기서는 날짜를 다루지 않는다.
 // T2C: 영역 4개 = 네 모퉁이 탑(레벨로 단계가 정해진다), 업적 = 머릿돌·현판·문장·깃발. 업적 판정(houseBadges)은 화면(life-tower)이 계산해 넘기고 여기서는 그 값대로 놓기만 한다.
+// DS6: 금빛 벽돌(금속 금·나이 3단계 색)·아이보리 대리석 단상·아이보리→연금 하늘·금 예상도 선·상표 태양 바퀴. 배치(위치·크기·개수·층 높이)는 바꾸지 않고 색·재질 값과 픽셀만 바꾼다.
 export const COLS=7,DEPTH=7,MIN_ROWS=3,MAX_ROWS=16,ROW_H=0.34,SLAB_H=0.3;
 export const GOLD='#E6C65A';
+// DS6 금빛 벽돌(설계 V5 2.7: 금은 "번 것"에만). 쌓은 벽돌 = 금속 금, 나이 3단계는 낡음 대신 깊이(녹·얼룩 없음). 위치·크기·개수는 그대로, 색·재질만.
+export const BRICK_GOLD='#E3B341',MORTAR_IVORY='#EFE7D6';
+export const BRICK_AGE_COLORS=Object.freeze({TODAY:'#F7D56E',WEEK:BRICK_GOLD,OLD:'#B07D18'});
+export const BRICK_MATERIALS=Object.freeze({
+  brick:Object.freeze({metalness:0.95,roughness:0.32,bumpScale:0.2}),
+  half:Object.freeze({metalness:0.95,roughness:0.34,bumpScale:0.2}),
+  gold:Object.freeze({metalness:1,roughness:0.25}),   // 90분 금벽돌: 한결 매끈한 광택(발광은 화면 파일이 하늘 밝기로 정한다)
+  today:Object.freeze({metalness:0.95,roughness:0.28,bumpScale:0.2,emissive:BRICK_AGE_COLORS.TODAY,emissiveIntensity:0.28}),   // 오늘: 약한 빛 번짐
+});
+export const brickAge=(scene,r)=>r.today?'TODAY':scene.floors[r.floor]?.current?'WEEK':'OLD';
+// 작은 금빛 벽돌(일기·리뷰)은 같은 나이 금을 아이보리 쪽으로 옅게.
+export const brickTint=(scene,r)=>{const c=BRICK_AGE_COLORS[brickAge(scene,r)];return r.small?mixHex(c,'#FFF6DC',0.45):c;};
+// 완공 예상도: 금 선(WebGL 선은 늘 1px이라 불투명도 0.5로 0.5px 느낌) + 아이보리 반투명 유리(0.08).
+export const BLUEPRINT_STYLE=Object.freeze({line:BRICK_GOLD,lineOpacity:0.5,glass:'#FBF6EA',glassOpacity:0.08});
+// 바닥: 아이보리 대리석 원형 단상(정원·나무까지 덮는다) + 단상 아래 아이보리 대지. 약한 반사광 = 앞 왼쪽 낮은 곳의 따뜻한 보조광(그림자 없음).
+export const DAIS=Object.freeze({r:15,h:0.3,side:'#E6DCC6'}),FILL_LIGHT=Object.freeze({color:'#FFF1D6',intensity:0.4,dir:Object.freeze([-0.6,0.35,0.72])});
 export const MORTAR_FULL_XP=100,MAX_LAMPS=12,MAX_SPIRE_TIERS=12,MAX_PARTICLES=48,PARTICLES_PER_BRICK=12;
 export const MAX_INSTANCES=20000,LOW_CORES=2,LOW_MEMORY_GB=1,SLOW_FRAME_MS=200,SLOW_FRAME_COUNT=10;
 export const MOTION_SECONDS=4,FALL_SECONDS=1.4,GROW_SECONDS=1.6;
@@ -37,7 +54,8 @@ const box=(x,y,z,sx,sy,sz,extra)=>({x,y,z,sx,sy,sz,...extra});
 // ---------- T2B 집 부품 슬롯: 날짜(시즌의 passed)와 투영으로만 정해진다. 기본 부품은 시간이 지나면 반드시 붙고, 달성률 60%/90%면 은/금 장식이 더해진다 ----------
 export const FOUND_H=1.2,CONE_H=4.2,CRANE_UP=4,MAX_FLOWERS=64,MAX_TREES=16,GOLD_PER_TREE=10,MAX_LABELS=8,BLUEPRINT_MAX_FLOORS=160,WHOLE_PHI=0.45;
 export const GRADE_COLORS=Object.freeze({BASE:'#CDBFA4',SILVER:'#C9D1DB',GOLD});
-export const KIT=Object.freeze({plinth:'#BFB29A',step:'#A99D86',door:'#6B4A2E',frame:'#D9CDB4',shutter:'#4D6B5A',plaque:'#5A3E2A',pole:'#8A8F99',flag:'#D9534F',dirt:'#8A6E4B',lawn:'#6FA352',sprout:'#7DBA5A',path:'#B9B2A3',post:'#4A3B2C',flame:'#FFB347',trunk:'#6B4A2E',crown:'#3F7D45',sapling:'#8CC063',tarp:'#3E6FA8',timber:'#9A7B52',slate:'#56657F',crane:'#E2B33C',ballast:'#7D7F85',cabin:'#E9E4D8',cable:'#3A3A3A'});
+// DS6: 기단·창틀·화단·길·방수포는 아이보리 대리석 톤, 비계·크레인은 금속 회색 + 갈고리·돛대 끝 금 포인트(공사장 노랑·파랑 없음).
+export const KIT=Object.freeze({plinth:'#E9E0CC',step:'#DDD2BC',door:'#6B4A2E',frame:'#F3ECDD',shutter:'#4D6B5A',plaque:'#5A3E2A',pole:'#8A8F99',flag:'#D9534F',dirt:'#D9CCB2',lawn:'#E6DDC8',sprout:'#7DBA5A',path:'#F1EADB',post:'#4A3B2C',flame:'#FFB347',trunk:'#6B4A2E',crown:'#3F7D45',sapling:'#8CC063',tarp:'#E9E0CC',timber:'#9EA3AA',slate:'#56657F',crane:'#8E949C',ballast:'#6B7078',cabin:'#F3ECDD',cable:'#55595F',hook:BRICK_GOLD});
 const FLOWER_COLORS=['#E86A8F','#F2C14E','#9C7BD8','#F28C5B','#F4F1EA'];
 // seasons(life-tower의 seasonsOf 결과)가 없으면 기단만. 정원은 끝에서 세 번째 시즌(기본 일정 = 6평), 지붕 골조는 끝에서 두 번째(하반기 모평), 완공은 마지막(수능)이 지나면.
 export const TITLE_FLAG_COLORS=Object.freeze({BRONZE:'#B0763A',SILVER:GRADE_COLORS.SILVER,GOLD,HIDDEN:GRADE_COLORS.SILVER});   // Q1C 칭호 깃발 색(숨김 칭호는 자동 선택 순위가 은과 같아 은색)
@@ -49,8 +67,8 @@ export function houseParts(ach,seasons=null){
 // 크레인: 본채 뒤(-z), 꼭대기 + 4. 완공 순간에는 화면이 이것을 땅으로 내린다.
 export function craneRows(height){
   const cx=2,cz=-(DEPTH/2+2.6),top=height+CRANE_UP,c=KIT;
-  return [box(cx,0.3,cz,1.8,0.6,1.8,{color:c.ballast}),box(cx,top/2,cz,0.6,top,0.6,{color:c.crane}),box(cx,top+1.2,cz,0.25,1.6,0.25,{color:c.crane}),box(cx+0.6,top-0.5,cz+0.2,0.6,0.6,0.7,{color:c.cabin}),
-    box(cx,top+0.25,cz+4,0.4,0.4,14,{color:c.crane}),box(cx,top-0.1,cz-2.6,0.9,0.8,1,{color:c.ballast}),box(cx,top-1,0,0.03,2.1,0.03,{color:c.cable}),box(cx,top-2.15,0,0.3,0.25,0.3,{color:c.cable})];
+  return [box(cx,0.3,cz,1.8,0.6,1.8,{color:c.ballast}),box(cx,top/2,cz,0.6,top,0.6,{color:c.crane}),box(cx,top+1.2,cz,0.25,1.6,0.25,{color:c.hook}),box(cx+0.6,top-0.5,cz+0.2,0.6,0.6,0.7,{color:c.cabin}),
+    box(cx,top+0.25,cz+4,0.4,0.4,14,{color:c.crane}),box(cx,top-0.1,cz-2.6,0.9,0.8,1,{color:c.ballast}),box(cx,top-1,0,0.03,2.1,0.03,{color:c.cable}),box(cx,top-2.15,0,0.3,0.25,0.3,{color:c.hook})];
 }
 
 // ---------- T2C 모퉁이 탑: 레벨로만 정해진다(저장 없음). 앞쪽 두 탑은 앞면보다 1칸 뒤라 어느 각도에서도 요일 벽을 가리지 않고, 본채와 띄워 Q1B 금빛 기둥과 겹치지 않는다 ----------
@@ -283,6 +301,14 @@ export function blueprint(scene,seasons){
 export function houseTop(scene,bp=null){
   return Math.max(scene.height+(scene.parts?.CRANE?CRANE_UP+2:0)+(scene.parts?.ROOF_DONE?CONE_H+2.5:0),scene.flagTop??0,scene.badgeTop??0,...(scene.towers??[]).map(t=>t.roofTop),bp?bp.top+CONE_H+0.5:0);
 }
+// DS6 상표 태양 바퀴(원 + 살 8개, 단순 도형): 지금 집 꼭대기 가운데에 작게, 앞(+z)을 본다. 첨탑·칭호 깃대·완공 깃대가 있으면 그 위, 기둥이 받친다. 그림자를 드리우지 않는다.
+export const SUN_WHEEL=Object.freeze({r:0.42,tube:0.045,spokes:8,spoke:0.05,post:0.06,lift:0.5});
+export function sunWheel(scene){
+  if(!scene.floors?.length||!scene.bricks?.length)return null;   // 쌓은 벽돌이 없으면 없음
+  const W=SUN_WHEEL,s=scene.spire?.at(-1),base=Math.max(scene.height,s?s.y+s.sy/2:0,scene.flagTop??0,scene.parts?.ROOF_DONE?scene.height+CONE_H+2:0),y=base+W.lift+W.r;
+  const spokes=Array.from({length:W.spokes},(_,k)=>{const a=2*Math.PI*k/W.spokes;return box(Math.cos(a)*W.r/2,y+Math.sin(a)*W.r/2,0,W.r,W.spoke,W.spoke,{rotZ:a});});
+  return {x:0,y,z:0,r:W.r,tube:W.tube,spokes,hub:box(0,y,0,0.12,0.12,0.12),post:box(0,base+W.lift/2,0,W.post,W.lift,W.post)};
+}
 // 완공 순간(수능 뒤 처음 연 탑에서 한 번, 3초): 크레인이 내려가고(0→1), 지붕이 위에서 내려앉고(높이 차 6→0), 창이 켜지고(0→1), 금 불꽃이 핀다.
 export const DONE_SECONDS=3,DONE_ROOF_DROP=6,SPARKS=60;
 export function completionAt(t){
@@ -390,8 +416,8 @@ export function wholeCamera(scene,aspect,top=scene.height){
   return cam;
 }
 
-// ---------- T2A 재질 픽셀: DataTexture에 넣을 RGBA(이미지 파일 없음). 데이터 벽돌은 흰 바탕이라 인스턴스 색(과목 색)이 곱해져 그대로 보인다 ----------
-export const TEX=Object.freeze({brick:[128,64],wall:[128,128],ground:[128,128],env:[64,32]});
+// ---------- T2A 재질 픽셀: DataTexture에 넣을 RGBA(이미지 파일 없음). 데이터 벽돌은 흰 바탕이라 인스턴스 색(DS6: 나이 금색)이 곱해져 그대로 보인다 ----------
+export const TEX=Object.freeze({brick:[128,64],wall:[128,128],ground:[128,128],env:[64,32],dais:[128,128]});
 export const WALL_TILE=8*ROW_H;   // 구조벽 무늬 한 장 = 8줄 높이의 정사각(줄 높이가 데이터 벽돌과 같다)
 const clamp01=v=>v<0?0:v>1?1:v;
 const smooth=t=>t*t*(3-2*t);
@@ -407,49 +433,57 @@ const rgbOf=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255);
 const hexOf=c=>'#'+c.map(v=>Math.round(clamp01(v)*255).toString(16).padStart(2,'0')).join('').toUpperCase();
 const mixHex=(a,b,t)=>{const x=rgbOf(a),y=rgbOf(b);return hexOf(x.map((v,i)=>v+(y[i]-v)*t));};
 
-// 점토 벽돌: 잡음 + 가장자리 어둡게 + 작은 구멍 자국. broken이면 위 가장자리가 깨진 조각(반 칸)용.
+// DS6 금속 금벽돌 면: 거의 흰 바탕 + 아주 옅은 가로 결(헤어라인) + 가장자리 모따기 그늘. 구멍·얼룩 없음(낡아 보이지 않게). broken이면 위 가장자리를 깎은 조각(반 칸)용.
 export function brickTexels(seed=1,{broken=false}={}){
   const [w,h]=TEX.brick,px=new Uint8Array(w*h*4);
-  const pits=Array.from({length:14},(_,i)=>({x:hash01(seed,i,1)*w,y:hash01(seed,i,2)*h,r:0.8+hash01(seed,i,3)*1.6}));
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
-    let v=0.8+0.12*valueNoise(seed,x,y,16,w/16,h/16)+0.06*valueNoise(seed+1,x,y,4,w/4,h/4)+0.04*(hash01(seed+2,x,y)-0.5);
-    const edge=Math.min(x,w-1-x,y,h-1-y);if(edge<5)v*=0.78+0.22*edge/5;
-    for(const p of pits){const d=Math.hypot(x-p.x,y-p.y);if(d<p.r)v*=0.72+0.28*d/p.r;}
-    if(broken&&y>h-4-7*valueNoise(seed+3,x,0,6,w/6,1))v*=0.58;
-    put(px,(y*w+x)*4,v*1.02,v*0.99,v*0.94);
+    let v=0.9+0.05*valueNoise(seed,x,y,32,w/32,h/32)+0.025*(hash01(seed+1,y,0)-0.5);
+    const edge=Math.min(x,w-1-x,y,h-1-y);if(edge<4)v*=0.74+0.26*edge/4;
+    if(broken&&y>h-4-5*valueNoise(seed+3,x,0,8,w/8,1))v*=0.62;
+    put(px,(y*w+x)*4,v,v*0.99,v*0.96);
   }
   return px;
 }
-// 구조벽(데이터가 아닌 옆·뒤 벽): 엇갈려 쌓기 무늬 + 중성 석재. 줄 16px, 벽돌 32px, 줄눈 2px.
+// 구조벽(데이터가 아닌 옆·뒤 벽): 엇갈려 쌓기 무늬 + 아이보리 대리석 돌. 줄 16px, 돌 32px, 줄눈 2px(조금 진한 아이보리).
 export function wallTexels(seed=2){
   const [w,h]=TEX.wall,px=new Uint8Array(w*h*4),CH=16,CW=32,M=2;
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
     const row=Math.floor(y/CH),xx=(x+(row%2)*CW/2)%w,col=Math.floor(xx/CW),joint=y%CH<M||xx%CW<M;
-    const v=joint?0.64+0.05*hash01(seed+1,x,y):0.84+0.1*hash01(seed,row,col)+0.06*valueNoise(seed,x,y,8,w/8,h/8);
-    put(px,(y*w+x)*4,v,v*0.97,v*0.92);
+    const v=joint?0.84+0.03*hash01(seed+1,x,y):0.93+0.04*hash01(seed,row,col)+0.03*valueNoise(seed,x,y,8,w/8,h/8);
+    put(px,(y*w+x)*4,v,v*0.985,v*0.95);
   }
   return px;
 }
-// 대지: 잔디와 흙 얼룩.
+// 대지(단상 밖): 아이보리 석회암, 아주 옅은 얼룩. 잔디·흙 없음.
 export function groundTexels(seed=3){
   const [w,h]=TEX.ground,px=new Uint8Array(w*h*4);
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
-    const n=0.65*valueNoise(seed,x,y,32,w/32,h/32)+0.35*valueNoise(seed+1,x,y,8,w/8,h/8),dirt=0.6*clamp01((n-0.66)*4),blade=0.9+0.2*hash01(seed+2,x,y);
-    const g=[0.36*blade,0.55*blade,0.27*blade],d=[0.55,0.45,0.33];
-    put(px,(y*w+x)*4,...g.map((v,i)=>v+(d[i]-v)*dirt));
+    const v=0.94+0.02*valueNoise(seed,x,y,32,w/32,h/32)+0.01*valueNoise(seed+1,x,y,8,w/8,h/8);
+    put(px,(y*w+x)*4,v,v*0.97,v*0.9);
+  }
+  return px;
+}
+// 아이보리 대리석 단상 윗면(원판 UV: 가운데 = 0.5,0.5): 비스듬한 옅은 결 + 집 둘레 부드러운 접지 그늘(가운데 0.3 안쪽이 가장 진하고 0.55에서 사라진다).
+export function daisTexels(seed=4){
+  const [w,h]=TEX.dais,px=new Uint8Array(w*h*4),base=[0.96,0.93,0.87],vein=[0.8,0.74,0.62];
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const n=valueNoise(seed,x,y,32,w/32,h/32),k=Math.pow(1-Math.abs(Math.sin((x*0.6+y*0.8)/9+5*n)),14)*0.55,d=Math.hypot((x+0.5)/w-0.5,(y+0.5)/h-0.5)*2;
+    const ao=1-0.16*clamp01(1-(d-0.3)/0.25),g=0.98+0.02*valueNoise(seed+1,x,y,4,w/4,h/4);
+    put(px,(y*w+x)*4,...base.map((c,i)=>(c+(vein[i]-c)*k)*ao*g));
   }
   return px;
 }
 
 // ---------- T2A 하늘: 시각(KST 시, 소수 허용)만으로 정해진다. 화면 파일이 시계를 읽어 넘긴다 ----------
 // [시, 하늘 위, 지평선(=안개), 땅 반사, 해(달) 색, 해 세기, 반구광 세기, 밤 발광 0~1, 별 0~1]
+// DS6: 낮 하늘은 지평선 아이보리 → 위 연금, 아침·저녁도 같은 금빛 계열(파란 하늘 없음). 밤은 그대로(금벽돌·줄눈이 빛난다).
 const SKY_KEYS=[
   [0,'#0B1530','#1F2B52','#141A2A','#9DB4FF',0.7,0.9,1,1],
   [5,'#0B1530','#1F2B52','#141A2A','#9DB4FF',0.7,0.9,1,1],
-  [6.5,'#7FB2E8','#F6C7C0','#6B6A5A','#FFC58A',1.7,1.3,0.25,0],
-  [9,'#4E9BE6','#CFE6FA','#7C8A5E','#FFFFFF',2.6,1.6,0,0],
-  [16,'#4E9BE6','#CFE6FA','#7C8A5E','#FFFFFF',2.6,1.6,0,0],
-  [18,'#5B4C8F','#F2A15A','#5E5148','#FFA060',1.5,1.25,0.5,0],
+  [6.5,'#E9D3A6','#FAEBDD','#B8A68A','#FFD9A8',1.7,1.3,0.25,0],
+  [9,'#EEDCA8','#FBF6EA','#D9CCB0','#FFF6E6',2.4,1.5,0,0],
+  [16,'#EEDCA8','#FBF6EA','#D9CCB0','#FFF6E6',2.4,1.5,0,0],
+  [18,'#C99A55','#F5D9A8','#9C8466','#FFB070',1.5,1.25,0.5,0],
   [20,'#0B1530','#1F2B52','#141A2A','#9DB4FF',0.7,0.9,1,1],
   [24,'#0B1530','#1F2B52','#141A2A','#9DB4FF',0.7,0.9,1,1],
 ];

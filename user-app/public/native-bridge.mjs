@@ -7,6 +7,8 @@
 // - 같은 결제 경고(B48C F1): 저장한 초안은 "금액 + 5분 칸" 해시만 lb.native.added에 남긴다(금액·시각·가맹점 원문 없음, seen과 같은 수준의 구분용 해시). 나중에 온 다른 알림이 같은 금액·가까운 시각이면 added 표시(저장은 막지 않음).
 // - 처리 표시(B48C F2): 거래가 받아들여지면(서버 확정·임시 저장 LOCAL_DRAFT 모두) markAdded()가 처리됨으로 표시한다.
 // - ack 실패(B48C F9): 다리에 처리됨을 못 알린 초안의 키는 lb.native.unacked에 따로 둔다. seen 500개 상한에 밀려나도 되살아나지 않고, 다음 읽기 때 ack를 다시 보낸다.
+// - 결제 알림 앱 후보(PAY1): 다리의 payAppCandidates()가 주는 {package,label,allowed}만 보여주고, 토글은 setPayAppAllowed()로 그 앱만 켜고 끈다.
+//   후보·켠 앱은 앱(PayAppStore) 안에만 있고 이 파일은 저장하지 않는다. 금액을 확신하지 못한 초안(amount '')은 "금액 확인 필요"로 보인다.
 // - 로컬 알림 4종 토글은 이 기기 localStorage에만 저장하고, 켜고 끌 때마다 다리 scheduleReminders()에 "전체 목록"을 보낸다(부분 목록은 나머지를 취소함).
 // - 캘린더는 사용자가 단추를 눌렀을 때와, 사용자가 켠 거울 토글(P1D2, 기본 꺼짐)에서만 쓴다. 꺼져 있으면 거울은 다리를 전혀 부르지 않는다. 일정 key가 안정적이라 다시 써도 새로 만들지 않고 고친다.
 // - 걸음·수면(B58B, Health Connect): 건강 화면이 부를 때만 읽는다. 값은 메모리로만 지나가고 이 파일은 저장·로그하지 않는다. 다리의 readHealthDay는 pending 뒤 결과를 한 번만 주므로 여기서 짧게 되묻는다.
@@ -20,10 +22,20 @@ export const NATIVE_TEXT=Object.freeze({
   empty:'처리할 결제 알림이 없어요.',
   cancel:'취소 알림 — 이미 넣은 거래가 있으면 가계부에서 직접 정리하세요.',
   twin:'같은 결제로 보이는 알림이 더 있어요 — 하나만 넣으세요.',
+  merged:n=>'다른 앱 알림 '+n+'건을 같은 결제로 묶었어요',
   added:'이미 넣은 결제일 수 있어요 — 가계부를 확인한 뒤 넣으세요.',
+  checkAmount:'금액을 모르는 알림과 견준 안내예요 — 금액을 확인해 주세요.',
+  changed:'이 알림이 바뀌었어요 — 이전 내용 보기',changedItem:'이전 내용',addApart:'따로 넣기',
   add:'가계부에 넣기',discard:'넣지 않고 지우기',ok:'확인했어요',
   settingsTitle:'알림 · 캘린더',
   payAccessOn:'결제 알림 읽기가 켜져 있어요',payAccessOff:'결제 알림을 읽으려면 알림 접근을 켜야 해요',payAccessBtn:'알림 접근 설정 열기',
+  needsAmount:'금액 확인 필요',needsAmountNote:'알림에서 금액을 확실히 읽지 못했어요 — 넣을 때 금액을 직접 적어 주세요.',
+  estimate:'예상',estimateNote:'알림에 적힌 예상 금액이에요(해외 결제 원화 환산 등) — 카드 청구 금액을 확인한 뒤 넣으세요.',
+  payAppsTitle:'결제 알림 앱 후보',
+  payAppsRule:'목록 밖 앱이 금액과 결제·승인·출금·사용이 들어간 알림을 올리면 앱 이름만 여기 7일 동안 보여요(알림 내용·금액·가맹점은 저장하지 않아요). 켠 앱은 다음 결제 알림부터 "Fold 결제"에 떠요. 결제 알림을 보내는 앱만 켜세요. 이 기기 설정이라 다른 기기로 가지 않아요.',
+  payAppsEmpty:'최근 7일 동안 결제 알림처럼 보이는 다른 앱 알림이 없었어요.',
+  payAppNotCandidate:'7일이 지나 후보에서 빠졌어요 — 그 앱에서 결제 알림이 다시 오면 켤 수 있어요',
+  payAppTooMany:'켤 수 있는 앱은 30개까지예요 — 다른 앱을 끈 뒤 켜 주세요',
   noticePerm:'알림 권한이 필요해요 — 허용한 뒤 다시 켜 주세요.',
   calPerm:'캘린더 권한이 필요해요 — 허용한 뒤 다시 눌러 주세요.',
   calNone:'일정을 넣을 수 있는 캘린더를 찾지 못했어요.',
@@ -57,14 +69,38 @@ function writeJson(store,key,value){try{store?.setItem(key,JSON.stringify(value)
 function fnv(text,seed){let h=seed>>>0;for(let i=0;i<text.length;i++){h^=text.charCodeAt(i);h=Math.imul(h,16777619)>>>0;}return h.toString(16).padStart(8,'0');}
 export const hashKey=(at,amount,merchant)=>{const s=at+'|'+amount+'|'+merchant;return 'h'+fnv(s,2166136261)+fnv(s,0x9747b28c);};
 // 다리 항목 하나를 검증·정리한다. 모양이 틀리면 null(보이지 않는다). amount는 원 단위 정수 문자열(BigInt로 다룸).
+// PAY1: amount가 정확히 ''이면 "금액 확인 필요" 초안이다(사용자가 켠 앱에서 금액을 확신하지 못함). amount:null, needsAmount:true로 보이고,
+// 거래 입력은 금액 빈칸으로 열린다(틀린 숫자를 넣지 않는다). twin(같은 금액)은 금액 있는 초안끼리만 보고, 금액 모름 초안은 5분 안의 금액 있는 초안·넣은 결제가 있으면
+// "같은 결제일 수 있음"(maybeSame)·"이미 넣은 결제일 수 있음"(added)으로 안내한다(FIX55B HP4).
+// FIX56B HP2: 다리가 다른 출처 알림을 묶은 초안(twins = 묶은 출처 이름 목록)은 그 개수(merged)만 남긴다. 출처 이름은 버린다.
+// FIX57B: 금액 앞에 "예상·약"이 붙은 초안(estimate:true, 해외 결제 원화 환산 등)은 estimate를 남겨 "예상" 표시를 단다. 금액 모름 초안에는 없다.
+// FIX59P HP57-4: id 가 있는 초안의 한 줄 묶기 키는 id 하나다(시각+금액+가맹점 해시는 id 없는 초안만). 서로 다른 id 는 한 줄로 합쳐지거나 같이 ack되지 않는다.
+// FIX59P HP57-3: 다리가 같은 알림 자리 갱신 전 내용(history)을 주면 changed(바뀌기 전 내용 목록)로 남긴다. 금액·가맹점이 있는 이전 내용은 [따로 넣기]용 키를 단다.
 export function normalizeDraft(raw){
   if(!raw||typeof raw!=='object'||Array.isArray(raw))return null;
-  const amount=typeof raw.amount==='string'?raw.amount:Number.isSafeInteger(raw.amount)?String(raw.amount):'';
-  if(!/^[1-9]\d{0,13}$/.test(amount))return null;
+  const amount=typeof raw.amount==='string'?raw.amount:Number.isSafeInteger(raw.amount)?String(raw.amount):null,needsAmount=amount==='';
+  if(!needsAmount&&!/^[1-9]\d{0,13}$/.test(amount??''))return null;
   if(typeof raw.at!=='number'||!Number.isFinite(raw.at)||raw.at<=0)return null;
   const at=Math.trunc(raw.at),merchant=typeof raw.merchant==='string'?raw.merchant.trim().slice(0,120):'';
   const id=typeof raw.id==='string'&&/^[0-9a-f]{32}$/.test(raw.id)?raw.id:null,hk=hashKey(at,amount,merchant);
-  return {id,keys:id?['n'+id,hk]:[hk],amount,merchant,at,last4:typeof raw.last4==='string'&&/^\d{4}$/.test(raw.last4)?raw.last4:null,kind:raw.kind==='CANCEL'?'CANCEL':'EXPENSE'};
+  const merged=Array.isArray(raw.twins)?raw.twins.filter(x=>typeof x==='string'&&x).length:0,estimate=raw.estimate===true&&!needsAmount;
+  const changed=Array.isArray(raw.history)?raw.history.slice(-5).map((h,i)=>historyItem(h,at,id,i)).filter(Boolean):[];
+  return {id,keys:id?['n'+id]:[hk],amount:needsAmount?null:amount,...(needsAmount?{needsAmount:true}:{}),...(merged?{merged}:{}),...(estimate?{estimate}:{}),...(changed.length?{changed}:{}),merchant,at,last4:typeof raw.last4==='string'&&/^\d{4}$/.test(raw.last4)?raw.last4:null,kind:raw.kind==='CANCEL'?'CANCEL':'EXPENSE'};
+}
+// 바뀌기 전 내용 하나. 금액이 정수 문자열이고 가맹점이 있는 승인이면 apart(따로 넣을 초안 모양, id 없음·자기 키)를 단다.
+function historyItem(h,at,id,i){
+  if(!h||typeof h!=='object'||Array.isArray(h))return null;
+  const amount=typeof h.amount==='string'&&/^[1-9]\d{0,13}$/.test(h.amount)?h.amount:null,merchant=typeof h.merchant==='string'?h.merchant.trim().slice(0,120):'';
+  const kind=h.kind==='CANCEL'?'CANCEL':'EXPENSE',last4=typeof h.last4==='string'&&/^\d{4}$/.test(h.last4)?h.last4:null;
+  const apart=amount&&merchant&&kind==='EXPENSE'?{id:null,keys:['p'+(id??hashKey(at,'',''))+'-'+i+'-'+hashKey(at,amount,merchant)],amount,merchant,at,last4,kind,apart:true}:null;
+  return {amount,merchant,kind,...(apart?{apart}:{})};
+}
+// PAY1: 결제 알림 앱 후보 항목 검증. {package,label,allowed}만 남긴다. 모양이 틀리면 null.
+const PAY_APP_PACKAGE=/^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/;
+export function normalizePayApp(raw){
+  if(!raw||typeof raw!=='object'||typeof raw.package!=='string'||raw.package.length>150||!PAY_APP_PACKAGE.test(raw.package))return null;
+  const label=typeof raw.label==='string'&&raw.label.trim()?raw.label.trim().slice(0,60):null;
+  return {package:raw.package,label,allowed:raw.allowed===true};
 }
 export const kstDateOf=at=>new Date(at+9*3600000).toISOString().slice(0,10);
 export const kstTimeOf=at=>new Date(at+9*3600000).toISOString().slice(11,16);
@@ -73,6 +109,11 @@ export const kstDatesNear=at=>[...new Set([kstDateOf(at-SAME_PAYMENT_MS),kstDate
 // 금액 + 5분 칸의 구분용 해시. 저장은 그 칸 하나, 비교는 앞뒤 칸까지 본다(±5분은 언제나 걸린다).
 const addedSig=(slot,amount)=>{const s=slot+'|'+amount;return 's'+fnv(s,2166136261)+fnv(s,0x9747b28c);};
 const slotOf=at=>Math.floor(at/SAME_PAYMENT_MS);
+// FIX55B HP4: 금액 없이 "그 5분 칸에 넣은 결제가 있음"만 남기는 해시(금액 모름 초안의 "이미 넣은 결제일 수 있어요"용).
+const addedSlotSig=slot=>addedSig(slot,'*');
+// FIX59P HP57-5: "그 5분 칸에 금액 모름 초안을 넣었음"(금액 있는 줄에 "이미 넣은 결제일 수 있어요" + "금액을 확인해 주세요"용).
+const addedUnreadSig=slot=>addedSig(slot,'?');
+const nearSlots=at=>{const slot=slotOf(at);return [slot-1,slot,slot+1];};
 
 // ---- 로컬 알림 ----
 export function normalizeReminders(raw){
@@ -206,13 +247,24 @@ export function createNativeBridge({native=globalThis.LifeBrickNative,storage,no
   const listOf=key=>{const v=readJson(store,key,[]);return Array.isArray(v)?v.filter(x=>typeof x==='string'):[];};
   const noteUnacked=keys=>{const list=listOf(NATIVE_KEYS.unacked);for(const k of keys)if(!list.includes(k))list.push(k);writeJson(store,NATIVE_KEYS.unacked,list.slice(-NATIVE_LIMITS.unacked));};
   const clearUnacked=keys=>{const list=listOf(NATIVE_KEYS.unacked);if(list.some(k=>keys.includes(k)))writeJson(store,NATIVE_KEYS.unacked,list.filter(k=>!keys.includes(k)));};
+  // FIX55B HP4: maybeSame = 금액 모름 초안과 5분 안의 금액 있는 초안(출처 무관, 같은 종류). 둘 다 "같은 결제" 안내만 하고 지우지 않는다.
+  // FIX58P HP9: 같은 출처의 금액 모름 초안 두 줄이 5분 안이어도 maybeSame(같은 알림이 글만 바뀌어 다시 왔을 수 있음). 출처는 이 메모리에만 두고 초안 항목에 싣지 않는다.
+  // 금액 모름 초안의 added는 그 5분 칸 근처에 넣은 결제가 있으면 참(금액은 비교하지 못한다).
+  // FIX59P HP57-5: 금액 있는 줄의 addedUnread = 그 5분 칸 근처에 금액 모름 초안을 넣었음. checkAmount = 안내가 금액 모름 쪽과 견준 것(금액을 확인해 주세요).
+  const sourceOf=new WeakMap();
+  const sameUnreadSource=(a,b)=>a.amount===null&&b.amount===null&&Boolean(sourceOf.get(a))&&sourceOf.get(a)===sourceOf.get(b);
   const flagDrafts=()=>{
     const added=new Set(listOf(NATIVE_KEYS.added));
     for(const d of pending){
-      d.twin=pending.some(o=>o!==d&&o.kind===d.kind&&o.amount===d.amount&&Math.abs(o.at-d.at)<=SAME_PAYMENT_MS);
-      const slot=slotOf(d.at);d.added=d.kind==='EXPENSE'&&[slot-1,slot,slot+1].some(x=>added.has(addedSig(x,d.amount)));
+      d.twin=d.amount!==null&&pending.some(o=>o!==d&&o.kind===d.kind&&o.amount===d.amount&&Math.abs(o.at-d.at)<=SAME_PAYMENT_MS);
+      d.maybeSame=pending.some(o=>o!==d&&o.kind===d.kind&&((o.amount===null)!==(d.amount===null)||sameUnreadSource(o,d))&&Math.abs(o.at-d.at)<=SAME_PAYMENT_MS);
+      d.added=d.kind==='EXPENSE'&&nearSlots(d.at).some(x=>added.has(d.amount!==null?addedSig(x,d.amount):addedSlotSig(x)));
+      d.addedUnread=d.kind==='EXPENSE'&&d.amount!==null&&!d.added&&nearSlots(d.at).some(x=>added.has(addedUnreadSig(x)));
+      d.checkAmount=d.maybeSame||d.addedUnread||(d.amount===null&&d.added);
     }
   };
+  // FIX59P HP57-3: 따로 넣은 이전 내용은 [따로 넣기]를 다시 보이지 않는다(그 키가 처리됨 목록에 있음).
+  const dropApart=(d,keys)=>{if(d.changed)d.changed=d.changed.map(c=>c.apart&&c.apart.keys.some(k=>keys.has(k))?{amount:c.amount,merchant:c.merchant,kind:c.kind}:c);};
   const ack=ids=>{const clean=ids.filter(x=>typeof x==='string'&&/^[0-9a-f]{32}$/.test(x)).slice(0,NATIVE_LIMITS.drafts);return clean.length?callNative(native,'ackExpenseDrafts',JSON.stringify(clean)):{ok:true,removed:0};};
   const upsertEvents=(calendarId,events)=>callNative(native,'upsertCalendarEvents',JSON.stringify({calendarId,events}));
   const chunksOf=list=>{const out=[];for(let i=0;i<list.length;i+=NATIVE_LIMITS.events)out.push(list.slice(i,i+NATIVE_LIMITS.events));return out;};
@@ -256,6 +308,9 @@ export function createNativeBridge({native=globalThis.LifeBrickNative,storage,no
     permissions(){const r=callNative(native,'permissionState');return r.ok?{notificationAccess:r.notificationAccess===true,notifications:r.notifications===true,calendar:r.calendar===true}:null;},
     error:()=>lastError,
     openAccessSettings:()=>callNative(native,'openNotificationAccessSettings'),
+    // PAY1: 결제 알림 앱 후보(최근 7일)와 켠 앱. 옛 APK(메서드 없음)·오류면 null(설정 화면은 후보 줄을 숨긴다). 이 기기 설정이라 서버·동기화로 보내지 않는다.
+    payApps(){const r=callNative(native,'payAppCandidates');return r.ok===true&&Array.isArray(r.apps)?r.apps.slice(0,60).map(normalizePayApp).filter(Boolean):null;},
+    setPayApp:(pkg,on)=>PAY_APP_PACKAGE.test(pkg??'')?callNative(native,'setPayAppAllowed',pkg,on===true):{ok:false,error:'BAD_PACKAGE'},
     pending:()=>pending.slice(),
     // 다리에서 미처리 결제 알림을 읽어 보이는 목록(pending)을 만든다. 쓰기 0. 이미 처리한 것·같은 알림은 건너뛰고 다리에 처리됨만 알린다.
     refreshDrafts(){
@@ -266,27 +321,31 @@ export function createNativeBridge({native=globalThis.LifeBrickNative,storage,no
       const seen=new Set([...seenList(),...listOf(NATIVE_KEYS.unacked)]),batch=new Set(),fresh=[],done=[];
       for(const raw of r.drafts.slice(0,NATIVE_LIMITS.drafts)){
         const d=normalizeDraft(raw);if(!d)continue;
+        if(typeof raw.source==='string')sourceOf.set(d,raw.source);
         if(d.keys.some(k=>seen.has(k))){if(d.id)done.push(d);continue;}
         if(d.keys.some(k=>batch.has(k)))continue;
-        d.keys.forEach(k=>batch.add(k));fresh.push(d);
+        d.keys.forEach(k=>batch.add(k));dropApart(d,seen);fresh.push(d);
       }
       if(done.length&&ack(done.map(d=>d.id)).ok)clearUnacked(done.flatMap(d=>d.keys));
       fresh.sort((a,b)=>a.at-b.at);
       pending=fresh;flagDrafts();return pending;
     },
     // 저장이 성공한 뒤(또는 사용자가 버린 뒤)에만 부른다: 이 기기에 처리됨으로 기억하고 다리에 알린다.
+    // FIX58P HP10: 남은 줄의 같은 결제 표시(twin·maybeSame·added)를 다시 계산한다(다시 그리기는 부르는 쪽 show()가 한다).
     markHandled(draft){
       if(!draft||!Array.isArray(draft.keys))return {ok:false};
       rememberSeen(draft.keys);pending=pending.filter(d=>d!==draft&&!d.keys.some(k=>draft.keys.includes(k)));
+      const handled=new Set(draft.keys);for(const d of pending)dropApart(d,handled);flagDrafts();
       const r=draft.id?ack([draft.id]):{ok:true,removed:0};
       if(!r.ok&&draft.id)noteUnacked(draft.keys);
       return r;
     },
     // 거래가 받아들여진 뒤(서버 확정·임시 저장 모두) 부른다: 넣은 결제로 기억하고, 아직 처리 표시가 안 됐으면(임시 저장) 처리됨으로 표시한다.
+    // FIX59P HP57-5: 금액 모름 초안을 넣으면 "그 칸에 넣은 결제 있음"과 "금액 모름을 넣음"을 남긴다(남은 줄의 안내가 사라지지 않게). 따로 넣은 이전 내용도 처리됨으로 표시한다.
     markAdded(draft){
       if(!draft||!Array.isArray(draft.keys)||typeof draft.at!=='number')return {ok:false};
-      if(draft.kind==='EXPENSE'){const list=listOf(NATIVE_KEYS.added),sig=addedSig(slotOf(draft.at),draft.amount);if(!list.includes(sig))list.push(sig);writeJson(store,NATIVE_KEYS.added,list.slice(-NATIVE_LIMITS.added));}
-      const r=pending.includes(draft)?api.markHandled(draft):{ok:true,removed:0};
+      if(draft.kind==='EXPENSE'){const slot=slotOf(draft.at),list=listOf(NATIVE_KEYS.added);for(const sig of draft.amount!==null?[addedSig(slot,draft.amount),addedSlotSig(slot)]:[addedSlotSig(slot),addedUnreadSig(slot)])if(!list.includes(sig))list.push(sig);writeJson(store,NATIVE_KEYS.added,list.slice(-NATIVE_LIMITS.added));}
+      const r=pending.includes(draft)||draft.apart===true?api.markHandled(draft):{ok:true,removed:0};
       flagDrafts();return r;
     },
     reminderPrefs:()=>normalizeReminders(readJson(store,NATIVE_KEYS.reminders,null)),
@@ -412,17 +471,49 @@ export function payDraftBody({h,br,formatWon,onAdd,onDiscard,recurringName=null,
   const body=h.el('div',null,'native-pay-list'),list=br.pending();
   if(!list.length)h.add(body,h.el('p',NATIVE_TEXT.empty,'muted'));
   for(const d of list){
-    const cancel=d.kind==='CANCEL',head=h.el('strong',(cancel?'취소 · ':'')+formatWon(d.amount)),sub=h.el('span',(d.merchant||'가맹점 모름')+' · '+kstDateOf(d.at)+' '+kstTimeOf(d.at)+(d.last4?' · 카드 끝 '+d.last4:''),'muted small');
+    const cancel=d.kind==='CANCEL',head=h.el('strong',(cancel?'취소 · ':'')+(d.needsAmount?NATIVE_TEXT.needsAmount:formatWon(d.amount)+(d.estimate?' ('+NATIVE_TEXT.estimate+')':''))),sub=h.el('span',(d.merchant||'가맹점 모름')+' · '+kstDateOf(d.at)+' '+kstTimeOf(d.at)+(d.last4?' · 카드 끝 '+d.last4:''),'muted small');
     const row=h.add(h.el('div',null,'native-pay-item'+(cancel?' cancel':'')),h.add(h.el('div',null,'native-pay-main'),head,sub));
-    const rec=cancel||!recurringName?null:recurringName(d);
+    const rec=cancel||!recurringName||d.needsAmount?null:recurringName(d);
     if(rec)h.add(row,h.el('span','정기 결제: '+rec,'native-pay-recurring'));
+    if(d.needsAmount)h.add(row,h.el('p',NATIVE_TEXT.needsAmountNote,'muted small'));
+    if(d.estimate)h.add(row,h.el('p',NATIVE_TEXT.estimateNote,'muted small'));
     if(cancel)h.add(row,h.el('p',NATIVE_TEXT.cancel,'muted small'));
-    if(d.twin)h.add(row,h.el('p',NATIVE_TEXT.twin,'muted small'));
-    if(!cancel&&(d.added||alreadyAdded?.(d)))h.add(row,h.el('p',NATIVE_TEXT.added,'muted small'));
+    if(d.twin||d.maybeSame)h.add(row,h.el('p',NATIVE_TEXT.twin,'muted small'));
+    if(d.merged)h.add(row,h.el('p',NATIVE_TEXT.merged(d.merged),'muted small'));
+    if(!cancel&&(d.added||d.addedUnread||(!d.needsAmount&&alreadyAdded?.(d))))h.add(row,h.el('p',NATIVE_TEXT.added,'muted small'));
+    if(d.checkAmount)h.add(row,h.el('p',NATIVE_TEXT.checkAmount,'muted small'));
+    // FIX59P HP57-3: 같은 알림 자리 갱신으로 바뀐 초안은 바뀌기 전 내용을 접어서 보여 준다. 금액·가맹점이 있던 승인은 [따로 넣기](기존 거래 입력 열기).
+    if(d.changed){
+      const box=h.add(h.el('details'),h.el('summary',NATIVE_TEXT.changed));
+      for(const c of d.changed){
+        h.add(box,h.el('p',NATIVE_TEXT.changedItem+' · '+(c.kind==='CANCEL'?'취소 · ':'')+(c.amount?formatWon(c.amount):NATIVE_TEXT.needsAmount)+' · '+(c.merchant||'가맹점 모름'),'muted small'));
+        if(c.apart)h.add(box,h.button(NATIVE_TEXT.addApart,()=>onAdd(c.apart),'secondary'));
+      }
+      h.add(row,box);
+    }
     h.add(row,h.add(h.el('div',null,'button-row'),cancel?null:h.button(NATIVE_TEXT.add,()=>onAdd(d),'primary'),h.button(cancel?NATIVE_TEXT.ok:NATIVE_TEXT.discard,()=>onDiscard(d),'secondary')));
     h.add(body,row);
   }
   return body;
+}
+// PAY1: "결제 알림 앱 후보" 줄. 옛 APK(후보 메서드 없음)면 아무것도 그리지 않는다. 토글은 그 앱만 켜고 끈다(다른 쓰기 0).
+// FIX55B HP5: 켜기·끄기가 거절되면 체크박스를 실제 상태(바뀌기 전)로 되돌리고, 다시 그리기가 있으면 다시 그린다(만료된 후보는 목록에서 빠진다).
+// FIX56B HP5: 문구는 오류 코드로 고른다(NOT_CANDIDATE·TOO_MANY는 이유, 그 밖은 연결 실패).
+const PAY_APP_ERROR_TEXT=Object.freeze({NOT_CANDIDATE:NATIVE_TEXT.payAppNotCandidate,TOO_MANY:NATIVE_TEXT.payAppTooMany});
+function renderPayApps(sec,{h,br,kit,status,rerender}){
+  const apps=br.payApps();if(!apps)return;
+  h.add(sec,h.el('h3',NATIVE_TEXT.payAppsTitle),h.el('p',NATIVE_TEXT.payAppsRule,'muted small'));
+  if(!apps.length){h.add(sec,h.el('p',NATIVE_TEXT.payAppsEmpty,'muted small'));return;}
+  for(const a of apps){
+    const row=h.el('div',null,'native-row native-pay-app');
+    const t=kit.toggle(a.label?a.label+' · '+a.package:a.package,a.allowed,on=>{
+      const r=br.setPayApp(a.package,on);if(r.ok)return;
+      const box=t?.querySelector?.('input');if(box)box.checked=!on;
+      status?.(Object.hasOwn(PAY_APP_ERROR_TEXT,r.error)?PAY_APP_ERROR_TEXT[r.error]:NATIVE_TEXT.fail);rerender?.();
+    });
+    h.add(row,t);
+    h.add(sec,row);
+  }
 }
 // 설정 "알림 · 캘린더" 절. 다리가 없으면 null(절 자체를 숨긴다).
 // ctx: {h,kit:{toggle},br,exams,stackedToday(),bedtime(),status(text),rerender()}
@@ -432,6 +523,7 @@ export function renderNativeSettings(root,ctx){
   const perms=br.permissions();
   h.add(sec,h.add(h.el('div',null,'native-row'),h.el('p',perms?.notificationAccess?NATIVE_TEXT.payAccessOn:NATIVE_TEXT.payAccessOff,'muted'),
     perms?.notificationAccess?null:h.button(NATIVE_TEXT.payAccessBtn,()=>{const r=br.openAccessSettings();if(!r.ok)ctx.status?.(NATIVE_TEXT.fail);},'secondary')));
+  renderPayApps(sec,ctx);
   const prefs=br.reminderPrefs(),push=()=>{const r=br.pushReminders({stackedToday:ctx.stackedToday?.()===true,bedtime:ctx.bedtime?.()??null});if(!r.ok)ctx.status?.(NATIVE_TEXT.fail);return r;};
   for(const name of ['morning','night','bed','weekly']){
     const row=h.el('div',null,'native-row');

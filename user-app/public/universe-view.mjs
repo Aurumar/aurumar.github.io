@@ -1,8 +1,8 @@
 // 지식 우주 화면 (B49): "탑" 탭의 탑 ↔ 우주 전환, 2D(SVG) 우주, 별 상세 시트, 빈 상태. 3D는 universe-3d.mjs를 처음 우주를 열 때만 불러온다.
 // 읽기만 한다: 이미 저장된 공부 카드의 오답을 기존 투영(projectStudy)으로 읽어 그릴 뿐 어떤 기록도 쓰지 않는다(새 엔티티·스키마 없음). 합성 데이터로만 시험한다.
-// 화면 규칙: DOM 생성 함수만 쓴다(innerHTML·인라인 style·외부 라이브러리 없음). 색은 styles.css 클래스(과목 토큰). 별 상세에는 과목·오답 코드·itemRef·복습 예정일만 있고 메모(note)는 읽지도 보이지도 않는다.
+// 화면 규칙: DOM 생성 함수만 쓴다(innerHTML·인라인 style·외부 라이브러리 없음). 색은 styles.css 클래스(과목 토큰), 토큰과 다른 과목 색(DS2 설정·영어 주황)은 SVG 속성. 별 상세에는 과목·오답 코드·itemRef·복습 예정일만 있고 메모(note)는 읽지도 보이지도 않는다.
 import {projectStudy} from './study-projection.mjs';
-import {layoutUniverse,SUBJECT_INFO,STATE_TEXT,VIEW_2D,MAX_NODES} from './universe-layout.mjs';
+import {layoutUniverse,universeColors,SUBJECT_INFO,SUBJECT_TOKEN_COLORS,STATE_TEXT,VIEW_2D,MAX_NODES} from './universe-layout.mjs';
 import {kstDate,bookRefText} from './study-model.mjs';
 
 export const EMPTY_TEXT='공부 기록에 오답을 남기면 여기에 별이 생겨요';
@@ -16,11 +16,16 @@ function maker(doc){
 }
 const isoOf=now=>now instanceof Date?now.toISOString():String(now);
 
-// 저장된 공부 카드 → 우주 배치. 못 그리면 던진다(호출하는 쪽이 안내문으로 바꾼다).
-export function universeData(study,nowIso){
+// 저장된 공부 카드 → 우주 배치. 못 그리면 던진다(호출하는 쪽이 안내문으로 바꾼다). life = 저장된 LIFE 투영(과목 색, DS2). 없으면 기본색.
+export function universeData(study,nowIso,life=null){
   const cards=(study?.days??[]).map(d=>d.data);
-  return layoutUniverse({cards,proj:projectStudy(cards,kstDate(nowIso))});
+  return layoutUniverse({cards,proj:projectStudy(cards,kstDate(nowIso)),colors:universeColors((life?.subjects??[]).map(x=>x.data))});
 }
+// DS2: 색이 CSS 토큰과 같으면 .universe-subj-* 클래스, 다르면 universe-subj-custom(CSS 규칙 없음)을 붙이고 감싼 요소의 fill·stroke 속성으로 칠한다.
+// (.universe-dot 등은 fill:var(--uni)라 --uni가 없으면 부모 값을 물려받는다. 인라인 style 없음.)
+const tokenOf=(code,color)=>color===SUBJECT_TOKEN_COLORS[code];
+const subjClass=(code,color)=>' universe-subj-'+(tokenOf(code,color)?code:'custom');
+const paint=(code,color)=>tokenOf(code,color)?{}:{fill:color};
 
 // 생물 오답은 코드 C 그대로 별자리에 있고, 이름만 생물로 보인다(D46 2.4, id = lf_bio_...). 시중 문제집 번호는 "시중 문제집 · 12쪽 3번"으로 읽는다.
 const subjectName=n=>String(n.id).startsWith('lf_bio_')?'생물':SUBJECT_INFO[n.subject].name;
@@ -39,13 +44,16 @@ export function buildUniverseSvg(doc,data,{onNode=null}={}){
   const s=svgMaker(doc);
   const svg=s('svg',{class:'universe-svg',viewBox:'0 0 '+VIEW_2D.width+' '+VIEW_2D.height,width:'100%',role:'group','aria-label':'지식 우주 별 '+data.nodes.length+'개'});
   const rings=s('g',{class:'universe-rings'}),links=s('g',{class:'universe-links'}),dots=s('g',{class:'universe-dots'});
+  const colorOf=new Map(data.clusters.map(c=>[c.code,c.color]));
   for(const c of data.clusters){
-    rings.append(s('circle',{class:'universe-ring universe-subj-'+c.code,cx:c.cx,cy:c.cy,r:c.r}));
+    const ring=s('circle',{class:'universe-ring'+subjClass(c.code,c.color),cx:c.cx,cy:c.cy,r:c.r});
+    if(tokenOf(c.code,c.color))rings.append(ring);else{const wrap=s('g',{stroke:c.color});wrap.append(ring);rings.append(wrap);}
     const label=s('text',{class:'universe-label',x:c.cx,y:c.cy+c.r+12,'text-anchor':'middle'});label.textContent=c.name+' '+c.count;rings.append(label);
   }
   for(const l of data.links){const a=data.nodes[l.a],b=data.nodes[l.b];links.append(s('line',{class:'universe-link',x1:a.px,y1:a.py,x2:b.px,y2:b.py}));}
   for(const n of data.nodes){
-    const g=s('g',{class:'universe-node universe-subj-'+n.subject+' universe-state-'+n.state,role:'button',tabindex:'0','data-id':n.id,'aria-label':nodeLabel(n)});
+    const color=colorOf.get(n.subject);
+    const g=s('g',{class:'universe-node'+subjClass(n.subject,color)+' universe-state-'+n.state,role:'button',tabindex:'0','data-id':n.id,'aria-label':nodeLabel(n),...paint(n.subject,color)});
     if(n.state==='glow')g.append(s('circle',{class:'universe-halo',cx:n.px,cy:n.py,r:n.pr*2.2}));
     g.append(s('circle',{class:'universe-dot',cx:n.px,cy:n.py,r:n.pr}));
     if(onNode){
@@ -61,7 +69,7 @@ export function buildUniverseSvg(doc,data,{onNode=null}={}){
 function legend(h,data){
   const {el,add}=h,s=svgMaker(h.doc),list=el('ul',null,'universe-legend');
   for(const c of data.clusters){
-    const dot=s('svg',{class:'life-dot',width:10,height:10,viewBox:'0 0 10 10','aria-hidden':'true'});dot.append(s('circle',{class:'universe-subj-'+c.code+' universe-legend-dot',cx:5,cy:5,r:5}));
+    const dot=s('svg',{class:'life-dot',width:10,height:10,viewBox:'0 0 10 10','aria-hidden':'true',...paint(c.code,c.color)});dot.append(s('circle',{class:'universe-legend-dot'+subjClass(c.code,c.color),cx:5,cy:5,r:5}));
     add(list,add(el('li',null,'universe-legend-item'),dot,el('span',c.name),el('strong',c.count+'개')));
   }
   return list;
@@ -72,7 +80,7 @@ function renderUniversePanel(ctx,state){
   const doc=ctx.document??globalThis.document,h={...maker(doc),doc},{el,add}=h;
   const out=add(el('section',null,'panel universe-panel'),add(el('div',null,'tower-head'),el('span','우주','eyebrow'),el('h2','지식 우주','panel-title')));
   let data;
-  try{data=universeData(ctx.getWhole().study??null,isoOf(ctx.now()));}catch{data=null;}
+  try{const whole=ctx.getWhole();data=universeData(whole.study??null,isoOf(ctx.now()),whole.life??null);}catch{data=null;}
   if(!data){add(out,el('p',ERROR_TEXT,'notice error universe-message'));return out;}
   if(data.empty){
     add(out,el('p',EMPTY_TEXT,'universe-empty'));

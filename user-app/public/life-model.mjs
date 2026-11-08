@@ -285,13 +285,47 @@ export const DEFAULT_HABITS=Object.freeze([
 ].map((h,i)=>Object.freeze({...h,order:i})));
 // 습관 칸에 쓰는 보조 문구(기본 습관의 화면 설명). 이름을 바꿔도 id로 찾는다.
 export const HABIT_HINTS=Object.freeze({'hb-sun':'일어나서 햇볕 쬔 시간','hb-in':'공부 시작','hb-out':'공부 마감','hb-recovery':'뉴에이지/산책','hb-nolate':'야식을 안 먹었으면 체크'});
+// 색 → 칩 CSS 클래스 키. styles.css 토큰(--lb-subj-*, ui-kit SUBJECT_COLORS)과 값이 같은 색만 클래스로 그리고, 나머지 색은 SVG fill 점으로 그린다.
+// 과목 기본색표가 아니다(DS2: 영어 기본색 주황은 토큰에 없어 점으로 그린다). 빨강 #D9534F는 eng 토큰 색과 같아서 그 클래스를 그대로 쓴다.
 export const SUBJECT_COLOR_KEYS=Object.freeze({'#8E6BC4':'kor','#A6714E':'math','#D9534F':'eng','#5BA66B':'hist','#D4B33C':'soc','#4F86C6':'sci','#3FA7A0':'bio'});
+// DS2 (V5 2.4, 소유자 결정 2026-11-08): 과목 색 설정의 12색 팔레트. 저장은 기존 SUBJECT_DEF.color 칸(새 칸·새 종류 없음).
+export const SUBJECT_PALETTE=Object.freeze([
+  ['보라','#8E6BC4'],['남색','#4F5FA6'],['파랑','#4F86C6'],['청록','#3FA7A0'],['초록','#5BA66B'],['올리브','#8A9A3C'],
+  ['노랑','#D4B33C'],['주황','#D9823B'],['빨강','#D9534F'],['분홍','#C96C9A'],['갈색','#A6714E'],['회청','#6E7F8E'],
+].map(([name,hex])=>Object.freeze({name,hex})));
+export const NEW_SUBJECT_COLOR='#C9A227';   // 편집 화면에서 새로 만든 과목의 첫 색(기본값이 없는 과목의 "기본값으로")
 const subject=(id,name,color,exam,bridge,order)=>Object.freeze({id,name,color,exam,bridge,hidden:false,order});
 export const DEFAULT_SUBJECTS=Object.freeze([
-  subject('kor','국어','#8E6BC4',true,false,0),subject('math','수학','#A6714E',true,false,1),subject('eng','영어','#D9534F',true,false,2),
+  subject('kor','국어','#8E6BC4',true,false,0),subject('math','수학','#A6714E',true,false,1),subject('eng','영어','#D9823B',true,false,2),
   subject('hist','한국사','#5BA66B',true,false,3),subject('soc','통합사회','#D4B33C',true,false,4),subject('sci','통합과학','#4F86C6',true,false,5),
   subject('bio','생물','#3FA7A0',false,true,6),
 ]);
+export const DEFAULT_SUBJECT_COLORS=Object.freeze(Object.fromEntries(DEFAULT_SUBJECTS.map(s=>[s.id,s.color])));
+const HEX6=/^#[0-9A-F]{6}$/;
+// 과목 색 하나를 읽는 곳(DS2). subjects = 유효 정의(lifeDefs(life).subjects): 저장된 SUBJECT_DEF.color가 있으면 그 값, 없으면 기본색, 모르는 과목은 새 과목 색.
+export function subjectColor(id,subjects=DEFAULT_SUBJECTS){
+  const c=String(subjects.find(x=>x.id===id)?.color??'').toUpperCase();
+  return HEX6.test(c)?c:DEFAULT_SUBJECT_COLORS[id]??NEW_SUBJECT_COLOR;
+}
+export const defaultSubjectColor=id=>DEFAULT_SUBJECT_COLORS[id]??NEW_SUBJECT_COLOR;
+// "직접 입력" 값 검사: #RRGGBB 또는 RRGGBB(대소문자 무관) → '#RRGGBB'(대문자). 그 밖의 값은 null(저장 거부).
+export function parseSubjectHex(text){
+  const t=typeof text==='string'?text.trim():'';
+  return /^#?[0-9A-Fa-f]{6}$/.test(t)?('#'+t.replace(/^#/,'')).toUpperCase():null;
+}
+// 두 색이 같거나 아주 가까운가(RGB 거리 < 40). 팔레트 12색끼리는 모두 이보다 멀다(시험 ds2). 안내만 하고 막지 않는다.
+export const SUBJECT_COLOR_NEAR=40;
+const rgb=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
+export function colorsNear(a,b){
+  const x=parseSubjectHex(a),y=parseSubjectHex(b);if(!x||!y)return false;
+  const p=rgb(x),q=rgb(y);return Math.hypot(p[0]-q[0],p[1]-q[1],p[2]-q[2])<SUBJECT_COLOR_NEAR;
+}
+// 숨기지 않은 과목 중 색이 같거나 아주 가까운 쌍 [[이름, 이름], …](목록 순서대로).
+export function nearSubjectPairs(subjects){
+  const list=subjects.filter(s=>!s.hidden),out=[];
+  for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++)if(colorsNear(list[i].color,list[j].color))out.push([list[i].name,list[j].name]);
+  return out;
+}
 export const DEFAULT_EXAMS=Object.freeze({items:Object.freeze([
   Object.freeze({id:'e-mock3',name:'3평',date:'2027-03-23',status:'잠정'}),
   Object.freeze({id:'e-mock6',name:'6평',date:'2027-06-03',status:'잠정'}),

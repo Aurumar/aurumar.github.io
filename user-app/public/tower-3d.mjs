@@ -4,11 +4,13 @@
 // T2A: 점토 벽돌·들어간 줄눈·금속 금벽돌·시각별 하늘과 해(세상에 고정)·정적 그림자·밤 발광·날아와 놓이는 오늘 벽돌·자동 회전·성능 등급(MID 시작).
 // T2B: 나의 집(성) 부품·정원·크레인·비계·지붕 3단·완공 예상도(선)·시즌 표지(캔버스 위 SVG 글자, 속성만)·"이번 주/집 전체" 보기·완공 순간.
 // T2C: 네 모퉁이 탑(누르면 영역 시트, 레벨이 오른 뒤 처음 보면 맥동)·업적 장식·현판 칭호 글자(같은 SVG 겹침층).
-import {WebGLRenderer,Scene,PerspectiveCamera,HemisphereLight,DirectionalLight,BoxGeometry,ConeGeometry,SphereGeometry,CircleGeometry,ExtrudeGeometry,Shape,BufferGeometry,BufferAttribute,MeshStandardMaterial,MeshBasicMaterial,PointsMaterial,LineBasicMaterial,InstancedMesh,Mesh,Points,LineSegments,Group,Object3D,Color,Fog,DataTexture,RGBAFormat,UnsignedByteType,RepeatWrapping,LinearFilter,LinearMipmapLinearFilter,SRGBColorSpace,EquirectangularReflectionMapping,PMREMGenerator,PCFSoftShadowMap,BackSide,Raycaster,Vector2,Vector3} from './three.module.js';
+// DS6: 쌓은 벽돌 = 금속 금(환경맵 반사 + 해 + 약한 보조광), 나이 3단계(오늘 빛 번짐·이번 주·지난 주 깊은 금), 아이보리 줄눈·구조벽, 대리석 단상, 금 예상도 선, 금속 회색 크레인, 꼭대기 태양 바퀴.
+import {WebGLRenderer,Scene,PerspectiveCamera,HemisphereLight,DirectionalLight,BoxGeometry,ConeGeometry,SphereGeometry,CircleGeometry,CylinderGeometry,TorusGeometry,ExtrudeGeometry,Shape,BufferGeometry,BufferAttribute,MeshStandardMaterial,MeshBasicMaterial,PointsMaterial,LineBasicMaterial,InstancedMesh,Mesh,Points,LineSegments,Group,Object3D,Color,Fog,DataTexture,RGBAFormat,UnsignedByteType,RepeatWrapping,LinearFilter,LinearMipmapLinearFilter,SRGBColorSpace,EquirectangularReflectionMapping,PMREMGenerator,PCFSoftShadowMap,BackSide,Raycaster,Vector2,Vector3} from './three.module.js';
 import {towerScene,quality3d,framesTooSlow,initialCamera,clampCamera,cameraPosition,FOV,GOLD,BRICK_W,BRICK_D,BRICK_GAP,ROW_H,TEX,WALL_TILE,brickTexels,wallTexels,groundTexels,envTexels,skyAt,starField,flyAt,flyFrom,dustAt,flashAt,shakeAt,autoRotateAt,AUTO_ROTATE_SECONDS,DUST_POINTS,DUST_SECONDS,FLASH_SECONDS,SHAKE_SECONDS,TIERS,START_TIER,nextTier,p50,p95,GROUND_R,SKY_R,fogRange,shadowBox,
-  COLS,DEPTH,PHI,CRANE_UP,SPARKS,DONE_ROOF_DROP,blueprint,houseTop,wholeCamera,gateCamera,isTallHouse,startView,flyFirst,settleCamera,spinKeepsFront,WHOLE_VIEW_PAD,craneRows,completionAt,sparkAt,BONUS_SPARKS,BONUS_BURST_SECONDS,bonusFresh,bonusSparkAt,withBadges,houseLabels,towersToPulse,pulseAt,PULSE_SECONDS} from './tower-3d-layout.mjs';
+  COLS,DEPTH,PHI,CRANE_UP,SPARKS,DONE_ROOF_DROP,blueprint,houseTop,wholeCamera,gateCamera,isTallHouse,startView,flyFirst,settleCamera,spinKeepsFront,WHOLE_VIEW_PAD,craneRows,completionAt,sparkAt,BONUS_SPARKS,BONUS_BURST_SECONDS,bonusFresh,bonusSparkAt,withBadges,houseLabels,towersToPulse,pulseAt,PULSE_SECONDS,
+  BRICK_MATERIALS,MORTAR_IVORY,brickTint,BLUEPRINT_STYLE,DAIS,FILL_LIGHT,sunWheel,daisTexels} from './tower-3d-layout.mjs';
 
-const MORTAR='#CFC6B4',CORE='#D8CCB6',SLAB='#BDAF96',WINDOW='#FFE9A8',MORTAR_DARK='#4A3F2E',DUST='#E9DFC8',BLUEPRINT='#8EC5FF',TAP_PX=8,TAP_MS=500,ROTATE_PER_PX=0.008,ZOOM_PER_WHEEL=0.0012,KEY_ROTATE=0.2,KEY_ZOOM=0.9,FRAME_LOG=120,LIT_WINDOWS=1.2;
+const MORTAR=MORTAR_IVORY,CORE='#F1EADB',SLAB='#E4D9C3',WINDOW='#FFE9A8',MORTAR_DARK='#4A3F2E',DUST='#E9DFC8',TAP_PX=8,TAP_MS=500,ROTATE_PER_PX=0.008,ZOOM_PER_WHEEL=0.0012,KEY_ROTATE=0.2,KEY_ZOOM=0.9,FRAME_LOG=120,LIT_WINDOWS=1.2;
 let active=null;
 
 // 상자 여러 개를 한 도형으로 합친다. UV는 면 안의 월드 좌표 / tile이라 층 높이가 달라도 구조벽 무늬 크기가 같다. 행에 color가 있으면 정점 색으로 싣는다.
@@ -121,11 +123,14 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
     const t=own(new DataTexture(px,w,h,RGBAFormat,UnsignedByteType));
     t.wrapS=t.wrapT=RepeatWrapping;t.magFilter=LinearFilter;t.minFilter=LinearMipmapLinearFilter;t.generateMipmaps=true;t.anisotropy=aniso;t.colorSpace=SRGBColorSpace;t.repeat.set(repeat,repeat);t.needsUpdate=true;return t;
   };
-  const brickTex=texture(brickTexels(1),TEX.brick),brokenTex=texture(brickTexels(5,{broken:true}),TEX.brick),wallTex=texture(wallTexels(),TEX.wall),groundTex=texture(groundTexels(),TEX.ground,groundR/4);
+  const brickTex=texture(brickTexels(1),TEX.brick),brokenTex=texture(brickTexels(5,{broken:true}),TEX.brick),wallTex=texture(wallTexels(),TEX.wall),groundTex=texture(groundTexels(),TEX.ground,groundR/4),daisTex=texture(daisTexels(),TEX.dais);
   slot.dataset.texMs=(win.performance.now()-texStart).toFixed(1);
-  const brickMat=own(new MeshStandardMaterial({map:brickTex,bumpMap:brickTex,bumpScale:0.6,roughness:0.86,metalness:0}));
-  const halfMat=own(new MeshStandardMaterial({map:brokenTex,bumpMap:brokenTex,bumpScale:0.6,roughness:0.9,metalness:0}));
-  const goldMat=own(new MeshStandardMaterial({color:0xffffff,metalness:0.7,roughness:0.3,emissive:GOLD,emissiveIntensity:0.12+0.2*sky.glow}));
+  // DS6 금속 금벽돌: 흰 바탕 질감 × 인스턴스 색(나이 금). 금속이라 환경맵(applyTier)이 색을 만든다.
+  const brickMat=own(new MeshStandardMaterial({map:brickTex,bumpMap:brickTex,...BRICK_MATERIALS.brick}));
+  const halfMat=own(new MeshStandardMaterial({map:brokenTex,bumpMap:brokenTex,...BRICK_MATERIALS.half}));
+  const goldMat=own(new MeshStandardMaterial({color:0xffffff,...BRICK_MATERIALS.gold,emissive:GOLD,emissiveIntensity:0.12+0.2*sky.glow}));
+  const todayMat=own(new MeshStandardMaterial({map:brickTex,bumpMap:brickTex,...BRICK_MATERIALS.today}));
+  const craneMat=own(new MeshStandardMaterial({roughness:0.4,metalness:0.6,vertexColors:true}));
   // 줄눈: 습관 XP 밝기 = 금빛 발광 세기. 인스턴스 색의 파랑을 줄여 밝기를 싣고, 발광에 (1-파랑)을 곱한다.
   const mortarMat=own(new MeshStandardMaterial({color:MORTAR,roughness:0.95,metalness:0,emissive:GOLD,emissiveIntensity:0.5+1.1*sky.glow}));
   mortarMat.onBeforeCompile=sh=>{sh.fragmentShader=sh.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n\ttotalEmissiveRadiance *= 1.0 - vColor.b;');};
@@ -140,7 +145,8 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   const ornMat=own(new MeshStandardMaterial({color:0xffffff,metalness:0.7,roughness:0.3}));
   const leafMat=own(new MeshStandardMaterial({roughness:0.9,metalness:0}));
   const roofMat=own(new MeshStandardMaterial({color:data.cone?.color??SLAB,roughness:0.7,metalness:0.1}));
-  const lit=[brickMat,halfMat,goldMat,mortarMat,coreMat,slabMat,windowMat,stoneMat,plainMat,ornMat,leafMat,roofMat];
+  const daisMat=own(new MeshStandardMaterial({map:daisTex,roughness:0.35,metalness:0})),daisSideMat=own(new MeshStandardMaterial({color:DAIS.side,roughness:0.4,metalness:0}));
+  const lit=[brickMat,halfMat,goldMat,todayMat,craneMat,daisMat,daisSideMat,mortarMat,coreMat,slabMat,windowMat,stoneMat,plainMat,ornMat,leafMat,roofMat];
 
   const place=(mesh,i,r)=>{dummy.position.set(r.x,r.y,r.z);dummy.rotation.set(0,0,0);dummy.scale.set(r.sx,r.sy,r.sz);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);};
   // 벽돌: p(비행 자세)가 있으면 그 위치·회전·눌림으로, 아직 출발 전이면 숨긴다. 눌림은 바닥을 붙인 채 높이만 줄인다.
@@ -156,13 +162,13 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
     mesh.instanceMatrix.needsUpdate=true;mesh.instanceColor.needsUpdate=true;scene.add(mesh);return mesh;
   };
   const fixed=hex=>{const c=new Color(hex);return ()=>c;};
-  // 데이터 벽돌은 재질별 세 묶음(온전·조각·금). slotOf[i] = 배치 배열 i번 벽돌이 어느 묶음 몇 번째인지.
-  const sets=[{mat:brickMat,rows:[]},{mat:halfMat,rows:[]},{mat:goldMat,rows:[]}],slotOf=[];
-  data.bricks.forEach(r=>{const s=sets[r.gold?2:r.half?1:0];slotOf.push({s,j:s.rows.length});s.rows.push(r);});
+  // 데이터 벽돌은 재질별 네 묶음(온전·조각·금·오늘). slotOf[i] = 배치 배열 i번 벽돌이 어느 묶음 몇 번째인지. 색은 과목 색 대신 나이 금(brickTint).
+  const sets=[{mat:brickMat,rows:[]},{mat:halfMat,rows:[]},{mat:goldMat,rows:[]},{mat:todayMat,rows:[]}],slotOf=[];
+  data.bricks.forEach(r=>{const s=sets[r.today?3:r.gold?2:r.half?1:0];slotOf.push({s,j:s.rows.length});s.rows.push(r);});
   for(const s of sets){
     if(!s.rows.length)continue;
     s.mesh=new InstancedMesh(cube,s.mat,s.rows.length);s.mesh.frustumCulled=false;s.mesh.castShadow=true;s.mesh.receiveShadow=true;own(s.mesh);
-    s.rows.forEach((r,j)=>{placeBrick(s.mesh,j,r);s.mesh.setColorAt(j,tint.set(r.color).multiplyScalar(r.shade??1));});
+    s.rows.forEach((r,j)=>{placeBrick(s.mesh,j,r);s.mesh.setColorAt(j,tint.set(brickTint(data,r)).multiplyScalar(r.shade??1));});
     s.mesh.instanceMatrix.needsUpdate=true;s.mesh.instanceColor.needsUpdate=true;scene.add(s.mesh);
   }
   const mortarTint=b=>tint.setRGB(1,1-0.15*b,1-0.85*b);
@@ -191,8 +197,16 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
     const m=new Mesh(g,roofMat);m.position.set(data.cone.x,data.cone.y,data.cone.z);m.scale.set(data.cone.r,data.cone.h,data.cone.r);m.castShadow=m.receiveShadow=true;roofGroup.add(m);
   }
   merged(data.crest,plainMat,roofGroup);
-  // 크레인: 공사 중이면 서 있고, 완공 순간에는 서 있다가 땅으로 내려간다.
-  const craneMesh=merged(celebrate?craneRows(data.height):data.crane,plainMat);
+  // 크레인: 공사 중이면 서 있고, 완공 순간에는 서 있다가 땅으로 내려간다. DS6: 금속 회색(+ 금 갈고리) 재질.
+  const craneMesh=merged(celebrate?craneRows(data.height):data.crane,craneMat);
+  // DS6 상표 태양 바퀴: 고리 1개 + 살·축·받침 기둥 한 묶음(드로우콜 2). 금 재질, 그림자 없음.
+  const wheel=sunWheel(data);
+  if(wheel){
+    const ring=new Mesh(own(new TorusGeometry(wheel.r,wheel.tube,6,32)),goldMat);ring.position.set(wheel.x,wheel.y,wheel.z);scene.add(ring);
+    const parts=[...wheel.spokes,wheel.hub,wheel.post],m=new InstancedMesh(cube,goldMat,parts.length);m.frustumCulled=false;own(m);
+    parts.forEach((r,i)=>{dummy.position.set(r.x,r.y,r.z);dummy.rotation.set(0,0,r.rotZ??0);dummy.scale.set(r.sx,r.sy,r.sz);dummy.updateMatrix();m.setMatrixAt(i,dummy.matrix);m.setColorAt(i,tint.set(GOLD));});
+    m.instanceMatrix.needsUpdate=true;m.instanceColor.needsUpdate=true;scene.add(m);
+  }
   let sparkGeo=null,sparkPos=null;
   const apex=data.cone?{x:0,y:data.cone.y+data.cone.h/2,z:0}:null;
   if(celebrate){
@@ -200,11 +214,12 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
     sparkGeo=own(new BufferGeometry());sparkPos=new Float32Array(SPARKS*3).fill(-1000);sparkGeo.setAttribute('position',new BufferAttribute(sparkPos,3));
     const sparks=new Points(sparkGeo,own(new PointsMaterial({color:GOLD,size:0.16,transparent:true,opacity:0.95,depthWrite:false})));sparks.frustumCulled=false;scene.add(sparks);
   }
-  // 완공 예상도: 하늘색 선(불투명도 0.35) + 아주 옅은 면(0.06). 안개를 받지 않는다(멀리 있는 예상 꼭대기도 보이게). LOW 등급은 선만.
+  // 완공 예상도(DS6): 금 선(불투명도 0.5) + 아이보리 반투명 유리(0.08). 안개를 받지 않는다(멀리 있는 예상 꼭대기도 보이게). LOW 등급은 선만.
   let bpFaces=null;
   if(bp){
-    const lines=new LineSegments(own(blueprintLines(bp)),own(new LineBasicMaterial({color:BLUEPRINT,transparent:true,opacity:0.35,depthWrite:false,fog:false})));lines.frustumCulled=false;scene.add(lines);
-    bpFaces=new Mesh(cube,own(new MeshBasicMaterial({color:BLUEPRINT,transparent:true,opacity:0.06,depthWrite:false,fog:false})));
+    const B=BLUEPRINT_STYLE;
+    const lines=new LineSegments(own(blueprintLines(bp)),own(new LineBasicMaterial({color:B.line,transparent:true,opacity:B.lineOpacity,depthWrite:false,fog:false})));lines.frustumCulled=false;scene.add(lines);
+    bpFaces=new Mesh(cube,own(new MeshBasicMaterial({color:B.glass,transparent:true,opacity:B.glassOpacity,depthWrite:false,fog:false})));
     bpFaces.position.set(0,(bp.roof+bp.top)/2,0);bpFaces.scale.set(COLS+0.3,Math.max(0.01,bp.top-bp.roof),DEPTH+0.3);bpFaces.renderOrder=1;scene.add(bpFaces);
   }
   // 글자 표지: 현판 칭호·머릿돌·예상도 시즌 경계(이름 · D-n)·지난 시즌 현판·완공 현판(houseLabels가 최대 MAX_LABELS개로 고른다).
@@ -233,8 +248,9 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   data.towers.forEach((t,i)=>place(towerHit,i,t.hit));towerHit.updateMatrixWorld();
   const picked=new Mesh(cube,own(new MeshBasicMaterial({color:GOLD,wireframe:true})));picked.visible=false;scene.add(picked);
 
-  // 세상: 대지·하늘(카메라를 따라다니는 큰 구, 정점 색 그라데이션)·별·안개·반구광·세상에 고정된 해(밤에는 달).
-  const ground=new Mesh(own(new CircleGeometry(groundR,64)),own(new MeshStandardMaterial({map:groundTex,roughness:1,metalness:0})));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+  // 세상: 대리석 단상(윗면 y=0)·그 아래 아이보리 대지·하늘(카메라를 따라다니는 큰 구, 정점 색 그라데이션)·별·안개·반구광·세상에 고정된 해(밤에는 달)·약한 보조광.
+  const ground=new Mesh(own(new CircleGeometry(groundR,64)),own(new MeshStandardMaterial({map:groundTex,roughness:0.9,metalness:0})));ground.rotation.x=-Math.PI/2;ground.position.y=-DAIS.h;ground.receiveShadow=true;scene.add(ground);
+  const dais=new Mesh(own(new CylinderGeometry(DAIS.r,DAIS.r+0.25,DAIS.h,96)),[daisSideMat,daisMat,daisSideMat]);dais.position.y=-DAIS.h/2;dais.receiveShadow=true;scene.add(dais);
   const skyGeo=own(new SphereGeometry(SKY_R,32,16)),top=new Color(sky.top),bottom=new Color(sky.bottom),skyCol=new Float32Array(skyGeo.attributes.position.count*3);
   for(let i=0;i<skyGeo.attributes.position.count;i++){const e=skyGeo.attributes.position.getY(i)/SKY_R,u=e<=0?0:Math.min(1,e*1.6);tint.copy(bottom).lerp(top,u*u*(3-2*u));skyCol.set([tint.r,tint.g,tint.b],i*3);}
   skyGeo.setAttribute('color',new BufferAttribute(skyCol,3));
@@ -249,7 +265,8 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   sun.target.position.set(...sb.center);sun.position.set(sb.center[0]+dx*sb.radius*2,sb.center[1]+dy*sb.radius*2,sb.center[2]+dz*sb.radius*2);
   Object.assign(sun.shadow.camera,{left:-sb.radius,right:sb.radius,top:sb.radius,bottom:-sb.radius,near:0.5,far:sb.radius*4});sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.bias=-0.0004;sun.shadow.normalBias=0.03;
-  scene.add(hemi,sun,sun.target);
+  const fill=new DirectionalLight(FILL_LIGHT.color,FILL_LIGHT.intensity*(0.4+0.6*(1-sky.glow)));fill.position.set(...FILL_LIGHT.dir.map((v,i)=>sb.center[i]+v*sb.radius*2));fill.target.position.set(...sb.center);
+  scene.add(hemi,sun,sun.target,fill,fill.target);
   slot.dataset.hour=String(Math.floor(sky.hour));slot.dataset.sky=sky.phase;
 
   // 오늘 벽돌 비행: 이번 앱 실행 중 아직 안 본 오늘 벽돌만(st.seenToday, 메모리뿐). 움직임 줄이기면 처음부터 제자리.
@@ -300,7 +317,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
       const eq=texture(envTexels(sky),TEX.env);eq.mapping=EquirectangularReflectionMapping;eq.generateMipmaps=false;eq.minFilter=LinearFilter;
       const pm=new PMREMGenerator(renderer);env=own(pm.fromEquirectangular(eq).texture);pm.dispose();
     }
-    for(const m of [goldMat,ornMat]){m.envMap=T.env?env:null;m.needsUpdate=true;}
+    for(const m of [brickMat,halfMat,goldMat,todayMat,craneMat,ornMat]){m.envMap=T.env?env:null;m.needsUpdate=true;}
     if(bpFaces)bpFaces.visible=name!=='LOW';
     stars.visible=T.stars&&sky.stars>0.02;
     if(dust)dust.visible=T.dust;

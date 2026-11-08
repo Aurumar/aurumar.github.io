@@ -102,6 +102,17 @@ export function todayEffectOf(todayMin){
   return {...TODAY_EFFECTS[index],minutes,next,toNextMin:next?next.fromMin-minutes:null};
 }
 
+// DS5 (설계 V5 §2.2): 오늘 효과 5단계 띠의 순수 계산. 경계·이름은 위 TODAY_EFFECTS를 그대로 읽는다(새 경계값 없음). 저장 0.
+// todayMs = 오늘 누적 공부(ms). 단계는 todayEffectOf(내림한 분)과 같고, 다음 단계까지 남은 시간은 정수 초(시계와 같은 내림)로 센다.
+export function todayStepsOf(todayMs){
+  const sec=Number.isFinite(todayMs)&&todayMs>0?Math.floor(todayMs/1000):0,fx=todayEffectOf(Math.floor(sec/60));
+  const steps=TODAY_EFFECTS.map((e,i)=>({...e,toMin:TODAY_EFFECTS[i+1]?.fromMin??null,state:e.level<fx.level?'done':e.level===fx.level?'now':'todo'}));
+  return {level:fx.level,label:fx.label,next:fx.next,steps,toNextSec:fx.next?fx.next.fromMin*60-sec:null,top:fx.next===null};
+}
+// 칸 이름표: "0~2h" … "8h+"(끝은 다음 단계의 fromMin). 남은 시간: "1:58:53"(시간은 앞 0 없음).
+export const stepRangeText=e=>{const next=TODAY_EFFECTS.find(x=>x.level===e.level+1);return next?e.fromMin/60+'~'+next.fromMin/60+'h':e.fromMin/60+'h+';};
+export const leftClockText=sec=>{const s=Number.isFinite(sec)&&sec>0?Math.floor(sec):0;return Math.floor(s/3600)+':'+String(Math.floor(s/60)%60).padStart(2,'0')+':'+String(s%60).padStart(2,'0');};
+
 // 진행 중 시간은 1초씩 더하지 않고 언제나 "지금 - 시작 시각"으로 구한다. 화면이 꺼지거나 탭이 멈춰 있어도 다시 계산하면 맞다. 시계가 뒤로 가면 0.
 // S1A: restMs = 이 타이머의 휴식 합(ms). 공부 분에서 뺀다(기본 0이라 예전 호출은 그대로).
 const restOK=ms=>Number.isFinite(ms)&&ms>0?ms:0;
