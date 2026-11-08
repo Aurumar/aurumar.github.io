@@ -155,12 +155,14 @@ export async function createMDBackend({surface,auth,transport,storage,ownership,
  // 이 줄은 [그대로 적용](draft-commit apply)으로 초안 값을 쓸 수 있다. 바뀔 칸은 승인 응답(draftFields)에만 싣는다(draft-list에는 싣지 않음, FIX49-P10·FIX54-8 경계).
  // FIX60Q (HUNT58 Q58-2·2b·HU58-1): 'SELF' = 업데이트 전 초안의 같은 칸 충돌인데 기준 이후 금고를 바꾼 것 중 이 기기(같은 기기의 이전 입력)가 있음(FIX60Q2: 다른 기기 변경이 섞여도 포함, mixedInput. FIX61Q: sealBase 있는 봉인 초안도).
  // 고를 때 보인 금고 heads를 함께 둔다. [그대로 적용] 때 heads가 다르면 쓰지 않고 지금 값으로 다시 고르게 한다. 응답에는 바뀔 칸의 지금 기록 값(currentFields)도 싣는다(이 응답에만).
- const sealedChoices=new Map();   // draftId → {kind, base(병합 기준값), extra(응답 표시), heads(고를 때 금고 heads)}
+ // FIX63 (Codex Q01): 고르기 응답마다 새 choiceToken(무작위 + 고를 때 heads 지문)을 내고 지금 토큰만 기억한다. [그대로 적용]은 화면이 받은 토큰을 함께 보낸다.
+ // 지금 토큰과 다르면(다시 고르기 응답을 화면이 받지 못함·토큰 없음) 쓰지 않고 다시 고르게 한다. 토큰은 메모리·응답에만(저널·draft-list 그대로).
+ const sealedChoices=new Map();   // draftId → {kind, base(병합 기준값), extra(응답 표시), heads(고를 때 금고 heads), token(지금 choiceToken)}
  const changedFields=(data,cur)=>Object.keys(data).filter(k=>stable(data[k])!==stable(cur?.[k]??null)).map(k=>({field:k,value:structuredClone(data[k])}));
  function chooseResult(draftId,{kind,base=null,extra={}},data,ent){
-  const cur=ent.value?.data??null,draftFields=changedFields(data,cur);
-  sealedConflicts.set(draftId,'SEALED_CONFLICT');sealedChoices.set(draftId,{kind,base,extra,heads:stable(ent.heads)});
-  return {status:'SEALED_CONFLICT',draftId,draftStatus:'LOCAL_DRAFT_KEPT',committedHistory:false,...extra,choose:true,draftFields,currentFields:draftFields.map(f=>({field:f.field,value:structuredClone(cur?.[f.field]??null)}))};
+  const cur=ent.value?.data??null,draftFields=changedFields(data,cur),token=randomId()+'.'+fingerprint([...ent.heads]).slice(0,16);
+  sealedConflicts.set(draftId,'SEALED_CONFLICT');sealedChoices.set(draftId,{kind,base,extra,heads:stable(ent.heads),token});
+  return {status:'SEALED_CONFLICT',draftId,draftStatus:'LOCAL_DRAFT_KEPT',committedHistory:false,...extra,choose:true,draftFields,currentFields:draftFields.map(f=>({field:f.field,value:structuredClone(cur?.[f.field]??null)})),choiceToken:token};
  }
  // FIX60Q (HU58-1)·FIX60Q2: 초안 기준 이후 이 기록의 판 중 이 기기가 쓴 것이 있는가. 모두 이 기기 것이면 'SELF', 다른 기기 판이 섞여 있으면 'MIXED', 이 기기 판이 하나도 없으면 null(순수 다른 기기 충돌 = 지금 규칙, 버리기만).
  // "이 기기가 쓴 판" = 이 저장소의 쓰기 영수증(COMMITTED)이 있는 요청의 판. 영수증은 이 저장소가 보낸 쓰기에만 생기고(sequential-service publish) 저장소에 남아 재시작 뒤에도 같다.
@@ -207,7 +209,7 @@ export async function createMDBackend({surface,auth,transport,storage,ownership,
   await box.discard(draftId);mergeWrites.delete(draftId);return {...result,draftId,draftStatus:'SERVER_COMMITTED',...tag};
  }
  // FIX59Q: 사용자가 [그대로 적용]을 고름(이 실행에서 고를 수 있는 충돌로 표시된 줄만). 결과 모르는 쓰기가 있으면 결과 확인이 먼저다.
- async function applyChosen(active,box,draftId,d){
+ async function applyChosen(active,box,draftId,d,token){
   const choice=sealedChoices.get(draftId),s=active.store.state;check(choice,'MD_DRAFT_APPLY_STATE');
   const {sealBase,...cmd}=d.body,mid=mergeWrites.get(draftId);
   check(!s.sequentialSync.pending,'MD_PENDING_RECONCILE_REQUIRED');
@@ -220,7 +222,8 @@ export async function createMDBackend({surface,auth,transport,storage,ownership,
   validateLifeData(cmd.entityType,cmd.entityId,data);
   if(latest&&stable(latest)===stable(data)){sealedConflicts.delete(draftId);sealedChoices.delete(draftId);await box.discard(draftId);mergeWrites.delete(draftId);return {status:'ALREADY_APPLIED',draftId,draftStatus:'DISCARDED',committedHistory:false};}
   // FIX60Q (Q58-2·2b): 고를 때 보인 금고와 지금 금고가 다르면(그사이 다른 저장) 쓰지 않고 지금 값으로 다시 고르게 한다(쓰기 0, 초안 보존)
-  if(stable(cur.heads)!==choice.heads)return chooseResult(draftId,choice,data,cur);
+  // FIX63 (Q01): 화면이 받은 토큰이 지금 고르기의 토큰이 아니어도 같다(화면이 본 고르기 ≠ 서버의 지금 고르기)
+  if(token!==choice.token||stable(cur.heads)!==choice.heads)return chooseResult(draftId,choice,data,cur);
   sealedConflicts.delete(draftId);sealedChoices.delete(draftId);
   return writeFor(active,box,draftId,cmd,cur,data,{applied:true});
  }
@@ -342,10 +345,10 @@ export async function createMDBackend({surface,auth,transport,storage,ownership,
   // The draft keeps its original requestId, so a retry after DISPATCHED_UNKNOWN or a crash after the
   // server receipt converges on the same intent and never appends twice.
   case 'draft-commit':{
-   const apply=Object.hasOwn(body,'apply');   // FIX59Q: [그대로 적용]은 apply:true를 함께 보낸다(고를 수 있는 충돌 줄만)
-   keys(body,apply?['draftId','confirmed','apply']:['draftId','confirmed']);check(body.confirmed===true&&(!apply||body.apply===true),'MD_EXPLICIT_DRAFT_APPROVAL');const active=needOwner(),box=drafts();check(box,'MD_DRAFTS_UNAVAILABLE');
+   const apply=Object.hasOwn(body,'apply'),tokened=apply&&Object.hasOwn(body,'choiceToken');   // FIX59Q: [그대로 적용]은 apply:true를 함께 보낸다(고를 수 있는 충돌 줄만). FIX63: 화면이 받은 choiceToken도
+   keys(body,apply?['draftId','confirmed','apply',...(tokened?['choiceToken']:[])]:['draftId','confirmed']);check(body.confirmed===true&&(!apply||body.apply===true)&&(!tokened||typeof body.choiceToken==='string'),'MD_EXPLICIT_DRAFT_APPROVAL');const active=needOwner(),box=drafts();check(box,'MD_DRAFTS_UNAVAILABLE');
    const d=box.get(body.draftId),old=preUpdateDraft(d);
-   if(apply)return applyChosen(active,box,body.draftId,d);
+   if(apply)return applyChosen(active,box,body.draftId,d,tokened?body.choiceToken:null);
    if(d.type==='ENTITY'&&Object.hasOwn(d.body,'sealBase')){const r=await commitSealed(active,box,body.draftId,d);if(r)return r;delete d.body.sealBase;}   // FIX54: 원래 길은 sealBase 없는 원래 명령(같은 requestId)
    let noBase=false;
    if(old){const base=preUpdateBase(active.store.graph,d.body);if(base===undefined)noBase=true;else{const r=await commitSealed(active,box,body.draftId,{...d,body:{...d.body,sealBase:base}},true);if(r)return r;}}   // FIX59Q (HU57-1): 업데이트 전 초안은 expectedHeads 판 값을 기준으로 같은 3자 병합
