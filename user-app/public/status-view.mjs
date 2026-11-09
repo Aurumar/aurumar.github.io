@@ -7,6 +7,7 @@ import {achieve} from './life-achieve.mjs';
 import {kstDate} from './life-model.mjs';
 import {universeData} from './universe-view.mjs';
 import {todayEffectStrip} from './study-live.mjs';   // DS5: 오늘 효과 5단계 띠(작게 보기와 같은 함수)
+import {avatarFxLayer} from './study-room.mjs';   // AV5: 오늘 상태 효과 층
 
 const NS='http://www.w3.org/2000/svg';
 const MAX_STAR_MARKS=12;
@@ -62,7 +63,8 @@ function fxFront({s},useArt){
   if(useArt)for(const [x,y] of ART_GLINTS)svg.append(s('path',{class:'st-glint-mark',d:'M'+x+' '+(y-7)+'L'+(x+1.6)+' '+(y-1.6)+'L'+(x+7)+' '+y+'L'+(x+1.6)+' '+(y+1.6)+'L'+x+' '+(y+7)+'L'+(x-1.6)+' '+(y+1.6)+'L'+(x-7)+' '+y+'L'+(x-1.6)+' '+(y-1.6)+'Z'}));
   return svg;
 }
-const fxClass=(level,useArt)=>'st-stage st-lv-'+level+(useArt?' st-stage-art':'')+(level>=2?' st-glint':'')+(level>=3?' st-particles':'')+(level>=4?' st-aura-on':'')+(level>=5?' st-full':'');
+// AV5: 그림이 있으면 옛 효과 class(색 바꾸는 필터·입자·오라)를 달지 않는다. 그림 위에는 avatarFxLayer(오늘 상태 6단계 효과 층)만 얹는다(같은 옷 그대로). 자리표시 그림은 예전 class 그대로.
+const fxClass=(level,useArt)=>'st-stage st-lv-'+level+(useArt?' st-stage-art':(level>=2?' st-glint':'')+(level>=3?' st-particles':'')+(level>=4?' st-aura-on':'')+(level>=5?' st-full':''));
 
 function todayRing({s},minutes){
   const size=72,stroke=8,r=(size-stroke)/2,c=2*Math.PI*r,mid=size/2,part=Math.min(1,minutes/FULL_EFFECT_MIN);
@@ -74,7 +76,7 @@ function todayRing({s},minutes){
   return svg;
 }
 const nextEffectText=fx=>fx.next?'다음 효과까지 '+hmText(fx.toNextMin)+' · '+fx.next.label:'오늘 효과 최고 단계 · '+fx.label;
-const todayBadge=fx=>fx.level===1?'오늘 효과 대기':'오늘 '+fx.label;
+const todayBadge=fx=>'오늘 상태 · '+fx.label;   // AV5: "평생 등급"과 헷갈리지 않게 이름표를 단다
 
 // "어디까지 왔나" 문구(AV4C). 수치는 progressOf에서 오고 여기서는 글자만 만든다. today = KST 날짜.
 export function progressLines(p,today){
@@ -214,15 +216,17 @@ export function renderStatusView(root,ctx){
     figure=ph;if(!artOn)return;
     artOn=false;stage.className=fxClass(today.fx.level,false);
     const b=fxBack(h,false),f=fxFront(h,false);back.replaceWith?.(b);front.replaceWith?.(f);back=b;front=f;
+    avFx.node.hidden=true;   // AV5: 효과 층 기준점은 실제 그림 자리라 자리표시에는 얹지 않는다
     gallery.artOff();
   };
   const gallery=stageGallery(h,doc,out,prog,date,useArt);
   const figureOf=a=>figureNode(h,proj.stage.no,a,artOn,artFailed);
   figure=figureOf(art);
-  stage=add(el('div',null,fxClass(today.fx.level,useArt)),back,figure,front);
+  const avFx=avatarFxLayer(doc,{level:today.fx.level,grade:proj.stage.no});avFx.node.hidden=!useArt;   // AV5: 오늘 상태 효과 층(STUDY LIVE·미리보기 격자와 같은 함수)
+  stage=add(el('div',null,fxClass(today.fx.level,useArt)),back,figure,front,avFx.node);
   const badgeToday=el('span',todayBadge(today.fx),'st-badge st-badge-today');
   const money=moneyOf(ctx,date);
-  const avatar=add(el('section',null,'panel st-avatar'),titleRow(h,ctx,whole,date,money),stage,el('span',proj.stage.name,'st-badge st-badge-stage'),badgeToday,useArt?null:el('p','자리표시 그림입니다 · 등급 그림은 준비 중이에요','muted small st-art-note'),progressBlock(h,prog,date,gallery.row));
+  const avatar=add(el('section',null,'panel st-avatar'),titleRow(h,ctx,whole,date,money),stage,el('span','평생 등급 · '+proj.stage.name,'st-badge st-badge-stage'),badgeToday,useArt?null:el('p','자리표시 그림입니다 · 등급 그림은 준비 중이에요','muted small st-art-note'),progressBlock(h,prog,date,gallery.row));
 
   // 2) 오늘 시간: 링·오늘 누적·다음 효과까지 (타이머가 돌면 "지금 - 시작"으로 다시 계산)
   const ringSlot=add(el('div',null,'st-ring-slot'),todayRing(h,today.minutes));
@@ -249,7 +253,7 @@ export function renderStatusView(root,ctx){
     today=next;
     ringSlot.replaceChildren(todayRing(h,today.minutes));
     todayLine.textContent='오늘 '+hmText(today.minutes);nextLine.textContent=nextEffectText(today.fx);badgeToday.textContent=todayBadge(today.fx);
-    stage.className=fxClass(today.fx.level,artOn);
+    stage.className=fxClass(today.fx.level,artOn);avFx.paint(today.fx.level,proj.stage.no);   // AV5
     effects.paint(today.minutes*60000);   // DS5
     if(today.fx.art!==art){art=today.fx.art;const fresh=figureOf(art);figure.replaceWith?.(fresh);figure=fresh;}
   };

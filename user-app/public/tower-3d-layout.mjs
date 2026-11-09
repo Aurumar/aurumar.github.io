@@ -6,10 +6,11 @@
 // T2C: 영역 4개 = 네 모퉁이 탑(레벨로 단계가 정해진다), 업적 = 머릿돌·현판·문장·깃발. 업적 판정(houseBadges)은 화면(life-tower)이 계산해 넘기고 여기서는 그 값대로 놓기만 한다.
 // DS6: 금빛 벽돌(금속 금·나이 3단계 색)·아이보리 대리석 단상·아이보리→연금 하늘·금 예상도 선·상표 태양 바퀴. 배치(위치·크기·개수·층 높이)는 바꾸지 않고 색·재질 값과 픽셀만 바꾼다.
 export const COLS=7,DEPTH=7,MIN_ROWS=3,MAX_ROWS=16,ROW_H=0.34,SLAB_H=0.3;
-export const GOLD='#E6C65A';
+// DS7: 금색 B(금 #F0CF6E · 금 진함 #D4A83A · 하이라이트 #FFF8DF · 음각 #F1ECE0 · 선 #EADFC4). 오늘 = 금 75% + 하이라이트 25%.
+export const GOLD='#F0CF6E';
 // DS6 금빛 벽돌(설계 V5 2.7: 금은 "번 것"에만). 쌓은 벽돌 = 금속 금, 나이 3단계는 낡음 대신 깊이(녹·얼룩 없음). 위치·크기·개수는 그대로, 색·재질만.
-export const BRICK_GOLD='#E3B341',MORTAR_IVORY='#EFE7D6';
-export const BRICK_AGE_COLORS=Object.freeze({TODAY:'#F7D56E',WEEK:BRICK_GOLD,OLD:'#B07D18'});
+export const BRICK_GOLD='#F0CF6E',MORTAR_IVORY='#F1ECE0';
+export const BRICK_AGE_COLORS=Object.freeze({TODAY:'#F4D98A',WEEK:BRICK_GOLD,OLD:'#D4A83A'});
 export const BRICK_MATERIALS=Object.freeze({
   brick:Object.freeze({metalness:0.95,roughness:0.32,bumpScale:0.2}),
   half:Object.freeze({metalness:0.95,roughness:0.34,bumpScale:0.2}),
@@ -18,22 +19,22 @@ export const BRICK_MATERIALS=Object.freeze({
 });
 export const brickAge=(scene,r)=>r.today?'TODAY':scene.floors[r.floor]?.current?'WEEK':'OLD';
 // 작은 금빛 벽돌(일기·리뷰)은 같은 나이 금을 아이보리 쪽으로 옅게.
-export const brickTint=(scene,r)=>{const c=BRICK_AGE_COLORS[brickAge(scene,r)];return r.small?mixHex(c,'#FFF6DC',0.45):c;};
+export const brickTint=(scene,r)=>{const c=BRICK_AGE_COLORS[brickAge(scene,r)];return r.small?mixHex(c,'#FFF8DF',0.45):c;};
 // 완공 예상도: 금 선(WebGL 선은 늘 1px이라 불투명도 0.5로 0.5px 느낌) + 아이보리 반투명 유리(0.08).
-export const BLUEPRINT_STYLE=Object.freeze({line:BRICK_GOLD,lineOpacity:0.5,glass:'#FBF6EA',glassOpacity:0.08});
+export const BLUEPRINT_STYLE=Object.freeze({line:BRICK_GOLD,lineOpacity:0.5,glass:'#FAF7F0',glassOpacity:0.08});
 // 바닥: 아이보리 대리석 원형 단상(정원·나무까지 덮는다) + 단상 아래 아이보리 대지. 약한 반사광 = 앞 왼쪽 낮은 곳의 따뜻한 보조광(그림자 없음).
-export const DAIS=Object.freeze({r:15,h:0.3,side:'#E6DCC6'}),FILL_LIGHT=Object.freeze({color:'#FFF1D6',intensity:0.4,dir:Object.freeze([-0.6,0.35,0.72])});
+export const DAIS=Object.freeze({r:15,h:0.3,side:'#EADFC4'}),FILL_LIGHT=Object.freeze({color:'#FFF8DF',intensity:0.4,dir:Object.freeze([-0.6,0.35,0.72])});
 export const MORTAR_FULL_XP=100,MAX_LAMPS=12,MAX_SPIRE_TIERS=12,MAX_PARTICLES=48,PARTICLES_PER_BRICK=12;
 export const MAX_INSTANCES=20000,LOW_CORES=2,LOW_MEMORY_GB=1,SLOW_FRAME_MS=200,SLOW_FRAME_COUNT=10;
 export const MOTION_SECONDS=4,FALL_SECONDS=1.4,GROW_SECONDS=1.6;
 export const FOV=38,PHI=0.3,MIN_ZOOM=0.45,MIN_VIEW_H=18;
-export const AREA_COLORS=Object.freeze({BODY:'#5BA66B',HEAD:'#4F86C6',MONEY:'#C9A227',HEART:'#D9534F'});
+export const AREA_COLORS=Object.freeze({BODY:'#5BA66B',HEAD:'#4F86C6',MONEY:'#D4A83A',HEART:'#D9534F'});
 const SIDES=Object.freeze(['BODY','HEAD','MONEY','HEART']);
 export const BRICK_W=0.92,BRICK_D=0.46,BRICK_GAP=0.06;
 // 벽돌 앞면은 탑 앞면보다 BRICK_OUT 튀어나오고, 줄눈 판의 앞면은 벽돌 앞면보다 MORTAR_IN 들어가 있다(벽돌 사이 틈으로 보이는 들어간 줄눈).
 const BRICK_OUT=0.02,MORTAR_IN=0.03,MORTAR_T=0.08;
 const HALF_W=COLS/2,HALF_D=DEPTH/2,BRICK_Z=HALF_D+BRICK_OUT-BRICK_D/2,PLATE_Z=HALF_D+BRICK_OUT-MORTAR_IN-MORTAR_T/2,SLAB_OUT=0.15,BAND_OUT=0.08;
-export const BONUS_W=0.46,BONUS_X=-HALF_W-0.26,BONUS_COLORS=Object.freeze([GOLD,'#F4DE8E']);   // Q1B 금빛 기둥: 월요일 칸 왼쪽 밖, 카메라 맞춤 폭(±4.2) 안. 빛 재질이라 그늘이 없어 두 금색을 번갈아 써서 개수가 보이게 한다
+export const BONUS_W=0.46,BONUS_X=-HALF_W-0.26,BONUS_COLORS=Object.freeze([GOLD,'#FAEAB7']);   // Q1B 금빛 기둥: 월요일 칸 왼쪽 밖, 카메라 맞춤 폭(±4.2) 안. 빛 재질이라 그늘이 없어 두 금색을 번갈아 써서 개수가 보이게 한다
 // 벽돌마다 아주 작은 차이(손으로 쌓은 느낌). 난수 대신 (층,칸,순번) 정수 해시라 같은 입력이면 같은 모양이다. x(요일 칸 중심)와 y(줄 중심)는 바꾸지 않는다.
 export const JITTER=Object.freeze({size:0.02,rot:0.8*Math.PI/180,z:0.01,shade:0.06});
 export function hash01(a,b,c){
@@ -48,7 +49,7 @@ export function brickJitter(floor,col,k){
 
 // FIX49C: 작은 금빛 벽돌(일기 0.25·리뷰 0.5)도 무게만큼 그 칸 높이에 든다(2.5D 탑과 같은 규칙).
 const dayHeight=d=>Math.min(MAX_ROWS,d.items.reduce((s,b)=>s+(b.half?0.5:1),0)+(d.small??[]).reduce((s,b)=>s+b.weight,0));
-export const SMALL_COLORS=Object.freeze({DIARY:'#F2DC92',REVIEW:'#F7E7B0'});   // 금벽돌(GOLD)보다 옅은 금색. 진짜 벽돌 재질 묶음에 색만 입힌다
+export const SMALL_COLORS=Object.freeze({DIARY:'#F7E2A1',REVIEW:'#FAEAB7'});   // 금벽돌(GOLD)보다 옅은 금색. 진짜 벽돌 재질 묶음에 색만 입힌다
 const box=(x,y,z,sx,sy,sz,extra)=>({x,y,z,sx,sy,sz,...extra});
 
 // ---------- T2B 집 부품 슬롯: 날짜(시즌의 passed)와 투영으로만 정해진다. 기본 부품은 시간이 지나면 반드시 붙고, 달성률 60%/90%면 은/금 장식이 더해진다 ----------

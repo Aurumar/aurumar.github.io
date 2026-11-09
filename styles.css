@@ -9,27 +9,29 @@
 :root{
   color-scheme:light;
   /* 바탕 */
-  --lb-bg:#FBF7EE;--lb-bg-2:#F5EEDD;
-  --lb-glow-1:rgba(243,227,181,.62);--lb-glow-2:rgba(201,162,39,.13);--lb-glow-3:rgba(255,255,255,.72);
+  /* DS7 금색 B "밝은 실크 금"(소유자 결정 2026-11-08): 바탕 #FAF7F0 · 카드 #FFFFFF · 선 #EADFC4 · 금 #FFF8DF/#F0CF6E/#D4A83A/#A67A14 · 음각 #F1ECE0.
+     옛 B40 금 3단도 B 값으로 맞춘다(gold-1 = 하이라이트 65% + 금 35%). 금 글자는 대비 미달이라 쓰지 않는다(글자는 --ink-900) */
+  --lb-bg:#FAF7F0;--lb-bg-2:#F1ECE0;
+  --lb-glow-1:rgba(255,248,223,.62);--lb-glow-2:rgba(212,168,58,.13);--lb-glow-3:rgba(255,255,255,.72);
   /* 금 3단 */
-  --lb-gold-1:#F3E3B5;--lb-gold-2:#C9A227;--lb-gold-3:#8A6914;
-  --lb-gold-soft:#FBF3DC;--lb-gold-bright:#E6C65A;
-  --lb-gold-grad:linear-gradient(160deg,#F0D98E 0%,#D9B542 48%,#C9A227 100%);
-  --lb-gold-grad-hover:linear-gradient(160deg,#F3E3B5 0%,#E0BE50 48%,#CFA92E 100%);
-  --lb-gold-border:linear-gradient(145deg,rgba(201,162,39,.62) 0%,rgba(243,227,181,.5) 45%,rgba(138,105,20,.34) 100%);
-  --lb-gold-glow:0 6px 18px rgba(201,162,39,.32);
+  --lb-gold-1:#FAEAB7;--lb-gold-2:#D4A83A;--lb-gold-3:#A67A14;
+  --lb-gold-soft:#FFF8DF;--lb-gold-bright:#F0CF6E;
+  --lb-gold-grad:linear-gradient(160deg,#FFF8DF 0%,#F0CF6E 48%,#D4A83A 100%);
+  --lb-gold-grad-hover:linear-gradient(160deg,#FFF8DF 0%,#FAEAB7 40%,#F0CF6E 100%);
+  --lb-gold-border:linear-gradient(145deg,rgba(212,168,58,.62) 0%,rgba(255,248,223,.5) 45%,rgba(166,122,20,.34) 100%);
+  --lb-gold-glow:0 6px 18px rgba(212,168,58,.32);
   /* 잉크 4단: 제목 / 본문 / 보조 / 비활성 */
   --lb-ink-1:#2A2113;--lb-ink-2:#4A3D27;--lb-ink-3:#6B5B40;--lb-ink-4:#A2957F;
   --lb-on-gold:#2A2113;
   /* 표면·선 */
-  --lb-surface:rgba(255,255,255,.72);--lb-surface-2:rgba(255,253,247,.86);--lb-surface-solid:#FFFDF8;--lb-surface-tint:#F8F2E2;
-  --lb-line:rgba(138,105,20,.2);--lb-line-soft:rgba(138,105,20,.11);--lb-blur:blur(14px) saturate(1.15);
+  --lb-surface:rgba(255,255,255,.72);--lb-surface-2:rgba(255,255,255,.86);--lb-surface-solid:#FFFFFF;--lb-surface-tint:#FAF7F0;
+  --lb-line:#EADFC4;--lb-line-soft:rgba(166,122,20,.12);--lb-blur:blur(14px) saturate(1.15);
   --lb-scrim:rgba(42,33,19,.3);
   /* 상태 */
   --lb-ok:#2F6B45;--lb-ok-bg:#EAF3E6;--lb-ok-line:#BFD8B6;
   --lb-warn:#7F5710;--lb-warn-bg:#FBF0D6;--lb-warn-line:#E6CD92;
   --lb-bad:#9B3E22;--lb-bad-bg:#FDF1EA;--lb-bad-line:#EDCBB4;
-  --lb-info-bg:#F4F0E4;
+  --lb-info-bg:#F1ECE0;
   /* 그림자 2단 */
   --lb-shadow-1:0 1px 2px rgba(74,61,39,.05),0 6px 18px rgba(74,61,39,.06);
   --lb-shadow-2:0 2px 6px rgba(74,61,39,.08),0 16px 40px rgba(74,61,39,.13);
@@ -43,24 +45,25 @@
   /* 과목 7 (설계 §4.3) */
   --lb-subj-kor:#8E6BC4;--lb-subj-math:#A6714E;--lb-subj-eng:#D9534F;--lb-subj-hist:#5BA66B;--lb-subj-soc:#D4B33C;--lb-subj-sci:#4F86C6;--lb-subj-bio:#3FA7A0;
   /* 영역 4: 몸·머리·돈·마음 */
-  --lb-area-body:#5BA66B;--lb-area-head:#4F86C6;--lb-area-money:#C9A227;--lb-area-heart:#C4709A;
+  --lb-area-body:#5BA66B;--lb-area-head:#4F86C6;--lb-area-money:#D4A83A;--lb-area-heart:#C4709A;
   /* 히트맵 */
-  --lb-heat-0:#F2EBD9;--lb-heat-1:#F3E3B5;--lb-heat-2:#E0C25E;--lb-heat-3:#C9A227;--lb-heat-4:#8A6914;--lb-heat-neg:#CBBCDF;--lb-heat-unk:#F2D9C4;--lb-heat-none:#FCF9F1;
+  --lb-heat-0:#F1ECE0;--lb-heat-1:#FAEAB7;--lb-heat-2:#F0CF6E;--lb-heat-3:#D4A83A;--lb-heat-4:#A67A14;--lb-heat-neg:#CBBCDF;--lb-heat-unk:#F2D9C4;--lb-heat-none:#FAF7F0;
   /* 가계부 그래프 (fin-charts·renderFinSankey가 쓰는 .c0~.c14 등) */
   --lb-chart-0:#8A6914;--lb-chart-1:#2E6B57;--lb-chart-2:#2F6185;--lb-chart-3:#5E4091;--lb-chart-4:#9C3B3B;--lb-chart-5:#8B4A20;--lb-chart-6:#1E6A72;--lb-chart-7:#7B3D6D;--lb-chart-8:#8E3A5E;--lb-chart-9:#6B5548;--lb-chart-10:#5A5F66;--lb-chart-11:#6B6B3A;--lb-chart-12:#3F6B2E;--lb-chart-13:#4C5A94;--lb-chart-14:#5F6B2C;
-  --lb-chart-rest:#7A6B52;--lb-chart-income:#2F6B45;--lb-chart-none:#BDB49A;--lb-chart-bar:#DCC37A;--lb-chart-line:#2A2113;--lb-chart-cum:#6B4A9A;--lb-chart-stroke:#FFFFFF;--lb-chart-label:#FFFFFF;
+  --lb-chart-rest:#7A6B52;--lb-chart-income:#2F6B45;--lb-chart-none:#BDB49A;--lb-chart-bar:#F0CF6E;--lb-chart-line:#2A2113;--lb-chart-cum:#6B4A9A;--lb-chart-stroke:#FFFFFF;--lb-chart-label:#FFFFFF;
   /* 금고 금괴 */
-  --lb-vault-today:#F3E3B5;--lb-vault-future:#D9B542;--lb-vault-past:#EADDB8;--lb-vault-spent:#C3AD7E;--lb-vault-spent-line:#9C875C;--lb-vault-over:#C27A62;
+  --lb-vault-today:#FFF8DF;--lb-vault-future:#F0CF6E;--lb-vault-past:#FAEAB7;--lb-vault-spent:#F1ECE0;--lb-vault-spent-line:#EADFC4;--lb-vault-over:#C27A62;
   /* DS1 금빛 V5 (설계 LIFE_BRICK_GOLD_REDESIGN_V5 §2.7): 아이보리 3 · 잉크 3 · 금 4 · 상태 2 + 금속 공식 하나(버튼·벽돌·링 채움 공통) */
-  --ivory-0:#FBF8F1;--ivory-1:#F6F1E6;--ivory-2:#EFE7D6;
+  /* DS7: 값만 금색 B로(카드 = ivory-0 #FFFFFF, 바탕 = ivory-1 #FAF7F0, 음각 = ivory-2 #F1ECE0, 선 = ivory-line #EADFC4). 금속 공식은 그대로 */
+  --ivory-0:#FFFFFF;--ivory-1:#FAF7F0;--ivory-2:#F1ECE0;--ivory-line:#EADFC4;
   --ink-900:#2B2419;--ink-600:#6B5A3A;--ink-400:#9A8B6E;
-  --gold-hi:#FFF1C2;--gold:#E3B341;--gold-deep:#B07D18;--gold-shadow:#5C3D0A;
+  --gold-hi:#FFF8DF;--gold:#F0CF6E;--gold-deep:#D4A83A;--gold-shadow:#A67A14;
   --danger:#B8433A;--ok:#4C8A5C;
   --gold-metal:linear-gradient(135deg,var(--gold-hi) 0%,var(--gold) 38%,var(--gold-deep) 72%,var(--gold-shadow) 100%);
-  --gold-metal-edge:inset 0 1px 0 rgba(255,241,194,.9),0 2px 0 var(--gold-shadow);
+  --gold-metal-edge:inset 0 1px 0 rgba(255,248,223,.9),0 2px 0 var(--gold-shadow);
   /* 금고 카드 3층 (DS3, V5 설계 2.5): 금속 3단 + 그림자·쓴 몫 아이보리 음각·초과 테두리. 금고 카드(30절)만 쓴다 — DS1 병합 뒤 DS1 변수로 바꿀 자리 */
-  --lb-vault-gold-hi:#FFF1C2;--lb-vault-gold:#E3B341;--lb-vault-gold-deep:#B07D18;--lb-vault-gold-shadow:#5C3D0A;--lb-vault-ivory:#EFE7D6;--lb-vault-over-line:#B8433A;
-  /* 옛 변수 이름(F13 달력 등이 쓰던 것) → 토큰. DSFIX H1: 옛 --gold-deep(진한 글자색)은 DS1 금 --gold-deep(#B07D18)을 덮어 금속 금을 검게 칠했다 → 옛 자리는 --lb-ink-1을 직접 쓴다 */
+  --lb-vault-gold-hi:#FFF8DF;--lb-vault-gold:#F0CF6E;--lb-vault-gold-deep:#D4A83A;--lb-vault-gold-shadow:#A67A14;--lb-vault-ivory:#F1ECE0;--lb-vault-over-line:#B8433A;
+  /* 옛 변수 이름(F13 달력 등이 쓰던 것) → 토큰. DSFIX H1: 옛 --gold-deep(진한 글자색)은 DS1 금 --gold-deep(DS7 이후 #D4A83A)을 덮어 금속 금을 검게 칠했다 → 옛 자리는 --lb-ink-1을 직접 쓴다 */
   --ivory:var(--lb-bg);--cream:var(--lb-surface-solid);--cream-2:var(--lb-surface-tint);--gold-bright:var(--lb-gold-bright);--gold-mid:var(--lb-gold-3);--gold-line:var(--lb-line);--gold-line-soft:var(--lb-line-soft);--muted:var(--lb-ink-3);--line:var(--lb-line);
   --cal-chip-bg:var(--lb-gold-soft);--cal-chip-bar:var(--lb-gold-2);--cal-chip-text:var(--lb-ink-2);--cal-chip-deadline-bg:var(--lb-gold-1);--cal-chip-deadline-bar:var(--lb-gold-3);--cal-chip-deadline-text:var(--lb-ink-1);--cal-sun:var(--lb-bad);--cal-sun-num:var(--lb-bad);--cal-sat:var(--lb-gold-3);--cal-today-ring:var(--lb-gold-3);--cal-today-tint:var(--lb-gold-1);
   --cal-serif:"Palatino Linotype","Book Antiqua",Palatino,Georgia,"Noto Serif KR","Noto Serif CJK KR","AppleMyungjo",Batang,serif;
@@ -79,7 +82,7 @@ h3{font-size:15px;letter-spacing:-.015em;margin:0 0 6px;font-weight:700;color:va
 p{margin:7px 0 12px}
 .small{font-size:var(--lb-caption)}
 .muted{color:var(--lb-ink-3)}
-.eyebrow,.rail-label{font-size:10px;letter-spacing:.17em;font-weight:700;color:var(--lb-gold-3)}
+.eyebrow,.rail-label{font-size:10px;letter-spacing:.17em;font-weight:700;color:var(--ink-900)}
 [hidden]{display:none!important}
 #page-title:focus,#page-title:focus-visible{outline:none}
 #page-title{overflow-wrap:normal}
@@ -91,10 +94,10 @@ button:hover{background:var(--gold-metal);box-shadow:var(--gold-metal-edge),var(
 button:active{transform:scale(.97)}
 button.secondary,button.icon-button{background:var(--ivory-0);color:var(--ink-900);border-color:var(--gold-deep);box-shadow:none;font-weight:600}
 button.secondary:hover,button.icon-button:hover{background:var(--ivory-1);border-color:var(--gold)}
-button.lb-btn-text{background:transparent;color:var(--gold-deep);border-color:transparent;box-shadow:none;font-weight:700;padding-inline:8px}
+button.lb-btn-text{background:transparent;color:var(--ink-900);border-color:transparent;box-shadow:none;font-weight:700;padding-inline:8px}
 button.lb-btn-text:hover{background:var(--ivory-1);color:var(--ink-900)}
 button.danger{color:var(--lb-bad);background:var(--lb-bad-bg);border-color:var(--lb-bad-line);box-shadow:none}
-button.lb-btn-ghost{background:transparent;color:var(--lb-gold-3);border-color:transparent;box-shadow:none;font-weight:600}
+button.lb-btn-ghost{background:transparent;color:var(--ink-900);border-color:transparent;box-shadow:none;font-weight:600}
 button.lb-btn-ghost:hover{background:var(--lb-gold-soft)}
 button:disabled{opacity:.5;cursor:wait;box-shadow:none}
 button.icon-button{padding:4px 10px;font-size:17px}
@@ -192,10 +195,10 @@ footer{display:flex;justify-content:space-between;gap:15px;border-top:1px solid 
 .overview-grid .domain-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .domain-chip{padding:13px 11px;background:var(--lb-surface-2);border:1px solid var(--lb-line);border-radius:var(--lb-r-1);color:var(--lb-ink-2);text-align:left;font-size:11px;font-weight:600;min-height:76px;box-shadow:none}
 .domain-chip:hover{background:var(--lb-gold-soft);color:var(--lb-ink-1)}
-.domain-letter{display:block;color:var(--lb-gold-3);font-weight:800;font-size:18px;margin-bottom:4px}
+.domain-letter{display:block;color:var(--ink-900);font-weight:800;font-size:18px;margin-bottom:4px}
 .domain-name{display:block;font-size:10px;min-height:30px;color:var(--lb-ink-3)}
 .domain-chip .tag{margin-top:8px;padding:2px 5px;font-size:9px}
-.tag.ACTIVE{background:var(--lb-gold-1);color:var(--lb-gold-3)}
+.tag.ACTIVE{background:var(--lb-gold-1);color:var(--ink-900)}
 .tag.COMPLETE{background:var(--lb-ok-bg);color:var(--lb-ok)}
 .tag.MAINTAIN{background:var(--lb-gold-soft);color:var(--lb-ink-3)}
 .tag.DEFERRED_WITH_REASON{background:var(--lb-warn-bg);color:var(--lb-warn)}
@@ -237,14 +240,14 @@ progress::-moz-progress-bar{background:var(--lb-gold-grad);border-radius:var(--l
 .action-card.home-card{border:0;padding:0;background:transparent;margin-top:6px}
 .action-meta{font-size:var(--lb-caption);color:var(--lb-ink-3);margin:0 0 4px}
 .restart-line{margin:4px 0 6px;padding:10px 12px;background:var(--lb-gold-soft);border-left:3px solid var(--lb-gold-2);border-radius:var(--lb-r-1);font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
-.restart-label{display:block;font-size:11px;font-weight:700;color:var(--lb-gold-3);letter-spacing:.02em}
+.restart-label{display:block;font-size:11px;font-weight:700;color:var(--ink-900);letter-spacing:.02em}
 .restart-text{color:var(--lb-ink-1)}
 .outcomes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:8px 0}
 .outcomes label{display:flex;align-items:center;justify-content:center;gap:5px;min-height:46px;margin:0;padding:8px 6px;border-radius:var(--lb-r-1);border:1px solid var(--lb-line);background:var(--lb-surface-solid);font-size:13px;font-weight:600;text-align:center;cursor:pointer}
 .outcomes label:has(input:checked){background:var(--lb-gold-1);border-color:var(--lb-gold-2);color:var(--lb-ink-1)}
 .outcomes label:focus-within{outline:2px solid var(--lb-gold-3);outline-offset:2px}
 .outcomes label.outcome-NOT_DONE:has(input:checked){background:var(--lb-info-bg);border-color:var(--lb-line);color:var(--lb-ink-2)}
-.restart-edit summary,.amount-edit summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-size:13px;color:var(--lb-gold-3);font-weight:600}
+.restart-edit summary,.amount-edit summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-size:13px;color:var(--ink-900);font-weight:600}
 .restart-edit label{margin-top:2px}
 .restart-edit textarea{min-height:64px}
 .save-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px}
@@ -298,7 +301,7 @@ progress::-moz-progress-bar{background:var(--lb-gold-grad);border-radius:var(--l
 .more-item:hover{background:var(--lb-surface-solid);border-color:var(--lb-gold-2)}
 .more-item strong{display:block;font-size:15px}
 .more-item small{display:block;color:var(--lb-ink-3);font-weight:400;font-size:var(--lb-caption)}
-.more-item .nav-symbol{font-size:20px;width:28px;text-align:center;color:var(--lb-gold-3)}
+.more-item .nav-symbol{font-size:20px;width:28px;text-align:center;color:var(--ink-900)}
 .card-details,.form-more{border-top:1px solid var(--lb-line-soft);margin-top:10px;padding-top:6px}
 .card-details>summary,.form-more>summary{cursor:pointer;min-height:40px;display:flex;align-items:center;font-size:var(--lb-caption);color:var(--lb-ink-3);font-weight:600}
 
@@ -355,7 +358,7 @@ progress::-moz-progress-bar{background:var(--lb-gold-grad);border-radius:var(--l
 .date-popup-head strong{display:inline-flex;align-items:baseline;gap:1px;font-size:13px;color:var(--lb-ink-1)}
 .date-popup-head strong .y,.date-popup-head strong .m{font-family:var(--cal-serif);font-size:18px;font-weight:400;font-variant-numeric:lining-nums tabular-nums}
 .date-popup-head strong .u{font-family:"Segoe UI","Malgun Gothic",sans-serif;font-size:12px;font-weight:500;color:var(--muted);letter-spacing:.01em;margin-right:2px}
-.date-popup-head button{border:1px solid var(--lb-line);background:var(--lb-surface-solid);color:var(--lb-gold-3);border-radius:var(--lb-r-full);width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:15px;box-shadow:none}
+.date-popup-head button{border:1px solid var(--lb-line);background:var(--lb-surface-solid);color:var(--ink-900);border-radius:var(--lb-r-full);width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:15px;box-shadow:none}
 .date-popup-head button:hover{background:var(--cal-today-tint)}
 .date-popup-grid{border:none}
 .date-popup-grid .calendar-day-name{padding:6px;font-size:13px}
@@ -366,7 +369,7 @@ progress::-moz-progress-bar{background:var(--lb-gold-grad);border-radius:var(--l
 .date-popup-grid button.calendar-cell:nth-child(7n):not(.today):not(.selected){color:var(--cal-sun-num)}
 .date-popup-grid .calendar-cell.dim{min-height:36px;visibility:hidden;background:none}
 .date-popup-actions{display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--lb-line-soft);padding-top:8px;margin-top:10px}
-.date-popup-actions button{background:none;border:none;color:var(--lb-gold-3);font-weight:600;letter-spacing:.02em;padding:6px 8px;font-size:var(--lb-caption);box-shadow:none}
+.date-popup-actions button{background:none;border:none;color:var(--ink-900);font-weight:600;letter-spacing:.02em;padding:6px 8px;font-size:var(--lb-caption);box-shadow:none}
 .date-popup-actions button:hover{background:var(--cal-today-tint);border-radius:var(--lb-r-1)}
 @media(max-width:700px){.date-popup-grid button.calendar-cell{width:40px;height:40px;min-width:40px;min-height:40px;max-width:40px;max-height:40px}}
 @media(max-width:700px){.calendar-grid .calendar-day-name{font-size:13px}}
@@ -633,7 +636,7 @@ button.fin-quick-need{background:transparent;color:var(--lb-ink-3)}
 .fin-line .buttons button{font-size:11px;padding:4px 10px}
 .fin-line.voided{opacity:.6}
 .tag.src-batch{background:var(--lb-surface-tint);color:var(--lb-ink-3)}
-.tag.src-txn{background:var(--lb-gold-1);color:var(--lb-gold-3)}
+.tag.src-txn{background:var(--lb-gold-1);color:var(--ink-900)}
 .tag.dup{background:var(--lb-warn-bg);color:var(--lb-warn)}
 .tag.unknown{background:var(--lb-bad-bg);color:var(--lb-bad)}
 .tag.rule{background:var(--lb-gold-soft);color:var(--lb-ink-3)}
@@ -960,7 +963,7 @@ button.fin-quick-need{background:transparent;color:var(--lb-ink-3)}
 .life-habit-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 8px}
 .life-habit-head strong{font-size:14px;color:var(--lb-ink-1);flex:0 0 auto;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .life-habit-value{font-size:var(--lb-caption);color:var(--lb-ink-3);font-variant-numeric:tabular-nums;text-align:right}
-.life-habit.done .life-habit-value{color:var(--lb-gold-3);font-weight:700}
+.life-habit.done .life-habit-value{color:var(--ink-900);font-weight:700}
 .life-habit-btn{min-height:44px;width:100%}
 .life-habit .lb-toggle{min-height:44px}
 .life-chip-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
@@ -1116,7 +1119,7 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .life-xp-slot:has(.lb-ring){border:none;width:auto;height:auto}
 .life-xp-text{font-size:var(--lb-caption);font-weight:700;color:var(--lb-ink-1);font-variant-numeric:tabular-nums}
 .life-habit{position:relative}
-.life-xp-float{position:absolute;top:2px;right:10px;z-index:2;font-size:14px;font-weight:800;color:var(--lb-gold-3);opacity:0;pointer-events:none;animation:life-xp-rise .38s ease-out forwards}
+.life-xp-float{position:absolute;top:2px;right:10px;z-index:2;font-size:14px;font-weight:800;color:var(--ink-900);opacity:0;pointer-events:none;animation:life-xp-rise .38s ease-out forwards}
 @keyframes life-xp-rise{0%{opacity:0;transform:translateY(8px)}40%{opacity:1}100%{opacity:0;transform:translateY(-12px)}}
 .life-stack-xp{margin-left:10px;font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
 .life-tower-panel{display:grid;gap:var(--lb-s-3)}
@@ -1222,7 +1225,7 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .plan-status{font-size:12px;font-weight:700;white-space:nowrap;color:var(--lb-ink-3)}
 .plan-status.plan{opacity:.55}
 .plan-status.ignite,.plan-status.done{color:var(--lb-ok)}
-.plan-status.gold{color:var(--lb-gold-3)}
+.plan-status.gold{color:var(--ink-900)}
 .plan-status.doing{color:var(--lb-warn)}
 .plan-sum{font-weight:700;color:var(--lb-ink-1);margin:0}
 .plan-compare{display:grid;gap:4px}
@@ -1306,7 +1309,7 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .pt-status{font-size:12px;font-weight:700;white-space:nowrap;color:var(--lb-ink-3)}
 .pt-status.plan{opacity:.55}
 .pt-status.ignite,.pt-status.done{color:var(--lb-ok)}
-.pt-status.gold{color:var(--lb-gold-3)}
+.pt-status.gold{color:var(--ink-900)}
 .pt-status.doing{color:var(--lb-warn)}
 .pt-focus{min-height:44px;padding:4px 12px;white-space:nowrap}
 .pt-timer{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 4px;padding:6px 10px;border-left:3px solid var(--lb-gold-2);background:var(--lb-gold-soft);border-radius:0 var(--lb-r-1) var(--lb-r-1) 0}
@@ -1333,7 +1336,7 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .pw-dayhead{display:grid;justify-items:center;padding:2px 0;border-radius:var(--lb-r-1);font-size:11px;line-height:1.2;color:var(--lb-ink-3)}
 .pw-dayhead strong{font-size:12px;color:var(--lb-ink-1)}
 .pw-dayhead.today{background:var(--lb-gold-soft)}
-.pw-dayhead.changed small::after{content:" •";color:var(--lb-gold-3)}
+.pw-dayhead.changed small::after{content:" •";color:var(--ink-900)}
 .pw-block{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--lb-ink-3)}
 .pw-cell{display:grid;gap:2px;align-content:start;min-width:0;min-height:44px;padding:2px;border-radius:var(--lb-r-1);border:1px solid var(--lb-line-soft);background:var(--lb-surface-solid)}
 .pw-cell.today{border-color:var(--lb-gold-2)}
@@ -1449,8 +1452,8 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .tower-3d-labels{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:hidden}
 .tower-3d-tag{font-size:12px;font-weight:800;fill:var(--lb-ink-1);stroke:var(--lb-surface);stroke-width:3px;paint-order:stroke;stroke-linejoin:round;text-anchor:middle}
 .tower-3d-tag-plan{fill:var(--lb-area-head);text-anchor:start}
-.tower-3d-tag-done{fill:var(--lb-gold-3)}
-.tower-3d-done{margin:0;font-weight:800;color:var(--lb-gold-3)}
+.tower-3d-tag-done{fill:var(--ink-900)}
+.tower-3d-done{margin:0;font-weight:800;color:var(--ink-900)}
 
 /* ===== 20. 사령부 상태 내보내기 (B47p): 새 색 없음 — 미리보기 글이 길면 안에서만 스크롤 ===== */
 .state-export-text{white-space:pre-wrap;max-height:48vh;overflow:auto;margin:var(--lb-s-2) 0}
@@ -1491,7 +1494,7 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .universe-row{display:flex;justify-content:space-between;gap:var(--lb-s-3)}
 
 /* ===== 22. AI 게이트 (B47): 새 색 없음 — 토큰만. 보고 글은 줄 단위 글자일 뿐이다(링크·이미지 없음) ===== */
-.state-export-gate{margin:0;font-weight:600;color:var(--lb-gold-3)}
+.state-export-gate{margin:0;font-weight:600;color:var(--ink-900)}
 .ai-gate p:empty{display:none}
 .ai-gate-list{display:grid;gap:var(--lb-s-2);min-width:0}
 .ai-gate-card{display:grid;gap:var(--lb-s-2);min-width:0}
@@ -1609,8 +1612,8 @@ button.st-gal-thumb.now{border-color:var(--lb-gold-3);outline:2px solid var(--lb
 .st-tier.done{background:var(--lb-gold-soft)}
 .st-tier.now{background:var(--lb-gold-1);border-color:var(--lb-gold-2);color:var(--lb-ink-2)}
 .st-tier.now strong{color:var(--lb-ink-1)}
-.st-stars{margin:0;color:var(--lb-gold-2);letter-spacing:.1em;overflow-wrap:anywhere}
-.st-stage-all summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-size:var(--lb-caption);color:var(--lb-gold-3);font-weight:600}
+.st-stars{margin:0;color:var(--gold-shadow);letter-spacing:.1em;overflow-wrap:anywhere}
+.st-stage-all summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-size:var(--lb-caption);color:var(--ink-900);font-weight:600}
 .st-stage-list{display:grid;gap:2px;margin:0;padding:0;list-style:none}
 .st-stage-row{display:flex;justify-content:space-between;gap:var(--lb-s-3);padding:3px var(--lb-s-2);border-radius:var(--lb-r-1)}
 .st-stage-row.now{background:var(--lb-gold-1);color:var(--lb-ink-1);font-weight:700}
@@ -1674,7 +1677,7 @@ dialog.live-dlg::backdrop{background:var(--lb-bg)}
 .room-stage{position:relative;justify-self:center;width:auto;height:46vh;max-width:100%;aspect-ratio:1560/2280;overflow:hidden;border-radius:var(--lb-r-2);background:var(--lb-surface-tint);box-shadow:var(--lb-shadow-1)}
 .room-stage .live-fig{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover}
 .live-panel{display:grid;gap:var(--lb-s-2);align-content:start;min-width:0}
-.live-state{margin:0;font-weight:700;color:var(--lb-gold-3)}
+.live-state{margin:0;font-weight:700;color:var(--ink-900)}
 .live-state.resting{color:var(--lb-ink-3)}
 .live-state.waiting{color:var(--lb-warn)}
 .live-panel .live-clock{font-size:56px}
@@ -1683,7 +1686,7 @@ dialog.live-dlg::backdrop{background:var(--lb-bg)}
 .live-next,.live-gold,.live-bricks{margin:0;font-variant-numeric:tabular-nums}
 .live-next{font-weight:700;color:var(--lb-ink-1)}
 .live-gold{color:var(--lb-ink-3)}
-.live-gold.done{color:var(--lb-gold-3);font-weight:700}
+.live-gold.done{color:var(--ink-900);font-weight:700}
 .live-ring-track{fill:none;stroke:var(--ivory-2)}
 .live-ring-fill{fill:none;stroke:var(--gold);stroke-linecap:round}
 .live-ring-deep{fill:none;stroke:var(--gold-deep);stroke-linecap:round;opacity:.85}
@@ -1696,7 +1699,7 @@ dialog.live-dlg::backdrop{background:var(--lb-bg)}
 .live-chips{display:flex;flex-wrap:wrap;gap:var(--lb-s-1)}
 .live-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid var(--lb-line);border-radius:var(--lb-r-full);background:var(--lb-surface-2);color:var(--lb-ink-2);font-size:13px;font-variant-numeric:tabular-nums}
 .live-overlap,.live-rest-over{margin:0}
-.live-actions{position:sticky;bottom:0;display:flex;flex-wrap:wrap;gap:12px;padding-top:var(--lb-s-2);background:var(--ivory-0)}
+.live-actions{position:sticky;bottom:0;display:flex;flex-wrap:wrap;gap:12px;padding-top:var(--lb-s-2);background:var(--ivory-1)}
 .live-actions button{flex:1 1 30%;min-height:48px}
 .live-dlg.resting .room-stage{opacity:.72}
 @media(min-width:701px){.live-body{grid-template-columns:minmax(0,5fr) minmax(0,7fr);align-items:start}.room-stage{height:min(78vh,720px)}.live-panel .live-clock{font-size:72px}.live-actions{position:static}}
@@ -1707,7 +1710,7 @@ dialog.live-dlg::backdrop{background:var(--lb-bg)}
 .life-quest-slot{display:flex;flex-wrap:wrap;align-items:center;gap:4px var(--lb-s-3);padding:8px 12px;border-radius:var(--lb-r-2);border:1px solid var(--lb-line-soft);background:var(--lb-surface-2);min-width:0}
 .life-quest-slot[hidden]{display:none}
 .life-quest-chip{min-width:0;overflow-wrap:anywhere;color:var(--lb-ink-3)}
-.life-quest-chip.done{color:var(--lb-gold-3)}
+.life-quest-chip.done{color:var(--ink-900)}
 .life-quest-chip.pending{color:var(--lb-ink-4)}
 .achv-panel{display:grid;gap:var(--lb-s-2);padding:12px;border-radius:var(--lb-r-2);border:1px solid var(--lb-line-soft);background:var(--lb-surface-2);min-width:0;margin-top:var(--lb-s-3)}
 .achv-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px var(--lb-s-3)}
@@ -1831,7 +1834,7 @@ dialog.live-dlg::backdrop{background:var(--lb-bg)}
 
 /* ===== Q1B 오늘 줄 단추·달성 알림·시트·금빛 기둥: 새 색 없음 — 토큰만 ===== */
 button.life-quest-open,button.life-quest-open:hover{display:flex;flex-wrap:wrap;align-items:center;gap:4px var(--lb-s-3);width:100%;min-height:44px;margin:0;padding:0;border:0;background:none;box-shadow:none;color:inherit;font:inherit;text-align:left;cursor:pointer;min-width:0}
-button.life-quest-open:hover .life-quest-more{color:var(--lb-gold-3)}
+button.life-quest-open:hover .life-quest-more{color:var(--ink-900)}
 .life-quest-more{margin-left:auto;font-weight:700;color:var(--lb-ink-4)}
 .achv-moment-slot:empty{display:none}
 .achv-moment{position:relative;overflow:hidden;font-weight:700;animation:achv-band 1.2s ease-out both}
@@ -1844,13 +1847,13 @@ button.life-quest-open:hover .life-quest-more{color:var(--lb-gold-3)}
 .achv-group-list{display:grid;gap:2px;margin:0;padding:0;list-style:none}
 .achv-item{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px var(--lb-s-3);padding:6px 0;border-bottom:1px solid var(--lb-line-soft);min-width:0}
 .achv-item-name{min-width:0;overflow-wrap:anywhere;color:var(--lb-ink-3)}
-.achv-item.done .achv-item-name{font-weight:700;color:var(--lb-gold-3)}
+.achv-item.done .achv-item-name{font-weight:700;color:var(--ink-900)}
 .achv-item-state{font-variant-numeric:tabular-nums}
 .quest-row{display:grid;gap:4px;min-width:0}
-.quest-row.done .lb-xp-head span{color:var(--lb-gold-3)}
+.quest-row.done .lb-xp-head span{color:var(--ink-900)}
 .quest-row.pending .lb-xp-head span{color:var(--lb-ink-4)}
 .quest-line{margin:0;overflow-wrap:anywhere}
-.quest-diary,.tower-diary-line{margin:0;color:var(--lb-gold-3);overflow-wrap:anywhere}
+.quest-diary,.tower-diary-line{margin:0;color:var(--ink-900);overflow-wrap:anywhere}
 .quest-mine{display:grid;gap:var(--lb-s-2);padding-top:var(--lb-s-2);border-top:1px solid var(--lb-line-soft);min-width:0}
 .quest-mine p{margin:0}
 .quest-form{display:grid;gap:var(--lb-s-2);min-width:0}
@@ -1862,7 +1865,7 @@ button.life-quest-open:hover .life-quest-more{color:var(--lb-gold-3)}
 .tower-bonus-side{fill:var(--lb-gold-2)}
 .tower-bonus-top{fill:var(--lb-gold-1)}
 .tower-label-bonus{fill:var(--lb-ink-1)}
-.tower-bonus-line{margin:0;font-weight:700;color:var(--lb-gold-3)}
+.tower-bonus-line{margin:0;font-weight:700;color:var(--ink-900)}
 .tower-bonus-total{margin:0;font-variant-numeric:tabular-nums}
 @media(prefers-reduced-motion:reduce){.achv-moment{animation:none}}
 .title-chip{display:inline-block;justify-self:start;width:fit-content;max-width:100%;padding:2px 10px;border:2px solid var(--lb-line);border-radius:var(--lb-r-full);background:var(--lb-surface-solid);color:var(--lb-ink-1);font-size:var(--lb-caption);font-weight:700;line-height:1.4;overflow-wrap:anywhere}
@@ -1876,7 +1879,7 @@ button.life-quest-open:hover .life-quest-more{color:var(--lb-gold-3)}
 .title-pick{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px var(--lb-s-2);width:100%;min-height:44px;min-width:0;text-align:left}
 .title-pick.on{border-color:var(--lb-gold-2);background:var(--lb-gold-soft)}
 .title-locked summary{min-height:32px;cursor:pointer}
-.tower-3d-tag-plaque{fill:var(--lb-gold-3)}
+.tower-3d-tag-plaque{fill:var(--ink-900)}
 .tower-3d-tag-corner{font-size:10px;fill:var(--lb-ink-2)}
 .tower-badges summary{cursor:pointer;color:var(--lb-ink-2)}
 .tower-badge-list{margin:var(--lb-s-1) 0 0;padding-left:1.2em;display:grid;gap:2px}
@@ -1917,7 +1920,7 @@ button.life-min-add:disabled{cursor:not-allowed}
 .life-bricks-count{color:var(--ink-900);font-variant-numeric:tabular-nums}
 .lb-brick-row{display:block;width:auto;height:14px;max-width:100%}
 .lb-info{display:inline-block;min-width:0}
-.lb-info>summary{display:inline-grid;place-items:center;min-width:44px;min-height:44px;list-style:none;cursor:pointer;color:var(--gold-deep);font-weight:700}
+.lb-info>summary{display:inline-grid;place-items:center;min-width:44px;min-height:44px;list-style:none;cursor:pointer;color:var(--ink-900);font-weight:700}
 .lb-info>summary::-webkit-details-marker{display:none}
 .lb-info>p{margin:2px 0 0}
 /* 금 벽돌 스프라이트(오늘 벽돌 칸·무대 양옆 기둥 공통): 금속 공식의 네 단 = hi 윗선 · gold 몸 · deep 아래 · shadow 바닥선. 못 쌓은 칸 = 아이보리 음각 + 0.5px 금선 */
@@ -1941,7 +1944,7 @@ button.life-min-add:disabled{cursor:not-allowed}
 /* ===== 31. 오늘 효과 5단계 띠 (DS5, 설계 V5 §2.2·§2.3): 새 색 없음 — :root DS1 토큰만. 좁은 화면(≤ 420px)은 지금 단계 ±1칸만, 초 숫자 번쩍임은 움직임 줄이기면 없음 ===== */
 .ds5-today{display:grid;gap:8px;min-width:0}
 .ds5-title{color:var(--ink-900);font-size:13px}
-.ds5-strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:0;padding:0;list-style:none;min-width:0}
+.ds5-strip{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin:0;padding:0;list-style:none;min-width:0}
 .ds5-cell{display:grid;gap:2px;justify-items:center;align-content:start;min-width:0;padding:4px;border:1px solid var(--ivory-2);border-radius:8px;background:var(--ivory-0);text-align:center;overflow-wrap:anywhere}
 .ds5-cell.done{border-color:var(--gold-deep)}
 .ds5-cell.now{border:2px solid var(--gold);box-shadow:var(--gold-metal-edge)}
@@ -1949,17 +1952,19 @@ button.life-min-add:disabled{cursor:not-allowed}
 .ds5-thumb .room-stage{justify-self:stretch;width:100%;height:auto;max-width:100%}
 .ds5-range{font-size:12px;font-weight:700;color:var(--ink-900);font-variant-numeric:tabular-nums}
 .ds5-name{font-size:11px;line-height:1.25;color:var(--ink-600)}
-.ds5-left{font-size:11px;font-weight:700;color:var(--gold-deep);font-variant-numeric:tabular-nums}
-.ds5-left:empty{display:none}
+.ds5-next{margin:0;font-size:12px;font-weight:700;color:var(--ink-900);font-variant-numeric:tabular-nums}
+.ds5-next:empty{display:none}
 .live-mini .ds5-today{flex:1 1 100%}
 .live-effect{margin:0;font-weight:700;color:var(--ink-600);font-variant-numeric:tabular-nums}
 .live-clock-s.ds5-up{opacity:1;color:var(--gold-deep);animation:ds5-up 1s ease-out both}
 .live-clock-s.ds5-up-3,.live-clock-s.ds5-up-4{color:var(--gold)}
-.live-clock-s.ds5-up-5{color:var(--gold);text-shadow:0 0 6px var(--gold-hi)}
+.live-clock-s.ds5-up-5,.live-clock-s.ds5-up-6{color:var(--gold);text-shadow:0 0 6px var(--gold-hi)}
 @keyframes ds5-up{0%{opacity:.6}20%{opacity:1}100%{opacity:1}}
 @media(max-width:420px){
   .ds5-strip{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
   .ds5-cell.far{display:none}
+  .live-grid .ds5-strip{grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-flow:row}
+  .live-grid .ds5-cell.far{display:grid}
 }
 @media(prefers-reduced-motion:reduce){.live-clock-s.ds5-up{animation:none}}
 /* ===== 32. 금속 채움 한 화면 1개 (DSFIX S5, V5 §2.1): 새 색 없음 — :root DS1 토큰만. 오늘 화면의 금속 채움은 공부 칸 단추(집중 시작·끝내고 담기) 하나, 나머지(오늘 쌓기·어제 카드 쌓기·습관 지금/+1·계획 ▶ 집중)는 secondary와 같은 금 테두리형 ===== */
@@ -1974,18 +1979,18 @@ button.life-stack-btn:hover,button.life-habit-btn:hover,.life-habit .life-chip-r
 .vault-help>summary::-webkit-details-marker{display:none}
 .vault-help[open]{flex-basis:100%}
 .vault-help>p{margin:6px 0 0;overflow-wrap:anywhere}
-.vault-l1{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;margin:10px 0 12px;padding:12px 14px;border:2px solid var(--lb-vault-gold);border-radius:var(--lb-r-2);background:var(--lb-surface-solid);min-width:0}
+.vault-l1{display:flex;flex-direction:column;gap:12px;align-items:stretch;margin:10px 0 12px;padding:12px 14px;border:2px solid var(--lb-vault-gold);border-radius:var(--lb-r-2);background:var(--lb-surface-solid);min-width:0}
 .vault-l1.over{border-color:var(--lb-vault-over-line)}
 .vault-l1-main{display:flex;flex-direction:column;gap:2px;min-width:0}
 .vault-l1-label{font-size:var(--lb-caption);color:var(--lb-ink-3)}
-.vault-l1-amount{font-size:40px;font-weight:800;letter-spacing:-.04em;line-height:1.15;color:var(--lb-ink-1);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.vault-l1-amount{font-weight:800;letter-spacing:-.04em;line-height:1.15;color:var(--lb-ink-1);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .vault-l1-foot{font-size:var(--lb-caption);color:var(--lb-ink-3);overflow-wrap:anywhere}
 .vault-l1-over{margin:4px 0 0;font-weight:700;color:var(--lb-vault-over-line)}
 /* DSFIX S1: 이달 마이너스 — 큰 숫자 "−금액 초과"·테두리·빈 금괴 테두리를 빨강 계열(DS1 --danger)로 */
 .vault-l1.minus{border-color:var(--danger)}
 .vault-l1.minus .vault-l1-amount{color:var(--danger)}
 .vault-ingot.minus .vault-ingot-ivory{stroke:var(--danger);stroke-width:1.6}
-.vault-l1-side{display:flex;flex-direction:column;align-items:center;gap:8px;min-width:0}
+.vault-l1-side{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
 .vault-ingot .fin-svg{display:block;width:120px;max-width:100%;height:auto}
 .vault-metal-hi{stop-color:var(--lb-vault-gold-hi)}
 .vault-metal-mid{stop-color:var(--lb-vault-gold)}
@@ -1998,12 +2003,7 @@ button.life-stack-btn:hover,button.life-habit-btn:hover,.life-habit .life-chip-r
 .vault-wall-frame{fill:none;stroke:var(--lb-vault-gold);stroke-width:2.4}
 .vault-wall-brick.over .vault-wall-ivory{stroke:var(--lb-vault-over-line)}
 .vault-l2{margin:0 0 10px;min-width:0}
-.vault-l2-sum{display:flex;flex-direction:column;gap:2px;cursor:pointer;list-style:none;min-width:0}
-.vault-l2-sum::-webkit-details-marker{display:none}
-.vault-l2:not([open])>.vault-l2-sum::after{content:"▸ 금괴 벽 보기";font-size:var(--lb-caption);color:var(--lb-ink-3)}
-.vault-l2-label{font-size:var(--lb-caption);color:var(--lb-ink-3)}
-.vault-l2-amount{font-size:24px;font-weight:800;letter-spacing:-.03em;color:var(--lb-ink-1);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.vault-card[data-tone=over] .vault-l2-amount{color:var(--lb-bad)}
+.vault-l2-sum{cursor:pointer;color:var(--lb-ink-2);font-weight:600;min-width:0}
 .vault-wall{margin:8px 0 6px;min-width:0}
 .vault-wall .fin-svg{display:block;width:100%;height:auto}
 .swatch.vault-sw5-future{background:var(--lb-vault-gold)}
@@ -2013,4 +2013,79 @@ button.life-stack-btn:hover,button.life-habit-btn:hover,.life-habit .life-chip-r
 .vault-more{margin:4px 0 0;min-width:0}
 .vault-more>summary{cursor:pointer;color:var(--lb-ink-2);font-weight:600}
 .vault-more-line{margin:4px 0 0;overflow-wrap:anywhere}
-@media(max-width:420px){.vault-l1{grid-template-columns:minmax(0,1fr);justify-items:start}.vault-l1-amount{font-size:32px}.vault-l1-side{flex-direction:row;flex-wrap:wrap}.vault-wall .fin-svg{max-width:100%}}
+@media(max-width:420px){.vault-l1{padding:10px}.vault-wall .fin-svg{max-width:100%}}
+/* DS3B: 숫자 3개(같은 크기, 한 줄) · 이달 막대 · 오늘 막대 · 많이 쓴 곳 3개 · 벽돌로 보기. 새 색 없음 — :root DS1 토큰 이름만(DS7 금색 B가 값만 바꾼다). 막대 SVG는 가로 1000 단위를 CSS 높이로 늘린다 */
+.vault-nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;min-width:0}
+.vault-nums.solo{grid-template-columns:minmax(0,1fr);margin:10px 0 12px}
+.vault-num{display:flex;flex-direction:column;gap:2px;min-width:0}
+.vault-num-label,.vault-num-foot{font-size:var(--lb-caption);color:var(--ink-600);word-break:keep-all;overflow-wrap:anywhere}
+.vault-num-amount{font-size:clamp(17px,2.6vw,30px);font-weight:800;letter-spacing:-.03em;line-height:1.2;color:var(--ink-900);font-variant-numeric:tabular-nums;word-break:keep-all;overflow-wrap:anywhere}
+.vault-nums.solo .vault-num-amount{font-size:clamp(26px,5vw,40px)}
+.vault-num-left.over .vault-num-amount{color:var(--danger)}
+.vault-bar{display:flex;flex-direction:column;gap:3px;min-width:0}
+.vault-bar-head,.vault-bar-foot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 10px;font-size:var(--lb-caption);color:var(--ink-600);min-width:0}
+.vault-bar-title{font-weight:700;color:var(--ink-900)}
+.vault-bar .fin-svg{display:block;width:100%;height:24px}
+.vault-today .fin-svg{height:14px}
+.vault-bar-track{fill:var(--ivory-2);stroke:var(--gold-deep);stroke-width:1;vector-effect:non-scaling-stroke}
+.vault-bar-fill{fill:var(--gold);stroke:var(--gold-deep);stroke-width:1;vector-effect:non-scaling-stroke}
+.vault-bar-over{fill:var(--danger)}
+.vault-bar-pace{stroke:var(--ink-900);stroke-width:2;vector-effect:non-scaling-stroke}
+.vault-bar-budget{stroke:var(--ink-600);stroke-width:1.5;stroke-dasharray:3 2;vector-effect:non-scaling-stroke}
+.vault-bar-over-text{margin:0;font-weight:700;color:var(--danger);overflow-wrap:anywhere}
+.vault-today .vault-l1-over{margin:2px 0 0}
+.vault-top{margin:12px 0;min-width:0}
+.vault-top-title{margin:0 0 6px;font-size:var(--lb-caption);font-weight:700;color:var(--ink-600)}
+.vault-top-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.vault-top-row{display:grid;grid-template-columns:minmax(0,7em) minmax(0,1fr) auto;align-items:center;gap:8px;min-width:0}
+.vault-top-name{overflow-wrap:anywhere;color:var(--ink-900)}
+.vault-top-bar .fin-svg{display:block;width:100%;height:10px}
+.vault-top-won{min-width:6.5em;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-900)}
+.vault-l2-today{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 0}
+@media(max-width:420px){.vault-l1{padding:10px 8px}.vault-nums{gap:4px;grid-template-columns:minmax(0,1fr)}.vault-num-amount{font-size:14px;letter-spacing:-.04em;overflow-wrap:normal}.vault-num-label,.vault-num-foot{font-size:11px}.vault-nums.solo .vault-num-amount{font-size:28px}}
+
+/* ===== 33. 오늘 상태 6단계 효과 층·미리보기 격자 (AV5, study-room avatarFxLayer): 새 색 없음 — :root DS1(DS7 금색 B) 토큰 이름만. 그림은 평생 등급 기본 그림 그대로(필터 없음), 효과만 그 위 SVG 층. 움직임은 steps()로 초당 몇 프레임, 움직임 줄이기면 멈춘 그림 ===== */
+.room-stage .av5-fx,.st-stage .av5-fx{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;overflow:hidden;z-index:1}
+.st-stage .av5-fx{z-index:3}
+.av5-fx[hidden]{display:none}
+.av5-fx path,.av5-fx circle,.av5-fx ellipse{transform-box:fill-box}
+.av5-drop{fill:var(--ivory-0);stroke:var(--ink-400);stroke-width:.8;opacity:.95;animation:av5-drip 2.4s steps(4) infinite}
+.av5-drop-2{animation-delay:-1.2s}
+.av5-steam{fill:none;stroke:var(--ivory-0);stroke-width:2.6;stroke-linecap:round;opacity:.85;animation:av5-rise 2.4s steps(6) infinite}
+.av5-steam-1{animation-delay:-.8s}
+.av5-steam-2{animation-delay:-1.6s}
+.av5-smoke{fill:none;stroke:var(--ink-400);stroke-width:4.5;stroke-linecap:round;opacity:.8;animation:av5-rise 2.8s steps(7) infinite}
+.av5-smoke-1{animation-delay:-.9s}
+.av5-smoke-2{animation-delay:-1.8s}
+.av5-puff{fill:var(--ink-400);opacity:.6;animation:av5-rise 2.8s steps(7) infinite}
+.av5-puff-1{animation-delay:-1.4s}
+.av5-puff-2{animation-delay:-2.1s}
+.av5-blush{fill:var(--danger);opacity:.26;filter:blur(1.5px)}
+.av5-flame{fill:var(--gold);stroke:var(--gold-deep);stroke-width:.8;opacity:.92;transform-origin:50% 100%;animation:av5-flick .9s steps(3) infinite alternate}
+.av5-flame-1{animation-delay:-.3s}
+.av5-flame-2{animation-delay:-.6s}
+.av5-flame-core{fill:var(--gold-hi);transform-origin:50% 100%;animation:av5-flick .9s steps(3) infinite alternate-reverse}
+.av5-aura{fill:none;stroke:var(--gold);stroke-width:2.5;stroke-linejoin:round;filter:drop-shadow(0 0 3px var(--gold))}
+.av5-aura-wide{stroke:var(--gold-hi);stroke-width:9;opacity:.55;filter:none;animation:av5-glow 2.4s steps(4) infinite alternate}
+.av5-spark{fill:var(--gold-hi);stroke:var(--gold-deep);stroke-width:.5;animation:av5-twinkle 1.6s steps(2) infinite}
+.av5-spark-1{animation-delay:-.5s}
+.av5-spark-2{animation-delay:-1.1s}
+@keyframes av5-drip{0%{transform:translateY(0)}100%{transform:translateY(4px)}}
+@keyframes av5-rise{0%{transform:translateY(4px);opacity:0}30%{opacity:.85}100%{transform:translateY(-8px);opacity:0}}
+@keyframes av5-flick{0%{transform:scale(1,1)}100%{transform:scale(.92,1.12)}}
+@keyframes av5-glow{0%{opacity:.35}100%{opacity:.7}}
+@keyframes av5-twinkle{0%{opacity:1}100%{opacity:.35}}
+.av5-tags{position:absolute;left:6px;right:6px;bottom:6px;z-index:3;display:flex;flex-wrap:wrap;gap:4px;pointer-events:none}
+.av5-tag{padding:2px 8px;border:1px solid var(--gold-deep);border-radius:var(--lb-r-full);background:var(--ivory-0);color:var(--ink-900);font-size:11px;font-weight:700;line-height:1.5}
+.av5-tag-today{background:var(--gold)}
+.ds5-thumb{position:relative}
+.ds5-lock{display:none;position:absolute;top:4px;right:4px;z-index:2}
+.ds5-cell.todo .ds5-lock{display:block}
+.ds5-lock-arc{fill:none;stroke:var(--ink-600);stroke-width:1.4}
+.ds5-lock-body{fill:var(--ivory-1);stroke:var(--ink-600);stroke-width:1}
+.ds5-cell.todo .av5-stage{opacity:.45;filter:grayscale(.7)}
+.ds5-cell.todo .ds5-range,.ds5-cell.todo .ds5-name{color:var(--ink-600)}
+.ds5-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px}
+.ds5-sub{font-size:11px;color:var(--ink-600)}
+.live-grid{margin-top:4px}
+@media(prefers-reduced-motion:reduce){.av5-fx *{animation:none}}

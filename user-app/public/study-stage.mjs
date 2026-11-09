@@ -23,14 +23,17 @@ export function goldTierOf(no){
   return tier;
 }
 
-// 오늘의 효과 5겹. fromMin = 오늘 누적 분이 이 값 이상이면 그 겹. art = 쓸 그림(기본·열공). 효과 자체는 CSS·SVG로 그린다(그림 추가 없음).
+// 오늘 상태 6단계 (AV5, 2026-11-09 통제탑): 소유자가 바꾸기 쉽게 여기 한 곳에만 둔다. fromMin = 오늘 누적 분이 이 값 이상이면 그 단계.
+// 그림은 언제나 평생 등급 기본 그림(art 'base') 하나다(같은 캐릭터·같은 옷). 단계마다 바뀌는 것은 그림 위에 얹는 효과 층(fx)뿐이다(study-room AVATAR_FX가 그린다).
+// short = "땀까지 0:42 남음"처럼 남은 시간 줄에 쓰는 짧은 이름. fx 이름: sweat 땀 · steam 김 · smoke 연기 · blush 홍조 · flame 어깨 뒤 불꽃 · aura 금빛 테두리 · sparks 금빛 입자.
 export const TODAY_EFFECTS=Object.freeze([
-  Object.freeze({level:1,fromMin:0,art:'base',label:'기본'}),
-  Object.freeze({level:2,fromMin:120,art:'base',label:'펜 끝·안경테 금빛'}),
-  Object.freeze({level:3,fromMin:240,art:'intense',label:'금빛 입자'}),
-  Object.freeze({level:4,fromMin:360,art:'intense',label:'금빛 오라'}),
-  Object.freeze({level:5,fromMin:480,art:'intense',label:'완전 금빛'}),
-]);
+  [0,'기본','기본',[]],
+  [60,'땀 한 방울','땀',['sweat']],
+  [120,'김','김',['sweat','steam']],
+  [180,'연기','연기',['sweat','smoke','blush']],
+  [240,'불꽃','불꽃',['smoke','blush','flame']],
+  [360,'금빛 오라','오라',['blush','flame','aura','sparks']],
+].map(([fromMin,label,short,fx],i)=>Object.freeze({level:i+1,fromMin,art:'base',label,short,fx:Object.freeze(fx)})));
 export const FULL_EFFECT_MIN=TODAY_EFFECTS[TODAY_EFFECTS.length-1].fromMin;
 
 // 실제 그림(av_s01_base.webp …). CSP img-src 'self'는 소유자 승인(2026-11-06)으로 열었다. 이 값을 끄면 자리표시 SVG만 그리고 그림 파일을 요청하지 않는다.
@@ -109,9 +112,12 @@ export function todayStepsOf(todayMs){
   const steps=TODAY_EFFECTS.map((e,i)=>({...e,toMin:TODAY_EFFECTS[i+1]?.fromMin??null,state:e.level<fx.level?'done':e.level===fx.level?'now':'todo'}));
   return {level:fx.level,label:fx.label,next:fx.next,steps,toNextSec:fx.next?fx.next.fromMin*60-sec:null,top:fx.next===null};
 }
-// 칸 이름표: "0~2h" … "8h+"(끝은 다음 단계의 fromMin). 남은 시간: "1:58:53"(시간은 앞 0 없음).
+// 칸 이름표: "0~1h" … "6h+"(끝은 다음 단계의 fromMin). 남은 시간: "1:58:53"(시간은 앞 0 없음).
 export const stepRangeText=e=>{const next=TODAY_EFFECTS.find(x=>x.level===e.level+1);return next?e.fromMin/60+'~'+next.fromMin/60+'h':e.fromMin/60+'h+';};
 export const leftClockText=sec=>{const s=Number.isFinite(sec)&&sec>0?Math.floor(sec):0;return Math.floor(s/3600)+':'+String(Math.floor(s/60)%60).padStart(2,'0')+':'+String(s%60).padStart(2,'0');};
+// AV5 미리보기 격자: 칸 이름표 "1시간"(그 단계가 시작되는 오늘 공부 시간), 남은 시간 한 줄 "땀까지 0:42 남음"(h:mm, 분은 올림 → 1초 남아도 0:01).
+export const stepHoursText=e=>e.fromMin/60+'시간';
+export const nextLeftText=p=>{if(p.top)return '오늘 최고 단계 · '+p.label;const m=Math.ceil(p.toNextSec/60);return p.next.short+'까지 '+Math.floor(m/60)+':'+String(m%60).padStart(2,'0')+' 남음';};
 
 // 진행 중 시간은 1초씩 더하지 않고 언제나 "지금 - 시작 시각"으로 구한다. 화면이 꺼지거나 탭이 멈춰 있어도 다시 계산하면 맞다. 시계가 뒤로 가면 0.
 // S1A: restMs = 이 타이머의 휴식 합(ms). 공부 분에서 뺀다(기본 0이라 예전 호출은 그대로).

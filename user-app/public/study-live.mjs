@@ -9,8 +9,8 @@ import {XP} from './life-achieve.mjs';
 import {sessionMark} from './study-rebase.mjs';
 import {liveRoom} from './study-room.mjs';
 import {brickCells} from './study-room.mjs';   // DS1: 오늘 벽돌 칸(공부방 기둥과 같은 금 벽돌 스프라이트)
-import {TODAY_EFFECTS,todayStepsOf,stepRangeText,leftClockText} from './study-stage.mjs';   // DS5: 오늘 효과 5단계 띠
-import {roomScene,roomModel,reducedMotion} from './study-room.mjs';   // DS5: 띠 썸네일 = 실제 무대 렌더 함수
+import {TODAY_EFFECTS,todayStepsOf,stepRangeText,leftClockText,stepHoursText,nextLeftText,STUDY_STAGES} from './study-stage.mjs';   // DS5·AV5: 오늘 상태 6단계 격자
+import {reducedMotion,avatarStage,avatarFxLayer} from './study-room.mjs';   // AV5: 격자 썸네일·덮개 아바타 = 같은 기본 그림 + 효과 층
 
 const SEC_MS=1000,MIN_MS=60000;
 export const MAX_LIVE_MS=1440*MIN_MS;          // 24시간(저장 상한 1440분과 같다)
@@ -175,28 +175,29 @@ const bricksText=s=>'오늘 벽돌 '+s.bricks.bricks+'장'+(s.bricks.pieces?' + 
 const examText=e=>e?e.name+' '+(e.dDay===0?'D-DAY':'D-'+e.dDay):'시험 일정 없음';
 const restOver=(t,s)=>Boolean(t.pausedAt)&&!t.endIso&&s.clock.restMs+s.clock.restNowMs>REST_SPLIT_MS;
 
-// ---- DS5 (설계 V5 §2.2·§2.3): 오늘 효과 5단계 띠 + 시계 아래 한 줄 + 단계가 오르는 순간 초 숫자 1초 금색. 저장 0·그림 파일 추가 0(투영만) ----
-// 칸마다 작은 무대 = roomScene에 roomModel({todayMin: 그 단계 첫 분})만 넣어 그린다(실제 무대와 같은 함수). 평생 등급 그림은 지금 등급(grade) 고정.
-// thumbs=false면 썸네일 없이 글자 칸만(상태 화면). 좁은 화면(≤ 420px)은 CSS가 지금 단계 ±1칸만 보인다(먼 칸 = far). 반환 {node, paint(todayMs), scenes()}.
+// ---- DS5 (설계 V5 §2.2·§2.3) → AV5: 오늘 상태 6단계 미리보기 격자 + 시계 아래 한 줄 + 단계가 오르는 순간 초 숫자 1초 금색. 저장 0·그림 파일 추가 0(투영만) ----
+// 칸마다 같은 아바타 작은 그림(지금 평생 등급의 기본 그림, 고정) + 그 단계 효과 층(avatarStage) + "1시간" 이름표 + 단계 이름. 지금 칸 금 테두리, 못 간 칸은 흐리게 + 자물쇠.
+// 격자 아래 한 줄: "땀까지 0:42 남음". thumbs=false면 썸네일 없이 글자 칸만(상태 화면). 좁은 화면(≤ 420px)의 작게 보기 카드는 CSS가 지금 단계 ±1칸만 보인다(먼 칸 = far).
+// 반환 {node, paint(todayMs), scenes()}. scenes() = 칸별 avatarStage(시험용).
 export const EFFECT_FLASH_MS=1000;
+const SVG_LOCK=(svg)=>{const n=svg('svg',{class:'ds5-lock',viewBox:'0 0 12 14',width:12,height:14,'aria-hidden':'true',focusable:'false'});n.append(svg('path',{class:'ds5-lock-arc',d:'M3.5 6V4.2a2.5 2.5 0 0 1 5 0V6'}),svg('rect',{class:'ds5-lock-body',x:1.5,y:6,width:9,height:7,rx:1.5}));return n;};
 export function todayEffectStrip(doc,{grade=1,useArt=false,thumbs=true,cls=''}={}){
-  const {el,add}=maker(doc),list=el('ol',null,'ds5-strip');list.setAttribute('aria-label','오늘 효과 5단계');
-  const cells=TODAY_EFFECTS.map(e=>{const thumb=thumbs?el('div',null,'ds5-thumb'):null,left=el('span',null,'ds5-left'),li=add(el('li',null,'ds5-cell'),thumb,el('span',stepRangeText(e),'ds5-range'),el('span',e.label,'ds5-name'),left);add(list,li);return {e,li,thumb,left};});
+  const {el,add,svg}=maker(doc),list=el('ol',null,'ds5-strip');list.setAttribute('aria-label','오늘 상태 '+TODAY_EFFECTS.length+'단계 미리보기');
   const scenes=[];
-  if(thumbs)for(const c of cells){
-    const fx=todayEffectOf(c.e.fromMin),stage=el('div',null,'room-stage ds5-stage');
-    if(useArt){const fig=el('img',null,'st-fig-art live-fig');fig.alt='';fig.setAttribute('aria-hidden','true');fig.src=artFile(grade,fx.art);fig.addEventListener('error',()=>{fig.hidden=true;});add(stage,fig);}
-    const scene=roomScene(doc,{stage,wings:false,label:'오늘 효과 '+c.e.level+'단계'});scene.paint(roomModel({todayMin:c.e.fromMin,effectLevel:fx.level}));
-    add(c.thumb,scene.node);scenes.push(scene);
-  }
+  const cells=TODAY_EFFECTS.map(e=>{
+    let thumb=null;
+    if(thumbs){const a=avatarStage(doc,{grade,level:e.level,useArt});a.node.setAttribute('aria-hidden','true');thumb=add(el('div',null,'ds5-thumb'),a.node,SVG_LOCK(svg));scenes.push(a);}
+    const li=add(el('li',null,'ds5-cell'),thumb,el('span',stepHoursText(e),'ds5-range'),el('span',e.label,'ds5-name'));li.title=stepRangeText(e)+' · '+e.label;add(list,li);return {e,li};
+  });
+  const left=el('p',null,'ds5-next');
   let key=null;
   const paint=todayMs=>{
-    const p=todayStepsOf(todayMs),k=p.level+'|'+p.toNextSec;if(k===key)return p;key=k;
-    cells.forEach((c,i)=>{const st=p.steps[i].state;c.li.className='ds5-cell '+st+(Math.abs(c.e.level-p.level)>1?' far':'');c.li.setAttribute('aria-current',st==='now'?'step':'false');
-      c.left.textContent=st!=='now'?'':p.top?'오늘 최고 단계':'다음 단계까지 '+leftClockText(p.toNextSec);});
+    const p=todayStepsOf(todayMs),k=p.level+'|'+Math.ceil((p.toNextSec??0)/60);if(k===key)return p;key=k;
+    cells.forEach((c,i)=>{const st=p.steps[i].state;c.li.className='ds5-cell '+st+(Math.abs(c.e.level-p.level)>1?' far':'');c.li.setAttribute('aria-current',st==='now'?'step':'false');c.li.setAttribute('aria-label',stepHoursText(c.e)+' '+c.e.label+(st==='todo'?' · 아직 잠김':st==='now'?' · 지금':''));});
+    left.textContent=nextLeftText(p);
     return p;
   };
-  const node=add(el('section',null,'ds5-today'+(cls?' '+cls:'')),el('strong','오늘 효과 5단계','ds5-title'),list);
+  const node=add(el('section',null,'ds5-today'+(cls?' '+cls:'')),add(el('div',null,'ds5-head'),el('strong','오늘 상태','ds5-title'),el('span','몇 시간 하면 이렇게 바뀌어요','ds5-sub')),list,left);
   return {node,paint,scenes:()=>scenes};
 }
 export const effectLineText=p=>p.top?'오늘 최고 단계 · '+p.label:'다음 효과까지 '+leftClockText(p.toNextSec)+' · '+p.next.label;
@@ -240,11 +241,16 @@ export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=nu
     let cellKey=null;
     const paintCells=()=>{const k=s.bricks.value+'/'+s.bricks.goal;if(k===cellKey)return;cellKey=k;cellSlot.replaceChildren(brickCells(doc,{value:s.bricks.value,goal:s.bricks.goal}));};
     paintCells();
-    // 장면 자리(S1B가 공부방 레이어를 얹는다). 지금은 기존 아바타 그림만. 그림을 못 불러오면 그림만 숨긴다.
-    const stage=el('div',null,'room-stage');
+    // AV5: 아바타 = 평생 등급 기본 그림 하나(책상·소품 틀 없음) + 오늘 상태 효과 층. 그림을 못 불러오면 그림만 숨긴다.
+    const stage=el('div',null,'room-stage av5-stage');
     let fig=null;
-    if(ctx.avatarArt??AVATAR_ART_READY){fig=el('img',null,'st-fig-art live-fig');fig.alt='';fig.setAttribute('aria-hidden','true');fig.src=artFile(s.roomInputs.stageNo,s.roomInputs.art);fig.addEventListener('error',()=>{fig.hidden=true;});add(stage,fig);}
-    const room=liveRoom(ctx,{stage,state:s,timer,draftCard});   // S1B: 그림 위 앞 겹 + 넓은 화면 좌우 날개(study-room). liveState는 읽기만 한다
+    if(ctx.avatarArt??AVATAR_ART_READY){fig=el('img',null,'av5-fig live-fig');fig.alt='';fig.setAttribute('aria-hidden','true');fig.src=artFile(s.roomInputs.stageNo,s.roomInputs.art);fig.addEventListener('error',()=>{fig.hidden=true;});add(stage,fig);}
+    const fxLayer=avatarFxLayer(doc,{level:s.roomInputs.effectLevel,grade:s.roomInputs.stageNo});add(stage,fxLayer.node);
+    const tagGrade=el('span',null,'av5-tag av5-tag-grade'),tagToday=el('span',null,'av5-tag av5-tag-today');
+    const paintTags=()=>{const g=STUDY_STAGES[s.roomInputs.stageNo-1],e=TODAY_EFFECTS[s.roomInputs.effectLevel-1];tagGrade.textContent='평생 등급 '+g.no+' · '+g.name;tagToday.textContent='오늘 상태 '+e.level+' · '+e.label;};
+    paintTags();add(stage,add(el('div',null,'av5-tags'),tagGrade,tagToday));
+    const room=liveRoom(ctx,{stage,state:s,timer,draftCard,props:false});   // S1B: 벽돌 축하(글자·불꽃)만. AV5: 책상·소품·날개 없음. liveState는 읽기만 한다
+    const grid=todayEffectStrip(doc,{grade:s.roomInputs.stageNo,useArt:ctx.avatarArt??AVATAR_ART_READY,cls:'live-grid'});grid.paint(s.todayMs);   // AV5: 덮개 안 미리보기 격자
     // DS1 (V5 §2.1·§2.8 h): primary는 끝내고 담기 하나(금속 채움, 64px·좁은 화면 56px), 휴식은 같은 높이 secondary, 작게 보기는 text. 폭 ≤ 420px이면 휴식·끝내고 담기는 하단 고정(lb-bottom-dock)
     const restBtn=timer.endIso?null:button(timer.pausedAt?'이어서':'휴식',()=>{if(timer.pausedAt)on.resume?.();else on.pause?.();},'secondary live-rest lb-btn-pair');
     if(restBtn&&timer.pausedAt){restBtn.setAttribute('data-face','다시 집중');restBtn.setAttribute('aria-label','이어서');}   // DS1B (V5 §2.1): 휴식 중 보이는 글자만 "다시 집중"(styles.css 30절 data-face). DOM 글자·이름표는 "이어서" 그대로, 누르면 휴식 해제 그대로
@@ -255,7 +261,7 @@ export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=nu
       add(el('div',null,'live-body'),room.node,add(el('div',null,'live-panel'),
         state,clock,effLine,todaySec,
         add(el('div',null,'live-ring-row'),ring.node,add(el('div',null,'live-ring-side'),next,gold)),
-        add(el('div',null,'live-chips'),todayChip,weekChip,examChip),add(el('div',null,'live-bricks-row'),bricks,cellSlot),overlap,restNote,note?el('p',note,'notice live-note'):null,
+        add(el('div',null,'live-chips'),todayChip,weekChip,examChip),add(el('div',null,'live-bricks-row'),bricks,cellSlot),grid.node,overlap,restNote,note?el('p',note,'notice live-note'):null,
         add(el('div',null,'live-sub-actions'),button('작게 보기',()=>on.collapse?.(),'lb-btn-text live-small')),
         add(el('div',null,'live-actions lb-bottom-dock'),restBtn,button('끝내고 담기',()=>on.finish?.(),'primary live-finish lb-btn-finish')))));
     dialog.setAttribute('aria-label','STUDY LIVE 집중 화면');
@@ -268,7 +274,7 @@ export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=nu
       e.preventDefault?.();if(timer.pausedAt)on.resume?.();else on.pause?.();
     });
     dialog.addEventListener('keyup',e=>{if(e?.key===' '){const tag=String(e.target?.tagName??'').toUpperCase();if(tag!=='INPUT'&&tag!=='SELECT'&&tag!=='TEXTAREA')e.preventDefault?.();}});   // 초점이 단추에 있어도 Space가 그 단추를 누르지 않게
-    parts={clock:clockP,state,todaySec,ring,next,gold,todayChip,weekChip,bricks,fig,paintBands,paintCells,room};
+    parts={clock:clockP,state,todaySec,ring,next,gold,todayChip,weekChip,bricks,fig,paintBands,paintCells,room,fxLayer,paintTags,grid};
     // 화면에 붙은 뒤에 모달로 띄운다(붙기 전에는 showModal을 부를 수 없다)
     const show=()=>{if(dialog.isConnected!==false&&!dialog.open){try{dialog.showModal?.();}catch{/* 이미 열림 등 */}}};
     showT=globalThis.setTimeout(show,0);showT?.unref?.();
@@ -288,6 +294,7 @@ export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=nu
       parts.ring.paint(s.session);parts.next.textContent=nextText(s);parts.gold.textContent=goldText(s);parts.gold.className='live-gold'+(s.session.gold?' done':'');
       parts.todayChip.textContent='오늘 '+hmText(s.todayMin);parts.weekChip.textContent='이번 주 '+hmText(s.weekMin);parts.bricks.textContent=bricksText(s);parts.paintBands();parts.paintCells();
       if(parts.fig&&!parts.fig.hidden){const src=artFile(s.roomInputs.stageNo,s.roomInputs.art);if(parts.fig.src!==src&&!String(parts.fig.src).endsWith('/'+src))parts.fig.src=src;}
+      parts.fxLayer.paint(s.roomInputs.effectLevel,s.roomInputs.stageNo);parts.paintTags();parts.grid.paint(s.todayMs);   // AV5
       parts.room.update(s);
     }
     if(s.session.bricks>last.bricks||s.session.gold&&!last.gold)emitBrick(s.session.bricks,s.session.gold);
