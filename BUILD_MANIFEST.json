@@ -1555,8 +1555,8 @@
     {
       "path": "index.html",
       "sourcePath": "user-app/public/index.html",
-      "sourceSha256": "23f2317021151b142e1d9f134a0374dabb1f8eca89839b554d0a3d28728e3207",
-      "outputSha256": "131101c5c7b59b42b10a70426e031e4bdfb5711becc135f4c852e9d1bfb971b0"
+      "sourceSha256": "5ffb65368af982e200871d50175ff40239093f671d4ee995ed1cfb055273aa37",
+      "outputSha256": "d513070ff7f900265af0b961eff84816382a54b3957459cb8829069e70cf760a"
     },
     {
       "path": "styles.css",
