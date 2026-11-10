@@ -11,6 +11,7 @@ import {liveRoom} from './study-room.mjs';
 import {brickCells} from './study-room.mjs';   // DS1: 오늘 벽돌 칸(공부방 기둥과 같은 금 벽돌 스프라이트)
 import {TODAY_EFFECTS,todayStepsOf,stepRangeText,leftClockText,stepHoursText,nextLeftText,STUDY_STAGES} from './study-stage.mjs';   // DS5·AV5: 오늘 상태 6단계 격자
 import {reducedMotion,avatarStage,avatarFxLayer} from './study-room.mjs';   // AV5: 격자 썸네일·덮개 아바타 = 같은 기본 그림 + 효과 층
+import {dailyCharOf,dailyLineText} from './study-stage.mjs';   // AV8: 덮개 큰 그림 = 오늘의 캐릭터(0h~12h), 평생 등급 그림은 모서리 배지
 
 const SEC_MS=1000,MIN_MS=60000;
 export const MAX_LIVE_MS=1440*MIN_MS;          // 24시간(저장 상한 1440분과 같다)
@@ -241,14 +242,28 @@ export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=nu
     let cellKey=null;
     const paintCells=()=>{const k=s.bricks.value+'/'+s.bricks.goal;if(k===cellKey)return;cellKey=k;cellSlot.replaceChildren(brickCells(doc,{value:s.bricks.value,goal:s.bricks.goal}));};
     paintCells();
-    // AV5: 아바타 = 평생 등급 기본 그림 하나(책상·소품 틀 없음) + 오늘 상태 효과 층. 그림을 못 불러오면 그림만 숨긴다.
-    const stage=el('div',null,'room-stage av5-stage');
-    let fig=null;
-    if(ctx.avatarArt??AVATAR_ART_READY){fig=el('img',null,'av5-fig live-fig');fig.alt='';fig.setAttribute('aria-hidden','true');fig.src=artFile(s.roomInputs.stageNo,s.roomInputs.art);fig.addEventListener('error',()=>{fig.hidden=true;});add(stage,fig);}
+    // AV8: 큰 그림 = 오늘의 캐릭터 dc_hNN.webp(오늘 시간 0h~12h, 책상·소품 틀 없음) + 오늘 상태 효과 층. 평생 등급 그림(av_s*_base)은 지우지 않고 모서리 원형 배지로 병행한다. 그림을 못 불러오면 그 그림만 숨긴다.
+    const stage=el('div',null,'room-stage av5-stage av8-stage'),art=Boolean(ctx.avatarArt??AVATAR_ART_READY);
+    let fig=null,badgeFig=null,daily=dailyCharOf(s.todayMin);
+    if(art){
+      fig=el('img',null,'av5-fig live-fig av8-fig');fig.alt='';fig.setAttribute('aria-hidden','true');fig.src=daily.file;fig.addEventListener('error',()=>{fig.hidden=true;});add(stage,fig);
+      badgeFig=el('img',null,'av8-badge-fig');badgeFig.alt='';badgeFig.setAttribute('aria-hidden','true');badgeFig.src=artFile(s.roomInputs.stageNo,'base');badgeFig.addEventListener('error',()=>{badgeFig.hidden=true;});
+    }
     const fxLayer=avatarFxLayer(doc,{level:s.roomInputs.effectLevel,grade:s.roomInputs.stageNo});add(stage,fxLayer.node);
     const tagGrade=el('span',null,'av5-tag av5-tag-grade'),tagToday=el('span',null,'av5-tag av5-tag-today');
     const paintTags=()=>{const g=STUDY_STAGES[s.roomInputs.stageNo-1],e=TODAY_EFFECTS[s.roomInputs.effectLevel-1];tagGrade.textContent='평생 등급 '+g.no+' · '+g.name;tagToday.textContent='오늘 상태 '+e.level+' · '+e.label;};
     paintTags();add(stage,add(el('div',null,'av5-tags'),tagGrade,tagToday));
+    if(badgeFig){const badge=add(el('span',null,'av8-badge'),badgeFig);badge.setAttribute('aria-hidden','true');add(stage,badge);}   // 평생 등급 배지(지름 56px). 등급 이름은 아래 tagGrade가 맡는다
+    // 오늘의 캐릭터 한 줄 "오늘 3h · 의대생 해부학 · 다음 변신까지 0:42" + 다음 단계 그림 1장만 미리 불러오기(한 번에 한 장)
+    const dailyLine=el('p',dailyLineText(daily),'live-daily'),preloaded=new Set();
+    const preload=()=>{if(!art||!daily.next||preloaded.has(daily.next.file))return;preloaded.add(daily.next.file);try{const p=doc.createElement('img');p.src=daily.next.file;}catch{/* 미리 불러오기는 덤이다 */}};
+    preload();
+    const paintDaily=()=>{
+      const d=dailyCharOf(s.todayMin);
+      if(d.h!==daily.h){daily=d;if(fig&&!fig.hidden)fig.src=d.file;preload();}else daily=d;
+      dailyLine.textContent=dailyLineText(daily);dailyLine.setAttribute('data-h',String(daily.h));
+    };
+    dailyLine.setAttribute('data-h',String(daily.h));
     const room=liveRoom(ctx,{stage,state:s,timer,draftCard,props:false});   // S1B: 벽돌 축하(글자·불꽃)만. AV5: 책상·소품·날개 없음. liveState는 읽기만 한다
     const grid=todayEffectStrip(doc,{grade:s.roomInputs.stageNo,useArt:ctx.avatarArt??AVATAR_ART_READY,cls:'live-grid'});grid.paint(s.todayMs);   // AV5: 덮개 안 미리보기 격자
     // DS1 (V5 §2.1·§2.8 h): primary는 끝내고 담기 하나(금속 채움, 64px·좁은 화면 56px), 휴식은 같은 높이 secondary, 작게 보기는 text. 폭 ≤ 420px이면 휴식·끝내고 담기는 하단 고정(lb-bottom-dock)
@@ -259,7 +274,7 @@ export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=nu
     dialog=add(el('dialog',null,'live-dlg'+(timer.pausedAt?' resting':'')),
       add(el('div',null,'live-top'),subjectChip(h,subject),topExtra?.(h)??null,full,close),
       add(el('div',null,'live-body'),room.node,add(el('div',null,'live-panel'),
-        state,clock,effLine,todaySec,
+        dailyLine,state,clock,effLine,todaySec,
         add(el('div',null,'live-ring-row'),ring.node,add(el('div',null,'live-ring-side'),next,gold)),
         add(el('div',null,'live-chips'),todayChip,weekChip,examChip),add(el('div',null,'live-bricks-row'),bricks,cellSlot),grid.node,overlap,restNote,note?el('p',note,'notice live-note'):null,
         add(el('div',null,'live-sub-actions'),button('작게 보기',()=>on.collapse?.(),'lb-btn-text live-small')),
@@ -274,7 +289,7 @@ export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=nu
       e.preventDefault?.();if(timer.pausedAt)on.resume?.();else on.pause?.();
     });
     dialog.addEventListener('keyup',e=>{if(e?.key===' '){const tag=String(e.target?.tagName??'').toUpperCase();if(tag!=='INPUT'&&tag!=='SELECT'&&tag!=='TEXTAREA')e.preventDefault?.();}});   // 초점이 단추에 있어도 Space가 그 단추를 누르지 않게
-    parts={clock:clockP,state,todaySec,ring,next,gold,todayChip,weekChip,bricks,fig,paintBands,paintCells,room,fxLayer,paintTags,grid};
+    parts={clock:clockP,state,todaySec,ring,next,gold,todayChip,weekChip,bricks,fig,badgeFig,dailyLine,paintBands,paintCells,paintDaily,room,fxLayer,paintTags,grid};
     // 화면에 붙은 뒤에 모달로 띄운다(붙기 전에는 showModal을 부를 수 없다)
     const show=()=>{if(dialog.isConnected!==false&&!dialog.open){try{dialog.showModal?.();}catch{/* 이미 열림 등 */}}};
     showT=globalThis.setTimeout(show,0);showT?.unref?.();
@@ -293,7 +308,8 @@ export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=nu
       parts.clock.set(s.clock.text);parts.state.textContent=stateText(timer,s);parts.todaySec.textContent='오늘 '+hmsShort(s.todayMs);
       parts.ring.paint(s.session);parts.next.textContent=nextText(s);parts.gold.textContent=goldText(s);parts.gold.className='live-gold'+(s.session.gold?' done':'');
       parts.todayChip.textContent='오늘 '+hmText(s.todayMin);parts.weekChip.textContent='이번 주 '+hmText(s.weekMin);parts.bricks.textContent=bricksText(s);parts.paintBands();parts.paintCells();
-      if(parts.fig&&!parts.fig.hidden){const src=artFile(s.roomInputs.stageNo,s.roomInputs.art);if(parts.fig.src!==src&&!String(parts.fig.src).endsWith('/'+src))parts.fig.src=src;}
+      parts.paintDaily();   // AV8: 큰 그림(오늘의 캐릭터)·한 줄. 평생 등급 배지는 등급이 바뀔 때만 주소가 바뀐다
+      if(parts.badgeFig&&!parts.badgeFig.hidden){const src=artFile(s.roomInputs.stageNo,'base');if(parts.badgeFig.src!==src&&!String(parts.badgeFig.src).endsWith('/'+src))parts.badgeFig.src=src;}
       parts.fxLayer.paint(s.roomInputs.effectLevel,s.roomInputs.stageNo);parts.paintTags();parts.grid.paint(s.todayMs);   // AV5
       parts.room.update(s);
     }

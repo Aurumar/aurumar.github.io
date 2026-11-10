@@ -105,6 +105,19 @@ export function todayEffectOf(todayMin){
   return {...TODAY_EFFECTS[index],minutes,next,toNextMin:next?next.fromMin-minutes:null};
 }
 
+// AV8 (2026-11-10 통제탑, 소유자 결정): 오늘의 캐릭터 13단계(오늘 0h~12h+). 평생 등급(STUDY_STAGES)·그 그림(av_s*)과 별개로 병행한다.
+// 소유자가 바꾸기 쉽게 여기 한 곳에만 둔다. h = 오늘 누적 공부 시간(시간 단위 내림), 12h 이상은 모두 12. 그림 = dc_hNN.webp(공개 폴더, 변환은 AUTOPILOT\tools\av8-daily-webp.py).
+// 오늘 분은 STUDY LIVE가 이미 쓰는 오늘 누적 분 그대로다. 저장 0·서버 쓰기 0·네트워크 0. 날짜가 바뀌면 오늘 카드가 새로 시작하므로 0h로 돌아간다(새 로직 없음).
+export const DAILY_CHARS=Object.freeze([
+  '등교','수험생 필기','수험생 몰입','의대생 해부학','의대생','본과','병원 실습','국시 준비','인턴','레지던트','레지던트 수술','전문의','의사 (금빛)',
+].map((label,h)=>Object.freeze({h,file:'dc_h'+String(h).padStart(2,'0')+'.webp',label})));
+export function dailyCharOf(todayMin){
+  const minutes=Number.isFinite(todayMin)&&todayMin>0?Math.floor(todayMin):0,h=Math.min(DAILY_CHARS.length-1,Math.floor(minutes/60)),next=DAILY_CHARS[h+1]??null;
+  return {...DAILY_CHARS[h],next,toNextMin:next?next.h*60-minutes:null};
+}
+// "오늘 3h · 의대생 해부학 · 다음 변신까지 0:42" (h:mm, 남은 분 그대로). 12h면 다음이 없다.
+export const dailyLineText=d=>'오늘 '+d.h+'h · '+d.label+(d.next?' · 다음 변신까지 '+clockText(d.toNextMin):' · 오늘 최고 단계');
+
 // DS5 (설계 V5 §2.2): 오늘 효과 5단계 띠의 순수 계산. 경계·이름은 위 TODAY_EFFECTS를 그대로 읽는다(새 경계값 없음). 저장 0.
 // todayMs = 오늘 누적 공부(ms). 단계는 todayEffectOf(내림한 분)과 같고, 다음 단계까지 남은 시간은 정수 초(시계와 같은 내림)로 센다.
 export function todayStepsOf(todayMs){

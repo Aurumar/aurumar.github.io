@@ -8,6 +8,7 @@ import {kstDate} from './life-model.mjs';
 import {universeData} from './universe-view.mjs';
 import {todayEffectStrip} from './study-live.mjs';   // DS5: 오늘 효과 5단계 띠(작게 보기와 같은 함수)
 import {avatarFxLayer} from './study-room.mjs';   // AV5: 오늘 상태 효과 층
+import {DAILY_CHARS,dailyCharOf,dailyLineText} from './study-stage.mjs';   // AV8: 오늘의 캐릭터 13단계 띠
 
 const NS='http://www.w3.org/2000/svg';
 const MAX_STAR_MARKS=12;
@@ -176,6 +177,36 @@ function ladderCard(h,proj){
   return out;
 }
 
+// AV8: "오늘의 캐릭터 13단계" 띠(0h~12h). 새 그림 파일 없이 STUDY LIVE와 같은 dc_hNN.webp를 작게 쓴다. 지금 단계 금 테두리 · 지나온 단계 밝게 · 남은 단계 흐리게(CSS).
+// 썸네일은 칸이 화면에 보일 때만 그림을 요청한다(IntersectionObserver가 없으면 자리표시만, 요청 0). 못 불러오면 그 칸만 자리표시로 바꾼다. 저장 0.
+function dailyStrip(h,doc,minutes,useArt){
+  const {el,add}=h,list=el('ol',null,'dc-strip');list.setAttribute('aria-label','오늘의 캐릭터 '+DAILY_CHARS.length+'단계');
+  const frames=[],cells=DAILY_CHARS.map(c=>{
+    const frame=el('span',null,'dc-frame');frames.push(frame);frame.append(el('span',null,'dc-ph'));
+    const li=add(el('li',null,'dc-cell'),frame,el('span',c.h+'h','dc-h'),el('span',c.label,'dc-name'));li.title=c.h+'h · '+c.label;add(list,li);return {c,li};
+  });
+  const IO=useArt?doc.defaultView?.IntersectionObserver:null;
+  const picture=c=>{const img=el('img',null,'dc-fig');img.alt='';img.setAttribute('aria-hidden','true');img.loading='lazy';img.decoding='async';img.src=c.file;img.addEventListener('error',()=>{img.hidden=true;});return img;};   // 자리표시(dc-ph)는 그림 밑에 그대로 있어서 오류면 그림만 숨기면 된다
+  // 관찰은 첫 그리기가 끝난 다음 틱에 시작한다(첫 화면을 늦추지 않고, B65 줄의 관찰자와 섞이지 않게). 그 전에는 그림 요청 0.
+  const arm=()=>{
+    if(!IO||list.isConnected===false)return;
+    const watch=new IO(es=>{for(const e of es)if(e.isIntersecting){watch.unobserve(e.target);const i=frames.indexOf(e.target);if(i>=0)e.target.append(picture(DAILY_CHARS[i]));}});
+    frames.forEach(f=>watch.observe(f));
+  };
+  if(IO){const id=globalThis.setTimeout(arm,0);id?.unref?.();}
+  const line=el('p',null,'dc-next');
+  let key=null;
+  const paint=min=>{
+    const d=dailyCharOf(min),k=d.h+'|'+d.toNextMin;if(k===key)return d;key=k;
+    cells.forEach(({c,li})=>{const st=c.h<d.h?'done':c.h===d.h?'now':'todo';li.className='dc-cell '+st;li.setAttribute('aria-current',st==='now'?'step':'false');li.setAttribute('aria-label',c.h+'h '+c.label+(st==='todo'?' · 아직 잠김':st==='now'?' · 지금':''));});
+    line.textContent=dailyLineText(d);
+    return d;
+  };
+  paint(minutes);
+  const node=add(el('section',null,'panel dc-today'),add(el('div',null,'ds5-head'),el('strong','오늘의 캐릭터','ds5-title'),el('span','오늘 공부한 시간만큼 매일 0h부터 변해요','ds5-sub')),list,line);
+  return {node,paint};
+}
+
 function door(h,word,sub,onClick){
   const {el,add}=h,b=add(el('button',null,'secondary st-door'),el('span',word,'eyebrow'),el('strong',sub));
   b.type='button';b.dataset.navOnly='1';if(onClick)b.addEventListener('click',onClick);else b.disabled=true;
@@ -243,7 +274,8 @@ export function renderStatusView(root,ctx){
 
   // 3) 금 장신구·전체 단계  4) 탑·우주 입구
   const doors=add(el('div',null,'st-doors'),door(h,'탑',towerSub(whole,date,money),ctx.openTower),door(h,'우주',universeSub(whole,nowIso),ctx.openUniverse));
-  add(out,add(el('div',null,'st-body'),avatar,add(el('div',null,'st-side'),effects.node,todayCard,ladderCard(h,proj),doors)));
+  const daily=dailyStrip(h,doc,today.minutes,useArt);   // AV8: 오늘 효과 띠 바로 아래(오른쪽 칸 둘째)
+  add(out,add(el('div',null,'st-body'),avatar,add(el('div',null,'st-side'),effects.node,daily.node,todayCard,ladderCard(h,proj),doors)));
 
   const paint=()=>{
     const iso=String(ctx.now());
@@ -255,6 +287,7 @@ export function renderStatusView(root,ctx){
     todayLine.textContent='오늘 '+hmText(today.minutes);nextLine.textContent=nextEffectText(today.fx);badgeToday.textContent=todayBadge(today.fx);
     stage.className=fxClass(today.fx.level,artOn);avFx.paint(today.fx.level,proj.stage.no);   // AV5
     effects.paint(today.minutes*60000);   // DS5
+    daily.paint(today.minutes);   // AV8
     if(today.fx.art!==art){art=today.fx.art;const fresh=figureOf(art);figure.replaceWith?.(fresh);figure=fresh;}
   };
   const stop=liveTick(out,doc,paint);
