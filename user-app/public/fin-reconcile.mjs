@@ -18,6 +18,8 @@ export const REASON_TEXT=Object.freeze({
   SUSPECT_OTHER_ACCOUNT:'다른 계정에 같은 결제가 있음(간편결제·결제 알림으로 넣었을 수 있음)',
   SUSPECT_IN_FILE:'명세서 안에 같은 날짜·금액·가맹점 행이 또 있음',
   SUSPECT_INSTALL:'할부 회차 · 과거 이력에 비슷한 거래(금액 모름)',
+  SUSPECT_AMOUNT:'포인트·쿠폰·사전승인 때문에 금액이 다를 수 있어요 · 같은 결제면 저장하지 마세요',   // FIX67 (M-02): 같은 계정·같은 가맹점·±1일, 금액만 다름
+  NEW_INSTALL_ROUND:'회차 분입니다 · 장부에 같은 가맹점 할부 원거래가 있어요',   // FIX67 (M-11): 새것이지만 기본 체크 안 함
   PAIR_CANCEL:'파일 안에서 승인과 취소가 짝지어짐 · 둘 다 저장 안 함',
   NEW_PLAIN:'장부에 없음',
   NEW_REFUND_PAIR:'파일 안 취소 · 원거래가 장부에 있어 환불로 추가',
@@ -102,6 +104,12 @@ export function reconcileStatement(rows,fin,{labels=fin?.labels,localDate=null}=
     const d=dayNum(it.row.date),vo=voided.find(v=>v.accountId===it.row.accountId&&v.net===a&&Math.abs(v.day-d)<=SAME_DAYS&&merchantSim(it.row.merchant,v.merchant)>=0.8);
     const close=best(c.filter(x=>!used.has(x.line.key)&&x.line.net===a));
     const fx=it.row.foreign?best(c.filter(x=>!used.has(x.line.key)&&x.dd<=SAME_DAYS&&x.sim>=0.8&&absBig(x.line.net-a)*100n<=FX_PERCENT*absBig(a))):null;
+    // FIX67 (M-02): 같은 계정·같은 가맹점(비슷함 0.8 이상 = 두 이름이 다 있음)·±1일인데 금액만 다른 장부 지출. 할부 회차 행은 아래 M-11이 보고, 해외 결제는 위 환율 ±3%(SUSPECT_FX) 규칙만 따른다(B64-T7d 그대로).
+    // FIX67 (M-11): 할부 회차(2회차 이상) 행인데 장부에 같은 계정·같은 가맹점 할부 원거래(직접 입력, 개월 같음)가 이 행보다 앞(개월 수 + 1달 안)에 있음.
+    const inRound=it.row.round>=2&&(it.row.months??0)>=2;
+    const amountOnly=a>0n&&!inRound&&!it.row.foreign?best(c.filter(x=>!used.has(x.line.key)&&x.dd<=SAME_DAYS&&x.sim>=0.8&&x.line.kind==='EXPENSE'&&x.line.net>0n&&x.line.net!==a)):null;
+    const round=a>0n&&inRound?lines.filter(l=>l.source==='TXN'&&l.kind==='EXPENSE'&&l.accountId===it.row.accountId&&l.installments>=2&&l.installments===it.row.months&&l.day<d&&d-l.day<=(it.row.months+1)*31&&merchantSim(it.row.merchant,l.merchant)>=0.8)
+      .sort((x,y)=>y.day-x.day||x.key.localeCompare(y.key))[0]??null:null;
     const other=a>0n?ledgerMatch(lines.filter(l=>l.accountId!==it.row.accountId).map(l=>({...l,net:l.net.toString()})),{amount:a.toString(),merchant:it.row.merchant},[-1,0,1].map(k=>new Date((d+k)*86400000).toISOString().slice(0,10))):null;
     if(taken)set(it,'SUSPECT','SUSPECT_TAKEN',taken.line);
     else if(vo){set(it,'SUSPECT','SUSPECT_VOIDED');it.match={key:vo.key,source:'VOIDED',date:vo.date,merchant:vo.merchant,net:vo.net.toString(),accountId:vo.accountId};}
@@ -109,6 +117,7 @@ export function reconcileStatement(rows,fin,{labels=fin?.labels,localDate=null}=
     else if(fx)set(it,'SUSPECT','SUSPECT_FX',fx.line);
     else if(other)set(it,'SUSPECT','SUSPECT_OTHER_ACCOUNT',lines.find(l=>l.key===other.key));
     else if(seen.has(dup))set(it,'SUSPECT','SUSPECT_IN_FILE');
+    else if(amountOnly)set(it,'SUSPECT','SUSPECT_AMOUNT',amountOnly.line);
     else if(a<0n){
       // 짝 없는 취소: 같은 계정의 90일 안 지출 중 가게가 비슷한 것. 같은 금액이면 전액 취소, 더 크면 부분 취소 → 환불. 없으면 건너뜀.
       const orig=lines.filter(l=>l.accountId===it.row.accountId&&l.kind==='EXPENSE'&&l.day<=d&&d-l.day<=CANCEL_LOOKBACK_DAYS&&l.net>=-a&&merchantSim(it.row.merchant,l.merchant)>=0.8)
@@ -116,6 +125,7 @@ export function reconcileStatement(rows,fin,{labels=fin?.labels,localDate=null}=
       if(orig){set(it,'NEW',orig.net===-a?'NEW_REFUND_PAST':'NEW_REFUND_PARTIAL',orig);it.kind='REFUND';it.category=orig.category;it.subcategory=orig.subcategory;}
       else set(it,'SKIP','SKIP_NO_ORIGINAL');
     }
+    else if(round)set(it,'NEW','NEW_INSTALL_ROUND',round);
     else set(it,'NEW',it.row.round>=2&&(it.row.months??0)>=2?'NEW_INSTALL_ORIGINAL':'NEW_PLAIN');
     if(!seen.has(dup))seen.set(dup,it.key);
   }
@@ -127,7 +137,7 @@ export function reconcileStatement(rows,fin,{labels=fin?.labels,localDate=null}=
     const s=suggestFor(it,ctx);if(!it.kind)it.kind=s.kind;
     if(it.kind==='EXPENSE'||it.kind==='REFUND'){if(!it.category||!Object.hasOwn(ctx.labels,it.category)){it.category=s.category;it.subcategory=s.subcategory;it.suggestFrom=s.from;}else it.suggestFrom='ORIGINAL';}
     else{it.category=null;it.subcategory='';it.suggestFrom=s.from;}
-    it.checked=it.status==='NEW'&&it.kind!=='NONE'&&!it.row.flags?.includes('DATE_AMBIGUOUS')&&!it.row.flags?.includes('EARLY');   // FIX35 (HUNT35 D8)·FIX37A (HUNT37 F4): 두 자리 연도 순서가 모호하거나 기간보다 앞인 행은 소유자가 확인하고 체크
+    it.checked=it.status==='NEW'&&it.kind!=='NONE'&&!it.row.flags?.includes('DATE_AMBIGUOUS')&&!it.row.flags?.includes('EARLY')&&it.reason!=='NEW_INSTALL_ROUND';   // FIX35 (HUNT35 D8)·FIX37A (HUNT37 F4): 두 자리 연도 순서가 모호하거나 기간보다 앞인 행은 소유자가 확인하고 체크 · FIX67 (M-11) 회차 분은 체크 안 함
   }
   return items;
 }

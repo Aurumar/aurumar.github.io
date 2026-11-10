@@ -357,6 +357,21 @@ export function entryDone(h,e){
   if(h.kind==='COUNT')return e.count!==null&&e.count>0;
   return true;
 }
+// V6B: 오늘 탭 고정. 저장 칸을 더하지 않고 기존 order 칸의 구간으로 나타낸다: order < HABIT_UNPIN_ORDER = 고정(오늘 탭), 그 이상 = "더 보기".
+// 옛 빌드는 order를 정렬에만 쓰므로 고정 안 한 습관이 목록 끝에 보일 뿐이다(뜻 변경·거절 없음). 기본 습관 13개는 0~12라 모두 고정이다.
+export const HABIT_UNPIN_ORDER=500;
+export const habitPinned=h=>Number.isInteger(h?.order)&&h.order<HABIT_UNPIN_ORDER;
+// V6B 성취표 칸 4상태: done(완료, 금 채움) · part(일부, 반 채움) · miss(못함, 음각) · none(기록 없음, 빈칸 — 못함으로 세지 않는다).
+// 못함 = 그날 카드에 done:false로 남긴 줄(기존 칸 그대로, 값 칸은 모두 null). 일부 = 분·횟수 목표가 있는데 못 미친 완료.
+export function habitState(h,e){
+  if(!e)return 'none';
+  if(!e.done)return 'miss';
+  if(!entryDone(h,e))return 'none';
+  if(h.kind==='DURATION'&&h.target.minutes!==null&&e.minutes<h.target.minutes)return 'part';
+  if(h.kind==='COUNT'&&h.target.per==='DAY'&&h.target.count!==null&&e.count<h.target.count)return 'part';
+  return 'done';
+}
+export const MISSED_ENTRY=Object.freeze({done:false,at:null,minutes:null,count:null});
 export function dDay(today,date){return dayNumber(date)-dayNumber(today);}
 // 오늘 이후(오늘 포함)의 가장 가까운 시험. 없으면 null.
 export function nearestExam(exams,today){

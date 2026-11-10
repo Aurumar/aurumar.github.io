@@ -66,7 +66,7 @@ export function basicDiagnosis({life=null,study=null,today}){
   const row=id=>{if(!by.has(id))by.set(id,{subjectId:id,name:names.get(id)??'기타',minutes:0,planned:0,achieved:0});return by.get(id);};
   for(const d of study?.days??[]){
     if(d.date<from||d.date>today)continue;
-    for(const s of d.data.sessions)if(s.state==='COMPLETED')row(subjectOfSession(s.id)??SUBJECT_BY_CODE[s.subject]??'?').minutes+=s.confirmedMin;
+    for(const s of d.data.sessions)if(s.state==='COMPLETED'||s.state==='VERIFIED')row(subjectOfSession(s.id)??SUBJECT_BY_CODE[s.subject]??'?').minutes+=s.confirmedMin;
   }
   const ach=achieve({life,study,today});
   let planned=0,achieved=0;

@@ -13,7 +13,9 @@ export const FINDER_HEAD=Object.freeze(['종류','제목','위치']);
 export const FINDER_MAX_ROWS=30,TITLE_MAX=80,WEB_MAX=2048,FILE_MAX=1024;
 export const KINDS=Object.freeze({'웹':'web','파일':'file','앱':'app'});
 // 화면 이름 → 앱 화면 키(app.mjs NAV 라벨과 같다, 시험이 대조). 연결 · 장치·고급은 보안 화면이라 뺀다.
-export const APP_VIEWS=Object.freeze({'오늘':'HOME','행동 기록':'ACTIONS','계획':'PLANS','달력':'CALENDAR','영역':'LIFE','가계부':'LEDGER','재정':'FINANCE','건강':'HEALTH','공부':'STUDY','이력':'HISTORY','상태':'STATUS','탑':'PROGRESS','설정':'SETTINGS'});
+export const APP_VIEWS=Object.freeze({'오늘':'HOME','행동 기록':'ACTIONS','계획':'PLANS','달력':'CALENDAR','영역':'LIFE','돈':'LEDGER','재정 기록':'FINANCE','건강':'HEALTH','공부':'STUDY','이력':'HISTORY','상태':'STATUS','탑':'PROGRESS','설정':'SETTINGS'});
+// V6F (지시서 8): 화면 이름 가계부 → 돈, 재정 → 재정 기록. 이미 적어 둔 링크 파일의 옛 이름도 그대로 연다.
+export const APP_VIEW_ALIASES=Object.freeze({'가계부':'LEDGER','재정':'FINANCE'});
 export const TRUST_KEY='lb.finder.trust.v1',TRUST_MAX=200;
 
 export const LINK_TEXT=Object.freeze({
@@ -108,7 +110,7 @@ function rowOf(line,seen){
   let row;
   if(kind==='web'){const href=webHostOK(where);if(!href)return {code:'LINK_WEB'};row={kind,title,target:href,host:new URL(href).hostname};}
   else if(kind==='file'){if(!filePathOK(where))return {code:'LINK_FILE'};row={kind,title,target:where,name:where.slice(where.lastIndexOf('\\')+1)};}
-  else{if(!Object.hasOwn(APP_VIEWS,where))return {code:'LINK_APP'};row={kind,title,target:where,key:APP_VIEWS[where]};}
+  else{const key=Object.hasOwn(APP_VIEWS,where)?APP_VIEWS[where]:Object.hasOwn(APP_VIEW_ALIASES,where)?APP_VIEW_ALIASES[where]:null;if(!key)return {code:'LINK_APP'};row={kind,title,target:where,key};}
   const id=kind+'\n'+(kind==='file'?row.target.toLowerCase():row.target);
   if(seen.has(id))return {code:'LINK_DUPLICATE'};
   seen.add(id);

@@ -1274,17 +1274,21 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .plan-rail-seg.ph3{fill:var(--lb-gold-2)}
 .plan-rail-dot{fill:var(--lb-surface-solid);stroke:var(--lb-gold-3);stroke-width:2}
 .plan-rail-dot.csat{fill:var(--lb-gold-2)}
-.plan-rail-name{font-size:10px;font-weight:700;fill:var(--lb-ink-1)}
-.plan-rail-dday{font-size:10px;font-weight:700;fill:var(--lb-ink-3)}
+.plan-rail-name,.plan-rail-dday{font-family:var(--lb-font);font-size:10px;font-weight:600;fill:var(--ink-600);font-variant-numeric:tabular-nums}   /* V6A: 멀리 보기 글자 규칙(본문 서체·600·ink-600·고정폭 숫자) */
 .plan-rail-today{stroke:var(--lb-ink-1);stroke-width:2}
 .plan-wall-brick{fill:none;stroke:var(--lb-line);stroke-width:.8}
 .plan-wall-brick.on{fill:var(--lb-gold-2);stroke:var(--lb-gold-3)}
-.plan-year-label{font-size:11px;fill:var(--lb-ink-3)}
-.plan-year-slot{fill:var(--lb-heat-none);stroke:var(--lb-line-soft)}
-.plan-year-slot.now{stroke:var(--lb-gold-3);stroke-width:1.5}
+/* V6A: 연 보기 = HTML 행. 월 라벨은 본문 서체 15px·600·ink-600·오른쪽 정렬·고정폭 숫자, 줄 높이 = 주 칸 높이(--plan-year-cell) */
+.plan-yeargrid{--plan-year-cell:24px;display:grid;gap:4px;min-width:0}
+.plan-year-row{display:grid;grid-template-columns:3.2em minmax(0,1fr);align-items:center;column-gap:8px;min-width:0}
+.plan-year-month{font-family:var(--lb-font);font-size:15px;font-weight:600;color:var(--ink-600);text-align:right;font-variant-numeric:tabular-nums;line-height:var(--plan-year-cell);white-space:nowrap}
+.plan-year-weeks{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;min-width:0}
+.plan-year-slot{position:relative;display:flex;align-items:center;justify-content:center;height:var(--plan-year-cell);min-width:0;border:1px solid var(--lb-line-soft);border-radius:var(--lb-r-1);background:var(--lb-heat-none);overflow:hidden}
+.plan-year-slot.now{border:2px solid var(--lb-gold-3)}
+.plan-year-bar{position:absolute;inset:0;width:100%;height:100%}
 .plan-year-fill{fill:var(--lb-gold-2);fill-opacity:.7}
-.plan-year-value{font-size:9px;text-anchor:middle;fill:var(--lb-ink-1)}
-.plan-year-exam{font-size:11px;fill:var(--lb-ink-1)}
+.plan-year-value{position:relative;font-family:var(--lb-font);font-size:11px;font-weight:600;color:var(--lb-ink-1);font-variant-numeric:tabular-nums;line-height:1}
+.plan-year-exam{position:absolute;top:1px;right:3px;font-size:10px;line-height:1;color:var(--lb-ink-1)}
 .plan-editor,.plan-daysheet{display:grid;gap:var(--lb-s-3)}
 .plan-editor{max-height:62vh;overflow-y:auto}
 .plan-edit-row{display:flex;flex-wrap:wrap;gap:var(--lb-s-2);align-items:center;padding:8px 0;border-bottom:1px solid var(--lb-line-soft)}
@@ -1312,6 +1316,20 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .pt-status.gold{color:var(--ink-900)}
 .pt-status.doing{color:var(--lb-warn)}
 .pt-focus{min-height:44px;padding:4px 12px;white-space:nowrap}
+/* V6A: 줄 상태 안 함 / 조각 / 완료 n장, 손 완료 표시(✓), 예전 목표 보조 글자, 계획 밖 공부 줄 */
+.pt-status.none{opacity:.55}
+.pt-status.piece{color:var(--lb-ink-2)}
+.pt-old{white-space:nowrap}
+.pt-check{min-height:44px;min-width:44px;padding:4px 10px;white-space:nowrap;font-size:13px;box-shadow:none}
+.pt-check.on{background:var(--lb-gold-1);border-color:var(--lb-gold-2);color:var(--lb-ink-1)}
+/* V6F: 상태·✓·▶ 열은 줄마다 같은 폭(CAP1 8), 예전 목표·집중 못 하는 이유는 줄 아래 한 줄, 흐린 [▶ 집중], 이 줄 타이머 ⏱ */
+.pt-status{min-width:4.8em}
+.pt-check{width:44px;padding:4px 0}
+.pt-focus{min-width:84px}
+.pt-focus-off{opacity:.45;cursor:not-allowed}
+.pt-old,.pt-focus-why{order:9;flex:1 0 100%;text-align:right;margin:-2px 0 2px}
+.pt-doing{font-size:13px;color:var(--lb-warn)}
+.pt-outside,.pt-sheet-hint{margin:6px 0 0}
 .pt-timer{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 4px;padding:6px 10px;border-left:3px solid var(--lb-gold-2);background:var(--lb-gold-soft);border-radius:0 var(--lb-r-1) var(--lb-r-1) 0}
 .pt-timer-text{flex:1 1 160px;font-size:13px;font-weight:700;color:var(--lb-ink-1)}
 .pt-empty{display:flex;gap:8px;flex-wrap:wrap}
@@ -1337,7 +1355,7 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .pw-dayhead strong{font-size:12px;color:var(--lb-ink-1)}
 .pw-dayhead.today{background:var(--lb-gold-soft)}
 .pw-dayhead.changed small::after{content:" •";color:var(--ink-900)}
-.pw-block{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--lb-ink-3)}
+.pw-block{display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--lb-ink-3);white-space:nowrap;letter-spacing:-0.04em}
 .pw-cell{display:grid;gap:2px;align-content:start;min-width:0;min-height:44px;padding:2px;border-radius:var(--lb-r-1);border:1px solid var(--lb-line-soft);background:var(--lb-surface-solid)}
 .pw-cell.today{border-color:var(--lb-gold-2)}
 .pw-cell.past{background:var(--lb-surface-2)}
@@ -1418,6 +1436,118 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .study-ref-plain,.study-ref-book{display:grid;gap:var(--lb-s-2)}
 .study-ref-plain[hidden],.study-ref-book[hidden]{display:none}
 .records-door-state{margin:0}
+/* ===== 17-2. V6A 오늘·계획 고치기: 공부 벽돌 칩 줄·계획 반영 한 줄·D-day 두 칩. 새 색 없음 — 토큰만 ===== */
+/* 칩 줄은 한 줄(줄바꿈 0, 좁은 폭은 가로로 밀기), 모든 칩 같은 높이·기준선. 부제(징검다리)는 고른 과목 것만 칩 줄 아래 한 줄. "색 바꾸기"는 칩 줄 끝(밀리지 않음) */
+.life-subject-bar{display:flex;align-items:center;gap:8px;min-width:0}
+.life-chip-row.life-subject-chips{flex:1 1 auto;min-width:0;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px}
+.life-subject-chips>*{flex:0 0 auto}
+.life-subject-chips .lb-chip{white-space:nowrap;line-height:1.2;height:44px}
+.life-plan-dot{width:6px;height:6px;border-radius:50%;background:var(--lb-gold-2);box-shadow:0 0 0 2px var(--lb-gold-1);align-self:flex-start;margin:4px -6px 0 -2px}
+button.life-color-link{flex:0 0 auto;min-height:44px;padding:6px 8px;border:0;background:transparent;box-shadow:none;color:var(--ink-600);font-size:13px;font-weight:600;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
+.life-chip-note{margin:2px 0 0;line-height:1.4}
+/* 담기 직후 "○○ 계획에 반영됨" 한 줄 + "다른 항목으로" */
+.life-link-note{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-top:6px;padding:6px 10px;border-left:3px solid var(--lb-gold-2);border-radius:0 var(--lb-r-1) var(--lb-r-1) 0;background:var(--lb-gold-soft);font-size:13px;color:var(--lb-ink-2)}
+.life-link-other{min-height:44px;white-space:nowrap}
+.life-link-pick{display:block;width:100%;min-height:44px;text-align:left;margin-bottom:6px}
+/* D-day 두 칩(오늘 카드·계획 탭·STUDY LIVE 같은 함수). 다음 시험 = 금 테두리·크게, 최종 = 보조·작게·ink-600 */
+.lb-dday-chips{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:100%;font-size:13px;letter-spacing:0}
+.lb-dday-chip{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:3px 12px;border:1px solid var(--lb-line);border-radius:var(--lb-r-full);background:var(--lb-surface-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.lb-dday-label{font-size:11px;font-weight:600;color:var(--lb-ink-3)}
+.lb-dday-value{font-size:13px;font-weight:600;color:var(--ink-600)}
+.lb-dday-chip.main{min-height:40px;padding:4px 14px;border:2px solid var(--lb-gold-2);background:var(--lb-gold-soft)}
+.lb-dday-chip.main .lb-dday-value{font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--lb-ink-1)}
+button.plan-exam-line.has-chips{padding:2px;border:0;background:transparent;box-shadow:none;overflow:visible;white-space:normal;min-height:44px}
+button.plan-exam-line.has-chips[aria-expanded="true"]{background:transparent}
+/* ===== 17-4. V6B 습관 성취표 · 오늘 "더 보기" · 낮잠 줄 · 건강 쉬운 입력. 새 색 없음 — 토큰만 ===== */
+.hb-board{display:grid;gap:8px}
+.hb-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.hb-nav{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.hb-range{font-variant-numeric:tabular-nums;color:var(--lb-ink-2)}
+.hb-bricks{margin:0;font-weight:700;color:var(--lb-ink-1)}
+.hb-scroll{overflow-x:auto;max-width:100%}
+.hb-table{border-collapse:separate;border-spacing:3px;font-size:13px}
+.hb-table th,.hb-table td{padding:0;text-align:center;vertical-align:middle}
+.hb-name-col{text-align:left;min-width:84px;max-width:120px}
+.hb-date{min-width:36px;color:var(--lb-ink-3);font-weight:600}
+.hb-date.hb-today{color:var(--lb-ink-1)}
+.hb-wd,.hb-dn{display:block;font-variant-numeric:tabular-nums}
+button.hb-name{display:block;width:100%;min-height:44px;padding:4px 6px;border:0;background:transparent;box-shadow:none;text-align:left;font-weight:700;color:var(--lb-ink-1);overflow-wrap:anywhere}
+button.hb-cell{width:36px;height:36px;min-height:36px;padding:0;border:1px solid var(--lb-line);border-radius:var(--lb-r-1);background:var(--lb-surface-solid);box-shadow:none;color:var(--lb-gold-3);font-size:14px;line-height:1}
+button.hb-cell.hb-done{background:var(--lb-gold-2);border-color:var(--lb-gold-3);color:var(--lb-ink-1)}
+button.hb-cell.hb-part{background:linear-gradient(to top,var(--lb-gold-2) 50%,var(--lb-surface-solid) 50%);border-color:var(--lb-gold-3);color:var(--lb-ink-1)}
+button.hb-cell.hb-miss{background:var(--lb-surface-tint);box-shadow:inset 0 2px 3px var(--lb-line);color:var(--lb-ink-3)}
+button.hb-cell.hb-none{background:var(--lb-surface-2)}
+button.hb-cell.hb-today{outline:2px solid var(--lb-gold-2);outline-offset:1px}
+button.hb-cell:disabled{opacity:.35}
+.hb-month button.hb-cell{width:28px;height:28px;min-height:28px;font-size:12px}
+.hb-month .hb-date{min-width:28px}
+.hb-stat-col{min-width:44px;color:var(--lb-ink-3)}
+.hb-stat{font-variant-numeric:tabular-nums;font-weight:700;color:var(--lb-ink-2);padding:0 4px}
+.hb-row.hb-unpinned .hb-name{color:var(--lb-ink-3)}
+.hb-detail{text-align:left;padding:8px;border-left:3px solid var(--lb-gold-2);background:var(--lb-gold-soft)}
+.hb-day-row th,.hb-day-rate{font-size:11px;color:var(--lb-ink-3);font-variant-numeric:tabular-nums}
+.hb-sheet .life-chip-row{flex-wrap:wrap}
+.life-habits-more-box{margin-top:6px}
+.life-habits-more-summary{min-height:44px;cursor:pointer;color:var(--lb-ink-2);font-weight:600}
+.life-nap{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:2px 0 0;font-size:13px;color:var(--lb-ink-2)}
+.life-nap input{width:7em;min-height:40px}
+.hlt-easy{display:grid;gap:8px}
+.hlt-med-chip{min-height:44px;font-weight:700}
+.hlt-med-chip.selected{border-color:var(--lb-gold-3);background:var(--lb-gold-soft)}
+.hlt-state-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:4px 0}
+.hlt-state-name{min-width:4.5em;font-weight:700;color:var(--lb-ink-1)}
+button.hlt-state-btn{min-width:44px;min-height:44px;font-variant-numeric:tabular-nums;font-weight:700}
+.hlt-timeline{display:block;width:100%;height:auto;max-height:120px}
+.hlt-tl-bg{fill:var(--lb-surface-solid);stroke:var(--lb-line);stroke-width:.5}
+.hlt-tl-tick{stroke:var(--lb-line);stroke-width:.5}
+.hlt-tl-sleep{fill:var(--lb-ink-3)}
+.hlt-tl-nap{fill:var(--lb-ink-4)}
+.hlt-tl-study{fill:var(--lb-gold-2)}
+.hlt-tl-fatigue{fill:var(--lb-gold-3)}
+.hlt-tl-depression{fill:var(--lb-subj-sci)}
+.hlt-tl-dose{fill:var(--lb-ink-1)}
+.hlt-slot-grid{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin:4px 0}
+.hlt-slot{font-size:12px;font-variant-numeric:tabular-nums;color:var(--lb-ink-2);padding:2px 8px;border:1px solid var(--lb-line);border-radius:var(--lb-r-full)}
+.hlt-slot.hlt-slot-few{color:var(--lb-ink-4);border-style:dashed}
+.hlt-slot-fact{margin:2px 0 8px;font-weight:600;color:var(--lb-ink-1)}
+/* ===== 17-5. V6F 다듬기(MAN1·MAN2·CAP1 화면 문제). 새 색 없음 — 토큰만 ===== */
+/* 오늘 탭 오늘의 캐릭터(하루): 작은 그림 + 한 줄 + 평생 등급(누적) 이름표, 누르면 13단계 시트 */
+button.today-char{display:flex;align-items:center;gap:10px;width:100%;min-height:56px;margin:8px 0 0;padding:6px 10px;border:1px solid var(--lb-gold-2);border-radius:var(--lb-r-2);background:var(--lb-gold-soft);box-shadow:none;text-align:left;color:var(--lb-ink-1)}
+.today-char-fig{width:48px;height:64px;object-fit:cover;border-radius:var(--lb-r-1);flex:0 0 auto;background:var(--lb-surface-2)}
+.today-char-text{display:grid;gap:2px;flex:1 1 auto;min-width:0}
+.today-char-tag,.today-char-life{font-size:11px;font-weight:700;color:var(--lb-ink-3)}
+.today-char-line{font-size:14px;font-weight:800;overflow-wrap:anywhere}
+.today-char-more{flex:0 0 auto;font-size:12px;font-weight:700;color:var(--ink-600)}
+.today-char-strip{margin-top:8px}
+/* 화면 어디서나 보이는 "아직 안 쌓은 입력 n개 · 지금 쌓기" 줄 */
+.pending-stack{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:6px 0;padding:6px 12px;border-left:3px solid var(--lb-gold-2);background:var(--lb-gold-soft);font-weight:700;color:var(--lb-ink-1)}
+.pending-stack[hidden]{display:none}
+.pending-stack-btn{min-height:44px}
+/* 성취표: 이름 열(왼쪽)·달성·연속 열(오른쪽)은 고정, 날짜 칸만 가로 밀기. 고정 열 가장자리 그림자 = 밀 수 있다는 단서. 하루 달성률 "100%"는 한 줄 */
+.hb-scroll{position:relative;overscroll-behavior-x:contain}
+.hb-table .hb-name-col{position:sticky;left:0;z-index:1;background:var(--lb-surface-solid);box-shadow:6px 0 6px -6px var(--lb-ink-4)}
+.hb-table tr:not(.hb-detail-row)>:nth-last-child(1),.hb-table tr:not(.hb-detail-row)>:nth-last-child(2){position:sticky;z-index:1;background:var(--lb-surface-solid);width:46px;min-width:46px}
+.hb-table tr:not(.hb-detail-row)>:nth-last-child(1){right:0}
+.hb-table tr:not(.hb-detail-row)>:nth-last-child(2){right:49px;box-shadow:-6px 0 6px -6px var(--lb-ink-4)}
+.hb-table tr.hb-detail-row>td{position:sticky;left:0}
+.hb-day-rate,.hb-stat{white-space:pre}
+.hb-month .hb-day-rate{font-size:10px;letter-spacing:-.04em}
+/* 과목 칩 줄: 밀 수 있다는 단서(오른쪽 끝 페이드), "색 바꾸기"는 칩과 다른 글자 단추로 떨어뜨림 */
+.life-chip-row.life-subject-chips{-webkit-mask-image:linear-gradient(to right,var(--lb-ink-1) calc(100% - 28px),transparent);mask-image:linear-gradient(to right,var(--lb-ink-1) calc(100% - 28px),transparent);padding-right:24px}
+.life-subject-bar{gap:4px}
+button.life-color-link{margin-left:6px;padding-left:10px;border-left:1px solid var(--lb-line);border-radius:0}
+/* 건강 타임라인: 카드 폭 100%, 시각 눈금 글자는 그림 안 */
+.hlt-timeline{max-height:none;width:100%}
+.hlt-tl-hour{fill:var(--lb-ink-3);font-size:7px;font-variant-numeric:tabular-nums}
+/* 시간대 요약 8칸 = 4 × 2 격자(이름은 위 한 줄) */
+.hlt-slot-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 6px}
+.hlt-slot-grid .hlt-state-name{grid-column:1 / -1}
+.hlt-slot{text-align:center;white-space:pre;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:420px){.hlt-slot{font-size:11px;padding:2px 4px}}
+/* 과목 색: 과목 한 줄(이름 + 지금 색 점)을 누르면 그 과목 팔레트만 펼침 */
+.subject-color-item{border-bottom:1px solid var(--lb-line);padding:4px 0}
+.subject-color-item>summary{display:flex;align-items:center;gap:8px;min-height:44px;cursor:pointer;font-weight:700;color:var(--lb-ink-1)}
+.subject-color-item .subject-color-row{flex-wrap:wrap;margin:6px 0 4px}
 /* ===== 18. Fold 네이티브 다리 (B44B, native-bridge): 결제 알림 칩·초안 시트·설정 알림 절. 새 색 없음 — 토큰만 ===== */
 .native-pay-row{margin:var(--lb-s-2) 0}
 .native-pay-chip{min-height:40px;font-weight:700}
@@ -1672,7 +1802,7 @@ dialog.live-dlg{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;marg
 dialog.live-dlg::backdrop{background:var(--lb-bg)}
 .live-top{display:flex;align-items:center;gap:var(--lb-s-2)}
 .live-top .eyebrow{margin:0 auto 0 0}
-.live-close{min-width:44px;font-size:20px;line-height:1}
+.live-close{min-width:44px;font-size:14px;line-height:1;white-space:pre}
 .live-body{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--lb-s-3);margin-top:var(--lb-s-3);min-width:0}
 .room-stage{position:relative;justify-self:center;width:auto;height:46vh;max-width:100%;aspect-ratio:1560/2280;overflow:hidden;border-radius:var(--lb-r-2);background:var(--lb-surface-tint);box-shadow:var(--lb-shadow-1)}
 .room-stage .live-fig{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover}
@@ -1911,10 +2041,8 @@ button.lb-btn-pair[data-face]::after{content:attr(data-face);font-size:18px}
 .life-min-row input{width:96px}
 .life-min-label{font-weight:600;color:var(--ink-600)}
 button.life-min-add:disabled{cursor:not-allowed}
-/* 과목 칩: 색 점 + 이름, 부제(징검다리)는 칩 밖 작은 글자 */
+/* 과목 칩: 색 점 + 이름(V6A: 부제·칩 줄 규칙은 17-2절) */
 .live-top .live-subject{margin-right:auto}
-.life-chip-wrap{display:inline-flex;flex-direction:column;align-items:center;gap:2px;min-width:0}
-.life-chip-sub{font-size:11px;line-height:1.2;color:var(--ink-400)}
 /* 오늘 벽돌 n장 / 목표 m장 + 벽돌 칸, 규칙 문장은 ⓘ 접기 */
 .life-bricks-today,.live-bricks-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;min-width:0}
 .life-bricks-count{color:var(--ink-900);font-variant-numeric:tabular-nums}
@@ -1932,10 +2060,9 @@ button.life-min-add:disabled{cursor:not-allowed}
 .lb-brick-shadow{stroke:var(--gold-shadow);stroke-width:1}
 /* 좁은 화면: 시계 2줄(시:분 / 초 작게), 휴식·끝내고 담기는 하단 고정 */
 @media(max-width:420px){
-  .live-panel .live-clock{display:grid;justify-items:start;gap:2px}
-  .live-panel .live-colon-s{display:none}
-  .live-panel .live-clock-s{font-size:.42em}
-  dialog.live-dlg{padding-bottom:calc(104px + env(safe-area-inset-bottom))}
+  .live-panel .live-clock{display:block;white-space:pre;font-size:clamp(34px,13vw,56px)}
+  .live-panel .live-clock-s{font-size:.6em}
+  dialog.live-dlg{padding-bottom:calc(132px + env(safe-area-inset-bottom))}
   .live-actions.lb-bottom-dock{position:fixed;left:0;right:0;bottom:0;z-index:5;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:var(--ivory-0);border-top:.5px solid var(--gold-deep)}
   button.lb-btn-finish,button.lb-btn-pair{min-height:56px}
 }
@@ -2043,6 +2170,16 @@ button.life-stack-btn:hover,button.life-habit-btn:hover,.life-habit .life-chip-r
 .vault-top-won{min-width:6.5em;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-900)}
 .vault-l2-today{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 0}
 @media(max-width:420px){.vault-l1{padding:10px 8px}.vault-nums{gap:4px;grid-template-columns:minmax(0,1fr)}.vault-num-amount{font-size:14px;letter-spacing:-.04em;overflow-wrap:normal}.vault-num-label,.vault-num-foot{font-size:11px}.vault-nums.solo .vault-num-amount{font-size:28px}}
+/* FIX67: 오늘 몫 넘김(빨간 테두리, 음수 숫자 없음) · 참고 꼬리표 · 같은 결제 확인 · 장부 점검 줄. DS1 토큰 이름만 */
+.vault-num-today.over{padding:4px 6px;border:2px solid var(--danger);border-radius:8px}
+.vault-num-today.over .vault-num-amount{font-size:clamp(14px,1.8vw,20px);color:var(--danger)}
+.vault-num-tag{align-self:flex-start;padding:0 6px;border:1px solid var(--ivory-2);border-radius:999px;font-size:11px;color:var(--ink-600)}
+.vault-live-note{margin:2px 0 0}
+.fin-dup-ask{margin:10px 0 0}
+.fin-dup-ask .fin-warn{margin:0 0 6px;font-weight:700}
+.fin-same-text{font-weight:700;color:var(--danger)}
+.fin-same-check{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0;padding:6px 10px;border:1px solid var(--gold-deep);border-radius:8px}
+.fin-same-check.active{border-width:2px}
 
 /* ===== 33. 오늘 상태 6단계 효과 층·미리보기 격자 (AV5, study-room avatarFxLayer): 새 색 없음 — :root DS1(DS7 금색 B) 토큰 이름만. 그림은 평생 등급 기본 그림 그대로(필터 없음), 효과만 그 위 SVG 층. 움직임은 steps()로 초당 몇 프레임, 움직임 줄이기면 멈춘 그림 ===== */
 .room-stage .av5-fx,.st-stage .av5-fx{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;overflow:hidden;z-index:1}

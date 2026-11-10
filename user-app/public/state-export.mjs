@@ -10,7 +10,7 @@ import {achieve,SUBJECT_BY_CODE,studyBricks,smallWeight} from './life-achieve.mj
 import {todayPlanModel} from './plan-today.mjs';
 import {moneyFacts} from './life-money-facts.mjs';
 import {csatTarget} from './life-plan.mjs';
-import {feelOfFin,feelExport,feelExportText} from './fin-feel.mjs';
+import {feelOfFin,feelExport,feelExportText,feelTodayOf} from './fin-feel.mjs';
 import {STACK_DONE} from './life-flow.mjs';
 import {projectStudy} from './study-projection.mjs';
 import {rhythmSummary,stepsAverage} from './hlt-projection.mjs';
@@ -99,7 +99,8 @@ function vaultInfo(fin,today){
   const {status:s,feel:x}=feelOfFin(fin,today),T=s.total;
   if(!T)return null;
   const known=s.dataState==='KNOWN';
-  return {budget:T.budget.toString(),spent:known?s.actualTotal.toString():null,projected:known&&x.left!==null?(T.budget-x.left).toString():null,fast:x.level==='DANGER'||x.level==='CAUTION',feel:feelExport(x)};
+  return {budget:T.budget.toString(),spent:known?s.actualTotal.toString():null,projected:known&&x.left!==null?(T.budget-x.left).toString():null,fast:x.level==='DANGER'||x.level==='CAUTION',feel:feelExport(x),
+    today:guard(()=>{const t=feelTodayOf(fin,today);return t?{share:t.share.toString(),spent:t.spent.toString()}:null;})};   // EXP1: 오늘 몫·오늘 쓴 돈(돈 탭 금고 셋째 숫자와 같은 함수)
 }
 function examInfo(life,today){
   if(!life)return null;
@@ -121,7 +122,7 @@ function studySummaryOf(life,study,today){
   const row=id=>{const name=names.get(id)||'기타';if(!by.has(name))by.set(name,{name,minutes:0,due:0,mistakes:0});return by.get(name);};
   for(const d of study.days){
     if(d.date<monday||d.date>today)continue;
-    for(const s of d.data.sessions)if(s.state==='COMPLETED'&&nat(s.confirmedMin)&&s.confirmedMin<=1440)row(subjectOfSession(s.id)??SUBJECT_BY_CODE[s.subject]).minutes+=s.confirmedMin;
+    for(const s of d.data.sessions)if((s.state==='COMPLETED'||s.state==='VERIFIED')&&nat(s.confirmedMin)&&s.confirmedMin<=1440)row(subjectOfSession(s.id)??SUBJECT_BY_CODE[s.subject]).minutes+=s.confirmedMin;
     for(const m of d.data.mistakes)row(subjectOfSession(m.id)??SUBJECT_BY_CODE[m.subject]).mistakes++;
   }
   const p=projectStudy(study.days.map(d=>d.data),today);
@@ -185,7 +186,14 @@ function sectionLevels(s){
   const rows=s.levels.filter(r=>r&&clean(r.area)&&nat(r.level)).map(r=>[clean(r.area),String(r.level),Number.isInteger(r.delta)?(r.delta>0?'+'+r.delta:String(r.delta)):UNKNOWN]);
   return table(head,rows.length?rows:[unknownRow(3)]);
 }
-function sectionVault(s){
+// EXP1: 5절 끝 한 줄. 오늘 몫(= 오늘 쓸 수 있는 돈)과 오늘 쓴 돈. 두 숫자가 모두 맞는 모양일 때만 줄이 있다.
+// 예산 없음·지출 기록 0건·쓴 돈 모름 줄처럼 오늘 몫을 모를 때는 줄 자체를 붙이지 않는다(근거가 없으면 말하지 않는다 · 기존 5절 모양 그대로, 0원으로 쓰지도 않는다).
+function sectionVaultToday(s){
+  const t=s.vault?.today;
+  return t&&moneyOK(t.share)&&moneyOK(t.spent)?['- 오늘: 쓸 수 있는 돈 '+BigInt(t.share)+'원 / 쓴 돈 '+BigInt(t.spent)+'원']:[];
+}
+const sectionVault=s=>[...vaultLines(s),...sectionVaultToday(s)];
+function vaultLines(s){
   const v=s.vault;
   if(!v||!moneyOK(v.budget))return ['- 이번 달 예산: UNKNOWN / 쓴 돈: UNKNOWN / 남은 돈: UNKNOWN','- 이대로면 월말: UNKNOWN'];
   const budget=BigInt(v.budget);
@@ -324,7 +332,7 @@ export function renderStateExport(root,ctx){
 // 칸은 DW1 설계안 형식 그대로(host widget-status-writer.mjs WIDGET_KEYS와 같다, 시험이 대조). 값은 화면이 이미 쓰는 계산(achieve·오늘 계획 카드·칭호)에서만 가져온다.
 // 일기 글·내일 한 가지·금액·잔고·계좌·건강 수치·과목 이름·할 일 글자 칸은 없다. 일기는 엔진 결과(achieve 하루 줄)의 "그날 일기 있음"만 본다(일기 기록을 직접 읽지 않는다).
 // 이 모듈은 파일을 쓰지 않고 시계·타이머를 쓰지 않는다: now·칭호·마지막 동기화 시각은 부른 쪽(app.mjs)이 넘기고, 쓰는 때(앱 열 때·저장 뒤 30초·04:00 일기 날짜 넘김·종료)도 app.mjs가 정한다.
-export const WIDGET_FILE_KEYS=Object.freeze(['v','device','exported_at','diary_day','level','xp','xp_next','title','bricks_total','bricks_week','streak_days','diary_done','plan_done','plan_total','last_sync_at']);
+export const WIDGET_FILE_KEYS=Object.freeze(['v','device','exported_at','diary_day','level','xp','xp_next','title','bricks_total','bricks_week','streak_days','diary_done','plan_done','plan_total','last_sync_at','bricks_today','bricks_goal_day','focus_min_by_hour_7d']);   // EXP1: 뒤 3칸 추가(앞 15칸 이름·뜻·순서 그대로)
 export const WIDGET_FILE_DEVICES=Object.freeze(['PC','LAPTOP']);
 export const WIDGET_FILE_ROUTE='/api/widget-status',WIDGET_FILE_WAIT_MS=30000,WIDGET_TITLE_MAX=20;
 export const WIDGET_SWITCH_KEYS=Object.freeze({on:'lb.widget.file',laptop:'lb.widget.laptop'});
@@ -339,6 +347,24 @@ const titleText=t=>{if(typeof t!=='string')return null;const s=clean(t,WIDGET_TI
 // views = {life,study,fin}(wholeLifeView 항목), money = moneyFacts(fin,오늘)(탑·Fold 위젯과 같은 입력), now = ISO 시각, title(ach) = 지금 칭호 이름(achv-panel currentTitle, 없으면 null).
 // 레벨·XP = 가장 높은 영역의 레벨과 다음 레벨까지(탑 탭 "Lv n · into / need XP"), 전체 벽돌 = 공부 벽돌 + 작은 벽돌(brickTotalText와 같은 합), 이번 주 = 이번 주 쌓은 양(Fold 위젯 week.done과 같다),
 // 오늘 계획 = 오늘 계획 카드 머리줄의 쌓은 양 / 계획한 양(벽돌), 일기 = 일기 날짜(04:00 경계)의 일기가 쌓였는지. 칸마다 따로 실패해도 그 칸만 null.
+// EXP1 새 칸: bricks_today = 오늘(KST 00:00 경계) 쌓은 공부 벽돌 장수(조각 0.5, 탑·쌓기 화면과 같은 achieve 하루 값), bricks_goal_day = 하루 목표 장수(achieve goalBricks, 설정 한 곳),
+// focus_min_by_hour_7d = 최근 7일(오늘 포함) 카드의 담은 세션(COMPLETED·VERIFIED, achieve와 같은 기준) 분을 시작 시각(= 끝 시각 at − 분, KST) 0~23시에 합친 길이 24 배열. 끝 시각이 없는 세션은 시각을 몰라 넣지 않는다. 과목·메모·세션 id는 읽지 않는다.
+export const FOCUS_HOURS=24,FOCUS_DAYS=7;
+const KST_MS=9*3600000;
+export function focusMinByHour(study,today){
+  if(!study)return null;
+  const from=shiftDay(today,-(FOCUS_DAYS-1)),by=new Array(FOCUS_HOURS).fill(0);
+  for(const d of study.days??[]){
+    if(d.date<from||d.date>today)continue;
+    for(const s of d.data.sessions){
+      if(s.state!=='COMPLETED'&&s.state!=='VERIFIED')continue;
+      if(!Number.isInteger(s.confirmedMin)||s.confirmedMin<=0||s.confirmedMin>1440||typeof s.at!=='string')continue;
+      const end=Date.parse(s.at);if(!Number.isFinite(end))continue;
+      by[new Date(end-s.confirmedMin*60000+KST_MS).getUTCHours()]+=s.confirmedMin;
+    }
+  }
+  return by;
+}
 export function widgetStatusOf({life=null,study=null,fin=null,money=null,now,device='PC',title=null,lastSyncAt=null}){
   const at=isoOf(now);if(!at)throw new Error('BAD_NOW');
   const today=kstDate(at),diaryDay=diaryOpenDate(at);
@@ -348,13 +374,15 @@ export function widgetStatusOf({life=null,study=null,fin=null,money=null,now,dev
   return {v:1,device:WIDGET_FILE_DEVICES.includes(device)?device:'PC',exported_at:at,diary_day:diaryDay,
     level:top?.level??null,xp:top?.into??null,xp_next:top?.need??null,title:ach&&typeof title==='function'?titleText(guard(()=>title(ach))):null,
     bricks_total:ach?guard(()=>studyBricks(ach.weeks)+smallWeight(ach.weeks)):null,bricks_week:ach?.currentWeek?.value??null,streak_days:ach?.streak?.days??null,
-    diary_done:Boolean(day?.diary),plan_done:plan?.achieved??null,plan_total:plan?.planned??null,last_sync_at:isoOf(lastSyncAt)};
+    diary_done:Boolean(day?.diary),plan_done:plan?.achieved??null,plan_total:plan?.planned??null,last_sync_at:isoOf(lastSyncAt),
+    bricks_today:ach?.todayDay?.value??null,bricks_goal_day:ach?.goalBricks??null,focus_min_by_hour_7d:guard(()=>focusMinByHour(study,today))};
 }
-// FIX58Q (HUNT55 HS2): 잠금·로그아웃 때 바로 덮어쓰는 빈 숫자 파일. 칸 15개 그대로(형식 변경 없음): 숫자·칭호·마지막 동기화는 null, 일기 false. 어느 프로필의 숫자도 싣지 않는다.
+// FIX58Q (HUNT55 HS2): 잠금·로그아웃 때 바로 덮어쓰는 빈 숫자 파일. 칸은 지금 WIDGET_FILE_KEYS 전부: 숫자·칭호·마지막 동기화·EXP1 새 3칸은 null, 일기 false. 어느 프로필의 숫자도 싣지 않는다.
 export function widgetLockedStatus({now,device='PC'}){return widgetStatusOf({now,device});}
 // 쓰는 때 정하기(순수). last = 마지막으로 쓴 값(없으면 null), next = 지금 값, reason = 'open'|'change'|'day'|'close'.
 // 처음·종료·일기 날짜가 바뀐 때는 바로(NOW), 내용이 같으면(시각 빼고) 건너뜀(SKIP), 그 밖의 바뀜은 부른 쪽이 WIDGET_FILE_WAIT_MS 뒤에 쓴다(LATER).
-const sameButTime=(a,b)=>WIDGET_FILE_KEYS.every(k=>k==='exported_at'||a[k]===b[k]);
+const sameValue=(x,y)=>Array.isArray(x)&&Array.isArray(y)?x.length===y.length&&x.every((v,i)=>v===y[i]):x===y;   // EXP1: 배열 칸은 값으로 비교
+const sameButTime=(a,b)=>WIDGET_FILE_KEYS.every(k=>k==='exported_at'||sameValue(a[k],b[k]));
 export function widgetWriteWhen(last,next,reason){
   if(!next)return 'SKIP';
   if(!last||reason==='open'||reason==='close'||last.diary_day!==next.diary_day)return 'NOW';
@@ -364,7 +392,7 @@ export function widgetWriteWhen(last,next,reason){
 export function renderWidgetFile(root,ctx){
   if(ctx.surface!=='APP_SHELL')return null;
   const {h,kit}=ctx,sec=h.add(h.el('section',null,'panel widget-file'),h.el('h2','바탕화면 위젯 숫자 파일','panel-title'));
-  h.add(sec,h.el('p','바탕화면 위젯이 읽을 숫자(레벨·XP·칭호·벽돌·연속일·오늘 일기 여부·오늘 계획 양·마지막 동기화 시각)만 사령부 상태 폴더의 widget_status.json 한 파일에 덮어씁니다. 앱을 열 때·저장 뒤·새벽 4시·저장 후 종료 때 씁니다. 일기 글·금액·건강 수치·과목 이름은 들어가지 않습니다.','muted'));
+  h.add(sec,h.el('p','바탕화면 위젯이 읽을 숫자(레벨·XP·칭호·벽돌·연속일·오늘 일기 여부·오늘 계획 양·오늘 쌓은 벽돌과 하루 목표·시간대별 공부 분·마지막 동기화 시각)만 사령부 상태 폴더의 widget_status.json 한 파일에 덮어씁니다. 앱을 열 때·저장 뒤·새벽 4시·저장 후 종료 때 씁니다. 일기 글·금액·건강 수치·과목 이름은 들어가지 않습니다.','muted'));
   h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('바탕화면 위젯 숫자 파일 쓰기 (이 기기 설정)',widgetSwitch('on',ctx.storage),on=>{setWidgetSwitch('on',on,ctx.storage);ctx.changed?.();})));
   h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('이 기기는 노트북 (끄면 PC · 이 기기 설정)',widgetSwitch('laptop',ctx.storage),on=>{setWidgetSwitch('laptop',on,ctx.storage);ctx.changed?.();})));
   h.add(root,sec);

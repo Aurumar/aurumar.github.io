@@ -179,6 +179,8 @@ function ladderCard(h,proj){
 
 // AV8: "오늘의 캐릭터 13단계" 띠(0h~12h). 새 그림 파일 없이 STUDY LIVE와 같은 dc_hNN.webp를 작게 쓴다. 지금 단계 금 테두리 · 지나온 단계 밝게 · 남은 단계 흐리게(CSS).
 // 썸네일은 칸이 화면에 보일 때만 그림을 요청한다(IntersectionObserver가 없으면 자리표시만, 요청 0). 못 불러오면 그 칸만 자리표시로 바꾼다. 저장 0.
+// V6F (지시서 7): 숫자로 보이는 "오늘 n분"은 담은 세션만(cardMin), 진행 중 타이머 분은 따로 "진행 중 +n분". 그림·효과 단계는 지금까지(담은 분 + 진행 중) 그대로 보여 준다(STUDY LIVE와 같다).
+export const todayText=t=>'오늘 '+hmText(t.cardMin??t.minutes)+(t.timerMin>0?' · 진행 중 +'+hmText(t.timerMin):'');
 function dailyStrip(h,doc,minutes,useArt){
   const {el,add}=h,list=el('ol',null,'dc-strip');list.setAttribute('aria-label','오늘의 캐릭터 '+DAILY_CHARS.length+'단계');
   const frames=[],cells=DAILY_CHARS.map(c=>{
@@ -203,7 +205,7 @@ function dailyStrip(h,doc,minutes,useArt){
     return d;
   };
   paint(minutes);
-  const node=add(el('section',null,'panel dc-today'),add(el('div',null,'ds5-head'),el('strong','오늘의 캐릭터','ds5-title'),el('span','오늘 공부한 시간만큼 매일 0h부터 변해요','ds5-sub')),list,line);
+  const node=add(el('section',null,'panel dc-today'),add(el('div',null,'ds5-head'),el('strong','오늘의 캐릭터(하루)','ds5-title'),el('span','오늘 공부한 시간만큼 매일 0h부터 변해요','ds5-sub')),list,line);
   return {node,paint};
 }
 
@@ -261,7 +263,7 @@ export function renderStatusView(root,ctx){
 
   // 2) 오늘 시간: 링·오늘 누적·다음 효과까지 (타이머가 돌면 "지금 - 시작"으로 다시 계산)
   const ringSlot=add(el('div',null,'st-ring-slot'),todayRing(h,today.minutes));
-  const todayLine=el('strong','오늘 '+hmText(today.minutes),'st-today-time'),nextLine=el('span',nextEffectText(today.fx),'muted small st-today-next');
+  const todayLine=el('strong',todayText(today),'st-today-time'),nextLine=el('span',nextEffectText(today.fx),'muted small st-today-next');
   const noteLine=el('span',ctx.timer?'진행 중 타이머 포함':'아직 쌓지 않은 임시 입력도 오늘 시간에 들어가요','muted small st-today-note');
   // B6: PC 집중 측정에서 담을 수 있는 분(앱이 계산해 넘긴다). 오늘 시간·효과에는 더하지 않고 흐린 글씨로만 보인다.
   const focusMin=Number.isInteger(ctx.focusExtraMin)&&ctx.focusExtraMin>0?ctx.focusExtraMin:0;
@@ -284,7 +286,7 @@ export function renderStatusView(root,ctx){
     if(next.minutes===today.minutes)return;
     today=next;
     ringSlot.replaceChildren(todayRing(h,today.minutes));
-    todayLine.textContent='오늘 '+hmText(today.minutes);nextLine.textContent=nextEffectText(today.fx);badgeToday.textContent=todayBadge(today.fx);
+    todayLine.textContent=todayText(today);nextLine.textContent=nextEffectText(today.fx);badgeToday.textContent=todayBadge(today.fx);
     stage.className=fxClass(today.fx.level,artOn);avFx.paint(today.fx.level,proj.stage.no);   // AV5
     effects.paint(today.minutes*60000);   // DS5
     daily.paint(today.minutes);   // AV8

@@ -3,7 +3,7 @@
 // 칸 색 = 그 주(이 달에 든 날만) 그 과목의 실제 벽돌, 칸 테두리 = 계획이 있던 칸. 월 경계 주는 이 달에 든 날만 세어서 두 달의 칸을 더하면 그 주 실제와 같다(겹치거나 빠지는 날 0).
 // 보기만 한다: 쓰기 0(일정 추가·고치기는 앱의 일정 시트, 계획 넣기는 주 보기). "목표 달성 주" 한 줄(FIX46C)은 앱이 ctx.monthGoals로 넘겨 주면 머리 아래에 붙는다(과목 주간 목표 계산은 life-quest). 새 기록 종류·필드 0.
 import {shiftDay} from './life-model.mjs';
-import {actualOf,planOf,mondayOf,daysInMonth,heatLevel,barsText,scheduleBox,maker,NO_SUBJECT_COLOR} from './life-plan.mjs';
+import {actualOf,planOf,mondayOf,daysInMonth,heatLevel,barsText,scheduleBox,maker,NO_SUBJECT_COLOR,planItemsDone,itemsDoneText,goalVsText} from './life-plan.mjs';
 
 export const MONTH_SCHEDULE_SHOW=12;
 const short=d=>Number(d.slice(5,7))+'/'+Number(d.slice(8,10));
@@ -21,7 +21,8 @@ export function monthColumns(ym){
   return out;
 }
 // subjects = 과목 id → 정의(숨긴 과목 포함). 줄 = 보이는 과목 전부 + 이 달에 기록·계획이 있는 숨긴 과목·모르는 과목(기타).
-export function monthModel({life=null,ach,subjects,ym,today}){
+// items = 이 달 계획 줄 수·달성 수(life-plan monthView가 기기 화면 설정까지 넣어 계산해 넘긴다). 없으면 기록만으로 센다.
+export function monthModel({life=null,study=null,ach,subjects,ym,today,items=null}){
   const weeks=new Map(ach.weeks.map(w=>[w.monday,w])),cols=monthColumns(ym).map(c=>({...c,actual:0,planned:0,now:c.from<=today&&today<=c.to})),rows=new Map();
   const rowOf=id=>{
     if(!rows.has(id)){const s=subjects.get(id)??null;rows.set(id,{subjectId:id,name:s?.name??'기타',color:s?.color??NO_SUBJECT_COLOR,cells:cols.map(()=>({actual:0,planned:0})),actual:0,planned:0});}
@@ -34,13 +35,15 @@ export function monthModel({life=null,ach,subjects,ym,today}){
       for(const x of planOf(life,d)?.items??[]){const r=rowOf(x.subjectId);r.cells[i].planned+=x.bricks;r.planned+=x.bricks;c.planned+=x.bricks;}
     }
   });
-  const list=[...rows.values()];
-  return {ym,first:cols[0].from,last:cols[cols.length-1].to,cols,rows:list,actual:cols.reduce((n,c)=>n+c.actual,0),planned:cols.reduce((n,c)=>n+c.planned,0),goal:ach.goalBricks};
+  const list=[...rows.values()],first=cols[0].from,last=cols[cols.length-1].to;
+  // V6A: 목표 대비 = 하루 목표 × 이 달 날수, 계획 줄 n개 중 m개 달성(오늘까지, 자동 연결 규칙 = 오늘 카드와 같음)
+  return {ym,first,last,cols,rows:list,actual:cols.reduce((n,c)=>n+c.actual,0),planned:cols.reduce((n,c)=>n+c.planned,0),goal:ach.goalBricks,days:daysInMonth(ym),items:items??planItemsDone(life,study,first,last,today)};
 }
 export function monthHeadText(m){
-  const parts=[];
-  if(m.actual>0)parts.push('이 달 실제 '+barsText(m.actual));
-  if(m.planned>0)parts.push('계획 '+barsText(m.planned));
+  const parts=[],items=m.items??{total:0,done:0,later:0};
+  if(m.actual>0||items.total+items.later>0)parts.push(goalVsText(m.actual,m.goal,m.days));
+  if(items.total>0)parts.push(itemsDoneText(items));
+  if(items.later>0)parts.push('남은 계획 '+items.later+'개');
   return parts.length?parts.join(' · '):null;
 }
 // 합 칸 글자: 계획이 있으면 "실제 / 계획"(실제 0도 뜻이 있어 적는다), 실제만 있으면 실제, 둘 다 없으면 비움.
@@ -54,9 +57,9 @@ const dayRange=c=>{const a=Number(c.from.slice(8)),b=Number(c.to.slice(8));retur
 
 // ---------- 화면 ----------
 // o.data = life-plan renderPlan의 계산 묶음, o.ym = 달, o.dateGrid() = 옛 날짜 달력 노드들, o.goWeek(monday) = 그 주 보기로.
-export function renderMonth(ctx,st,{data,ym,dateGrid,goWeek}){
+export function renderMonth(ctx,st,{data,ym,dateGrid,goWeek,items=null}){
   const h=maker(ctx.document??globalThis.document),{el,add,button,svg}=h;
-  const m=monthModel({life:data.life,ach:data.ach,subjects:data.subjects,ym,today:data.today}),cal=ctx.planCal??null;
+  const m=monthModel({life:data.life,study:data.study??null,ach:data.ach,subjects:data.subjects,ym,today:data.today,items}),cal=ctx.planCal??null;
   const out=el('div',null,'pm-month');
   const text=monthHeadText(m),dates=Boolean(st.monthDates);
   const toggle=button(dates?'과목으로 보기':'날짜로 보기',()=>{st.monthDates=!dates;void ctx.rerender();},'secondary pm-toggle');toggle.dataset.navOnly='1';
@@ -77,7 +80,7 @@ export function renderMonth(ctx,st,{data,ym,dateGrid,goWeek}){
         b.setAttribute('aria-label',r.name+' '+short(c.from)+'~'+short(c.to)+(v.actual>0?' 실제 '+barsText(v.actual):'')+(v.planned>0?' 계획 '+barsText(v.planned):'')+(v.actual>0||v.planned>0?'':' 기록 없음'));
         grid.append(b);
       });
-      grid.append(el('span',totalText(r.actual,r.planned),'pm-total'));
+      grid.append(el('span',totalText(r.actual,0),'pm-total'));   // V6A: 계획은 장수가 아니라 줄이라 합 칸은 실제 벽돌만
     }
     const sched=m.cols.map(c=>weekSchedule(c,data.exams,cal?.events));
     if(sched.some(s=>s.exams.length||s.events)){
@@ -94,7 +97,7 @@ export function renderMonth(ctx,st,{data,ym,dateGrid,goWeek}){
     if(m.actual>0||m.planned>0){   // 빈 달은 합 줄을 숨긴다(0으로 채우지 않음)
       grid.append(el('span','합','pm-subject pm-sum-label'));
       for(const c of m.cols)grid.append(el('span',c.actual>0?num(c.actual):null,'pm-total pm-col-total'));
-      grid.append(el('span',totalText(m.actual,m.planned),'pm-total pm-grand'));
+      grid.append(el('span',totalText(m.actual,0),'pm-total pm-grand'));
     }
     add(out,grid,el('p','진할수록 많이 쌓은 주 · 테두리 = 계획이 있던 칸 · 칸을 누르면 그 주로','muted small pm-hint'));
   }

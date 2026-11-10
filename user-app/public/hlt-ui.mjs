@@ -5,7 +5,7 @@
 // 앱을 다시 열면 다시 숨겨진다(저장하지 않음). 숨김 상태에서는 라벨뿐 아니라 횟수·시각·마지막 기록 후 n일·7·30일 횟수·알림 문구에도 나오지 않는다.
 import {HltFlow} from './hlt-flow.mjs';
 import {hltView,hltHomeLine,stepsAverage,sleepStepsToday} from './hlt-projection.mjs';
-import {HLT_LIMITS,kstDate,kstMinutes,shiftDay,dateKeyOK,isoOK,UNITS,MEAL_KINDS,MEAL_SIZES,SLEEP_KINDS,CHANGE_KINDS,SYMPTOM_KINDS,MAX_NOTE,MAX_LABEL,MAX_ITEMS,ITEM_TYPES,MAX_STEPS,STEPS_ITEM_ID,nearDate,MAX_SLEEP_MS} from './hlt-model.mjs';
+import {HLT_LIMITS,kstDate,kstMinutes,shiftDay,dateKeyOK,isoOK,UNITS,MEAL_KINDS,MEAL_SIZES,SLEEP_KINDS,CHANGE_KINDS,SYMPTOM_KINDS,MAX_NOTE,MAX_LABEL,MAX_ITEMS,ITEM_TYPES,MAX_STEPS,STEPS_ITEM_ID,nearDate,MAX_SLEEP_MS,MAX_AMOUNT} from './hlt-model.mjs';
 
 const HLT_PROFILE_LIMIT=HLT_LIMITS.HLT_PROFILE;
 export const HLT_SWITCH_KEY='lb.hlt.enabled';
@@ -77,11 +77,13 @@ function takeSleepTip(storage){
 }
 export const itemLabel=Object.freeze({dose:'복용',sleep:'수면',wake:'기상',clarity:'맑아짐',checkin:'체크인',change:'변화',symptom:'증상',meal:'식사',habit:'습관',steps:'걸음'});
 const MEAL_TEXT={BREAKFAST:'아침',LUNCH:'점심',DINNER:'저녁',SNACK:'간식',LATE_NIGHT:'야식'},SIZE_TEXT={LIGHT:'가볍게',NORMAL:'보통',HEAVY:'많이'};
-const KIND_TEXT={fatigue:'피로',depression:'우울·무기력',palpitations:'두근거림',sweating:'땀',other:'기타',main:'주 수면',nap:'낮잠'};
+// V6F (CAP1 4): 쉬운 입력과 같은 이름(fatigue = 무기력, depression = 우울). 저장값(kind)은 그대로. 단위는 화면에서 한국어(UNIT_TEXT: tablet → 정).
+const KIND_TEXT={fatigue:'무기력',depression:'우울',palpitations:'두근거림',sweating:'땀',other:'기타',main:'주 수면',nap:'낮잠'};
+const unitText=u=>UNIT_TEXT[u]??u;
 
 export function itemSummary(it,labelOf){
   switch(it.type){
-    case 'dose':return labelOf(it.profileKey)+' '+it.amount+it.unit+' · '+hhmmKst(it.at);
+    case 'dose':return labelOf(it.profileKey)+' '+it.amount+unitText(it.unit)+' · '+hhmmKst(it.at);
     case 'sleep':return KIND_TEXT[it.kind]+' '+hhmmKst(it.startAt)+' → '+(it.endAt?hhmmKst(it.endAt):'아직 안 끝남');
     case 'wake':return '기상 '+hhmmKst(it.at);
     case 'clarity':return '정신 맑아짐 '+hhmmKst(it.at);
@@ -206,7 +208,7 @@ function itemForm(h,type,ctx,st,existing){
   const numCtl=(name,label,value,parse,err)=>{const i=input(value===undefined?'':String(value),{inputmode:'decimal'});parts.push(field(label,i));reads[name]=()=>{const v=parse(i.value);if(Number.isNaN(v)){const e=new Error(err);e.code=err;throw e;}return v;};};
   const x=existing??{};
   switch(type){
-    case 'dose':sel('profileKey','약·측정',withCurrent('MED',x.profileKey),x.profileKey??usable('MED')[0]?.[0]??'');numCtl('amount','용량',x.amount,num,'INVALID_HLT_DOSE');sel('unit','단위',UNITS.map(u=>[u,u]),x.unit??'mg');use('at',timeCtl('시각',x.at));break;
+    case 'dose':sel('profileKey','약·측정',withCurrent('MED',x.profileKey),x.profileKey??usable('MED')[0]?.[0]??'');numCtl('amount','용량',x.amount,num,'INVALID_HLT_DOSE');sel('unit','단위',UNITS.map(u=>[u,unitText(u)]),x.unit??'mg');use('at',timeCtl('시각',x.at));break;
     case 'sleep':sel('kind','종류',SLEEP_KINDS.map(k=>[k,KIND_TEXT[k]]),x.kind??'main');use('startAt',timeCtl('시작',x.startAt));use('endAt',timeCtl('끝(비우면 아직 안 끝남)',x.endAt,{optional:true}));break;
     case 'wake':use('at',timeCtl('기상',x.at));break;
     case 'clarity':sel('wakeId','기상 기록',(st.flowState.card.items.filter(i=>i.type==='wake')).map(i=>[i.id,'기상 '+hhmmKst(i.at)]),x.wakeId??st.flowState.card.items.find(i=>i.type==='wake')?.id??'');use('at',timeCtl('시각',x.at));break;
@@ -368,6 +370,7 @@ export function renderHealth(root,ctx,st){
     add(head,el('p',hiddenRef?'숨김 항목과 관련된 알림이 있습니다 · "숨김 항목 보기"를 누르면 볼 수 있습니다.':(NOTICE_TEXT[n.code]??'알림을 읽지 못했어요'+' · 문의 코드 ▾\u2060'+n.code+'\u2060'),'notice hlt-notice'));
   }
   add(out,head);
+  renderEasyHealth(out,ctx,st);   // V6B: 약 한 번 누르기 · 지금 상태 0~4 · 하루 타임라인 · 심해지는 시간대
 
   // 2) 빠른 입력(연산 0)
   const q=section('빠른 입력','누르면 지금 시각으로 임시 입력에 들어갑니다.'),pend=st.pendingSleep.v;
@@ -471,7 +474,7 @@ export function renderHealth(root,ctx,st){
 
   // 6) 프로필 관리
   const prof=section('약·습관 목록','이름은 직접 정합니다. 키·종류·방식은 만든 뒤 바꿀 수 없습니다. 비공개는 켜고 끌 수 있습니다. 삭제하면 목록에서 사라지지만 지난 기록에는 이름이 남고, "삭제한 항목 보기"에서 복원할 수 있습니다. 삭제한 항목도 기록 보존을 위해 개수 한도('+HLT_PROFILE_LIMIT+'개)에 계속 셉니다(지금 '+raw.profiles.length+'개).');
-  const profileDetail=d=>(d.kind==='MED'?'약·측정 · 기본 '+d.defaultAmount+d.unit:'습관 · '+(d.mode==='CHECK'?'했다/안했다':'횟수'))+(d.enabled?'':' · 중단됨')+(d.private?' · 비공개':'');
+  const profileDetail=d=>(d.kind==='MED'?'약·측정 · 기본 '+d.defaultAmount+unitText(d.unit):'습관 · '+(d.mode==='CHECK'?'했다/안했다':'횟수'))+(d.enabled?'':' · 중단됨')+(d.private?' · 비공개':'');
   for(const p of view.profiles){
     const d=p.data;
     add(prof,row(d.label,profileDetail(d),add(el('div',null,'buttons'),
@@ -479,7 +482,7 @@ export function renderHealth(root,ctx,st){
       button(d.private?'공개로 바꾸기':'비공개로 바꾸기',act(async()=>{await saveProfile(ctx,p.key,{...d,private:!d.private},p.heads,'건강 항목 비공개 여부');},{draft:false})),
       button('목록에서 삭제',()=>{if(ctx.confirmDialog?.('이 항목을 삭제할까요? 지운 항목은 목록에서 사라지고 지난 기록에는 이름이 남아요. 나중에 복원할 수 있어요.')??true)void act(async()=>{await saveProfile(ctx,p.key,{...d,removed:true},p.heads,'건강 목록에서 삭제');},{draft:false})();}))));
   }
-  const nl=input('',{maxlength:String(MAX_LABEL),placeholder:'이름 (최대 '+MAX_LABEL+'자)'}),kindSel=select([['HABIT','습관'],['MED','약·측정']],'HABIT'),modeSel=select([['COUNT','횟수'],['CHECK','했다/안했다']],'COUNT'),amt=input('1',{inputmode:'decimal'}),unitSel=select(UNITS.map(u=>[u,u]),'mg'),priv=el('input');priv.type='checkbox';
+  const nl=input('',{maxlength:String(MAX_LABEL),placeholder:'이름 (최대 '+MAX_LABEL+'자)'}),kindSel=select([['HABIT','습관'],['MED','약·측정']],'HABIT'),modeSel=select([['COUNT','횟수'],['CHECK','했다/안했다']],'COUNT'),amt=input('1',{inputmode:'decimal'}),unitSel=select(UNITS.map(u=>[u,unitText(u)]),'mg'),priv=el('input');priv.type='checkbox';
   add(prof,el('h3','목록에 추가','panel-title'),field('이름',nl),field('종류',kindSel),field('방식(습관)',modeSel),field('기본 용량(약·측정)',amt),field('단위(약·측정)',unitSel),add(el('label','비공개'),priv),
     button('항목 만들기',act(async()=>{
       const label=nl.value.trim(),key=(kindSel.value==='MED'?'med-':'hab-')+ctx.uid().slice(0,12);
@@ -496,6 +499,141 @@ export function renderHealth(root,ctx,st){
 
   // 7) 숨김 항목 — 눌러도 외부 전송 허용을 뜻하지 않는다.
   add(out,add(el('div',null,'buttons'),button(st.showPrivate?'숨김 항목 다시 숨기기':'숨김 항목 보기',()=>{st.showPrivate=!st.showPrivate;void ctx.rerender();})),hint('숨김 항목은 이 화면에서만 보이며, 앱을 다시 열면 다시 숨겨집니다. 보기 버튼이 외부 전송을 허용한다는 뜻은 아닙니다.'));
+  root.append(out);
+  return out;
+}
+
+// ---- V6B 건강 쉬운 입력 (통제탑 V6B B) ----
+// 저장은 기존 건강 카드(HLT_DAY) 항목 그대로다(새 칸·새 종류 없음): 약 = dose(내가 등록한 MED 항목), 지금 상태 = change(무기력 fatigue · 우울 depression, 정도 0~4, endAt null), 낮잠 = sleep kind nap.
+// 한 번 누르기: 오늘 카드 초안에 넣고 바로 쌓는다(카드 1장 쌓기 = 연산 1, 기존 암호화·동기화 경로). 쌓지 못하면 초안이 남고 건강 화면의 "카드 쌓기"로 다시 쌓는다.
+// 약 이름·용량·점수는 이 화면과 건강 카드 안에만 있다. 위젯 숫자·상태 내보내기·AI 관문·PC 토스트로 보내지 않는다(시험 v6b).
+export const STATE_KINDS=Object.freeze([['fatigue','무기력'],['depression','우울']]);
+export const STATE_MAX=4;
+export const UNIT_TEXT=Object.freeze({tablet:'정',capsule:'캡슐',mg:'mg',mL:'mL'});
+export const DOSE_STEPS=Object.freeze([[0.5,'반'],[1,'1배'],[2,'2배']]);
+export const MED_NOTE='약은 처방대로 · 바꾸려면 의사와 상의하세요';
+export const NAP_CHIPS=Object.freeze([15,30,60]);
+export const EASY_TEXT=Object.freeze({meds:'약 복용',medsSub:'칩을 누르면 지금 시각 · 기본 용량으로 기록해요. 시각·용량은 바꿀 수 있어요.',noMeds:'내 약이 없어요 · 아래 "약·습관 목록"에서 약을 등록하세요(앱이 약 이름을 미리 넣지 않아요).',
+  state:'지금 상태',stateSub:'0 없음 ~ 4 아주 심함 · 누르면 지금 시각으로 기록 · 하루에 여러 번 가능',memo:'메모 한 줄 (선택, 그날 메모 칸에 붙어요)',
+  saved:'기록했어요',kept:'임시 입력에 넣었어요 · "카드 쌓기"로 쌓으세요',timeline:'하루 타임라인',summary:'심해지는 시간대 (최근 14일)',few:'자료 부족',
+  napNone:'낮잠: 안 잠',napAsk:'낮잠 잤음',nap:m=>'낮잠 '+m+'분'});
+const easyFlow=(ctx,st)=>{if(!st.flow){st.ports=createPorts(ctx);st.flow=new HltFlow(st.ports);st.pendingSleep=st.flow.pending;}return st.flow;};
+// 오늘 카드에 항목 하나를 넣고 바로 쌓는다. 결과 {status, text, error}.
+export async function easyAdd(ctx,st,item,{note=null}={}){
+  const flow=easyFlow(ctx,st),date=kstDate(ctx.now());
+  await flow.addItem(date,item);
+  if(note){const cur=(await flow.state(date)).card.note??'',line=(cur?cur+' / ':'')+note;await flow.setNote(date,[...line].length>MAX_NOTE?cur:line);}
+  const r=await flow.confirm(date);
+  const ok=r.status==='CONFIRMED'||r.status==='ALREADY_APPLIED';
+  return {status:r.status,error:!ok&&r.status!=='NEEDS_CHOICE',text:ok?EASY_TEXT.saved:r.status==='REJECTED'?hltErrorText(r.code):EASY_TEXT.kept};
+}
+export function doseItem(profile,{amount,at}){return {type:'dose',profileKey:profile.key,amount,unit:profile.data.unit,at};}
+export function stateItem(kind,score,at){return {type:'change',kind,intensity:score,at,endAt:null};}
+// 낮잠: 분과 시작 시각(선택). 시작이 없으면 지금 끝난 것으로 본다(시작 = 지금 − 분).
+export function napItem(date,minutes,startHm,nowIso){
+  const start=startHm?isoFromKst(date,startHm,0):new Date(Date.parse(nowIso)-minutes*60000).toISOString();
+  if(!start||!isoOK(start)||!(minutes>=1&&minutes<=NAP_MAX_MINUTES*4))return null;
+  return {type:'sleep',kind:'nap',startAt:start,endAt:new Date(Date.parse(start)+minutes*60000).toISOString()};
+}
+export function napsOf(raw,date){
+  const c=(raw?.days??[]).find(d=>d.date===date)?.data;
+  return (c?.items??[]).filter(i=>i.type==='sleep'&&i.kind==='nap'&&i.endAt!==null).map(i=>({minutes:spanMinutes(i),start:hhmmKst(i.startAt)}));
+}
+// 하루 타임라인(0~24시, KST) 자료: 복용 점(+용량), 상태 막대, 낮잠·수면 띠, 공부 벽돌 띠. 비공개 약은 showPrivate가 아니면 이름 대신 "약".
+export function timelineData(card,{labelOf=()=>'약',study=null,date}){
+  const dayStart=Date.parse(date+'T00:00:00+09:00'),min=iso=>Math.round((Date.parse(iso)-dayStart)/60000),clip=m=>Math.max(0,Math.min(1440,m));
+  const out={doses:[],states:[],sleeps:[],study:[]};
+  for(const i of card?.items??[]){
+    if(i.type==='dose'){const m=min(i.at);if(m>=0&&m<1440)out.doses.push({m,label:labelOf(i.profileKey)+' '+i.amount+(UNIT_TEXT[i.unit]??i.unit)});}
+    else if(i.type==='change'&&(i.kind==='fatigue'||i.kind==='depression')){const m=min(i.at);if(m>=0&&m<1440)out.states.push({m,kind:i.kind,score:Math.min(STATE_MAX,i.intensity)});}
+    else if(i.type==='sleep'&&i.endAt!==null){const a=clip(min(i.startAt)),b=clip(min(i.endAt));if(b>a)out.sleeps.push({a,b,kind:i.kind});}
+  }
+  for(const s of study?.sessions??[]){if((s.state!=='COMPLETED'&&s.state!=='VERIFIED')||!s.at||!(s.confirmedMin>0))continue;const b=clip(min(s.at)),a=clip(b-s.confirmedMin);if(b>a)out.study.push({a,b});}
+  return out;
+}
+// 최근 14일 3시간 칸(8칸)별 무기력·우울 평균과 기록 수. 기록 5회 미만 칸은 평균 null(자료 부족, 숫자를 만들지 않는다). 사실 문장만(진단·약 조언 없음).
+export const SLOT_HOURS=3,SLOT_COUNT=8,SUMMARY_DAYS=14,SUMMARY_MIN=5;
+export function stateSummary(days,today){
+  const from=shiftDay(today,-(SUMMARY_DAYS-1)),acc={fatigue:Array.from({length:SLOT_COUNT},()=>[]),depression:Array.from({length:SLOT_COUNT},()=>[])};
+  for(const d of days??[])for(const i of d.data?.items??[]){
+    if(i.type!=='change'||!acc[i.kind])continue;const day=kstDate(i.at);if(day<from||day>today)continue;
+    acc[i.kind][Math.floor(kstMinutes(i.at)/(SLOT_HOURS*60))].push(Math.min(STATE_MAX,i.intensity));
+  }
+  const out={};
+  for(const [k] of STATE_KINDS)out[k]=acc[k].map((a,slot)=>({slot,from:slot*SLOT_HOURS,to:slot*SLOT_HOURS+SLOT_HOURS,count:a.length,avg:a.length>=SUMMARY_MIN?Math.round(a.reduce((s,x)=>s+x,0)*10/a.length)/10:null}));
+  return out;
+}
+export function summarySentence(slots,name){
+  const ok=slots.filter(s=>s.avg!==null);
+  if(!ok.length)return '최근 '+SUMMARY_DAYS+'일 '+name+' 기록이 시간대마다 '+SUMMARY_MIN+'회 미만이라 아직 말할 수 없어요.';
+  const top=ok.reduce((a,b)=>b.avg>a.avg||b.avg===a.avg&&b.count>a.count?b:a);
+  return '최근 '+SUMMARY_DAYS+'일, '+top.from+'~'+top.to+'시에 '+name+'이 가장 높았어요(평균 '+top.avg.toFixed(1)+', 기록 '+top.count+'회)';
+}
+const SVG_NS='http://www.w3.org/2000/svg';
+function timelineSvg(doc,data){
+  if(typeof doc.createElementNS!=='function')return null;   // SVG를 못 만드는 문서(시험용 가짜 등)에서는 아래 글 줄만 남는다
+  // V6F (CAP1 5): 카드 폭 100%(CSS), 0·6·12·18·24 시각 글자를 그림 안 아래 줄에(그림 띠는 0~36, 글자 줄 36~44).
+  const W=360,H=44,x=m=>Math.round(m*W/1440*10)/10,svg=doc.createElementNS(SVG_NS,'svg');
+  const node=(tag,attrs,cls)=>{const n=doc.createElementNS(SVG_NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));if(cls)n.setAttribute('class',cls);svg.append(n);return n;};
+  svg.setAttribute('viewBox','0 0 '+W+' '+H);svg.setAttribute('class','hlt-timeline');svg.setAttribute('role','img');svg.setAttribute('aria-label','하루 타임라인 0시~24시');
+  node('rect',{x:0,y:0,width:W,height:36},'hlt-tl-bg');
+  for(let h=0;h<=24;h+=6){node('line',{x1:x(h*60),y1:0,x2:x(h*60),y2:37},'hlt-tl-tick');node('text',{x:x(h*60),y:43,'text-anchor':h===0?'start':h===24?'end':'middle'},'hlt-tl-hour').textContent=String(h);}
+  for(const s of data.sleeps)node('rect',{x:x(s.a),y:2,width:Math.max(0.5,x(s.b)-x(s.a)),height:6},'hlt-tl-sleep hlt-tl-'+s.kind);
+  for(const s of data.study)node('rect',{x:x(s.a),y:10,width:Math.max(0.5,x(s.b)-x(s.a)),height:2},'hlt-tl-study');
+  for(const s of data.states){const h=Math.max(1,s.score*5);node('rect',{x:x(s.m)-1,y:34-h,width:2,height:h},'hlt-tl-state hlt-tl-'+s.kind);}
+  for(const d of data.doses)node('circle',{cx:x(d.m),cy:14,r:2},'hlt-tl-dose');
+  return svg;
+}
+// 건강 화면 맨 위 쉬운 입력 패널. 쓰기는 easyAdd 하나뿐이다.
+export function renderEasyHealth(root,ctx,st){
+  const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,hint,section,input,field}=h;
+  const raw=st.raw,today=kstDate(ctx.now()),nowIso=ctx.now();
+  const run=(item,opts)=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;st.easy=null;try{const r=await easyAdd(ctx,st,item(),opts?.());st.message=r.text;st.error=r.error;}catch(e){st.message=hltErrorText(e?.code);st.error=true;}await prepareHealth(ctx,st);await ctx.rerender();});
+  const out=add(el('div',null,'hlt-easy'),null);out.id='hlt-easy';
+  // 1) 약 복용
+  const meds=raw.profiles.filter(p=>p.data.kind==='MED'&&p.data.enabled&&!p.data.removed&&(st.showPrivate||!p.data.private));
+  const ms=add(section(EASY_TEXT.meds,EASY_TEXT.medsSub),null);
+  if(!meds.length)add(ms,hint(EASY_TEXT.noMeds));
+  const chips=add(el('div',null,'buttons hlt-med-chips'),null);
+  for(const p of meds){const b=button(p.data.label+' '+p.data.defaultAmount+(UNIT_TEXT[p.data.unit]??p.data.unit),()=>{st.easy={med:p.key,step:1,custom:'',at:''};void ctx.rerender();},'secondary hlt-med-chip'+(st.easy?.med===p.key?' selected':''));add(chips,b);}
+  add(ms,chips);
+  const pick=st.easy?.med?meds.find(p=>p.key===st.easy.med):null;
+  if(pick){
+    const e=st.easy,steps=add(el('div',null,'buttons hlt-dose-steps'),...DOSE_STEPS.map(([k,t])=>button(t+' ('+pick.data.defaultAmount*k+(UNIT_TEXT[pick.data.unit]??pick.data.unit)+')',()=>{e.step=k;e.custom='';void ctx.rerender();},e.step===k&&!e.custom?'selected':'secondary')));
+    const custom=input(e.custom,{inputmode:'decimal',placeholder:'직접 용량','aria-label':'직접 용량'});custom.addEventListener('input',()=>{e.custom=custom.value;});
+    const at=input(e.at,{inputmode:'numeric',placeholder:'지금 '+hhmmKst(nowIso),'aria-label':'복용 시각 HH:MM (비우면 지금)',maxlength:'5'});at.addEventListener('input',()=>{e.at=at.value;});
+    const amountOf=()=>{const v=e.custom.trim()?num(e.custom):pick.data.defaultAmount*e.step;if(!(v>0&&v<=MAX_AMOUNT)){const x=new Error('INVALID_HLT_DOSE');x.code='INVALID_HLT_DOSE';throw x;}return v;};
+    const atOf=()=>{const t=e.at.trim();if(!t)return nowIso;const iso=isoFromKst(today,t,Date.parse(isoFromKst(today,t,0)??'')>Date.parse(nowIso)?-1:0);if(!iso||!isoOK(iso)){const x=new Error('INVALID_HLT_TIME');x.code='INVALID_HLT_TIME';throw x;}return iso;};
+    add(ms,steps,add(el('div',null,'buttons'),field('직접 용량',custom),field('시각 (비우면 지금)',at),button('저장',run(()=>doseItem(pick,{amount:amountOf(),at:atOf()})),'primary'),button('취소',()=>{st.easy=null;void ctx.rerender();})));
+  }
+  add(ms,hint(MED_NOTE));
+  add(out,ms);
+  // 2) 지금 상태 0~4
+  const ss=add(section(EASY_TEXT.state,EASY_TEXT.stateSub),null);
+  const memo=input(st.easyMemo??'',{maxlength:'60',placeholder:EASY_TEXT.memo,'aria-label':EASY_TEXT.memo});memo.addEventListener('input',()=>{st.easyMemo=memo.value;});
+  for(const [k,name] of STATE_KINDS){
+    const line=add(el('div',null,'hlt-state-row'),el('span',name,'hlt-state-name'));
+    for(let v=0;v<=STATE_MAX;v++){const b=button(String(v),run(()=>stateItem(k,v,ctx.now()),()=>{const m=(st.easyMemo??'').trim();st.easyMemo='';return m?{note:hhmmKst(ctx.now())+' '+name+' '+v+' '+m}:{};}),'secondary hlt-state-btn hlt-s'+v);b.setAttribute('aria-label',name+' '+v);add(line,b);}
+    add(ss,line);
+  }
+  add(ss,memo);add(out,ss);
+  // 3) 하루 타임라인(보고 있는 날짜)
+  const card=(raw.days.find(d=>d.date===st.date)?.data)??null,labelOf=key=>{const p=raw.profiles.find(x=>x.key===key);return p&&(st.showPrivate||!p.data.private)?p.data.label:'약';};
+  const study=(ctx.getWhole().study?.days??[]).find(d=>d.date===st.date)?.data??null;
+  const tl=timelineData(st.flowState?.card??card,{labelOf,study,date:st.date});
+  const ts=add(section(EASY_TEXT.timeline+' · '+st.date,'아래 숫자 = 시각(0~24시) · 띠 = 수면(진한)·낮잠(연한) · 금 선 = 공부 벽돌 · 점 = 복용 · 막대 = 무기력(금)·우울(남)'),timelineSvg(doc,tl));
+  const doseList=tl.doses.map(d=>String(Math.floor(d.m/60)).padStart(2,'0')+':'+String(d.m%60).padStart(2,'0')+' '+d.label);
+  add(ts,hint(doseList.length?'복용 · '+doseList.join(' · '):'이 날 복용 기록 없음'));
+  add(out,ts);
+  // 4) 심해지는 시간대
+  const sum=stateSummary(raw.days,today),sm=add(section(EASY_TEXT.summary,'3시간 칸별 평균(0~4)과 기록 수 · 기록 '+SUMMARY_MIN+'회 미만 칸은 "자료 부족"'),null);
+  for(const [k,name] of STATE_KINDS){
+    const grid=add(el('div',null,'hlt-slot-grid'),el('span',name,'hlt-state-name'));
+    for(const s of sum[k])add(grid,el('span',s.from+'~'+s.to+'시 '+(s.avg===null?EASY_TEXT.few+'('+s.count+')':s.avg.toFixed(1)+' ('+s.count+'회)'),'hlt-slot'+(s.avg===null?' hlt-slot-few':'')));
+    add(sm,grid,el('p',summarySentence(sum[k],name),'hlt-slot-fact'));
+  }
+  add(sm,hint(MED_NOTE));
+  add(out,sm);
   root.append(out);
   return out;
 }

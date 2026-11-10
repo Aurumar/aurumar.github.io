@@ -3,7 +3,7 @@
 // 그림(av_sNN_*.webp)은 투명 채널이 없어 뒤 레이어가 보이지 않는다 → 물건은 앞 겹의 책상 띠(y 296~351)와 좌우 가장자리(x<36, x>204)에만, 넓은 화면은 좌우 날개에 둔다.
 // 이 기기 저장소는 축하 중복 방지 칸 하나(lb.live.celebrated={startIso,n,gold})만 쓴다. 장면 자체는 저장하지 않고 언제나 카드 + 진행 중 세션에서 다시 구한다.
 // 화면 규칙: DOM 생성 함수만(innerHTML·인라인 style 없음). 모양은 createElementNS SVG와 속성, 색·움직임은 styles.css 27절(설계의 §23b) 클래스.
-import {AVATAR_ART_READY,artFile,cardMinutes,lifetimeMinutes,stageOf,todayEffectOf,hmText} from './study-stage.mjs';
+import {AVATAR_ART_READY,artFile,cardMinutes,lifetimeMinutes,stageOf,todayEffectOf,hmText,countedSession,countedMinutes} from './study-stage.mjs';   // V6F: 담은(COMPLETED) 세션만
 import {brickOf,sumBricks} from './life-model.mjs';
 import {TODAY_EFFECTS} from './study-stage.mjs';   // AV5: 오늘 상태 6단계 표(효과 층 이름)
 import {XP} from './life-achieve.mjs';
@@ -35,14 +35,14 @@ export const spinesOf=todayMin=>Math.floor(WING_SPINES*Math.min(minOf(todayMin),
 // 벽돌 더미 칸: 카드 세션을 끝 시각 순으로(성취 엔진과 같은 정렬), 세션마다 벽돌 n장 + 조각, 90분 이상 세션은 금색. 진행 중 세션 분(liveMin)은 맨 뒤.
 // 칸 수 합 = sumBricks(카드 분) + brickOf(진행 중 분) → S1A liveState의 bricks.bricks + bricks.pieces와 같다.
 export function pileOf(sessions=[],liveMin=null){
-  const list=(sessions??[]).filter(s=>okMin(s?.confirmedMin)).map(s=>({min:s.confirmedMin,at:typeof s.at==='string'?s.at:'￿',id:String(s.id??'')}))
+  const list=(sessions??[]).filter(s=>countedSession(s)&&okMin(s.confirmedMin)).map(s=>({min:s.confirmedMin,at:typeof s.at==='string'?s.at:'￿',id:String(s.id??'')}))
     .sort((a,b)=>a.at<b.at?-1:a.at>b.at?1:a.id<b.id?-1:a.id>b.id?1:0);
   if(Number.isInteger(liveMin)&&liveMin>0)list.push({min:Math.min(1440,liveMin)});
   const items=[];
   for(const {min} of list){const b=brickOf(min),gold=min>=XP.GOLD_MINUTES;for(let k=0;k<b.bricks;k++)items.push({gold,half:false});if(b.pieces)items.push({gold,half:true});}
   return items;
 }
-export const pileCount=(sessions,liveMin=null)=>{const d=sumBricks((sessions??[]).map(s=>s?.confirmedMin).filter(okMin)),o=Number.isInteger(liveMin)&&liveMin>0?brickOf(Math.min(1440,liveMin)):{bricks:0,pieces:0};return d.bricks+d.pieces+o.bricks+o.pieces;};
+export const pileCount=(sessions,liveMin=null)=>{const d=sumBricks(countedMinutes(sessions).filter(okMin)),o=Number.isInteger(liveMin)&&liveMin>0?brickOf(Math.min(1440,liveMin)):{bricks:0,pieces:0};return d.bricks+d.pieces+o.bricks+o.pieces;};
 
 // 장면 모형(저장하지 않음). 같은 입력이면 같은 값 → 같은 DOM.
 export function roomModel({todayMin=0,pile=[],effectLevel=null}={}){
@@ -134,11 +134,12 @@ export function avatarFxLayer(doc,{level=1,grade=1}={}){
   return {node,paint};
 }
 // 작은 아바타 칸(미리보기 격자·상태 화면): 기본 그림 + 효과 층. 그림이 꺼져 있거나 못 불러오면 그림만 숨기고 효과 층은 남는다.
-export function avatarStage(doc,{grade=1,level=1,useArt=false,cls=''}={}){
-  const {el}=maker(doc),stage=el('div',null,'room-stage av5-stage'+(cls?' '+cls:''));
-  if(useArt){const fig=el('img',null,'av5-fig live-fig');fig.alt='';fig.setAttribute('aria-hidden','true');fig.src=artFile(grade,'base');fig.addEventListener('error',()=>{fig.hidden=true;});stage.append(fig);}
+// V6F (MAN2 4): file = 그릴 그림(STUDY LIVE는 큰 그림과 같은 오늘의 캐릭터 dc_hNN). 없으면 예전처럼 평생 등급 기본 그림.
+export function avatarStage(doc,{grade=1,level=1,useArt=false,cls='',file=null}={}){
+  const {el}=maker(doc),stage=el('div',null,'room-stage av5-stage'+(cls?' '+cls:''));let fig=null;
+  if(useArt){fig=el('img',null,'av5-fig live-fig');fig.alt='';fig.setAttribute('aria-hidden','true');fig.src=file??artFile(grade,'base');fig.addEventListener('error',()=>{fig.hidden=true;});stage.append(fig);}
   const fx=avatarFxLayer(doc,{level,grade});stage.append(fx.node);
-  return {node:stage,fx};
+  return {node:stage,fx,fig};
 }
 
 // ---- DS1 (설계 V5 §2.8 d·h): 금 벽돌 스프라이트 하나. 오늘 벽돌 칸(공부 벽돌 패널·덮개)과 무대 양옆 벽돌 기둥이 같이 쓴다. ----
@@ -286,7 +287,7 @@ export function liveRoom(ctx,{stage,state,timer,draftCard=null,props=true}){
 // ---- 지난 날짜 "그날의 방"(B41 지난 날짜 보기): 그날 카드 분 + 그날까지의 평생 분으로 정한 등급 그림. 진행 중 세션은 넣지 않는다. 같은 입력 → 같은 그림. ----
 export function dayRoomInputs(study,date){
   const upTo={days:(study?.days??[]).filter(d=>typeof d?.date==='string'&&d.date<=date)};
-  const card=[...upTo.days].reverse().find(d=>d.date===date)?.data??null,min=cardMinutes(card),fx=todayEffectOf(min),b=sumBricks((card?.sessions??[]).map(s=>s?.confirmedMin).filter(okMin));
+  const card=[...upTo.days].reverse().find(d=>d.date===date)?.data??null,min=cardMinutes(card),fx=todayEffectOf(min),b=sumBricks(countedMinutes(card?.sessions).filter(okMin));
   return {date,card,todayMin:min,bricks:b,stageNo:stageOf(lifetimeMinutes(upTo)).stage.no,art:fx.art,effectLevel:fx.level};
 }
 export function dayRoomCard(ctx,date){

@@ -168,7 +168,7 @@ export function examEvents(exams){
 export const IMPORTED_EVENT_PREFIX='ics-';
 export const MIRROR_DAYS=14;
 export const MIRROR_BLOCK_TEXT=Object.freeze({M:'오전',A:'오후',E:'저녁',N:'밤'});
-export const MIRROR_BLOCK_LABELS=Object.freeze({M:'M 오전',A:'L 오후',E:'D 저녁',N:'N 밤'});
+export const MIRROR_BLOCK_LABELS=Object.freeze({M:'오전',A:'오후',E:'저녁',N:'밤'});   // V6F: 화면에 약자 없음
 export const MIRROR_BLOCK_DEFAULTS=Object.freeze({M:Object.freeze({start:'08:00',end:'12:00'}),A:Object.freeze({start:'13:00',end:'18:00'}),E:Object.freeze({start:'19:00',end:'22:00'}),N:Object.freeze({start:'22:00',end:'24:00'})});
 const MIRROR_BLOCKS=Object.keys(MIRROR_BLOCK_DEFAULTS),MIRROR_REPEAT_MAX=400,TIMED_EVENT_MS=3600000;
 const DATE=/^\d{4}-\d{2}-\d{2}$/,BLOCK_END=/^(?:(?:[01]\d|2[0-3]):[0-5]\d|24:00)$/,MIRROR_EVENT_KEY=/^lb-ev-[A-Za-z0-9-]{1,58}$/;
@@ -467,7 +467,8 @@ export function renderPayChip(root,{h,br,onOpen}){
 // 초안 시트 안쪽. onAdd(draft)=기존 거래 입력 열기, onDiscard(draft)·onAck(draft)는 처리됨 표시 후 다시 그리기.
 // recurringName(draft)=정기 결제 규칙과 맞으면 규칙 이름(B48). 작은 칩만 보이고 자동 확정은 없다.
 // alreadyAdded(draft)=이미 가계부에 같은 결제로 보이는 거래가 있으면 참(B48C F1). 경고만 하고 막지 않는다.
-export function payDraftBody({h,br,formatWon,onAdd,onDiscard,recurringName=null,alreadyAdded=null}){
+// FIX67 (M-06): refundMatch(draft) = 취소 알림과 맞는 장부 지출 {text,label}(없으면 null). 단추는 onAdd(취소 초안)를 부르고, 부른 쪽이 환불 입력창을 미리 채워 열기만 한다(자동 저장 없음). 못 찾으면 예전 문구.
+export function payDraftBody({h,br,formatWon,onAdd,onDiscard,recurringName=null,alreadyAdded=null,refundMatch=null}){
   const body=h.el('div',null,'native-pay-list'),list=br.pending();
   if(!list.length)h.add(body,h.el('p',NATIVE_TEXT.empty,'muted'));
   for(const d of list){
@@ -477,7 +478,9 @@ export function payDraftBody({h,br,formatWon,onAdd,onDiscard,recurringName=null,
     if(rec)h.add(row,h.el('span','정기 결제: '+rec,'native-pay-recurring'));
     if(d.needsAmount)h.add(row,h.el('p',NATIVE_TEXT.needsAmountNote,'muted small'));
     if(d.estimate)h.add(row,h.el('p',NATIVE_TEXT.estimateNote,'muted small'));
-    if(cancel)h.add(row,h.el('p',NATIVE_TEXT.cancel,'muted small'));
+    const refund=cancel&&!d.needsAmount?refundMatch?.(d)??null:null;
+    if(cancel)h.add(row,h.el('p',refund?refund.text:NATIVE_TEXT.cancel,'muted small'));
+    if(refund)h.add(row,h.add(h.el('div',null,'button-row'),h.button(refund.label,()=>onAdd(d),'primary')));
     if(d.twin||d.maybeSame)h.add(row,h.el('p',NATIVE_TEXT.twin,'muted small'));
     if(d.merged)h.add(row,h.el('p',NATIVE_TEXT.merged(d.merged),'muted small'));
     if(!cancel&&(d.added||d.addedUnread||(!d.needsAmount&&alreadyAdded?.(d))))h.add(row,h.el('p',NATIVE_TEXT.added,'muted small'));

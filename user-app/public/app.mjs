@@ -1,13 +1,13 @@
-import {PC_ENTITY_REQUEST_LIMIT,buildBudget,monthSpan,finErrorText,finError,formatWon,formatCompact,shiftMonth,shownMerchant,isSensitive,buildAccount,buildTxn,buildRule,monthLines,duplicateGroups,ledgerCsv,rulePreview,checkImportPlan,opBudget,opBudgetNotice,opsAfter,localBudget,capacityNotice,compactionText,holdGuidance,importPermission,finFingerprintInput,housekeepingText} from './fin-ledger.mjs';
+import {PC_ENTITY_REQUEST_LIMIT,buildBudget,monthSpan,finErrorText,finError,formatWon,formatCompact,shiftMonth,shownMerchant,isSensitive,buildAccount,buildTxn,buildRule,monthLines,duplicateGroups,ledgerCsv,rulePreview,checkImportPlan,opBudget,opBudgetNotice,opsAfter,localBudget,capacityNotice,compactionText,holdGuidance,importPermission,finFingerprintInput,housekeepingText,cardBillHint} from './fin-ledger.mjs';
 import {PERIODS as PLAN_PERIODS,detectRecurring,recurringGridLayout,costSplit,budgetStatus,budgetFor,budgetBarsLayout,lifeTimeline,timelineLayout,vaultPlan,vaultBudget,vaultFixedItems,vaultBricks,vaultBrickLayout,vaultCashFromSnapshot,vaultOverdraftFromSnapshot,vaultCardUnpaidFromSnapshot,liveNetCash,quickPicks,monthInsight} from './fin-plan.mjs';
 import {prepare,PERIODS,periodRange,aggregate,roundDiv,dataMonths,overview,monthlySeries,barLayout,sankeyData,sankeyLayout,treemapItems,squarify,dailyTotals,heatmapMonths,completeness,todaySpendLine,buildTodayGlance} from './fin-charts.mjs';
-import {RECURRING_ID,RECURRING_TEXT,findCandidates,addRule as addRecurringRule,setRuleHidden as setRecurringHidden,ruleStatus as recurringStatus,monthlyTotal as recurringMonthly,matchDraft as recurringMatchDraft,recurringKey,setRuleAmount as setRecurringAmount,canSetAmount as canSetRecurringAmount,priceChange as recurringPriceChange,ledgerMatch as recurringLedgerMatch,createHiddenBox as createRecurringHiddenBox,merchantChoices as recurringMerchantChoices} from './fin-recurring.mjs';
+import {RECURRING_ID,RECURRING_TEXT,findCandidates,addRule as addRecurringRule,setRuleHidden as setRecurringHidden,ruleStatus as recurringStatus,monthlyTotal as recurringMonthly,matchDraft as recurringMatchDraft,recurringKey,setRuleAmount as setRecurringAmount,canSetAmount as canSetRecurringAmount,priceChange as recurringPriceChange,ledgerMatch as recurringLedgerMatch,createHiddenBox as createRecurringHiddenBox,merchantChoices as recurringMerchantChoices,sameExpense,sameExpenseGroups,refundCandidate,SAME_EXPENSE_TEXT} from './fin-recurring.mjs';
 import {meltNode,monthForecast,forecastNode,renderBudgetReport,fixedSchedule,fixedPlan,withRuleDates} from './fin-forecast.mjs';
 import {readStatementAsync,findHeader,headerAt,guessColumns,guessInstallAmountIsTotal,columnsProblem,normalizeRows,controlCheck,headerSig,accountSig,rememberedAccount,bytesSha256,createMappingStore,stmtErrorText,maskCell,normHeader,COLUMN_ROLES,COLUMN_TEXT,REQUIRED_ROLES,ROW_STATUS_TEXT,STMT_LIMITS} from './fin-statement.mjs';
 import {readXlsx,xlsxErrorText,xlsxSupported,XLSX_LIMITS} from './fin-xlsx.mjs';
 import {reconcileStatement,suggestContext,STATUS_TEXT as STMT_STATUS_TEXT,REASON_TEXT as STMT_REASON_TEXT,sameMerchantKeys,coveredByBatches,selectForSave,statementTxnInput,checkStatementSave,runStatementSave,keepForced,statementSaveKey,SAVE_MAX} from './fin-reconcile.mjs';
 import {createQuickMemory,renderQuickChips,quickNeedText} from './fin-quick.mjs';
-import {moneyFeel,feelCore,feelNode,feelChip,feelDetails,feelLine,feelChange,feelSavedPart,feelLineLayout,feelLineNode,feelAssist,feelTone,feelProjected,FEEL_LEVEL,vaultCardNode} from './fin-feel.mjs';
+import {moneyFeel,feelCore,feelNode,feelChip,feelDetails,feelLine,feelChange,feelSavedPart,feelLineLayout,feelLineNode,feelAssist,feelTone,feelProjected,FEEL_LEVEL,vaultCardNode,vaultWall,vaultTodayNum,vaultDayText} from './fin-feel.mjs';
 import {legacyAreaNode} from './life-areas.mjs';
 import {moneyFacts} from './life-money-facts.mjs';
 const mdBackend=globalThis.LIFE_BRICK_MD_BACKEND??null;
@@ -51,7 +51,7 @@ const $=id=>document.getElementById(id);
 // B1 navigation. Phone: HOME TODAY PLANS CALENDAR + MORE. Wider screens show every destination. No route is
 // removed: HOUSE now opens the merged PROGRESS house panel, and device/recovery controls live in DEVICES.
 // B40 5탭 IA. NAV = 모든 화면(키, 제목, 설명, 기호, 머리글), TABS = 탭(navigate 대상, 라벨, 기호, 그 탭에 속한 화면). 화면을 더하면 TABS 어딘가에 반드시 넣는다(누락 시험 b40).
-const NAV=[['HOME','오늘','오늘 한눈에','☀','TODAY'],['ACTIONS','행동 기록','결과와 이어갈 지점 기록','✓','RECORDS'],['PLANS','계획','목표에서 다음 행동까지','▤','PLAN'],['CALENDAR','달력','기한과 약속을 한곳에','▦','PLAN'],['LIFE','영역','열 가지 영역, 내가 정하는 방향','◎','PLAN'],['LEDGER','가계부','계정 · 거래 · 돈의 흐름 · 과거 이력','▥','MONEY'],['FINANCE','재정','직접 입력한 현재의 숫자','₩','MONEY'],['HEALTH','건강','하루 1장 건강 기록 · 이 기기에서 켠 경우에만','♥','RECORDS'],['STUDY','공부','하루 1장 공부 기록 · 복습 · 이 기기에서 켠 경우에만','✎','RECORDS'],['HISTORY','이력','원본과 변경을 함께 보존','↺','RECORDS'],['STATUS','상태','오늘 시간 · 평생 등급 · 탑과 우주 입구','◎','TOWER'],['PROGRESS','탑','기록으로 확인하는 변화와 쌓인 블록','▲','TOWER'],['SETTINGS','설정','행동 목록과 표시','⚙','MORE'],['DEVICES','연결 · 장치','동기화 · 장치 추가 · 분실·복구 · 저장 위치','⇄','MORE'],['ADVANCED','고급','저장 준비 · 저장 결과 확인 · 남은 저장 용량','⚒','MORE']];
+const NAV=[['HOME','오늘','오늘 한눈에','☀','TODAY'],['ACTIONS','행동 기록','결과와 이어갈 지점 기록','✓','RECORDS'],['PLANS','계획','목표에서 다음 행동까지','▤','PLAN'],['CALENDAR','달력','기한과 약속을 한곳에','▦','PLAN'],['LIFE','영역','열 가지 영역, 내가 정하는 방향','◎','PLAN'],['LEDGER','돈','계정 · 거래 · 돈의 흐름 · 명세서 가져오기 · 과거 이력','▥','MONEY'],['FINANCE','재정 기록','직접 입력한 현재의 숫자','₩','MONEY'],['HEALTH','건강','하루 1장 건강 기록 · 이 기기에서 켠 경우에만','♥','RECORDS'],['STUDY','공부','하루 1장 공부 기록 · 복습 · 이 기기에서 켠 경우에만','✎','RECORDS'],['HISTORY','이력','원본과 변경을 함께 보존','↺','RECORDS'],['STATUS','상태','오늘 시간 · 평생 등급 · 탑과 우주 입구','◎','TOWER'],['PROGRESS','탑','기록으로 확인하는 변화와 쌓인 블록','▲','TOWER'],['SETTINGS','설정','행동 목록과 표시','⚙','MORE'],['DEVICES','연결 · 장치','동기화 · 장치 추가 · 분실·복구 · 저장 위치','⇄','MORE'],['ADVANCED','고급','저장 준비 · 저장 결과 확인 · 남은 저장 용량','⚒','MORE']];
 const TABS=[['TODAY','오늘','☀',['HOME']],['PLAN','계획','▤',['PLANS','CALENDAR','LIFE']],['LEDGER','돈','₩',['LEDGER','FINANCE']],['RECORDS','기록','✎',['ACTIONS','HEALTH','STUDY','HISTORY']],['HOUSE','탑','▲',['STATUS','PROGRESS']],['MORE','더보기','⋯',['MORE','SETTINGS','DEVICES','ADVANCED']]];
 const MORE_VIEWS=['SETTINGS','DEVICES','ADVANCED'],ROUTE_ALIAS={HOUSE:'PROGRESS',TODAY:'HOME',PLAN:'PLANS',RECORDS:'ACTIONS'};
 const VIEW_META={...Object.fromEntries(NAV.map(([k,l,s,,en])=>[k,[l,s,en]])),MORE:['더보기','설정 · 연결 · 장치 · 백업 · 복구 · 고급','MORE']};
@@ -253,19 +253,19 @@ function setupMD(state){
  pair=state.surface==='BROWSER'?section('장치 추가 · 안전한 자동 전달','연결 글자는 로컬 QR로만 새 장치에 옮기세요. request/draft/ACK는 세션 전용 암호문 relay로 자동 전달합니다.'):section('장치 추가 · 암호문 relay 자동 전달','PSK가 포함된 연결 글자는 이 PC와 새 장치 사이의 신뢰한 로컬 경로로만 옮기세요. URL·서버·메신저로 보내지 않습니다. request/draft/ACK는 세션 전용 암호문 relay로 자동 전달합니다.');
  add(pair,add(el('div',null,'buttons'),can('relay-client-preflight')?button('Relay 클라이언트 사전점검',doIt(()=>call('relay-client-preflight'))):null,can('pair-relay-probe')?button(state.surface==='BROWSER'?'기존 장치 서버 relay 사전점검':'서버 relay 사전점검',doIt(()=>call('pair-relay-probe'))):null));
  const pairingText=field(pair,'Pairing text','textarea',''),requestText=field(pair,'새 장치 request text','textarea',''),fingerprint=field(pair,'두 화면에서 대조한 fingerprint','text',''),draft=field(pair,'승인 draft JSON','textarea',''),ack=field(pair,'새 장치 possession ACK JSON','textarea','');
- const consent=field(pair,'새 장치 fingerprint와 등록을 명시적으로 확인합니다','checkbox',false);
+ const consent=field(pair,'새 장치 확인 코드(fingerprint)와 등록을 명시적으로 확인합니다','checkbox',false);
  const parse=n=>{try{return JSON.parse(n.value);}catch{throw appError('MD_PAIR_JSON');}};
  const saveTransfer=async(route,filename)=>{const r=await api('/api/md/'+route,{});if(typeof r.text!=='string'||!r.text.length)throw appError('MD_TRANSFER_EXPORT');const blob=new Blob([new TextEncoder().encode(r.text)],{type:'text/plain;charset=utf-8'}),url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download=filename;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);status(filename+' 저장됨');};
  const importTransfer=(label,target,route,kind)=>{const input=el('input');input.type='file';input.accept='.txt,text/plain';input.hidden=true;input.addEventListener('change',async()=>{try{const file=input.files?.[0];if(!file||file.size<1||file.size>1_000_000)throw appError('MD_TRANSFER_SIZE');const bytes=new Uint8Array(await file.arrayBuffer()),value=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes),roundtrip=new TextEncoder().encode(value);if(value.charCodeAt(0)===0xfeff||roundtrip.length!==bytes.length||!bytes.every((b,i)=>b===roundtrip[i]))throw appError('MD_TRANSFER_ENCODING');let body;if(kind==='request'){if(!/^[A-Za-z0-9_-]+$/.test(value))throw appError('MD_TRANSFER_TYPE');body={requestText:value};}else{let parsed;try{parsed=JSON.parse(value);}catch{throw appError('MD_TRANSFER_TYPE');}if(JSON.stringify(parsed)!==value)throw appError('MD_TRANSFER_ENCODING');body=kind==='draft'?{draft:parsed}:parsed;}await api('/api/md/'+route,body);target.value=value;status(label+' 검증·가져오기 완료');}catch(e){status('파일 거부 · '+(e.code||'MD_TRANSFER_FILE'),true);}finally{input.value='';}});pair.append(input);return button(label,()=>input.click());};
  const fileTransfer=can('pair-draft-export');
  const requestImport=fileTransfer?importTransfer('새 장치 request 파일 가져오기',requestText,'pair-inspect','request'):null,draftImport=fileTransfer?importTransfer('승인 draft 파일 가져오기',draft,'enroll-inspect-draft','draft'):null,ackImport=fileTransfer?importTransfer('Android ACK 파일 가져오기',ack,'pair-inspect-ack','ack'):null;
- if(can('pair-begin'))add(pair,el('h3','기존 승인 장치'),add(el('div',null,'buttons'),button('Pairing 시작',doIt(async()=>{
+ if(can('pair-begin'))add(pair,el('h3','기존 승인 장치'),add(el('div',null,'buttons'),button('기기 연결 시작 (Pairing)',doIt(async()=>{
   if(state.surface!=='BROWSER'){stopRequestPoll?.();stopAckPoll?.();}
   const r=await api('/api/md/pair-begin',{confirmed:consent.checked});pairMode='RELAY';pairingText.value=r.pairingText;consent.checked=false;
   if(state.surface==='BROWSER')out.textContent='로컬 QR을 새 장치로 스캔하세요. 원래 만료시각: '+new Date(r.expiresAt).toLocaleTimeString();
   else{requestText.value='';fingerprint.value='';draft.value='';ack.value='';out.textContent='연결 글자를 신뢰한 로컬 경로로 새 장치에 옮기세요. 원래 만료시각: '+new Date(r.expiresAt).toLocaleTimeString()+'\n새 장치 request를 relay에서 기다립니다.';}
   stopRequestPoll?.();stopRequestPoll=relayPoll('pair-request-poll',x=>{fingerprint.value=x.fingerprint;out.textContent='새 장치 fingerprint: '+x.fingerprint+'\n새 장치 화면과 전체 대조한 뒤 명시적으로 승인하세요.';});
- })),button(state.surface==='BROWSER'?'대조 후 HPKE 승인':'대조 후 HPKE 승인 · draft 전달',doIt(async()=>{
+ })),button(state.surface==='BROWSER'?'확인 코드 대조 후 연결 승인 (HPKE)':'확인 코드 대조 후 연결 승인 · 승인 자료 전달 (HPKE)',doIt(async()=>{
   const r=await api('/api/md/pair-approve',{requestText:pairMode==='MANUAL'||state.surface==='BROWSER'?requestText.value:'',fingerprint:fingerprint.value,confirmed:consent.checked});draft.value=JSON.stringify(r);consent.checked=false;
   if(pairMode==='MANUAL'){out.textContent='수동 진단 경로 · 승인 draft를 신뢰한 경로로 새 장치에 옮기세요.';return;}
   out.textContent='승인 draft를 새 장치에 자동 전달했습니다. ACK와 서버 receipt를 기다립니다.';
@@ -273,14 +273,14 @@ function setupMD(state){
  })),button('승인 draft 전송 재확인',doIt(()=>call('pair-publish-draft'))),can('pair-relay-status')&&state.surface!=='BROWSER'?button('Relay 상태 확인',doIt(()=>call('pair-relay-status'))):null,button('미확정 등록 결과 확인',doIt(()=>call('pair-reconcile'))),can('pair-diagnostic')?button('미완료 등록 상태 확인',doIt(()=>call('pair-diagnostic'))):null,button(state.surface==='BROWSER'?'만료된 요청 안전 종료':'만료된 등록 세션 안전 종료',doIt(async()=>{if(state.surface!=='BROWSER'){stopRequestPoll?.();stopAckPoll?.();}await call('pair-relay-abort-unapproved');pairMode=null;resyncAfterPairing();})),can('pair-abort-expired')?button('만료된 미전송 등록 안전 종료',doIt(async()=>{await call('pair-abort-expired');resyncAfterPairing();})):null));
  if(can('pair-begin-manual')){const manual=el('details'),manualButtons=el('div',null,'buttons');
   add(manual,el('summary','진단용 수동 전달 · relay 장애 시 fallback'),hint('정상 등록에는 필요하지 않습니다. 수동 경로는 request·draft·ACK를 모두 원래 600초 안에 옮겨야 합니다.'),manualButtons);
-  add(manualButtons,button('수동 Pairing 시작 (relay 없음)',doIt(async()=>{stopRequestPoll?.();stopAckPoll?.();const r=await api('/api/md/pair-begin-manual',{confirmed:consent.checked});pairMode='MANUAL';pairingText.value=r.pairingText;consent.checked=false;})),button('Request 확인',doIt(async()=>{const r=await call('pair-inspect',{requestText:requestText.value});out.textContent='Fingerprint: '+r.fingerprint;})),button('ACK 받아 서버 등록',doIt(async()=>{await call('pair-commit',parse(ack));pairMode=null;})));
+  add(manualButtons,button('수동 기기 연결 시작 (Pairing · 중계 없음)',doIt(async()=>{stopRequestPoll?.();stopAckPoll?.();const r=await api('/api/md/pair-begin-manual',{confirmed:consent.checked});pairMode='MANUAL';pairingText.value=r.pairingText;consent.checked=false;})),button('Request 확인',doIt(async()=>{const r=await call('pair-inspect',{requestText:requestText.value});out.textContent='확인 코드 (Fingerprint): '+r.fingerprint;})),button('ACK 받아 서버 등록',doIt(async()=>{await call('pair-commit',parse(ack));pairMode=null;})));
   add(pair,manual);}
  const recoveryPath=state.surface==='WINDOWS'?field(pair,'원래 encrypted recovery-authority .lbw의 전체 경로','text',''):null;
  if(can('enroll-start'))add(pair,el('h3','새 장치'),add(el('div',null,'buttons'),button('새 identity와 request 생성',enrollDo(async()=>{
   const r=await api('/api/md/enroll-start',{pairingText:pairingText.value,...(can('enroll-resume')?{unlockSecret:unlock.value}:{})});requestText.value=r.requestText;fingerprint.value=r.fingerprint;relayRecipient=r.relay===true;consent.checked=false;
-  out.textContent='REQUEST 전달 완료 · fingerprint '+r.fingerprint+'\n기존 장치와 전체 값을 대조하세요.';
-  if(relayRecipient){stopDraftPoll?.();stopDraftPoll=relayPoll('enroll-draft-poll',x=>{out.textContent='승인 draft 검증 완료 · '+x.approvalId+'\n장치 전용 잠금해제 문구를 입력하고 fingerprint 확인 후 등록을 승인하세요.';});}
- })),button('Fingerprint 확인 · ACK 생성 · 등록',enrollDo(async()=>{
+  out.textContent='요청 전달 완료 · 확인 코드(fingerprint) '+r.fingerprint+'\n기존 장치와 전체 값을 대조하세요.';
+  if(relayRecipient){stopDraftPoll?.();stopDraftPoll=relayPoll('enroll-draft-poll',x=>{out.textContent='승인 draft 검증 완료 · '+x.approvalId+'\n장치 전용 잠금해제 문구를 입력하고 확인 코드(fingerprint)를 대조한 뒤 등록을 승인하세요.';});}
+ })),button('확인 코드(Fingerprint) 대조 · ACK 생성 · 등록',enrollDo(async()=>{
   const r=await api('/api/md/enroll-approve',{draft:relayRecipient?null:parse(draft),fingerprint:fingerprint.value,confirmed:consent.checked});ack.value=JSON.stringify(r);consent.checked=false;
   out.textContent='ACK 전달 완료 · 서버 receipt를 기다립니다.';
   if(relayRecipient){stopReceiptPoll?.();stopReceiptPoll=startStepPoll({intervalMs:1200,stallMs:90000,hidden:()=>document.hidden,ended:()=>ended,setInterval:globalThis.setInterval.bind(globalThis),clearInterval:globalThis.clearInterval.bind(globalThis),setTimeout:globalThis.setTimeout.bind(globalThis),clearTimeout:globalThis.clearTimeout.bind(globalThis),say:status,
@@ -326,6 +326,10 @@ function metric(label,value,foot){return add(el('article',null,'metric-card'),el
 function domainName(code){return whole.domains.find(d=>d.code===code)?.name||'미분류';}
 function money(value,currency=whole.finance.currency){return value===null||value===undefined?'모름':value.replace(/\B(?=(\d{3})+(?!\d))/g,',')+(currency==='KRW'?'원':' '+(currency||''));}
 function status(message,error=false){$('status').textContent=message;$('status').dataset.error=String(error);}
+// V6F (MAN2 5): 한 화면에만 맞는 안내(예: 명세서 칸 짝 기억)는 그 화면을 떠나면 지운다. 그 사이 다른 안내로 바뀌었으면 그대로 둔다.
+let screenNote=null;
+function screenStatus(message){status(message);screenNote=message;}
+function clearScreenNote(){if(screenNote!==null&&$('status').textContent===screenNote)status('');screenNote=null;}
 // FIX45 (AUD1 #10): 오류 문구의 원문 코드는 접어 둔다. 문구를 만드는 쪽은 글자 뒤에 " · 문의 코드 ▾" + U+2060 + 코드 + U+2060만 붙이고(모듈 의존 없음), 화면에 들어오는 순간 여기서 눌러 펼치는 칸으로 바꾼다. 문구 자체와 저장 동작은 바꾸지 않는다.
 function splitErrorCode(text){const m=/ · 문의 코드 ▾⁠([^⁠]*)⁠/.exec(text);return m?{text:text.slice(0,m.index)+text.slice(m.index+m[0].length),code:m[1]}:null;}
 function foldErrorText(node){for(let s=splitErrorCode(node.nodeValue);s&&node.parentNode;s=splitErrorCode(node.nodeValue)){node.nodeValue=s.text;node.parentNode.insertBefore(add(el('details',null,'err-code'),el('summary','문의 코드 ▾'),el('code',s.code)),node.nextSibling);}}
@@ -411,10 +415,14 @@ function openNativePayDrafts(){
  let dlg=null;
  const show=()=>{
   const ledger=whole.fin?prepare(whole.fin).lines:[];
+  // FIX67 (M-06): 취소 알림과 맞는 장부 지출(같은 금액·비슷한 가게·최근 14일). 있으면 시트에 [이 지출을 환불로 정리] → onAdd가 환불 입력창을 미리 채워 열기만 한다(자동 저장 없음, 저장이 끝나면 알림 처리됨).
+  const refundOf=d=>d.kind==='CANCEL'?refundCandidate(ledger,d,nativeUi.kstDateOf(d.at)):null;
+  const refundFill=d=>{const m=refundOf(d);return m?{kind:'REFUND',accountId:m.accountId,category:m.category,subcategory:m.subcategory??'',merchant:d.merchant||m.merchant}:{};};
   const body=nativeUi.payDraftBody({h:{el,add,button},br:nativeBr,formatWon,recurringName:d=>recurringMatchDraft(recurringRules(),d)?.name??null,alreadyAdded:d=>recurringLedgerMatch(ledger,d,nativeUi.kstDatesNear(d.at))!==null,
+   refundMatch:d=>{const m=refundOf(d);return m?{text:SAME_EXPENSE_TEXT.refund(m,shownMerchant(m,finMask)),label:SAME_EXPENSE_TEXT.refundBtn}:null;},
    onAdd:d=>{dlg?.close();const date=nativeUi.kstDateOf(d.at);
     if(!whole.fin){status(nativeUi.NATIVE_TEXT.fail);return;}
-    editFinTxn(null,{date:date>whole.localDate?whole.localDate:date,amount:d.amount,merchant:d.merchant,onSaved:()=>{nativeBr.markHandled(d);},onKept:()=>{nativeBr.markAdded(d);}});},
+    editFinTxn(null,{date:date>whole.localDate?whole.localDate:date,amount:d.amount,merchant:d.merchant,...refundFill(d),onSaved:()=>{nativeBr.markHandled(d);},onKept:()=>{nativeBr.markAdded(d);}});},
    onDiscard:d=>{nativeBr.markHandled(d);dlg?.close();if(nativeBr.pending().length)show();void render();}});
   dlg=towerSheet(nativeUi.NATIVE_TEXT.sheetTitle,body);
  };
@@ -524,6 +532,26 @@ function cardDraftBox(){
 const showCardDrafts=(line,n)=>{if(!line||!cardDraftMod)return;line.textContent=n?cardDraftMod.deviceOnlyLine(n)+' · 확정 전까지 다른 기기에서는 안 보임':'';line.hidden=!n;};
 function cardDraftLine(){const p=el('p','','notice card-drafts-line');p.id='card-drafts-line';p.hidden=true;const box=cardDraftBox();if(box)void box.count().then(n=>showCardDrafts(p,n),()=>{});return p;}
 globalThis.addEventListener?.('lb:card-drafts-changed',e=>showCardDrafts(document.getElementById('card-drafts-line'),e?.detail?.count??0));
+// V6F (지시서 1): 화면 어디서나 보이는 "아직 안 쌓은 입력 n개 · 지금 쌓기" 줄(#status 바로 아래, 화면을 그릴 때마다 다시 센다).
+// 센 것 = 오늘 카드·오늘 공부 카드·어제 이전 초안 날짜(life-ui pendingStackCount) + 오늘 건강 카드 초안. 쌓는 길은 기존 그대로(그날 카드 1장 = 연산 1).
+const hltPendingToday=()=>hltOn()&&Boolean(hltSt?.flow)&&hltSt.flowState?.status==='LOCAL_DRAFT'&&hltSt.date===hltSt.today;
+function pendingStackTotal(){return (lifeUi&&lifeSt?lifeUi.pendingStackCount(lifeSt):0)+(hltPendingToday()?1:0);}
+async function stackAllPending(){
+  let stacked=0,failed=0;
+  if(lifeUi&&lifeSt){const r=await lifeUi.stackPending(lifeCtx(),lifeSt);stacked+=r.stacked;failed+=r.failed;}
+  if(hltPendingToday()){try{const r=await hltSt.flow.confirm(hltSt.date);if(r.status==='CONFIRMED'||r.status==='ALREADY_APPLIED')stacked++;else failed++;}catch{failed++;}await hltReload();await hltUi.prepareHealth(hltCtx(),hltSt);}
+  return {stacked,failed};
+}
+function paintPendingLine(){
+  const s=$('status');if(!s||!lifeUi)return;let line=$('pending-stack');
+  const n=ended||mdSignedOut||$('workspace').hidden?0:pendingStackTotal();
+  if(!n){if(line)line.hidden=true;return;}
+  if(!line){line=el('div','','notice pending-stack');line.id='pending-stack';s.after(line);}
+  const go=button(lifeUi.AUTO_STACK_TEXT.now,()=>void perform(async()=>{const r=await stackAllPending();status(r.failed?'쌓지 못한 입력이 있어요 · 입력은 이 기기에 그대로 있어요 · 오늘·건강 화면에서 확인하세요':'쌓지 않은 입력을 모두 쌓았어요.',r.failed>0);await render();}),'primary pending-stack-btn');
+  line.replaceChildren(el('span',lifeUi.AUTO_STACK_TEXT.line(n),'pending-stack-text'),go);line.hidden=false;
+}
+// 저장 후 종료: 닫기 전에 쌓지 않은 입력을 먼저 쌓는다(실패해도 종료는 막지 않고, 입력은 이 기기에 남는다고 알린다).
+async function stackBeforeExit(){if(!pendingStackTotal())return '';try{const r=await stackAllPending();return r.failed?' · 쌓지 못한 입력은 이 기기에 남아 있어요(다음에 열면 이어서 쌓을 수 있어요)':'';}catch{return ' · 쌓지 못한 입력은 이 기기에 남아 있어요';}}
 // B16 (K1-02): refreshCore와 같은 세대 검사. 읽는 도중 로그아웃 잠금이 끼었으면(그 뒤 재로그인 포함) 읽은 값을 today·whole·changes에 넣지 않고
 // MD_SIGNED_OUT_ELSEWHERE로 끝낸다(남은 읽기도 하지 않음, 부른 확정·저장 흐름이 옛 값으로 계속하지 않게). 모든 읽기가 끝난 뒤에만 한꺼번에 넣는다.
 async function hltReload(){const lockSeq=mdSignedOutSeq,gone=()=>lockSeq!==mdSignedOutSeq||mdSignedOut;const [nextToday,nextWhole]=await Promise.all([api('/api/today'),api('/api/whole-life')]);if(gone())throw appError('MD_SIGNED_OUT_ELSEWHERE');const nextChanges=(await api('/api/history')).changes;if(gone())throw appError('MD_SIGNED_OUT_ELSEWHERE');today=nextToday;whole=nextWhole;changes=nextChanges;if(typeof nativeWidget==='function')nativeWidget();}
@@ -531,8 +559,8 @@ let recordsMod=null;import('./life-quest.mjs').then(m=>{recordsMod=m;if(!$('work
 let achvPanelMod=null;import('./achv-panel.mjs').then(m=>{achvPanelMod=m;}).catch(()=>{achvPanelMod=null;});   // Q1A: 못 불러오면 탑만 보인다
 const achvSt={},achvArgs=args=>({...args,st:achvSt,toast:pcToastMod?.achvToastPort({surface:mdSurface,storage:globalThis.localStorage,send:body=>api('/api/pc-toast',body)})??null});   // Q1B: 오늘·탑이 장부 메모리와 토스트 포트를 함께 쓴다(한쪽에서 알린 달성을 다른 쪽이 다시 알리지 않게)
 // FIX44 (AUD1 #2·#3·#7): 오늘 요약 줄이 쓰는 값·이동. 복습 건수는 공부 모듈이 준비됐을 때만(아니면 그 조각을 그리지 않는다). FIX45 (통제탑 ★1): 주간 백업 알림 줄은 Windows 앱에서만(Fold·iPad는 백업 카드만). FIX45 (AUD1 #9): 수면·걸음 한 줄은 건강 모듈이 켜졌을 때만.
-const todaySummaryPorts=()=>({reviewTotal:()=>{if(!studyOn()||!studySt?.flowState)return null;try{return studyUi.studyReviewTotal(hltCtx(),studySt);}catch{return null;}},openStudy:openReviews,openBackup:mdProfile&&mdSurface==='APP_SHELL'?openBackup:null,healthLine:date=>hltOn()&&whole?.hlt?hltUi.sleepStepsLine(whole.hlt,date):null,weekTimeLine:(monday,day)=>studyOn()?studyStatsMod?.weekCompareText(whole?.study??null,monday,day)??null:null,quickExpense:whole?.fin?()=>openQuickExpense(whole.fin):null,weekReview:args=>weekReviewMod?.renderWeekReviewButton(lifeCtx(),args)??null});
-const lifeCtx=()=>({...hltCtx(),todayPlan,locked:()=>mdSignedOut,storage:globalThis.localStorage,kit:uiKit,study:()=>studyOn()?{ui:studyUi,st:studySt,ctx:hltCtx}:null,...todaySummaryPorts(),money:day=>moneyFacts(whole.fin??null,day),achvPanel:(out,args)=>achvPanelMod?.renderAchvPanel(out,achvArgs(args)),achvMoment:(out,args)=>achvPanelMod?.renderAchvMoment(out,achvArgs(args)),questSheet:args=>achvPanelMod?.openQuestSheet(args),achvTitle:args=>achvPanelMod?.titleBadge({...args,st:achvSt}),monthGoals:args=>recordsMod?.renderMonthGoals({...lifeCtx(),sheet:towerSheet},args)??null,weekGoals:args=>recordsMod?.renderWeekGoals({...lifeCtx(),sheet:towerSheet},args)??null,examResults:args=>recordsMod?.renderExamResults({...lifeCtx(),sheet:towerSheet},args)??null,exportAfterStack:(st,status)=>stateExportMod?stateExportMod.exportAfterStack({surface:mdSurface,views:stateViews,now:()=>new Date().toISOString(),storage:globalThis.localStorage,send:stateSend},st,status):Promise.resolve({status:'SKIPPED',reason:'MODULE'}),focusCard});
+const todaySummaryPorts=()=>({reviewTotal:()=>{if(!studyOn()||!studySt?.flowState)return null;try{return studyUi.studyReviewTotal(hltCtx(),studySt);}catch{return null;}},openStudy:openReviews,openColors:openSubjectColors,openBackup:mdProfile&&mdSurface==='APP_SHELL'?openBackup:null,healthLine:date=>hltOn()&&whole?.hlt?hltUi.sleepStepsLine(whole.hlt,date):null,nap:hltOn()&&whole?.hlt&&hltUi?.easyAdd?{list:date=>hltUi.napsOf(whole.hlt,date),add:async(minutes,startHm)=>{const now=new Date().toISOString(),item=hltUi.napItem(new Date(Date.parse(now)+9*3600000).toISOString().slice(0,10),minutes,startHm||null,now);if(!item)throw appError('INVALID_HLT_TIME');const r=await hltUi.easyAdd(hltCtx(),hltSt,item);await hltReload();return r;}}:null,weekTimeLine:(monday,day)=>studyOn()?studyStatsMod?.weekCompareText(whole?.study??null,monday,day)??null:null,quickExpense:whole?.fin?()=>openQuickExpense(whole.fin):null,weekReview:args=>weekReviewMod?.renderWeekReviewButton(lifeCtx(),args)??null});
+const lifeCtx=()=>({...hltCtx(),todayPlan,autoStack:true,planAutoSave:true,locked:()=>mdSignedOut,storage:globalThis.localStorage,kit:uiKit,study:()=>studyOn()?{ui:studyUi,st:studySt,ctx:hltCtx}:null,...todaySummaryPorts(),money:day=>moneyFacts(whole.fin??null,day),achvPanel:(out,args)=>achvPanelMod?.renderAchvPanel(out,achvArgs(args)),achvMoment:(out,args)=>achvPanelMod?.renderAchvMoment(out,achvArgs(args)),questSheet:args=>achvPanelMod?.openQuestSheet(args),achvTitle:args=>achvPanelMod?.titleBadge({...args,st:achvSt}),monthGoals:args=>recordsMod?.renderMonthGoals({...lifeCtx(),sheet:towerSheet},args)??null,weekGoals:args=>recordsMod?.renderWeekGoals({...lifeCtx(),sheet:towerSheet},args)??null,examResults:args=>recordsMod?.renderExamResults({...lifeCtx(),sheet:towerSheet},args)??null,exportAfterStack:(st,status)=>stateExportMod?stateExportMod.exportAfterStack({surface:mdSurface,views:stateViews,now:()=>new Date().toISOString(),storage:globalThis.localStorage,send:stateSend},st,status):Promise.resolve({status:'SKIPPED',reason:'MODULE'}),focusCard});
 const afterEntity=async(type,id)=>{await hltReload();if(type==='PLAN_DAY')nativeMirrorDay(id);};
 const sealedDrafts=new Map();   // FIX51B B2: 새 기록(칭호·주간 리뷰·목표·모의고사)을 임시 저장(봉인)할 때 만든 초안 id. 저장 경로가 금고 값과 같아진 기록의 남은 초안을 지울 때 쓴다(내용 없이 id만)
 const hltCtx=()=>({document,api,uid,sealedDrafts,digest:sha,recordsDoor:()=>recordsMod?recordsMod.recordsOpen({getWhole:()=>whole}):false,now:()=>new Date().toISOString(),session:()=>mdSignedOutSeq,mdProfile:()=>mdProfile,getWhole:()=>whole,getChanges:()=>changes,sessionSubjectName:id=>lifeUi?lifeUi.sessionSubjectName(whole?.life??null,id):null,studyStatsCard,
@@ -596,16 +624,16 @@ async function entity(type,id,data,heads=[],reason='사용자 편집',confirmed=
 async function refresh(){return timed(refreshTimings,'refresh',refreshCore);}
 // B14 (R1-01): 읽은 값은 모든 읽기가 끝나고 세대가 그대로일 때만 today·whole·changes에 넣는다. 읽는 도중 잠겼으면(signedOutLock이 이미 비움) 아무것도 넣지 않고
 // 남은 읽기도 하지 않는다. 뒤 읽기가 예외로 끝나도 앞서 받은 응답은 메모리에 남지 않는다.
-async function refreshCore(){const lockSeq=mdSignedOutSeq;if(mdProfile){mdApply(await api('/api/md/status',{}));}const first=$('workspace').hidden;const [nextToday,nextWhole]=await Promise.all([api('/api/today'),api('/api/whole-life')]);if(lockSeq!==mdSignedOutSeq)return;const nextChanges=(await api('/api/history')).changes;if(lockSeq!==mdSignedOutSeq)return;today=nextToday;whole=nextWhole;changes=nextChanges;mdSignedOut=false;calendarDate??=whole.localDate;problem=null;$('setup').hidden=true;$('workspace').hidden=false;$('navigation').hidden=false;$('save-exit').hidden=false;if(mdHost){mdPanel.remove();mdHost.hidden=true;}$('session-state').textContent=sessionLabel();if(typeof pcWidget==='function')void pcWidget();if(typeof nativeWidget==='function')nativeWidget();await render();if(first)window.scrollTo(0,0);}
+async function refreshCore(){const lockSeq=mdSignedOutSeq;if(mdProfile){mdApply(await api('/api/md/status',{}));}const first=$('workspace').hidden;const [nextToday,nextWhole]=await Promise.all([api('/api/today'),api('/api/whole-life')]);if(lockSeq!==mdSignedOutSeq)return;const nextChanges=(await api('/api/history')).changes;if(lockSeq!==mdSignedOutSeq)return;today=nextToday;whole=nextWhole;changes=nextChanges;if(typeof withActionDays==='function')withActionDays();mdSignedOut=false;calendarDate??=whole.localDate;problem=null;$('setup').hidden=true;$('workspace').hidden=false;$('navigation').hidden=false;$('save-exit').hidden=false;if(mdHost){mdPanel.remove();mdHost.hidden=true;}$('session-state').textContent=sessionLabel();if(typeof pcWidget==='function')void pcWidget();if(typeof nativeWidget==='function')nativeWidget();await render();if(first)window.scrollTo(0,0);}
 function sessionLabel(){if(!mdProfile)return '이 PC · 잠금해제됨';if(mdRole==='FOLLOWER')return mdSurface==='BROWSER'?'읽기 전용 탭':'읽기 전용 창';return mdReady?'기록 가능 · 바로 동기화':mdAutoOK()?'기록 가능 · 저장할 때 자동 동기화':mdDraftReady?'이 기기에 임시 저장만 가능':'읽기 전용';}
 async function sessionStream(){streamController=new AbortController();try{const response=await fetch('/api/session-stream',{headers:{Authorization:'Bearer '+capability},cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer',signal:streamController.signal});if(!response.ok)throw new Error('stream');const reader=response.body.getReader();while(!(await reader.read()).done){}if(!ended)throw new Error('closed');}catch{if(!ended){ended=true;status('앱 연결이 종료되었습니다. LIFE BRICK 앱을 다시 여세요.',true);lock(false);}}}
 function setup(state){if(state.profile==='LBOS_SEQUENTIAL_OWNER_APP_1'){mdProfile=true;mdSurface=state.surface;setupMD(state);return;}setupState=state.state;if($('storage-label'))$('storage-label').textContent='이 PC에 암호화 저장';if($('sync-label'))$('sync-label').textContent='클라우드 연결 없음';if(state.state==='RECOVERY_ONLY'){$('setup').hidden=false;$('setup-heading').textContent='검증된 복원본 만들기';$('setup-form').hidden=true;add($('setup'),button('백업에서 복원…',showRecovery,'primary'));$('save-exit').hidden=false;$('session-state').textContent='복구 전용 · 현재 저장소를 열지 않음';status('RECOVER_LIFE_BRICK.cmd · 기존 저장소를 교체하지 않습니다.');return;}add($('setup'),button('백업에서 복원…',showRecovery));$('setup').hidden=false;const fresh=state.state==='SETUP';$('setup-heading').textContent=fresh?'이 PC에서 시작하기':'내 저장소 잠금해제';$('setup-submit').textContent=fresh?'새 저장소 만들기':'잠금해제';$('new-only').hidden=!fresh;$('recovery-only').hidden=!fresh;$('recovery-secret').required=fresh;$('seed-titles').replaceChildren();for(const seed of state.seeds||[]){const input=field($('seed-titles'),seed.actionId,'text',seed.title);input.required=true;input.maxLength=100;input.dataset.actionId=seed.actionId;}status(fresh?'잠금해제와 복구용 비밀문구는 서로 다르게 정해 안전하게 보관하세요.':'기존 기록을 열려면 잠금해제 비밀문구를 입력하세요.');}
 $('setup-form').addEventListener('submit',event=>{event.preventDefault();void perform(async()=>{try{if(setupState==='SETUP'){const inputs=[...$('seed-titles').querySelectorAll('input')],seeds=inputs.map((n,i)=>({actionId:n.dataset.actionId,title:n.value,active:true,displayOrder:i}));const r=await submit('/api/vault/create',{requestId:uid(),commandDigest:await sha({type:'INITIALIZE',seeds}),unlockSecret:$('unlock-secret').value,recoverySecret:$('recovery-secret').value,titles:inputs.map(n=>n.value)});if(r.status!==savedStatus())throw appError('HOLD_UNKNOWN_SAVE');}else await api('/api/vault/unlock',{unlockSecret:$('unlock-secret').value});await refresh();status(savedMessage());}finally{$('unlock-secret').value='';$('recovery-secret').value='';}});});
-function navigate(next,{focus=true}={}){void perform(async()=>{if(ROUTE_ALIAS[next]){if(next==='HOUSE')houseFocus=true;next=ROUTE_ALIAS[next];}if(next==='CALENDAR'&&planMonthOn()){next='PLANS';planSt.view='MONTH';}view=next;await render();window.scrollTo(0,0);if(houseFocus){houseFocus=false;$('house')?.scrollIntoView({block:'start'});}if(focus)$('page-title').focus({preventScroll:true});});}
+function navigate(next,{focus=true}={}){void perform(async()=>{if(ROUTE_ALIAS[next]){if(next==='HOUSE')houseFocus=true;next=ROUTE_ALIAS[next];}if(next==='CALENDAR'&&planMonthOn()){next='PLANS';planSt.view='MONTH';}view=next;if(typeof clearScreenNote==='function')clearScreenNote();await render();window.scrollTo(0,0);if(houseFocus){houseFocus=false;$('house')?.scrollIntoView({block:'start'});}if(focus)$('page-title').focus({preventScroll:true});});}
 // B14 (R6-01): gone()은 이 render가 시작한 뒤 로그아웃 잠금이 끼었는지 본다(참이면 그 사이 채워진 건강·공부 사본을 다시 비움). renderCore는 await마다 보고,
 // 끼었으면 calendarState·hltSt·studySt·화면에 아무것도 넣지 않고 끝낸다. 달력 보기 버튼(renderCalendar)도 같은 gone으로 다시 그린다.
-async function render(){if(mdSignedOut)return;const seq=mdSignedOutSeq,gone=()=>{if(seq===mdSignedOutSeq)return false;if(mdSignedOut)for(const st of [hltSt,studySt])if(st){st.raw=null;st.flowState=null;}return true;};return timed(renderTimings,'render',()=>renderCore(gone));}   // S1c: 로그아웃 뒤에는 메모리 사본으로 화면을 다시 그리지 않는다
-async function renderCore(gone=()=>false){if(ROUTE_ALIAS[view])view=ROUTE_ALIAS[view];if(view==='HEALTH'&&!hltOn())view='HOME';if(view==='STUDY'&&!studyOn())view='HOME';const [title,sub]=VIEW_META[view];$('page-kicker').textContent=VIEW_META[view][2]||view;$('page-title').textContent=title;$('page-title').tabIndex=-1;$('page-subtitle').textContent=sub;renderNav();const root=$('view-content');root.replaceChildren();if(view==='CALENDAR'){calendarMode??=narrow()?'7_DAY':'MONTH';const cal=await api('/api/calendar-view',{mode:calendarMode,date:calendarDate});if(gone())return;calendarState=cal;}if(view==='HEALTH'||view==='STUDY'){await cardDraftReady;if(gone())return;}if((view==='HOME'||view==='STATUS')&&lifeUi){await cardDraftReady;if(gone())return;try{await lifeUi.prepareLife(lifeCtx(),lifeSt,gone);}catch{if(!gone())lifeSt.flowState=null;}if(gone())return;}if(view==='HOME'&&studyOn()){await cardDraftReady;if(gone())return;try{await studyUi.prepareStudy(hltCtx(),studySt,gone);}catch{if(!gone())studySt.flowState=null;}if(gone())return;}if(view==='HEALTH'){await hltUi.prepareHealth(hltCtx(),hltSt,gone);if(gone())return;hltUi.renderHealth(root,hltCtx(),hltSt);applyMDLocks();return;}if(view==='STUDY'){await studyUi.prepareStudy(hltCtx(),studySt,gone);if(gone())return;studyUi.renderStudy(root,hltCtx(),studySt);applyMDLocks();return;}if(view==='STATUS'){renderStatus(root);applyMDLocks();return;}({HOME:renderHome,ACTIONS:renderToday,LIFE:renderLife,PLANS:renderPlans,CALENDAR:renderCalendar,FINANCE:renderFinance,LEDGER:renderLedger,PROGRESS:renderProgress,HISTORY:renderHistory,SETTINGS:renderSettings,DEVICES:renderDevices,MORE:renderMore,ADVANCED:r=>renderAdvanced(r)})[view](root,gone);applyMDLocks();}
+async function render(){if(mdSignedOut)return;if(typeof withActionDays==='function')withActionDays();const seq=mdSignedOutSeq,gone=()=>{if(seq===mdSignedOutSeq)return false;if(mdSignedOut)for(const st of [hltSt,studySt])if(st){st.raw=null;st.flowState=null;}return true;};const out=await timed(renderTimings,'render',()=>renderCore(gone));if(typeof paintPendingLine==='function')paintPendingLine();return out;}   // S1c: 로그아웃 뒤에는 메모리 사본으로 화면을 다시 그리지 않는다
+async function renderCore(gone=()=>false){if(ROUTE_ALIAS[view])view=ROUTE_ALIAS[view];if(view==='HEALTH'&&!hltOn())view='HOME';if(view==='STUDY'&&!studyOn())view='HOME';const [title,sub]=VIEW_META[view];$('page-kicker').textContent=VIEW_META[view][2]||view;$('page-title').textContent=title;$('page-title').tabIndex=-1;$('page-subtitle').textContent=sub;renderNav();const root=$('view-content');root.replaceChildren();if(view==='CALENDAR'){calendarMode??=narrow()?'7_DAY':'MONTH';const cal=await api('/api/calendar-view',{mode:calendarMode,date:calendarDate});if(gone())return;calendarState=cal;}if(view==='HEALTH'||view==='STUDY'){await cardDraftReady;if(gone())return;}if((view==='HOME'||view==='STATUS')&&lifeUi){await cardDraftReady;if(gone())return;try{await lifeUi.prepareLife(lifeCtx(),lifeSt,gone);}catch{if(!gone())lifeSt.flowState=null;}if(gone())return;}if(view==='ACTIONS'&&lifeUi){await cardDraftReady;if(gone())return;try{await lifeUi.prepareLife(lifeCtx(),lifeSt,gone);}catch{if(!gone())lifeSt.flowState=null;}if(gone())return;}if(view==='HOME'&&studyOn()){await cardDraftReady;if(gone())return;try{await studyUi.prepareStudy(hltCtx(),studySt,gone);}catch{if(!gone())studySt.flowState=null;}if(gone())return;}if(view==='HEALTH'){await hltUi.prepareHealth(hltCtx(),hltSt,gone);if(gone())return;hltUi.renderHealth(root,hltCtx(),hltSt);applyMDLocks();return;}if(view==='STUDY'){await studyUi.prepareStudy(hltCtx(),studySt,gone);if(gone())return;studyUi.renderStudy(root,hltCtx(),studySt);applyMDLocks();return;}if(view==='STATUS'){renderStatus(root);applyMDLocks();return;}({HOME:renderHome,ACTIONS:renderToday,LIFE:renderLife,PLANS:renderPlans,CALENDAR:renderCalendar,FINANCE:renderFinance,LEDGER:renderLedger,PROGRESS:renderProgress,HISTORY:renderHistory,SETTINGS:renderSettings,DEVICES:renderDevices,MORE:renderMore,ADVANCED:r=>renderAdvanced(r)})[view](root,gone);applyMDLocks();}
 // SA_FIXES (2026-10-29): display only. Nothing in this block changes what is saved, when, or how (no sync, lease, crypto or server protocol code).
 // F1: a rejected save also shows its reason and the recovery path inside the open editor window and on the cards that still hold unsaved input (called from fail()).
 // F2: once write-ready is confirmed again (renderProductState), only the red lines of resolvable rejections are cleared. HOLD_*, MD_PENDING_RECONCILE_REQUIRED and
@@ -734,7 +762,7 @@ function urgentDate(){const limit=shifted(whole.localDate,7),rows=whole.home.upc
 function glancePanel(){
  if(mdProfile&&!mdUnlocked)return null;
  return buildTodayGlance(document,[
-  {view:'LEDGER',label:'가계부',line:()=>whole.fin?todaySpendLine(whole.fin,whole.localDate):null},
+  {view:'LEDGER',label:'돈',line:()=>whole.fin?todaySpendLine(whole.fin,whole.localDate):null},
   {view:'HEALTH',label:'건강',line:()=>hltOn()?hltUi.healthHomeLine(hltCtx()):null},
   {view:'STUDY',label:'공부',line:()=>studyOn()?studyUi.studyHomeLine(hltCtx(),studySt):null},
  ],navigate);
@@ -805,13 +833,23 @@ function actionCard(a,{home=false}={}){
  const save=button('저장',()=>perform(async()=>{if(!drafts.has(a.actionId)){status('바꾼 내용이 없습니다. 결과를 고르거나 이어갈 지점을 적은 뒤 저장하세요.');return;}const before=whole.progress.house.totalBlocks,r=await saveDraft(a.actionId);if(r.status==='LOCAL_DRAFT')localDrafted.set(a.actionId,{value:r.value,at:Date.now()});else localDrafted.delete(a.actionId);await refresh();const gained=whole.progress.house.totalBlocks-before;status(a.title+' · '+saveMessageFor(r.status)+(r.status!=='LOCAL_DRAFT'&&gained>0?' · 탑 +'+gained+' 블록':''));}),'primary save-button');save.setAttribute('aria-label','저장 · '+a.title);
  add(box,group,edit,amount,add(el('div',null,'save-row'),save,saved));show();return box;
 }
-function renderToday(root){const state=saveState();if(state.tone!=='ok'||problem)add(root,saveStateCard(state));add(root,writeModeNote());if(lifeUi&&lifeSt)lifeUi.renderPastDays(root,lifeCtx(),lifeSt);const grid=el('div',null,'actions-grid');for(const a of today.actions)add(grid,actionCard(a));if(!today.actions.length)add(grid,empty('켜 둔 행동이 없습니다. 설정에서 추가하거나 활성화하세요.'));add(root,grid,hint('화면을 여는 것만으로는 기록되지 않습니다. 기록하지 않은 행동은 "하지 못함"으로 세지 않습니다. 저장하지 않은 입력은 화면을 옮겨도 남고, "저장 후 종료" 때 함께 저장됩니다.'));}
+// V6B: 기본 행동(코어 행동 기록)의 날짜별 지금 결과를 습관 성취표·성취 엔진이 읽도록 화면의 life 사본에 붙인다(저장 0, 이력 changes에서 계산, life-achieve actionDaysFrom과 같은 규칙).
+// 같은 기록 칸(entityKey)의 첫 줄(최신)이 지금 값이다. life가 없으면 붙이지 않는다(건강·공부만 쓰는 화면은 그대로).
+// 기록을 다시 읽을 때(refreshCore)와 화면을 그릴 때(render) 부른다. 같은 기록(whole·changes)이면 다시 만들지 않는다(성취 계산 메모가 유지되게).
+let actionDaysOf=null;
+function withActionDays(){if(!whole?.life||actionDaysOf?.whole===whole&&actionDaysOf.changes===changes)return;actionDaysOf={whole,changes};const seen=new Set(),days={};for(const c of Array.isArray(changes)?changes:[]){if(c?.type!=='RESULT'||seen.has(c.entityKey))continue;seen.add(c.entityKey);const d=c.value?.localDate,o=c.value?.outcome;if(typeof d==='string'&&typeof c.actionId==='string'&&['COMPLETE','PARTIAL','NOT_DONE'].includes(o))(days[d]??={})[c.actionId]=o;}whole.life={...whole.life,actionDefs:(whole.actions??[]).map(a=>({actionId:a.actionId,name:a.title,active:a.active,domain:a.domain})),actionDays:days};}
+// V6B: 성취표의 오늘 기본 행동 칸 = 행동 카드의 결과 저장과 같은 길(saveDraft, 연산 1). 이어갈 지점·양 입력은 그대로 둔다.
+function recordActionOutcome(a,outcome){void perform(async()=>{const t=today.actions.find(x=>x.actionId===a.actionId);if(!t)throw appError('UNSAVED_ACTION_DRAFT');const prev=drafts.get(t.actionId);if(!prev&&t.outcome===outcome){status(t.title+' · 이미 같은 결과('+LABEL[outcome]+')가 쌓여 있어요.');return;}drafts.set(t.actionId,{base:prev?.base||structuredClone(t),value:{...(prev?.value||{outcome:t.outcome,restartPoint:t.restartPoint}),outcome},localDate:today.localDate,observationId:prev?.observationId||uid().slice(0,32)});const r=await saveDraft(t.actionId);if(r.status==='LOCAL_DRAFT')localDrafted.set(t.actionId,{value:r.value,at:Date.now()});else localDrafted.delete(t.actionId);await refresh();status(t.title+' · '+LABEL[outcome]+' · '+saveMessageFor(r.status));});}
+// V6B: 기록 탭 첫 화면 = 습관 성취표(행동 카드 = 이어갈 지점·실제로 한 양은 행 상세 안, 지우지 않음). 성취표를 못 그리면(모듈 없음) 아래 옛 행동 카드 화면 그대로.
+function renderHabitBoardView(root){if(!(lifeUi?.renderHabitBoard&&lifeSt?.flow))return false;lifeUi.renderHabitBoard(root,lifeCtx(),lifeSt,{actionDefs:whole.life?.actionDefs??[],actionDays:whole.life?.actionDays??{},actionDetail:a=>{const t=today.actions.find(x=>x.actionId===a.actionId);return t?actionCard(t):empty('오늘 화면에서 꺼 둔 행동입니다.');},recordAction:recordActionOutcome,openActionPast:d=>{historyFilter={date:d,domain:'',type:'RESULT'};historyLimit=100;view='HISTORY';void render();}});lifeUi.renderPastDays(root,lifeCtx(),lifeSt);return true;}
+function renderToday(root){const state=saveState();if(state.tone!=='ok'||problem)add(root,saveStateCard(state));add(root,writeModeNote());if(renderHabitBoardView(root))return;if(lifeUi&&lifeSt)lifeUi.renderPastDays(root,lifeCtx(),lifeSt);const grid=el('div',null,'actions-grid');for(const a of today.actions)add(grid,actionCard(a));if(!today.actions.length)add(grid,empty('켜 둔 행동이 없습니다. 설정에서 추가하거나 활성화하세요.'));add(root,grid,hint('화면을 여는 것만으로는 기록되지 않습니다. 기록하지 않은 행동은 "하지 못함"으로 세지 않습니다. 저장하지 않은 입력은 화면을 옮겨도 남고, "저장 후 종료" 때 함께 저장됩니다.'));}
 function renderMore(root,gone=()=>false){const s=saveState();if(s.tone==='alert')add(root,saveStateCard(s));const list=el('div',null,'more-list');for(const [key,title,detail,go] of [['SETTINGS'],['DEVICES','연결 · 장치 · 복구'],['DEVICES','백업 · 복구','마지막 주간 백업 표시 · 저장 위치 · 분실 복구',openBackup],['ADVANCED']]){const [,label,sub,icon]=NAV.find(n=>n[0]===key),b=el('button',null,'more-item'),mark=el('span',icon,'nav-symbol');b.type='button';b.dataset.navOnly='1';b.dataset.view=key;mark.setAttribute('aria-hidden','true');add(b,mark,add(el('span',null,'more-text'),el('strong',title||label),el('small',detail||sub)));b.addEventListener('click',go??(()=>navigate(key)));add(list,b);}add(root,list);if(aiGateMod)aiGateMod.renderAssistants(root,{h:{el,add,button},surface:mdSurface,request:aiReports,gone,decorate:finderDecorate()});}
 // B40 더보기 > 고급: 남은 저장 용량 한 줄과 기록 권한 버튼들. 버튼은 #md-controls 패널 안에 그대로 있고(잠금·입력 추적 규칙 동일), data-pane으로 이 화면에서는 고급 묶음만, 연결 · 장치에서는 그 밖의 것만 보인다.
 function renderAdvanced(root){add(root,add(section('남은 저장 용량','평소에는 신경 쓰지 않아도 됩니다.'),opsNotice(finOps(),{always:true})));if(mdProfile&&mdPanel){mdHost.hidden=true;mdPanel.dataset.pane='ADVANCED';add(root,mdPanel);}}
 // FIX44 (AUD1 #2): 백업 카드로 간다(더보기 줄·오늘 요약 줄). 카드는 연결 · 장치 맨 위이고 이 기기 저장소 키 1개만 쓴다(life-ui renderBackupCard).
 function openBackup(){void perform(async()=>{view='DEVICES';await render();window.scrollTo(0,0);$('backup-card')?.scrollIntoView({block:'start'});$('page-title').focus({preventScroll:true});});}
 // FIX45 (AUD1 #6): 공부 화면 맨 위에 통계가 생겨 오늘의 "복습 n건"은 복습 칸으로 바로 간다(탭으로 들어가면 통계부터 보인다).
+function openSubjectColors(){void perform(async()=>{view='SETTINGS';await render();window.scrollTo(0,0);$('subject-colors')?.scrollIntoView({block:'start'});$('page-title').focus({preventScroll:true});});}   // V6A: 공부 벽돌 "색 바꾸기" → 설정의 과목 색(DS2)
 function openReviews(){void perform(async()=>{view='STUDY';await render();window.scrollTo(0,0);$('study-review')?.scrollIntoView({block:'start'});$('page-title').focus({preventScroll:true});});}
 function renderDevices(root){add(root,saveStateCard());if(mdProfile&&lifeUi)lifeUi.renderBackupCard(root,{document,today:kstDay,storage:globalThis.localStorage});if(mdProfile){if(mdPanel){mdHost.hidden=true;mdPanel.dataset.pane='DEVICES';add(root,mdPanel);}renderMDSettings(root,whole.settings);return;}renderLegacyStorage(root);}
 async function saveDraft(actionId){const d=drafts.get(actionId);if(!d)return;const a=d.base,v=d.value;if([...v.restartPoint].length>500)throw appError('INVALID_TEXT');const fields={actionId,localDate:d.localDate,expectedHeads:a.heads,outcome:v.outcome!==a.outcome?v.outcome:null,restartPoint:v.restartPoint!==a.restartPoint?v.restartPoint:null,reason:'',confirmed:false};if(v.measurementInput){const inputs=Object.fromEntries(Object.entries(v.measurementInput).map(([k,value])=>[k,{value}]));const measurement=inputMeasurement(inputs,d.observationId);if(measurement){fields.measurement=measurement;fields.expectedHeads={...fields.expectedHeads,measurement:[]};}}const result=await submit('/api/action-record',await command('RECORD',fields));if(result.status!==savedStatus())throw appError('HOLD_UNKNOWN_SAVE');drafts.delete(actionId);updateUnsaved();return {status:result.status,value:v};}
@@ -835,7 +873,7 @@ setInterval(()=>{if(!document.hidden)void dayRollover();},30000);document.addEve
 function cancelEditor(){if(busy)return;$('editor').close();$('editor-content').replaceChildren();editorSave=null;}
 for(const id of ['editor-cancel','editor-cancel-top'])$(id).addEventListener('click',cancelEditor);
 $('editor').addEventListener('cancel',e=>{if(busy)e.preventDefault();});
-$('editor-form').addEventListener('submit',event=>{event.preventDefault();void perform(async()=>{if(!editorSave)return;const saved=await editorSave();$('editor').close();$('editor-content').replaceChildren();editorSave=null;if(!ended){await refresh();status(savedMessage()+' · 변경 이력을 보존했습니다.'+(saved?.notice?' · '+saved.notice:''));}});});
+$('editor-form').addEventListener('submit',event=>{event.preventDefault();void perform(async()=>{if(!editorSave)return;const saved=await editorSave();if(saved?.ask)return;/* FIX67 (M-01): 같은 결제 확인을 띄웠으면 창을 닫지 않는다 */$('editor').close();$('editor-content').replaceChildren();editorSave=null;if(!ended){await refresh();status(savedMessage()+' · 변경 이력을 보존했습니다.'+(saved?.notice?' · '+saved.notice:''));}});});
 function editDomain(d){modal(d.code+' · '+d.name,root=>{const fields={},grid=el('div',null,'field-grid');add(root,grid);fields.status=field(grid,'영역 상태','select',d.data.status,['ACTIVE','MAINTAIN','DEFERRED_WITH_REASON','UNKNOWN','NOT_APPLICABLE']);const extra=add(el('details',null,'form-more'),el('summary','추가 항목 (선택) · 현재 계획 · 막힌 점 · 다시 볼 조건 · 보류 이유')),extraGrid=add(extra,el('div',null,'field-grid'));for(const [key,label] of [['currentState','현재 상태'],['desiredState','바라는 상태'],['currentPlan','현재 계획'],['nextAction','다음 행동'],['blocker','막힌 점'],['reviewTrigger','다시 볼 조건'],['deferredReason','보류 이유']])fields[key]=field(['currentPlan','blocker','reviewTrigger','deferredReason'].includes(key)?extraGrid:grid,label,'textarea',d.data[key]);extra.open=!!(d.data.currentPlan||d.data.blocker||d.data.reviewTrigger||d.data.deferredReason||d.data.status==='DEFERRED_WITH_REASON');fields.status.addEventListener('change',()=>{if(fields.status.value==='DEFERRED_WITH_REASON')extra.open=true;});add(root,extra);return ()=>entity('DOMAIN',d.code,Object.fromEntries(Object.entries(fields).map(([k,v])=>[k,v.value])),d.heads);});}
 function planProgress(p){const total=p.data.milestones.length,done=p.data.milestones.filter(m=>m.done).length;const n=el('div');if(total){const bar=el('progress');bar.max=total;bar.value=done;bar.setAttribute('aria-label',p.data.title+' 중간 목표 '+done+'/'+total);add(n,bar,el('div',done+' / '+total+' 중간 목표 완료','progress-caption'));}else add(n,hint('중간 목표 미설정 · 완료율을 추정하지 않습니다.'));return n;}
 function renderPlans(root){let box=root;if(lifePlan&&planSt){const suggest=suggestMod?(sec,o={})=>suggestMod.renderSuggest(sec,{...lifeCtx(),sheet:towerSheet,h:{el,add,button},surface:mdSurface,request:aiReports,planSt,...o},suggestSt??=suggestMod.createSuggestState()):null;lifePlan.followPlanToday?.(planSt,kstDay());if(planMonthOn())loadPlanCal();lifePlan.renderPlan(root,{...lifeCtx(),sheet:towerSheet,planWeek:planWeekMod&&uiKit?(st,o)=>planWeekMod.renderWeekGrid({...lifeCtx(),sheet:towerSheet,suggest},st,o):null,planMonth:planMonthMod&&uiKit?(st,o)=>planMonthMod.renderMonth({...lifeCtx(),sheet:towerSheet,planCal:planCalCtx()},st,o):null,planCal:planCalCtx()},planSt);if(suggest&&!planWeekMod)suggest(root);box=add(el('details',null,'panel plan-more'),el('summary','더보기 · 목표 계획 · 일정 내보내기','plan-more-summary'));add(root,box);box.open=Boolean(planSt.moreOpen);box.addEventListener('toggle',()=>{planSt.moreOpen=box.open;});add(box,el('h2','목표 계획','panel-title plan-goals-title'));}const toolbar=el('div',null,'section-toolbar');add(toolbar,button('계획 추가',()=>editPlan(null),'primary'));const filter=field(toolbar,'계획 상태 필터','select',planFilter,[['ALL','모든 상태'],'ACTIVE','MAINTAIN','DEFERRED_WITH_REASON','COMPLETE','UNKNOWN']);filter.addEventListener('change',()=>{planFilter=filter.value;void render();});add(box,toolbar);const grid=el('div',null,'plan-grid');for(const p of whole.plans.filter(p=>planFilter==='ALL'||p.data.status===planFilter)){const d=p.data,card=section(d.title);card.classList.add('plan-card');const more=add(el('details',null,'card-details'),el('summary','자세히 · 목표 · 현재 단계 · 막힌 점 · 기한'),el('p',d.goal||'목표 미입력'),hint('현재 단계: '+(d.currentStage||'미입력')));more.open=!narrow();add(card,add(el('div',null,'plan-meta'),badge(d.status),el('span',d.domain+' · '+domainName(d.domain))),row('다음 행동',d.nextAction||'미입력'),planProgress(p));for(const m of d.milestones){const label=el('label',null,'milestone'+(m.done?' done':'')),cb=el('input');cb.type='checkbox';cb.checked=m.done;cb.setAttribute('aria-label',d.title+' / '+m.title+' 완료');cb.addEventListener('change',()=>perform(async()=>{await entity('PLAN',p.entityId,{...d,milestones:d.milestones.map(x=>x.milestoneId===m.milestoneId?{...x,done:cb.checked}:x)},p.heads,'중간 목표 상태 변경');await refresh();status('중간 목표 상태를 저장했습니다.');}));add(label,cb,el('span',m.title+(m.dueDate?' · '+m.dueDate:'')));add(card,label);}if(d.blockedReason)add(more,hint('막힌 점: '+d.blockedReason));add(more,hint('기한 '+(d.dueDate||'없음')+' · 검토 '+(d.reviewDate||'없음')));add(card,more,button('계획 편집 · '+d.title,()=>editPlan(p)));add(grid,card);}if(!grid.children.length)add(grid,empty('아직 이 상태의 계획이 없습니다.'));add(box,grid);nativeMirrorDaily();if(icsImportMod&&uiKit)icsImportMod.renderOuterPanel(box,{...icsOuterCtx(),showUpcoming:true});if(icsExportMod&&uiKit)icsExportMod.renderIcsExport(box,{h:{el,add,button},kit:uiKit,views:()=>({events:whole.events,plans:whole.plans,life:whole.life??null,today:whole.localDate}),mirrorOn:nativeMirrorOn,now:()=>new Date().toISOString(),download:(name,text)=>{const url=URL.createObjectURL(new Blob([text],{type:'text/calendar;charset=utf-8'})),a=el('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}});}
@@ -863,12 +901,12 @@ function renderFinance(root){const f=whole.finance;add(root,add(el('div',null,'s
 function editFinance(snapshot){const d=snapshot?.data||{snapshotDate:whole.localDate,currency:'KRW',minorUnitDigits:0,notes:'',...Object.fromEntries(FINANCE_FIELDS.map(([k])=>[k,null]))};modal(snapshot?'재정 기록 편집':'새 재정 기록',root=>{const grid=el('div',null,'field-grid');add(root,grid);const date=field(grid,'기준일','date',d.snapshotDate);date.required=true;date.max=whole.localDate;const currency=field(grid,'통화 코드','text',d.currency);currency.required=true;currency.pattern='[A-Z]{3}';currency.maxLength=3;const precision=field(grid,'금액 소수 자릿수','select',String(d.minorUnitDigits),[['0','정수 (원 등)'],['2','소수 둘째 자리 (USD 등)']]);const categories=[];for(const [key,label]of FINANCE_FIELDS){const p=section(label),dated=['upcomingPayments','incomeItems'].includes(key),mode=field(p,label+' 입력 상태','select',d[key]===null?'UNKNOWN':d[key].length?'ITEMS':'NONE',[['UNKNOWN','아직 모름'],['NONE','명시적으로 없음 (0)'],['ITEMS','항목 직접 입력']]),list=el('div',null,'editable-list'),items=[];const addRow=item=>{const row=el('div',null,'edit-row'),label=field(row,'항목 이름','text',item.label),amount=field(row,'금액 (빈칸은 모름)','text',item.amount??'');label.maxLength=100;amount.inputMode='decimal';const when=dated?field(row,'납부 / 수입 날짜 (선택)','date',item.date):null;const record={id:item.itemId,label,amount,when};items.push(record);add(row,button('항목 제거',()=>{items.splice(items.indexOf(record),1);row.remove();}));add(list,row);};for(const item of d[key]||[])addRow(item);const plus=button(label+' 항목 추가',()=>{mode.value='ITEMS';sync();if(items.length<50)addRow({itemId:entityId(),label:'',amount:null,date:null});});const sync=()=>{list.hidden=mode.value!=='ITEMS';};mode.addEventListener('change',sync);sync();add(p,list,plus);add(root,p);categories.push({key,mode,items,dated});}const notes=field(root,'재정 메모','textarea',d.notes);return ()=>{const data={snapshotDate:date.value,currency:currency.value,minorUnitDigits:Number(precision.value),notes:notes.value};for(const c of categories){if(c.mode.value==='UNKNOWN')data[c.key]=null;else if(c.mode.value==='NONE')data[c.key]=[];else{if(!c.items.length)throw appError('FINANCE_ITEMS_REQUIRED');data[c.key]=c.items.map(i=>{const raw=i.amount.value.replace(/[,\s]/g,'');return {itemId:i.id,label:i.label.value,amount:raw===''?null:raw,...(c.dated?{date:i.when.value||null}:{})};});}}return entity('FINANCE',snapshot?.entityId||entityId(),data,snapshot?.heads||[]);};});}
 // FIN01 가계부 화면(F2 입력·목록·가져오기·규칙, F3 시각화). 저장은 기존 entity() 경로 하나만 쓴다(엔티티 1개 = 연산 1개).
 // 계산은 fin-charts.mjs·fin-ledger.mjs(순수 함수), 그리기는 SVG createElementNS + styles.css 클래스. 금액은 BigInt, null(모름)은 0이 아니다.
-const FIN_TABS=[['CHARTS','한눈에 · 그래프'],['ANALYSIS','분석'],['TXNS','거래'],['PLAN','반복 · 고정비'],['RECURRING','정기 결제'],['BUDGET','예산'],['ACCOUNTS','계정'],['RULES','규칙'],['STATEMENT','명세서 가져오기'],['IMPORT','과거 이력 가져오기']];
+const FIN_TABS=[['CHARTS','한눈에 · 그래프'],['ANALYSIS','분석'],['TXNS','거래'],['RECURRING','정기 결제'],['BUDGET','예산'],['ACCOUNTS','계정'],['RULES','규칙'],['STATEMENT','명세서 가져오기'],['IMPORT','과거 이력 가져오기']];
 const FIN_KIND_TEXT={EXPENSE:'지출',INCOME:'수입',REFUND:'환불',TRANSFER:'이체',PREPAID_LOAD:'선불 충전'};
 const FIN_ACCOUNT_TEXT={CARD:'카드',CASH:'현금',BANK:'은행 계좌',EPAY:'간편결제·페이',LOAN:'대출',OTHER:'기타'};
 const FIN_ROW_TEXT={PURCHASE:'승인',FULL_CANCEL:'전액 취소',REFUND:'환불',PARTIAL_UNKNOWN:'부분 취소 · 실제 금액 모름',POSTED:'직접 입력'};
 const SVG_NS='http://www.w3.org/2000/svg';
-let finTab='CHARTS',finPeriod='LAST_12',finCustom={from:'',to:''},finMask=true,finTree=[],finMonth=null,finFilter={accountId:'',category:''},finImport=null,finResizeTimer=null,finLastWidth=0;
+let finTab='CHARTS',finPeriod='LAST_12',finCustom={from:'',to:''},finMask=true,finTree=[],finMonth=null,finFilter={accountId:'',category:''},finImport=null,finResizeTimer=null,finLastWidth=0,finSameOnly=false;
 const finTables=new Set();
 function svgEl(tag,attrs={},cls){const n=document.createElementNS(SVG_NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));if(cls)n.setAttribute('class',cls);return n;}
 function svgText(x,y,text,cls,anchor='start'){const n=svgEl('text',{x,y,'text-anchor':anchor},cls);n.textContent=text;return n;}
@@ -908,13 +946,14 @@ function opsNotice(b,{always=false}={}){const n=capacityNotice(b,finLocal());if(
 function renderLedger(root){
  const fin=whole.fin;
  if(!fin){add(root,empty('이 앱 버전은 가계부 자료를 보내지 않습니다. 모든 기기를 새 빌드로 업데이트하세요.'));return;}
- const tabs=el('div',null,'fin-tabs');tabs.setAttribute('role','toolbar');tabs.setAttribute('aria-label','가계부 화면');
- for(const [k,label] of FIN_TABS){const b=button(label,()=>void perform(async()=>{finTab=k;await render();}),'secondary'+(finTab===k?' active':''));b.dataset.navOnly='1';b.setAttribute('aria-pressed',String(finTab===k));add(tabs,b);}
+ const tabs=el('div',null,'fin-tabs');tabs.setAttribute('role','toolbar');tabs.setAttribute('aria-label','돈 화면');
+ for(const [k,label] of FIN_TABS){const b=button(label,()=>void perform(async()=>{if(finTab!==k&&typeof clearScreenNote==='function')clearScreenNote();finTab=k;await render();}),'secondary'+(finTab===k?' active':''));b.dataset.navOnly='1';b.setAttribute('aria-pressed',String(finTab===k));add(tabs,b);}
  // FIX44 (AUD1 #7): 빠른 지출은 돈 탭 맨 위. 어느 소탭에서든 바로 연다(기존 빠른 지출 입력 창).
  add(root,add(el('div',null,'button-row fin-quick-bar'),button('빠른 지출',()=>openQuickExpense(fin),'primary')));
  add(root,opsNotice(finOps()),tabs);
  if(finTab!=='STATEMENT'&&finStmt&&!finStmt.running)finStmt=null;   // B64: 명세서 파일 내용은 소탭을 떠나면 버린다
  if(fin.incompleteSplits?.length)add(root,el('p','분할 묶음 미완료 · '+fin.incompleteSplits.map(x=>x.chunk+' ('+x.saved.length+'/'+x.count+'조각 저장)').join(', ')+' · 이 달의 합계·그래프는 일부만 반영된 상태입니다. "과거 이력 가져오기"에서 같은 계획 파일로 이어서 가져오세요.','fin-warn'));
+ if(finTab==='PLAN')finTab='RECURRING';   // V6F (지시서 8): 예전 "반복 · 고정비" 소탭은 "정기 결제" 안으로 합쳤다(다른 화면에서 PLAN으로 오면 합친 화면)
  ({CHARTS:renderFinCharts,ANALYSIS:renderFinAnalysis,TXNS:renderFinTxns,PLAN:renderFinPlan,RECURRING:renderFinRecurring,BUDGET:renderFinBudget,ACCOUNTS:renderFinAccounts,RULES:renderFinRules,STATEMENT:renderFinStatement,IMPORT:renderFinImport})[finTab](root,fin);
  if(finTab==='CHARTS'){const seq=mdSignedOutSeq;renderBudgetReport(root,{h:{el,add},surface:mdSurface,request:aiReports,gone:()=>seq!==mdSignedOutSeq});}   // B59: 돈 탭 하단, 사령부 가계부 비서 최신 1장(없으면 카드 없음)
 }
@@ -1083,12 +1122,17 @@ function renderFinTxns(root,fin){
   add(el('span',null,'fin-chip'),el('span','이체(소비 아님)'),el('strong',formatWon(sum.transfer))),
   add(el('span',null,'fin-chip'),el('span','수입'),el('strong',formatWon(sum.income))),
   add(el('span',null,'fin-chip'),el('span','실제 금액 모름'),el('strong',finCount(sum.unknownRows)+'행'))));
+ // FIX67 (M-01·M-03): 장부 점검 줄(계산만, 저장 0). 이 달 직접 입력 지출 중 같은 날·같은 금액·같은 계정 묶음(필터와 상관없이). 0쌍이면 숨김. 누르면 그 줄만 보여 준다. 정리는 각 줄의 [무효화] 그대로.
+ const same=sameExpenseGroups(monthLines(prep.lines,finMonth));if(!same.pairs)finSameOnly=false;
+ if(same.pairs){const b=button(finSameOnly?SAME_EXPENSE_TEXT.close:SAME_EXPENSE_TEXT.open,()=>void perform(async()=>{finSameOnly=!finSameOnly;await render();}),'secondary nowrap');b.dataset.navOnly='1';
+  add(root,add(el('div',null,'fin-same-check'+(finSameOnly?' active':'')),el('span',SAME_EXPENSE_TEXT.check(same.pairs),'fin-same-text'),b));}
  const groups=duplicateGroups(list);
  if(groups.length){const p=section('중복 의심 묶음 '+groups.length+'개','원천 자료에서 같은 결제로 의심되어 묶인 행입니다. 같은 날짜·금액이라고 자동으로 지우지 않습니다. 실제 중복이면 원천을 고친 뒤 계획 파일을 다시 만드세요.');for(const g of groups){add(p,el('h3',g.id+' · '+g.items.length+'건 · 합계 '+formatWon(g.items.reduce((s,l)=>s+(l.net??0n),0n))+(g.items.some(l=>l.net===null)?' + 실제 금액 모름':'')));for(const l of g.items)add(p,finLineRow(l,{showButtons:false}));}add(root,p);}
  if(finMonth===now)renderFixedSchedule(root,fin,{pendingOnly:true});   // F59V: 이번 달 아직 안 나간 고정비(예정, 거래 기록 아님)
- const p=section(finMonth+' 거래 '+finCount(list.length)+'건',finFilter.accountId||finFilter.category?'필터 적용 중':'');
- add(p,finCsvBar(list));
- for(const l of list)add(p,finLineRow(l));if(!list.length)add(p,empty('이 달에 표시할 거래가 없습니다.'));add(root,p);
+ const shown=finSameOnly?same.groups.flat():list;
+ const p=finSameOnly?section(SAME_EXPENSE_TEXT.check(same.pairs),SAME_EXPENSE_TEXT.checkNote):section(finMonth+' 거래 '+finCount(list.length)+'건',finFilter.accountId||finFilter.category?'필터 적용 중':'');
+ if(!finSameOnly)add(p,finCsvBar(list));
+ for(const l of shown)add(p,finLineRow(l));if(!shown.length)add(p,empty('이 달에 표시할 거래가 없습니다.'));add(root,p);
  const voided=fin.txns.filter(t=>t.data.voided&&t.data.date.startsWith(finMonth));
  if(voided.length){const v=add(el('details',null,'panel'),el('summary','무효화된 거래 '+voided.length+'건 (합계에서 빠짐 · 원래 내용은 이력에 보존)'));for(const t of voided)add(v,add(el('div',null,'fin-line voided'),add(el('div',null,'main'),el('strong',t.data.date+' · '+(t.data.merchant||FIN_KIND_TEXT[t.data.kind])),el('div','무효','meta')),el('div',formatWon(t.data.kind==='REFUND'?-BigInt(t.data.amount):BigInt(t.data.amount)),'amount muted')));add(root,v);}
 }
@@ -1128,6 +1172,9 @@ function editFinTxn(t,prefill=null){
   const memo=field(more,'메모 (선택)','textarea',d.memo);memo.maxLength=1000;
   if(d.sourceRefs.length)add(root,el('p','이 거래는 가져온 줄 '+d.sourceRefs.length+'개를 대신합니다. 계정·종류·금액을 바꾸면 가져온 줄과 맞지 않아 저장이 거절됩니다.','form-note'));
   add(root,hint('이체(카드대금 납부 포함)와 선불 충전은 소비가 아니라서 분류가 없습니다. 카드 계정은 수입을 받을 수 없습니다.'));
+  const billSync=cardBillLine(root,()=>({kind:kind.value,merchant:merchant.value,memo:memo.value}));   // FIX67 (M-09)
+  for(const n of [merchant,memo])n.addEventListener('input',billSync);kind.addEventListener('change',billSync);
+  const ask=t?null:sameExpenseAsk(root);   // FIX67 (M-01): 새 거래만(고치기는 묻지 않음)
   let wanted=d.category;
   const sync=()=>{
    const k=kind.value,table=k==='INCOME'?fin.labels.income:k==='TRANSFER'||k==='PREPAID_LOAD'?null:fin.labels.expense,cur=wanted??category.value;wanted=null;
@@ -1139,6 +1186,7 @@ function editFinTxn(t,prefill=null){
   kind.addEventListener('change',sync);sync();
   return async()=>{
    const data=buildTxn({date:date.value,kind:kind.value,amount:amount.value,accountId:account.value,toAccountId:to.value,category:category.value,subcategory:sub.value,merchant:merchant.value,memo:memo.value,tags:tags.value,installments:kind.value==='EXPENSE'?inst.value:'',currency:currency.value,originalAmount:original.value},{labels:fin.labels,accounts:fin.accounts,localDate:whole.localDate,old:t?.data??null});
+   if(ask?.(data))return {ask:true};
    const r=await entity('FIN_TXN',t?.id??entityId(),data,t?.heads??[],t?'가계부 거래 수정':'가계부 거래 입력');
    if(prefill?.onSaved&&r?.status!=='LOCAL_DRAFT'){try{prefill.onSaved();}catch{/* 처리됨 표시 실패는 저장을 되돌리지 않는다 */}}
    if(prefill?.onKept){try{prefill.onKept(data);}catch{/* 같은 이유 */}}
@@ -1363,6 +1411,8 @@ function renderFinRecurring(root,fin){
  if(!cands.length)add(pick,empty(RECURRING_TEXT.noCandidates));
  add(root,pick);
  if(folded.length){const old=section('숨긴 정기 결제 '+folded.length+'개');for(const r of folded)add(old,ruleRow(r));add(root,old);}
+ // V6F (지시서 8): 소탭 "정기 결제"와 "반복 · 고정비"를 하나로. 내가 정한 정기 결제(위) 아래에 거래에서 찾은 반복결제·고정비/변동비(예전 "반복 · 고정비" 화면 그대로)를 이어 그린다.
+ if(typeof renderFinPlan==='function'){add(root,el('h2','반복 · 고정비 (거래에서 찾은 것)','panel-title fin-merged-title'));renderFinPlan(root,fin);}
 }
 
 // ---------- F59V 고정비 예정 ----------
@@ -1455,8 +1505,10 @@ function liveNetCashLine(prep){
  const live=liveNetCash(prep,whole.finances,whole.localDate);
  if(live.status==='NO_SNAPSHOT')return hint('지금 내 돈(추정) · 재정 기록이 없습니다.');
  if(live.status==='MISSING')return hint('지금 내 돈 · 모름 · '+live.reasons.map(r=>LIVE_CASH_REASON[r]??r).join(' · '));
- return el('p','지금 내 돈(추정) '+formatWon(live.value)+' · 기준일 '+live.since+' 당일 기록부터 반영','small muted vault-live-cash');
+ return add(el('div',null,'vault-live'),el('p','지금 내 돈(추정) '+formatWon(live.value)+' · 기준일 '+live.since+' 당일 기록부터 반영','small muted vault-live-cash'),
+  el('p',LIVE_CASH_NOTE,'small muted vault-live-note'));   // FIX67 (M-07): 계산은 그대로, 한 줄만
 }
+const LIVE_CASH_NOTE='이체(적금·대출 상환)는 반영하지 않아요 · 재정 기록을 새로 만들면 맞춰져요';
 const vaultForecast=(prep,s)=>monthForecast({status:s,lines:prep.lines,rules:recurringRules(),today:whole.localDate});   // B59: 정기 결제는 예정일 기준으로 따로 더한다
 // F59V: 아직 안 나간 고정비(예정·잠정)를 금고 카드에 한 줄로. 숫자는 월말 예측과 같은 fixedPlan(). 실제 결제가 들어오면 예정에서 빠지고 쓴 돈에 들어간다(이중 계산 0).
 function vaultFixedLine(prep,s){
@@ -1508,9 +1560,9 @@ function vaultCard(root,fin,{compact=false}={}){
   el('span',known?'예산 '+formatWon(T.budget)+' · 쓴 돈 '+formatWon(T.actual)
    :v.state==='NO_DATA'?'이 달 소비 자료가 없습니다(0원 아님). 예산 '+formatWon(T.budget)
    :'실제 금액 모름 줄만 있어 쓴 돈을 알 수 없습니다. 예산 '+formatWon(T.budget),'vault-sub')),vaultFixedLine(prep,s),fcBox);
- const chip=feelChip(f,{known,current:s.current});
+ const num=vaultTodayNum({f,s,v,todaySpent:vaultWall(prep,s,v).today?.spent??null});   // FIX67 (M-04·M-08): 돈 탭 금고와 같은 함수
  const chips=add(el('div',null,'fin-chips vault-chips'),
-  vaultChip('오늘 쓸 수 있는 돈',chip.value,chip.foot),
+  vaultChip(num.label+(num.tag?' ('+num.tag+')':''),num.value,num.foot),
   vaultChip('오늘까지 기대치 대비',known&&s.current?(T.paceDelta>0n?formatWon(T.paceDelta)+' 더 씀':T.paceDelta<0n?formatWon(-T.paceDelta)+' 덜 씀':'같음'):'-',
    known&&s.current?'기대치 '+formatWon(T.expectedToDate):'이번 달만 비교'));
  if(!compact)add(chips,vaultChip('금괴 한 개',v.perBrick===null?'-':formatWon(v.perBrick),s.days+'일 × 한 개 = 하루 몫'));
@@ -1522,9 +1574,9 @@ function vaultCard(root,fin,{compact=false}={}){
  box.append(vaultBrickSvg(v,Math.max(180,Math.floor(box.clientWidth||300)),flash));
  add(p,finLegend([['vault-sw-left','남은 날'],['vault-sw-today','오늘'],['vault-sw-past','지난 날'],['vault-sw-spent','쓴 몫'],...(v.overCount?[['vault-sw-over','예산 초과']]:[])]));
  add(p,vaultFeedbackLine(s,v,core));
- const quick=button('빠른 지출 입력',()=>openQuickExpense(fin),'primary');
+ const quick=button('빠른 지출',()=>openQuickExpense(fin),'primary');
  const row=add(el('div',null,'button-row'),quick);
- if(compact){const go=button('가계부 열기',()=>navigate('LEDGER'),'secondary nav-link');go.dataset.navOnly='1';add(row,go);}
+ if(compact){const go=button('돈 열기',()=>navigate('LEDGER'),'secondary nav-link');go.dataset.navOnly='1';add(row,go);}
  else add(row,button('금고 계산기',()=>openVaultCalculator(fin),'secondary'));
  add(p,row);
  if(!known)add(p,hint(v.state==='NO_DATA'?'소비 줄이 없는 달은 0원이 아니라 자료 없음입니다.':'실제 금액 모름 줄 '+finCount(s.unknownRows)+'행은 합계에 넣지 않습니다.'));
@@ -1659,13 +1711,32 @@ const VAULT_MISSING={CASH:'지금 쓸 수 있는 현금을 모름',RESERVE:'비�
 const daysInMonth=m=>new Date(Date.UTC(Number(m.slice(0,4)),Number(m.slice(5,7)),0)).getUTCDate();
 
 // ---- 빠른 지출 입력 ----
+// FIX67 (M-01): 저장 직전 같은 결제 확인(fin-recurring sameExpense, 최신 장부). 처음 누르면 경고 한 줄과 [취소]를 보이고 저장 단추를 "그래도 저장"으로 바꾼다({ask:true} → 창 유지).
+// 같은 입력으로 한 번 더 누르면 저장한다. 입력을 바꾸면 다시 확인한다. 막지 않고 저장 형식도 그대로다.
+function sameExpenseAsk(root){
+ const box=el('div',null,'fin-dup-ask');box.setAttribute('role','alert');box.hidden=true;add(root,box);
+ const label=$('editor-save').textContent;let asked=null;
+ return input=>{
+  const hit=sameExpense(whole.fin?prepare(whole.fin).lines:[],input),sig=JSON.stringify([input.date,input.amount,input.accountId,input.merchant]);
+  if(!hit){box.hidden=true;asked=null;$('editor-save').textContent=label;return false;}
+  if(asked===sig)return false;
+  asked=sig;box.replaceChildren(el('p',SAME_EXPENSE_TEXT.ask(hit,shownMerchant(hit,finMask))+' · '+SAME_EXPENSE_TEXT.force+' / '+SAME_EXPENSE_TEXT.cancel,'fin-warn'));   // 취소 = 창 아래 기존 [취소]
+  box.hidden=false;$('editor-save').textContent=SAME_EXPENSE_TEXT.force;box.scrollIntoView?.({block:'center'});return true;   // 창이 길어도 경고 줄이 보이게
+ };
+}
+// FIX67 (M-09): 카드대금 문형 + 지출이면 힌트 한 줄(막지 않음). read() = {kind,merchant,memo}.
+function cardBillLine(root,read){
+ const p=el('p',null,'small fin-warn fin-card-bill');p.hidden=true;add(root,p);
+ const sync=()=>{const t=cardBillHint(read());p.textContent=t??'';p.hidden=!t;};sync();
+ return sync;
+}
 // 저장은 기존 buildTxn() + entity('FIN_TXN', …) 경로 그대로. 저장 1번 = 연산 1개.
 function openQuickExpense(fin){
  // 빠른 지출의 '오늘'은 캐시된 whole.localDate가 아니라 열 때·저장할 때의 실제 KST 날짜다(앱을 켜 둔 채 자정을 넘겨도 어제로 저장하지 않는다).
  const kstToday=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10),openedDay=kstToday();
  const prep=prepare(fin),q=quickPicks(prep,openedDay);
  const usable=fin.accounts.filter(a=>a.data.active);
- modal('빠른 지출 입력 · '+openedDay,root=>{
+ modal('빠른 지출 · '+openedDay,root=>{
   if(!usable.length){add(root,empty('활성 계정이 없습니다. "계정"에서 먼저 계정을 추가하세요.'));return ()=>{throw finError('INVALID_FIN_ACCOUNT_REF');};}
   let amount='',category=q.lastCategory&&Object.hasOwn(fin.labels.expense,q.lastCategory)?q.lastCategory:'FOOD',merchant='';
   const display=el('div',null,'keypad-amount');display.setAttribute('role','status');display.setAttribute('aria-live','polite');
@@ -1695,23 +1766,26 @@ function openQuickExpense(fin){
   other.addEventListener('change',()=>{category=other.value;paint();});
   const mBlock=add(el('div',null,'quick-block'),el('h3','가맹점 (선택)','subheading'));add(root,mBlock);
   const merchantInput=field(mBlock,'가맹점 이름','text','');merchantInput.maxLength=120;
+  const billSync=cardBillLine(mBlock,()=>({kind:'EXPENSE',merchant:merchantInput.value}));merchantInput.addEventListener('input',billSync);
   const pickable=q.merchants.filter(m=>!(finMask&&isSensitive(m)));   // 가린 가맹점은 후보로 내놓지 않는다
   if(pickable.length){
    const mb=el('div',null,'quick-row');
    for(const m of pickable)
-    {const b=button(shownMerchant(m,finMask),()=>{merchantInput.value=m.merchant;merchant=m.merchant;},'secondary quick-pick');b.dataset.navOnly='1';add(mb,b);}
+    {const b=button(shownMerchant(m,finMask),()=>{merchantInput.value=m.merchant;merchant=m.merchant;billSync();},'secondary quick-pick');b.dataset.navOnly='1';add(mb,b);}
    add(mBlock,el('p','최근 가맹점','small muted'),mb);
   }
   const accounts=usable.map(a=>[a.id,a.data.name+' · '+FIN_ACCOUNT_TEXT[a.data.type]]);
   const fallback=q.lastAccountId&&usable.some(a=>a.id===q.lastAccountId)?q.lastAccountId:usable[0].id;
   const account=field(root,'계정','select',fallback,accounts);
   add(root,hint('날짜는 오늘('+openedDay+'), 종류는 지출로 저장합니다. 할부·외화·메모가 필요하면 "거래" 화면의 거래 입력을 쓰세요.'));
+  const ask=sameExpenseAsk(root);
   paint();
   return async()=>{
    const day=kstToday();whole.localDate=day;   // 캐시된 '오늘'을 저장 순간의 실제 날짜로 맞춘 뒤 쓴다(저장 뒤 refresh()가 서버 값으로 다시 채운다)
    const data=buildTxn({date:whole.localDate,kind:'EXPENSE',amount,accountId:account.value,toAccountId:'',category,subcategory:'',
     merchant:merchantInput.value,memo:'',tags:'',installments:'',currency:'',originalAmount:''},
     {labels:fin.labels,accounts:fin.accounts,localDate:whole.localDate,old:null});
+   if(ask(data))return {ask:true};   // FIX67 (M-01)
    const before=vaultState(fin);
    const r=await entity('FIN_TXN',entityId(),data,[],'가계부 빠른 지출 입력');
    vaultFlash={won:BigInt(data.amount),fromSpent:before.v.spentCount,core:before.core??null,at:Date.now()};
@@ -1773,7 +1847,7 @@ function renderFinBudget(root,fin){
  add(root,add(el('div',null,'metric-grid fin-metrics'),
   metric('전체 예산',T?formatWon(T.budget):'정하지 않음',applied.data.effectiveFrom+'부터 적용 · '+dayText),
   metric('실적 (지출 − 환불)',known?formatWon(s.actualTotal):stateText,s.unknownRows?'실제 금액 모름 '+s.unknownRows+'행 별도':s.dataState==='NO_DATA'?'이 달 소비 자료가 없음(0원 아님)':'실제 금액 모름 없음'),
-  metric(T&&known&&T.remaining<0n?'초과':'남은 금액',T&&known?formatWon(T.remaining<0n?-T.remaining:T.remaining):T&&s.future?formatWon(T.budget):'-',T&&known&&T.perDayLeft!==null?'오늘 포함 남은 날 하루(고정비 포함) '+formatWon(T.perDayLeft):''),
+  metric(T&&known&&T.remaining<0n?'초과':'남은 금액',T&&known?formatWon(T.remaining<0n?-T.remaining:T.remaining):T&&s.future?formatWon(T.budget):'-',vaultDayText(T&&known&&s.current?feelCore(vaultForecast(prep,s)):null)),   // FIX67 (M-05): 금고와 같은 함수·같은 글자
   metric(feel?'월말 예상 (고정비 예정 포함)':'월말 예상',projected!==null?formatWon(projected):'-',T&&known&&s.current?'오늘까지 기대치 '+formatWon(T.expectedToDate)+' · '+(feel?.level?FEEL_LEVEL[feel.level]:FIN_BUDGET_STATUS[T.status]):T&&known?FIN_BUDGET_STATUS[T.status]:'')));
  const rows=[...(T?[{...T,category:'TOTAL',projected:known?projected:T.projected}]:[]),...s.categories];   // 전체 줄의 월말 예상도 위 칸과 같은 값
  const label=c=>c==='TOTAL'?'전체':finCatLabel(c);
@@ -1881,7 +1955,7 @@ function finStmtReconcile(st){
  }
 }
 function renderFinStatement(root,fin){
- const p=section('카드 명세서 가져오기','카드사에서 내려받은 명세서(CSV, xlsx, 또는 HTML로 된 .xls)를 고르세요. 파일은 이 화면 메모리에서만 읽고 저장하지 않습니다. 장부와 대조해 빠진 거래만 골라 저장합니다(1건 = 저장 1번).');
+ const p=section('① 명세서 파일 고르기','카드사에서 내려받은 명세서(CSV, xlsx, 또는 HTML로 된 .xls)를 고르세요. 파일은 이 화면 메모리에서만 읽고 저장하지 않습니다. 장부와 대조해 빠진 거래만 골라 저장합니다(1건 = 저장 1번).');
  const input=el('input');input.type='file';input.accept='.csv,.tsv,.txt,.xls,.xlsx,.html,.htm,text/csv,text/plain,text/html';input.hidden=true;
  input.addEventListener('change',async()=>{const file=input.files?.[0];input.value='';if(!file)return;
   try{if(file.size>Math.max(STMT_LIMITS.fileBytes,XLSX_LIMITS.zipBytes))throw finError('STMT_TOO_BIG');finStmt=await finStmtOpen(file);await perform(render);}
@@ -1940,7 +2014,7 @@ function renderFinStatement(root,fin){
  }
  const go=button(st.items?'다시 대조하기':'칸 짝 기억하고 장부와 대조하기',()=>void perform(async()=>{
   const kept=stmtStore.set(st.sig,{columns:st.columns,cancelValues:st.cancelValues,negativeIsCancel:st.negativeIsCancel,installAmountIsTotal:st.installAmountIsTotal,accountId:st.accountId,cardAccounts:st.cardAccounts,accountSig:await accountSig(st.name,finStmtNorm(st).cards),savedAt:new Date().toISOString()});
-  st.remembered=true;st.accountReset=false;finStmtReconcile(st);await render();status(kept?'칸 짝을 이 기기에 기억했습니다 · 대조 결과를 확인하세요.':'이 기기 저장소에 칸 짝을 기억하지 못했습니다(이번 실행 동안만 기억) · 대조 결과를 확인하세요.');
+  st.remembered=true;st.accountReset=false;finStmtReconcile(st);await render();screenStatus(kept?'칸 짝을 이 기기에 기억했습니다 · 대조 결과를 확인하세요.':'이 기기 저장소에 칸 짝을 기억하지 못했습니다(이번 실행 동안만 기억) · 대조 결과를 확인하세요.');
  }),'primary');go.disabled=!st.accountId&&(st.single||!norm.cards.length);
  add(a,add(el('div',null,'buttons'),go));add(root,a);
  // 장부가 새로 고쳐졌으면(저장 뒤·다른 기기 동기화 뒤) 고른 것은 그대로 두고 다시 대조한다: 방금 저장한 거래는 "이미 있음"이 된다.
@@ -2193,7 +2267,7 @@ async function savePreferences(data){await entity('PREFERENCES','display',data,w
 function reorderAction(index,step){void perform(async()=>{const order=whole.actions.map(a=>a.actionId);[order[index],order[index+step]]=[order[index+step],order[index]];await savePreferences({...whole.preferences.data,actionOrder:order});await refresh();status('행동 순서를 저장했습니다.');});}
 function finish(message){ended=true;capability=null;streamController?.abort();drafts.clear();sealedDrafts.clear();today=null;whole=null;changes=[];$('view-content').replaceChildren();$('workspace').hidden=true;$('navigation').replaceChildren();$('navigation').hidden=true;$('save-exit').hidden=true;$('session-state').textContent='종료됨';status(message);}
 function showBackup(){modal('백업 만들고 앱 종료',root=>{add(root,el('p','오늘 화면의 저장 전 입력을 저장한 뒤, 앱을 닫고 암호화 파일을 검증하여 복사합니다. 복구 권한과 백업은 비밀문구와 별도로 보관하세요.'));const confirm=field(root,'백업은 복구 검증 완료가 아님을 확인합니다','checkbox',false);confirm.required=true;return async()=>{await saveDrafts();status('암호화 백업을 만드는 중…');const result=await api('/api/backup-and-exit',{confirmed:confirm.checked});if(result.status!=='BACKUP_SAVED')throw appError('HOLD_BACKUP_RESULT');finish('백업 저장됨 · '+result.path+' · 앱이 종료되었습니다. 이 탭을 닫아도 됩니다.');};},'백업 만들고 종료');}
-$('save-exit').addEventListener('click',()=>perform(async()=>{await saveDrafts();await pcWidget('close');await mdReleaseNow();status('저장을 마무리하고 종료하는 중…');const result=await api('/api/shutdown',{});if(result.status!=='CLOSED')throw appError(result.code||'HOLD_SHUTDOWN');finish(savedMessage()+' · 앱이 종료되었습니다. 이 탭을 닫아도 됩니다.');}));
+$('save-exit').addEventListener('click',()=>perform(async()=>{const left=typeof stackBeforeExit==='function'?await stackBeforeExit():'',saved=savedMessage();await saveDrafts();await pcWidget('close');await mdReleaseNow();status('저장을 마무리하고 종료하는 중…');const result=await api('/api/shutdown',{});if(result.status!=='CLOSED')throw appError(result.code||'HOLD_SHUTDOWN');finish(saved+left+' · 앱이 종료되었습니다. '+(mdSurface==='APP_SHELL'?'이 창을 닫아도 됩니다.':'이 탭을 닫아도 됩니다.'));}));   // V6F (MAN2 6): PC 앱 창에서는 "창"
 async function nativeLaunchToken(){const bridge=window.chrome?.webview;if(!bridge)throw appError('HOLD_NATIVE_HOST_REQUIRED');return new Promise((resolve,reject)=>{const timeout=setTimeout(()=>{bridge.removeEventListener('message',onMessage);reject(appError('HOLD_LAUNCH_TIMEOUT'));},30000);function onMessage(event){if(event.data?.type!=='LB_LAUNCH')return;clearTimeout(timeout);bridge.removeEventListener('message',onMessage);const token=event.data.launch;if(!/^[a-f0-9]{64}$/.test(token))reject(appError('HOLD_LAUNCH_REQUIRED'));else resolve(token);}bridge.addEventListener('message',onMessage);bridge.postMessage('LB_READY');});}
 try{if(mdBackend){const result=await api('/api/session/bootstrap',{});setup(result.state);if(result.state?.state==='UNLOCKED'){try{await refresh();status('잠금해제됨 · '+saveState().title);void mdAutoSync('open');}catch(e){fail(e);}}}else{const launch=await nativeLaunchToken();const result=await api('/api/session/bootstrap',{launch});capability=result.session;setup(result.state);void sessionStream();if(mdProfile&&result.state?.state==='UNLOCKED'){try{await refresh();}catch(e){fail(e);}}}}catch(error){ended=true;status('LIFE BRICK 앱을 다시 열어 주세요. '+(error.code||'HOLD_CONNECTION'),true);lock(false);}
 

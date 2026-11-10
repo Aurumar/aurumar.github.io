@@ -3,7 +3,7 @@
 // 화면을 열거나 동기화하는 것만으로는 어떤 엔티티도 쓰지 않는다: 쓰기는 confirm()과 saveDefinitions()(습관·과목·시험 편집 저장)에서만 일어난다.
 // 초안은 확정 성공을 확인한 뒤에만 지운다. 검증 거부·저장 실패·응답 불명이면 초안을 그대로 둔다.
 // 건강·공부와 달리 PC 초안 저널(drafts.lbd)은 쓰지 않는다: 저널의 목록 응답이 LIFE_DAY 본문을 돌려주지 않는다. 상자(브라우저 IndexedDB 암호문) 또는 메모리다.
-import {validateLifeData,emptyDay,emptyDiary,kstDate,lifeDefs,recordsDoorState,DEFAULT_HABITS,DEFAULT_SUBJECTS} from './life-model.mjs';
+import {validateLifeData,emptyDay,emptyDiary,kstDate,lifeDefs,recordsDoorState,DEFAULT_HABITS,DEFAULT_SUBJECTS,habitPinned,HABIT_UNPIN_ORDER} from './life-model.mjs';
 import {rebase,rebaseDiary,hasChanges,diffDay,stable} from './life-rebase.mjs';
 
 const codeOf=e=>typeof e?.code==='string'?e.code:(e?.message??'UNKNOWN');
@@ -430,7 +430,7 @@ export function collectRows(work,life,defs=lifeDefs(life)){
     const missing=stored.length?defaults.filter(d=>!list.some(x=>x.id===d.id)):[];
     [...list,...missing].forEach((x,i)=>{
       const data={...x,order:i};
-      if(type==='HABIT_DEF'){data.name=String(data.name).trim();}
+      if(type==='HABIT_DEF'){data.name=String(data.name).trim();if(!habitPinned(x))data.order=HABIT_UNPIN_ORDER+i;}   // V6B: 고정 안 한 습관은 order 구간 500~(칸 그대로)
       if(type==='SUBJECT_DEF'){data.name=String(data.name).trim();}
       const old=stored.find(s=>s.id===x.id);
       if(old&&stable(old.data)===stable(data))return;

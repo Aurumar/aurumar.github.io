@@ -42,8 +42,12 @@ export const artFile=(no,art)=>'av_s'+String(no).padStart(2,'0')+'_'+art+'.webp'
 
 const MAX_DAY_MIN=1440;
 const okMinutes=m=>Number.isInteger(m)&&m>=0&&m<=MAX_DAY_MIN;
-// 카드 한 장의 공부 분: 세션의 확인된 분(confirmedMin)을 모두 더한다. 시작만 한 세션은 0분이다.
-export const cardMinutes=card=>(card?.sessions??[]).reduce((sum,s)=>sum+(okMinutes(s?.confirmedMin)?s.confirmedMin:0),0);
+// 카드 한 장의 공부 분. V6F (지시서 7, 통제탑 결정 "담은 것만 센다"): 평생 등급·오늘 분·벽돌·경험치·통계가 모두 같은 기준 = 담은 세션(COMPLETED, 그리고 담은 뒤에만 갈 수 있는 VERIFIED)의 확인된 분.
+// 시작만 했거나(STARTED·ATTEMPTED 등) 담지 않은 세션의 분은 어디에도 넣지 않는다. 진행 중 타이머 분은 따로("진행 중 +n분") 보인다.
+// 같은 판정을 life-achieve·life-plan·study-stats·study-suggest·state-export·hlt-ui·study-ui가 같은 글자로 쓴다(불러오기 줄을 바꾸지 않으려고 각 모듈에 한 줄).
+export const countedSession=s=>(s?.state==='COMPLETED'||s?.state==='VERIFIED')&&okMinutes(s.confirmedMin);
+export const countedMinutes=sessions=>(sessions??[]).filter(countedSession).map(s=>s.confirmedMin);
+export const cardMinutes=card=>(card?.sessions??[]).reduce((sum,s)=>sum+(countedSession(s)?s.confirmedMin:0),0);
 // 평생 누적: 쌓은(확정된) 공부 카드만 더한다. 날짜별 카드는 한 장이다(같은 날짜가 또 오면 뒤의 값, 성취 엔진과 같음).
 export function lifetimeMinutes(study){
   const byDate=new Map();

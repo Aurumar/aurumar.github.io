@@ -2,7 +2,7 @@
 // 규칙: 거래(FIN_TXN)에는 아무 필드도 더하지 않는다. 후보는 저장하지 않는 투영이다(저장 0). "정기로 등록" = 규칙 목록 한 장을 다시 쓰는 연산 1, "아님" = 이 기기 로컬 숨김(연산 0).
 // 금액은 원 단위 정수 문자열(계산은 BigInt). 가맹점 이름은 화면에만 쓰고 내보내기(LIFE_STATE)에는 넣지 않는다.
 // B48C: 한 가게의 구독 여러 개(가게+금액대 기준, 규칙 모양은 그대로), 가격 변경은 최근 금액대로 후보·1탭 갱신, 예정일 ±3일 매칭, "아님" 목록 평문 금지.
-import {shiftMonth,finError,parseWonInput} from './fin-ledger.mjs';
+import {shiftMonth,finError,parseWonInput,formatWon} from './fin-ledger.mjs';
 import {merchantKey} from './fin-plan.mjs';
 
 export const RECURRING_ID='recurring';                 // fin-model.mjs RECURRING_ID와 같아야 한다(시험이 대조)
@@ -357,6 +357,52 @@ export function ledgerMatch(lines,draft,dates){
   const mk=recurringKey(draft.merchant);
   const similar=key=>!key||!mk||key===mk||(key.length>=LEDGER_MATCH_MIN_NAME&&mk.length>=LEDGER_MATCH_MIN_NAME&&(key.includes(mk)||mk.includes(key)));
   return lines.find(l=>l.kind==='EXPENSE'&&dates.includes(l.date)&&wonOf(l.net)===a&&similar(recurringKey(l.merchant)))??null;
+}
+const validDay=d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d);
+// FIX67 (M-01): 빠른 지출·거래 입력 저장 직전 확인. 같은 계정·지출·같은 금액·날짜 ±1일 + ledgerMatch의 가맹점 규칙(둘 다 있으면 비슷할 때만, 한쪽이 비면 금액·날짜만).
+// 맞으면 그 줄을 돌려준다(묻기만, 저장을 막지 않는다). skipKey = 고치는 거래 자신의 줄 key('T:'+id).
+export function sameExpense(lines,{date,amount,accountId,merchant='',kind='EXPENSE'},{skipKey=null}={}){
+  if(kind!=='EXPENSE'||!accountId||!Array.isArray(lines)||!validDay(date))return null;
+  const d=dayNum(date),mine=lines.filter(l=>l.accountId===accountId&&l.key!==skipKey&&validDay(l.date)&&Math.abs(dayNum(l.date)-d)<=1);
+  return ledgerMatch(mine,{amount,merchant},[...new Set(mine.map(l=>l.date))]);
+}
+// FIX67 (M-01·M-03): 장부 점검 줄. 직접 입력한 지출 중 같은 날·같은 금액·같은 계정(가맹점은 sameExpense와 같은 규칙)인 묶음. 계산만(저장 0).
+// 두 기기에서 따로 넣어 합쳐진 거래도 같은 줄이라 여기서 드러난다. pairs = 묶음마다 (건수 − 1)의 합. 가져온 원천 행은 원천의 중복 의심 묶음이 따로 다룬다.
+export function sameExpenseGroups(lines){
+  const by=new Map();
+  for(const l of lines??[]){
+    if(l.source!=='TXN'||l.kind!=='EXPENSE')continue;
+    const a=wonOf(l.net);if(a===null)continue;
+    const k=l.accountId+'|'+l.date+'|'+a;if(!by.has(k))by.set(k,[]);by.get(k).push(l);
+  }
+  const groups=[];
+  for(const list of by.values()){
+    if(list.length<2)continue;
+    const left=[...list].sort((x,y)=>x.key.localeCompare(y.key));
+    while(left.length>1){
+      const head=left.shift(),mk=recurringKey(head.merchant),same=[head];
+      for(let i=0;i<left.length;i++){const k=recurringKey(left[i].merchant);if(!k||!mk||k===mk||(k.length>=LEDGER_MATCH_MIN_NAME&&mk.length>=LEDGER_MATCH_MIN_NAME&&(k.includes(mk)||mk.includes(k)))){same.push(left[i]);left.splice(i--,1);}}
+      if(same.length>1)groups.push(same);
+    }
+  }
+  groups.sort((x,y)=>y[0].date.localeCompare(x[0].date)||x[0].key.localeCompare(y[0].key));
+  return {groups,pairs:groups.reduce((n,g)=>n+g.length-1,0)};
+}
+// 화면 문구. name = 화면에 보일 가맹점 이름(가리기 설정을 부른 쪽이 적용). 날짜는 월/일.
+const md=d=>Number(d.slice(5,7))+'/'+Number(d.slice(8,10));
+export const SAME_EXPENSE_TEXT=Object.freeze({
+  ask:(l,name)=>'같은 결제로 보이는 지출이 이미 있어요('+md(l.date)+' '+(name||'가맹점 없음')+' '+formatWon(l.net)+')',
+  force:'그래도 저장',cancel:'취소',
+  check:n=>'같은 날·같은 금액·같은 계정 지출 '+n+'쌍',open:'확인하기',close:'모두 보기',
+  checkNote:'한 건이 실제로 중복이면 그 줄의 [무효화]로 정리하세요(사유 입력 · 이력 보존). 자동으로 지우지 않습니다.',
+  refund:(l,name)=>'장부에 같은 금액 지출이 있어요('+md(l.date)+' '+(name||'가맹점 없음')+' '+formatWon(l.net)+')',refundBtn:'이 지출을 환불로 정리',
+});
+export const REFUND_LOOKBACK_DAYS=14;
+// FIX67 (M-06): 취소 알림과 맞는 장부 지출(같은 금액·가맹점 비슷 또는 한쪽 모름·취소일 포함 최근 14일). 가장 최근 것 하나. 환불 입력창을 미리 채우는 데만 쓴다(자동 저장 없음).
+export function refundCandidate(lines,{amount,merchant=''},date,{days=REFUND_LOOKBACK_DAYS}={}){
+  if(!Array.isArray(lines)||!validDay(date))return null;
+  const d=dayNum(date),mine=lines.filter(l=>validDay(l.date)&&d-dayNum(l.date)>=0&&d-dayNum(l.date)<days).sort((x,y)=>y.date.localeCompare(x.date)||String(x.key).localeCompare(String(y.key)));
+  return mine.find(l=>ledgerMatch([l],{amount,merchant},[l.date]))??null;
 }
 
 // ---------- 이 기기 로컬 숨김("아님", 연산 0) ----------

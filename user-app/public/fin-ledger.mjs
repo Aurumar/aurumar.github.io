@@ -150,6 +150,10 @@ export function buildAccount(input,old=null){
   need(['CARD','CASH','BANK','EPAY','LOAN','OTHER'].includes(type),'INVALID_FIN_ACCOUNT');
   return {name,type,issuer,active:old?(input.active??old.active)===true:true,note};
 }
+// FIX67 (M-09): 직접 입력에서 가맹점·메모가 카드대금 문형이고 종류가 지출이면 힌트 한 줄(막지 않음). 명세서 대조의 '소비 아님' 문형 중 카드대금 쪽만(자동이체·카드결제는 일반 지출에도 쓰여 뺐다).
+export const CARD_BILL=/카드\s*대금|카드\s*값|결제\s*대금|대금\s*결제/;
+export const CARD_BILL_TEXT='카드 대금은 이체로 넣어야 두 번 세지 않아요';
+export const cardBillHint=({kind,merchant='',memo=''})=>kind==='EXPENSE'&&(CARD_BILL.test(String(merchant??''))||CARD_BILL.test(String(memo??'')))?CARD_BILL_TEXT:null;
 export function buildTxn(input,{labels,accounts,localDate,old=null}){
   const kind=input.kind,date=String(input.date??'');
   need(date,'FIN_DATE_REQUIRED');need(dateOK(date)&&labels.kinds.includes(kind),'INVALID_FIN_TXN');

@@ -57,7 +57,7 @@ export function minutesByName(cards,today,days,nameOf=null){
   for(const c of cards)for(const s of c.sessions)counts.set(s.id,(counts.get(s.id)??0)+1);
   for(const c of cards){
     if(c.date<from||c.date>today)continue;
-    for(const s of c.sessions){if(counts.get(s.id)!==1||!(s.confirmedMin>0))continue;const name=sessionSubject(s,nameOf);totals.set(name,(totals.get(name)??0)+s.confirmedMin);}
+    for(const s of c.sessions){if(counts.get(s.id)!==1||!(s.confirmedMin>0)||(s.state!=='COMPLETED'&&s.state!=='VERIFIED'))continue;   /* V6F (지시서 7): 담은 세션만 */const name=sessionSubject(s,nameOf);totals.set(name,(totals.get(name)??0)+s.confirmedMin);}
   }
   return [...totals].sort((a,b)=>b[1]-a[1]||(a[0]<b[0]?-1:1));
 }

@@ -21,7 +21,7 @@ const subjectIdOf=s=>subjectOfSession(s.id)??SUBJECT_BY_CODE[s.subject]??'?';
 function eachCompleted(study,today,fn){
   for(const d of study?.days??[]){
     if(d.date>today)continue;
-    for(const s of d.data.sessions)if(s.state==='COMPLETED')fn(d.date,subjectIdOf(s),s.confirmedMin);
+    for(const s of d.data.sessions)if(s.state==='COMPLETED'||s.state==='VERIFIED')fn(d.date,subjectIdOf(s),s.confirmedMin);
   }
 }
 // monday로 시작하는 주의 쌓은 공부 분(today 뒤의 날짜는 넣지 않는다).

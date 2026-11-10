@@ -3,9 +3,9 @@
 // 기록을 쓰는 곳은 savePlanDay() 하나이고, 계획 시트의 "저장" 버튼 핸들러에서만 부른다(엔티티 1개 = 연산 1). 열기·보기 전환·어제 계획 복사·달력 누르기는 아무것도 쓰지 않는다.
 // 마지막으로 본 보기만 이 기기 localStorage(lb.plan.view)에 적는다(기록이 아니라 화면 설정, 실패해도 무시).
 // 계획 달성은 XP에 넣지 않는다(B42 공식 유지, 다음 단계에서 결정). 설계: AUTOPILOT\tasks\B43_PLANNER_DDAY.md, ADDENDUM A4·A5·A6.
-import {achieve} from './life-achieve.mjs';
+import {achieve,SUBJECT_BY_CODE} from './life-achieve.mjs';
 import {stable} from './life-rebase.mjs';
-import {lifeDefs,dDay,dayNumber,shiftDay,kstDate,validateLifeData,PLAN_BLOCKS,MAX_PLAN_ITEMS,MAX_PLAN_TITLE,MAX_PLAN_BRICKS} from './life-model.mjs';
+import {lifeDefs,dDay,dayNumber,shiftDay,kstDate,validateLifeData,PLAN_BLOCKS,MAX_PLAN_ITEMS,MAX_PLAN_TITLE,MAX_PLAN_BRICKS,hhmmFromIso,brickOf,subjectOfSession,dateKeyOK} from './life-model.mjs';
 
 // 보기는 5개(저장 lb.plan.view 값도 그대로), 머리 칩은 4개(P1A·D36-3): 오늘 · 주 · 월 · 멀리. 멀리를 고르면 그 아래 연 · 수능까지 칩 줄이 열린다.
 export const VIEWS=Object.freeze([['DAY','오늘'],['WEEK','주'],['MONTH','월'],['YEAR','연'],['CSAT','수능까지']]);
@@ -108,11 +108,11 @@ export function weekGrid(exams,today,ach){
   const maxStart=shiftDay(end,-7*(MAX_GRID_WEEKS-1));if(start<maxStart)start=maxStart;
   const examWeeks=new Map();
   for(const x of exams.items){const m=mondayOf(x.date);examWeeks.set(m,[...(examWeeks.get(m)??[]),x.name]);}
-  const cells=[];
+  const cells=[],goalWeek=ach.goalBricks*7;   // V6A: 주 목표 = 하루 목표(설정 한 곳) × 7일
   for(let m=start;m<=end;m=shiftDay(m,7)){
     const w=weeks.get(m)??null,state=m<nowMon?'PAST':m===nowMon?'NOW':'FUTURE';
-    const ratio=w&&state!=='FUTURE'&&w.brickTarget>0?Math.min(1,w.value/w.brickTarget):0;
-    cells.push({monday:m,state,phase:phaseOfWeek(exams,m),exams:examWeeks.get(m)??[],ratio,value:w?.value??0,target:w?.brickTarget??0});
+    const ratio=w&&state!=='FUTURE'&&goalWeek>0?Math.min(1,w.value/goalWeek):0;
+    cells.push({monday:m,state,phase:phaseOfWeek(exams,m),exams:examWeeks.get(m)??[],ratio,value:w?.value??0,target:goalWeek});
   }
   return cells;
 }
@@ -183,6 +183,90 @@ export async function savePlanDay(ctx,{date,base,mine}){
   throw Object.assign(new Error('STALE_HEADS'),{code:'STALE_HEADS'});
 }
 
+// ---------- V6A: 계획은 말로, 벽돌은 자동 ----------
+// 계획 줄 = 과목 + 세부내용 + 시간대만 사람이 적는다. 새 줄의 bricks 칸은 1(= 벽돌 1장이면 완료, 저장 형식 그대로라 옛 빌드도 받는다). 이미 저장된 bricks 값은 지우지 않고 "예전 목표 n장"으로만 보인다.
+// 달성은 그 날 공부 세션을 계획 줄에 자동으로 붙여 센다(저장 0, 두 기기가 같은 기록에서 같은 결과를 낸다): 세션 시각 순으로, 같은 과목 줄 중
+// ① 세션 시간대와 같은 미완료 줄 → ② 이른 시간대부터 미완료 줄 → ③ (다 완료면) 같은 시간대 줄 → 첫 줄. 같은 과목 줄이 없으면 계획 밖 공부.
+// 줄 상태 3가지: 안 함 / 조각(그 줄에 붙은 벽돌 없이 조각만, 10~29분) / 완료(벽돌 1장 이상, 쌓은 장수). 9분 이하 세션은 벽돌이 아니라 어디에도 붙이지 않는다.
+// "다른 항목으로"(세션 → 줄 고르기)와 손 완료 표시는 이 기기 저장소 lb.plan.link에만 적는다(화면 설정, 기록·동기화 아님 — 저장 형식을 바꾸지 않기 위해).
+export const PLAN_LINK_KEY='lb.plan.link',PLAN_LINK_DAYS=60;
+export const ITEM_STATE_TEXT=Object.freeze({NONE:'안 함',PIECE:'조각',DONE:'완료'});
+export const NEW_ITEM_BRICKS=1;
+export const oldTarget=x=>typeof x?.bricks==='number'&&x.bricks!==NEW_ITEM_BRICKS?x.bricks:null;   // 예전에 사람이 정한 목표 장수(새 줄 = 1은 표시하지 않음)
+// 세션 시각(KST)의 시간대: 05~11시 오전, 12~17시 오후, 18~21시 저녁, 22~04시 밤(plan-today blockOfNow와 같은 규칙).
+export function blockOfIso(iso){const h=Number(hhmmFromIso(iso).slice(0,2));return h>=22||h<5?'N':h<12?'M':h<18?'A':'E';}
+const AT_LAST='￿';
+// 그 날 공부 세션(완료, 분 0~1440). draft = 아직 쌓지 않은 그 날 공부 카드(있으면 그 날 기록 대신, previewAchieve와 같은 규칙). 시각 순(시각 없으면 뒤), 같은 시각은 id 순.
+export function daySessions(study,date,draft=null){
+  const card=draft??(study?.days??[]).find(d=>d.date===date)?.data??null;
+  return (card?.sessions??[]).filter(s=>(s.state==='COMPLETED'||s.state==='VERIFIED')&&Number.isInteger(s.confirmedMin)&&s.confirmedMin>=0&&s.confirmedMin<=1440)
+    .map(s=>({id:s.id,subjectId:subjectOfSession(s.id)??SUBJECT_BY_CODE[s.subject]??null,minutes:s.confirmedMin,at:typeof s.at==='string'&&Number.isFinite(Date.parse(s.at))?s.at:null}))
+    .sort((a,b)=>{const x=a.at??AT_LAST,y=b.at??AT_LAST;return x<y?-1:x>y?1:a.id<b.id?-1:a.id>b.id?1:0;});
+}
+// items = 그 날 계획 줄, sessions = daySessions 결과, marks = {links:{세션 id: 줄 id}, done:[손으로 완료 표시한 줄 id]}.
+export function linkPlan(items,sessions,{links={},done=[]}={}){
+  const list=sortedItems(items??[]),rows=new Map(list.map(x=>[x.id,{id:x.id,subjectId:x.subjectId,block:x.block,minutes:0,bricks:0,pieces:0,sessions:[],manual:done.includes(x.id),state:'NONE'}]));
+  const full=r=>r.bricks>=1||r.manual,link=new Map(),outside=[];
+  const order=[...(sessions??[])].sort((a,b)=>{const x=a.at??AT_LAST,y=b.at??AT_LAST;return x<y?-1:x>y?1:a.id<b.id?-1:a.id>b.id?1:0;});   // 넘겨받은 순서와 무관하게 시각 순
+  for(const s of order){
+    const b=brickOf(s.minutes);
+    if(!b.bricks&&!b.pieces){link.set(s.id,null);continue;}
+    const mine=list.filter(x=>x.subjectId===s.subjectId);
+    if(!mine.length){link.set(s.id,null);outside.push({...s,bricks:b.bricks,pieces:b.pieces});continue;}
+    const at=s.at?blockOfIso(s.at):null;
+    const pick=mine.find(x=>x.id===links[s.id])??mine.find(x=>x.block===at&&!full(rows.get(x.id)))??mine.find(x=>!full(rows.get(x.id)))??mine.find(x=>x.block===at)??mine[0];
+    const r=rows.get(pick.id);r.minutes+=s.minutes;r.bricks+=b.bricks;r.pieces+=b.pieces;r.sessions.push(s.id);link.set(s.id,pick.id);
+  }
+  let doneN=0;
+  for(const r of rows.values()){r.state=full(r)?'DONE':r.pieces>0?'PIECE':'NONE';if(r.state==='DONE')doneN++;}
+  return {rows,link,outside,total:list.length,done:doneN};
+}
+// 줄 상태 글자: 완료 n장(손 완료만이면 "완료") / 조각 / 안 함. 오지 않은 날은 "계획".
+export function itemStateText(r,future=false){
+  if(future)return '계획';
+  if(r.state==='DONE')return r.bricks>0?ITEM_STATE_TEXT.DONE+' '+r.bricks+'장':ITEM_STATE_TEXT.DONE;
+  return ITEM_STATE_TEXT[r.state];
+}
+// 이 기기 저장소 값 {날짜:{s:{세션 id:줄 id}, d:[줄 id]}}. 깨졌거나 막혀 있으면 빈 값(자동 연결만).
+const plainObj=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
+function readAllMarks(storage){try{const v=JSON.parse(storage?.getItem(PLAN_LINK_KEY)??'null');return plainObj(v)?v:{};}catch{return {};}}
+export function readPlanMarks(storage,date){
+  const v=readAllMarks(storage)[date],links={},done=[];
+  if(plainObj(v)){
+    if(plainObj(v.s))for(const [k,x] of Object.entries(v.s))if(typeof x==='string')links[k]=x;
+    if(Array.isArray(v.d))for(const x of v.d)if(typeof x==='string'&&!done.includes(x))done.push(x);
+  }
+  return {links,done};
+}
+// change(marks)로 그 날 값을 고쳐 적는다. 최근 PLAN_LINK_DAYS일만 남긴다. 성공 여부를 돌려준다(실패해도 기록에는 영향 없음).
+export function writePlanMarks(storage,date,change){
+  try{
+    if(!storage||!dateKeyOK(date))return false;
+    const all=readAllMarks(storage),cur=readPlanMarks(storage,date);change(cur);
+    all[date]={s:cur.links,d:cur.done};
+    const keep=Object.keys(all).filter(dateKeyOK).sort().slice(-PLAN_LINK_DAYS);
+    storage.setItem(PLAN_LINK_KEY,JSON.stringify(Object.fromEntries(keep.map(k=>[k,all[k]]))));
+    return true;
+  }catch{return false;}
+}
+export function dayPlanLink(life,study,date,{draft=null,storage=null}={}){
+  return linkPlan(planOf(life,date)?.items??[],daySessions(study,date,draft),readPlanMarks(storage,date));
+}
+// from~to(양끝 포함) 계획 줄 수와 완료 수. 오늘보다 뒤 날의 줄은 later로 따로 센다(달성 분모 = 오늘까지).
+export function planItemsDone(life,study,from,to,today,storage=null){
+  const byDate=new Map((study?.days??[]).map(d=>[d.date,d]));let total=0,done=0,later=0;
+  for(const p of life?.plans??[]){
+    if(p.date<from||p.date>to)continue;
+    const n=p.data?.items?.length??0;if(!n)continue;
+    if(p.date>today){later+=n;continue;}
+    const r=linkPlan(p.data.items,daySessions({days:byDate.has(p.date)?[byDate.get(p.date)]:[]},p.date),readPlanMarks(storage,p.date));total+=r.total;done+=r.done;
+  }
+  return {total,done,later};
+}
+export const itemsDoneText=c=>c.total>0?'계획 '+c.total+'개 중 '+c.done+'개 달성':null;
+// "목표 대비" = 하루 목표(설정 한 곳, achieve의 goalBricks) × 날수.
+export const goalVsText=(actual,goal,days)=>'목표 대비 '+barsText(actual)+' / '+barsText(goal*days);
+
 // ---------- 계획 vs 실제 ----------
 const weekIndex=ach=>new Map(ach.weeks.map(w=>[w.monday,w]));
 // 그날 실제 벽돌: 과목별 {value(장, 조각 0.5), gold(금벽돌 장 수), count}, first = 그날 첫 벽돌의 과목(시동), items 원본.
@@ -204,7 +288,7 @@ export function planVsActual(planItems,actual){
   const planned=planSum(planItems),achieved=list.reduce((s,r)=>s+Math.min(r.actual,r.planned),0);
   return {rows:list,planned,actual:actual.total,achieved,rate:planned>0?achieved/planned:null};
 }
-// 계획 줄마다 상태: 같은 과목의 실제 벽돌을 줄 순서대로 채운다. 시동 ✓(그날 첫 벽돌 과목) / 금 n장 / 완료 n장 / n/m장 / 진행 중(타이머) / 계획.
+// 계획 줄마다 상태: 같은 과목의 실제 벽돌을 줄 순서대로 채운다. kind = gold / ignite(그날 첫 벽돌 과목) / done / part / doing(타이머) / plan.
 export function itemStatuses(items,actual,timerSubject=null){
   const left=new Map([...actual.bySubject].map(([k,s])=>[k,s.value])),goldLeft=new Map([...actual.bySubject].map(([k,s])=>[k,s.gold]));
   let ignited=false,timerUsed=false;const out=new Map();
@@ -212,13 +296,14 @@ export function itemStatuses(items,actual,timerSubject=null){
     const have=left.get(x.subjectId)??0,give=Math.min(have,x.bricks);left.set(x.subjectId,have-give);
     if(give>=x.bricks){
       const g=goldLeft.get(x.subjectId)??0;
-      if(g>0){goldLeft.set(x.subjectId,0);out.set(x.id,{kind:'gold',text:'금 '+g+'장'});}
-      else if(!ignited&&actual.first===x.subjectId){ignited=true;out.set(x.id,{kind:'ignite',text:'시동 ✓'});}
-      else out.set(x.id,{kind:'done',text:'완료 '+give+'장'});
+      // V6F: 글자는 새 카드와 같은 한 벌(안 함 · 조각 · 완료 n장). 종류(kind = 색 class)는 그대로.
+      if(g>0){goldLeft.set(x.subjectId,0);out.set(x.id,{kind:'gold',text:ITEM_STATE_TEXT.DONE+' '+give+'장'});}
+      else if(!ignited&&actual.first===x.subjectId){ignited=true;out.set(x.id,{kind:'ignite',text:ITEM_STATE_TEXT.DONE+' '+give+'장'});}
+      else out.set(x.id,{kind:'done',text:ITEM_STATE_TEXT.DONE+' '+give+'장'});
       if(!ignited&&actual.first===x.subjectId)ignited=true;
-    }else if(give>0)out.set(x.id,{kind:'part',text:give+' / '+x.bricks+'장'});
-    else if(timerSubject!==null&&timerSubject===x.subjectId&&!timerUsed){timerUsed=true;out.set(x.id,{kind:'doing',text:'진행 중'});}
-    else out.set(x.id,{kind:'plan',text:'계획'});
+    }else if(give>0)out.set(x.id,{kind:'part',text:ITEM_STATE_TEXT.PIECE});
+    else if(timerSubject!==null&&timerSubject===x.subjectId&&!timerUsed){timerUsed=true;out.set(x.id,{kind:'doing',text:ITEM_STATE_TEXT.NONE+' ⏱'});}
+    else out.set(x.id,{kind:'plan',text:ITEM_STATE_TEXT.NONE});
   }
   return out;
 }
@@ -319,18 +404,40 @@ function examRow(h,exams,today){
   if(!row.children.length)row.append(h.el('p','시험 일정이 없습니다. 오늘 탭의 습관 편집에서 추가하세요.','muted small'));
   return row;
 }
-// 시험 한 줄(P1A·D36-3): 수능 + 가장 가까운 다른 시험만 글자로("수능 D-379 · 다음 3평 D-139"). 누르면 아래에 4칸 카드가 펼쳐진다(다시 누르면 접힘).
+// V6A: D-day 두 칩. 가까운 시험이 먼저([다음 시험], 금 테두리·크게), 그 뒤 수능([최종], 보조·작게). 한 문장으로 잇지 않는다. 잠정 배지는 그 칩 안에만.
+// 순서는 날짜 오름차순 계산(글자 고정 없음). 지난 시험은 빠지고 다음 시험으로 넘어간다. 가장 가까운 시험이 수능이면 칩 하나([최종]).
+// 오늘 카드 머리·계획 탭 칩·STUDY LIVE 덮개가 모두 이 함수(ddayChips·ddayChipsNode)를 쓴다.
 const ddayText=x=>x.dDay===0?'D-DAY':'D-'+x.dDay;
+export const DDAY_LABEL=Object.freeze({next:'다음 시험',final:'최종'});
+export function ddayChips(exams,today){
+  const up=[...(exams?.items??[])].sort(byDate).filter(x=>x.date>=today),target=csatTarget(exams),fin=target&&target.date>=today?target:null,next=up[0]??null,out=[];
+  if(next&&(!fin||next.id!==fin.id))out.push({...next,role:'next'});
+  if(fin)out.push({...fin,role:'final'});
+  return out.sort(byDate).map((x,i)=>({id:x.id,name:x.name.replace(/\(.*\)/,''),date:x.date,status:x.status,dDay:dDay(today,x.date),role:x.role,main:i===0}));
+}
+export const ddayChipText=c=>DDAY_LABEL[c.role]+' '+c.name+' '+ddayText(c);
+// h = {el,add}. 칩 줄(span이라 단추 안에도 들어간다).
+export function ddayChipsNode(h,chips,cls=''){
+  const row=h.el('span',null,'lb-dday-chips'+(cls?' '+cls:''));
+  for(const c of chips){
+    const n=h.add(h.el('span',null,'lb-dday-chip '+c.role+(c.main?' main':'')),h.el('span',DDAY_LABEL[c.role],'lb-dday-label'),h.el('strong',c.name+' '+ddayText(c),'lb-dday-value'),c.status==='잠정'?h.el('span','잠정','life-badge'):null);
+    n.dataset.examId=c.id;row.append(n);
+  }
+  return row;
+}
+// 글자판(읽기 낭독·안내용): "다음 시험 3평 D-133 · 최종 수능 D-373". 다가올 시험이 없으면 "지난 시험 n개", 일정이 없으면 null.
 export function examLineText(exams,today){
-  // FIX44 (AUD1 #3): 오늘 머리도 이 글을 쓴다. 카드는 앞 4개뿐이라 수능이 5번째 뒤여도 빠지지 않게 수능은 일정 전체에서 찾는다.
-  const cards=examCards(exams,today),target=csatTarget(exams),csat=target&&target.date>=today?{...target,dDay:dDay(today,target.date)}:null,next=cards.find(x=>x.nearest&&!x.csat)??null,name=x=>x.name.replace(/\(.*\)/,'');
-  const parts=[csat?name(csat)+' '+ddayText(csat):null,next?'다음 '+name(next)+' '+ddayText(next):null].filter(Boolean);
-  return parts.length?parts.join(' · '):cards.length?'지난 시험 '+cards.length+'개':null;
+  const chips=ddayChips(exams,today);
+  if(chips.length)return chips.map(ddayChipText).join(' · ');
+  const cards=examCards(exams,today);
+  return cards.length?'지난 시험 '+cards.length+'개':null;
 }
 function examLine(h,ctx,st,exams,today){
   const text=examLineText(exams,today);
   if(text===null)return examRow(h,exams,today);   // 시험 일정이 없으면 안내 문구 그대로
-  const b=h.button(text,()=>{st.examsOpen=!st.examsOpen;void ctx.rerender();},'plan-exam-line');
+  const chips=ddayChips(exams,today);
+  const b=h.button(chips.length?null:text,()=>{st.examsOpen=!st.examsOpen;void ctx.rerender();},'plan-exam-line'+(chips.length?' has-chips':''));
+  if(chips.length)b.append(ddayChipsNode(h,chips));
   b.setAttribute('aria-expanded',String(Boolean(st.examsOpen)));b.setAttribute('aria-label','시험 일정 '+(st.examsOpen?'접기':'펼치기')+' · '+text);
   return h.add(h.el('div',null,'plan-exam-wrap'),b,st.examsOpen?examRow(h,exams,today):null);
 }
@@ -348,12 +455,12 @@ function dayView(h,ctx,st,ctxData){
   const card=ctx.todayPlan?.({date,today})??null;
   if(card){h.add(out,card,h.add(h.el('div',null,'button-row'),h.button('계획 편집',()=>openPlanEditor(ctx,st,date),'secondary')));return out;}
   const blocksUsed=[...new Set(sum.items.map(x=>x.block))];
-  h.add(out,h.el('h3','계획 · '+(blocksUsed.length?blocksUsed.join(' '):'-')+' 블록 / SUM '+barsText(sum.planned)));
+  h.add(out,h.el('h3','계획 · '+(blocksUsed.length?blocksUsed.map(b=>BLOCK_TEXT[b]).join('·'):'-')+' / 합 '+barsText(sum.planned)));   // V6F: 약자 대신 한글 시간대
   if(!sum.items.length)h.add(out,h.el('p','이 날의 계획이 없습니다. "계획 편집"에서 줄을 추가하세요.','muted small'));
   const status=itemStatuses(sum.items,sum.actual,timer);
   for(const b of PLAN_BLOCKS){
     const rows=sum.items.filter(x=>x.block===b);if(!rows.length)continue;
-    const g=h.add(h.el('div',null,'plan-block'),h.el('span',b+' · '+BLOCK_TEXT[b],'plan-block-name'));
+    const g=h.add(h.el('div',null,'plan-block'),h.el('span',BLOCK_TEXT[b],'plan-block-name'));
     for(const x of rows){
       const stt=status.get(x.id),r=h.el('div',null,'plan-row');r.dataset.itemId=x.id;
       h.add(r,tag(h,subjects,x.subjectId,{dashed:(sum.actual.bySubject.get(x.subjectId)?.value??0)===0}),h.el('span',x.title+' · '+barsText(x.bricks),'plan-title'),h.el('span',stt.text,'plan-status '+stt.kind));
@@ -429,7 +536,8 @@ function monthView(h,ctx,st,data){
   const out=h.el('section',null,'plan-card plan-month');
   h.add(out,navRow(h,ym.slice(0,4)+'년 '+Number(ym.slice(5,7))+'월',()=>{choosePlanDate(st,'month',shiftMonth(ym,-1));void ctx.rerender();},()=>{choosePlanDate(st,'month',shiftMonth(ym,1));void ctx.rerender();},()=>{choosePlanDate(st,'month',today.slice(0,7),false);void ctx.rerender();},'이번 달',ym===today.slice(0,7)));
   // P1C: 앱이 ctx.planMonth를 넘겨 주면 과목 × 주차 표(plan-month.mjs)를 그리고, 날짜 달력은 그 안의 "날짜로 보기"로 들어간다. 못 받으면 아래 날짜 달력 그대로.
-  const table=ctx.planMonth?.(st,{data,ym,dateGrid:()=>dateGrid(h,ctx,st,data,ym),goWeek:monday=>{choosePlanDate(st,'monday',monday);setView(st,ctx,'WEEK');void ctx.rerender();}})??null;
+  const items=planItemsDone(data.life,data.study,ym+'-01',ym+'-'+String(daysInMonth(ym)).padStart(2,'0'),today,ctx.storage??null);   // V6A: 이 달 계획 줄 n개 중 m개(손 완료 표시 포함)
+  const table=ctx.planMonth?.(st,{data,ym,items,dateGrid:()=>dateGrid(h,ctx,st,data,ym),goWeek:monday=>{choosePlanDate(st,'monday',monday);setView(st,ctx,'WEEK');void ctx.rerender();}})??null;
   h.add(out,...(table?[table]:dateGrid(h,ctx,st,data,ym)));
   return out;
 }
@@ -523,18 +631,26 @@ function yearView(h,ctx,st,data){
     if(mm.slice(0,4)!==String(year))continue;
     months[Number(mm.slice(5,7))-1].push(m);
   }
-  const W=336,rowH=22,s=h.svg('svg',{class:'plan-yearbars',viewBox:'0 0 '+W+' '+(rowH*12+4),width:'100%',role:'img','aria-label':year+'년 달별 주간 벽돌, 별은 시험 주'});
+  // V6A: 월 라벨은 SVG 글자(화면 폭에 따라 커지는 가는 숫자)가 아니라 본문 서체 HTML(15px·600·ink-600·오른쪽 정렬·고정폭 숫자, 줄 높이 = 주 칸 높이, styles.css).
+  // 칸 = HTML(주 칸 높이 고정), 채움 막대만 칸 안 SVG(preserveAspectRatio none, 글자 없음). 채운 길이 = 그 주 벽돌 / (하루 목표 × 7).
+  const goalWeek=ach.goalBricks*7;
+  const grid=h.el('div',null,'plan-yeargrid');grid.setAttribute('role','list');grid.setAttribute('aria-label',year+'년 달별 주간 벽돌, 별은 시험 주');
   months.forEach((list,mi)=>{
-    const y=mi*rowH+2;s.append(h.svg('text',{class:'plan-year-label',x:0,y:y+14},(mi+1)+'월'));
-    list.forEach((m,k)=>{
-      const w=weeks.get(m),ratio=w&&w.brickTarget>0?Math.min(1,w.value/w.brickTarget):0,x=34+k*50;
-      s.append(h.svg('rect',{class:'plan-year-slot'+(m===mondayOf(today)?' now':''),x,y:y+3,width:46,height:14}));
-      if(ratio>0)s.append(h.svg('rect',{class:'plan-year-fill',x,y:y+3,width:46*ratio,height:14}));
-      if(w)s.append(h.svg('text',{class:'plan-year-value',x:x+23,y:y+14},barsText(w.value)));
-      if(examWeeks.has(m)){const t=h.svg('text',{class:'plan-year-exam',x:x+40,y:y+13},'★');t.append(h.svg('title',{},examWeeks.get(m).join(', ')));s.append(t);}
-    });
+    const row=h.add(h.el('div',null,'plan-year-row'),h.el('span',(mi+1)+'월','plan-year-month'));row.setAttribute('role','listitem');
+    const cells=h.el('div',null,'plan-year-weeks');
+    for(const m of list){
+      const w=weeks.get(m),ratio=w&&goalWeek>0?Math.min(1,w.value/goalWeek):0;
+      const c=h.el('span',null,'plan-year-slot'+(m===mondayOf(today)?' now':'')+(examWeeks.has(m)?' exam':''));c.dataset.week=m;
+      c.setAttribute('aria-label',short(m)+' 주'+(w?' · 벽돌 '+barsText(w.value):'')+(examWeeks.has(m)?' · '+examWeeks.get(m).join(', '):''));
+      if(ratio>0){const bar=h.svg('svg',{class:'plan-year-bar',viewBox:'0 0 100 10',preserveAspectRatio:'none','aria-hidden':'true'});bar.append(h.svg('rect',{class:'plan-year-fill',x:0,y:0,width:100*ratio,height:10}));c.append(bar);}
+      if(w)c.append(h.el('span',barsText(w.value),'plan-year-value'));
+      if(examWeeks.has(m)){const t=h.el('span','★','plan-year-exam');t.title=examWeeks.get(m).join(', ');c.append(t);}
+      cells.append(c);
+    }
+    grid.append(h.add(row,cells));
   });
-  h.add(out,s,h.el('p','한 칸 = 1주(월요일이 속한 달) · 채운 길이 = 그 주 목표 대비 쌓은 벽돌 · ★ = 시험 주','muted small'));
+  const items=planItemsDone(data.life,data.study,year+'-01-01',year+'-12-31',today,ctx.storage??null);
+  h.add(out,grid,h.el('p',[itemsDoneText(items),'한 칸 = 1주(월요일이 속한 달) · 채운 길이 = 하루 목표 '+barsText(ach.goalBricks)+' × 7일 대비 쌓은 벽돌 · ★ = 시험 주'].filter(Boolean).join(' · '),'muted small plan-year-note'));
   return out;
 }
 
@@ -595,16 +711,18 @@ function csatView(h,ctx,st,data){
   const feel=h.el('div',null,'plan-feel');
   h.add(feel,h.add(h.el('div',null,'plan-feel-cell'),h.el('strong',c.weekendsLeft+'번'),h.el('span','남은 주말')),h.add(h.el('div',null,'plan-feel-cell'),h.el('strong',c.examsLeft+'번'),h.el('span','남은 모의고사')),h.add(h.el('div',null,'plan-feel-cell'),h.el('strong',hourShareText(c.hoursLeft)),h.el('span','오늘 1시간의 몫'),h.el('small','남은 공부 가능 시간 '+c.hoursLeft.toLocaleString('ko-KR')+'시간(하루 '+STUDY_HOURS_PER_DAY+'h)','muted')));
   const rail=h.el('section',null,'plan-card');h.add(rail,h.el('h3','시험 레일 · '+c.target.name+' D-'+c.dDay),railSvg(h,exams,today,ach),h.el('p','남은 일요일 '+c.sundaysLeft+'번 · 구간 색은 시기(기본기→파이널)가 진해지는 순서입니다.','muted small'));
-  const wall=h.el('section',null,'plan-card');h.add(wall,h.el('h3','벽돌 용량 벽'),wallSvg(h,cap),h.el('p',cap.days+'일 × '+cap.goal+'장 = '+cap.total.toLocaleString('ko-KR')+'장 쌓을 수 있어요 · 지금까지 '+barsText(cap.stacked)+' 쌓음','plan-sum'));
+  const items=planItemsDone(data.life,data.study,'0000-01-01',today,today,ctx.storage??null),itemsText=itemsDoneText(items);   // V6A: 지금까지 계획 줄 n개 중 m개
+  const wall=h.el('section',null,'plan-card');h.add(wall,h.el('h3','벽돌 용량 벽'),wallSvg(h,cap),h.el('p',cap.days+'일 × '+cap.goal+'장 = '+cap.total.toLocaleString('ko-KR')+'장 쌓을 수 있어요 · 지금까지 '+barsText(cap.stacked)+' 쌓음'+(itemsText?' · 지금까지 '+itemsText:''),'plan-sum'));
   h.add(out,grid,feel,rail,wall);
   return out;
 }
 
 // ---------- 하루 계획 편집 시트 ----------
+export const PLAN_UNDO='되돌리기';
 // seed = 초안 줄(B61 다음 주 제안, id 없음)을 기존 줄 뒤에 더해 시트만 연다. onSaved = 저장이 끝난 뒤 부른 쪽에 알린다. 기록은 여전히 "저장" 버튼뿐이다.
 function openPlanEditor(ctx,st,date,{seed=[],onSaved=null}={}){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button}=h;
-  const whole=ctx.getWhole(),life=whole.life??{plans:[]},defs=lifeDefs(whole.life??null),base=structuredClone(planOf(life,date));
+  const whole=ctx.getWhole(),life=whole.life??{plans:[]},defs=lifeDefs(whole.life??null);let base=structuredClone(planOf(life,date));
   const subjects=defs.subjects.filter(s=>!s.hidden),draft=structuredClone(base?.items??[]);
   const newId=i=>'p'+ctx.uid().slice(0,10)+(i===undefined?'':i.toString(36));
   for(const x of seed)draft.push({...x,id:newId(draft.length)});
@@ -612,55 +730,65 @@ function openPlanEditor(ctx,st,date,{seed=[],onSaved=null}={}){
   const showErr=code=>{err.textContent=planErrorText(code);err.hidden=false;};
   const rows=el('div',null,'plan-edit-rows');
   const select=(options,value,label)=>{const n=el('select');for(const [v,t] of options){const o=el('option',t);o.value=String(v);n.append(o);}n.value=String(value);n.setAttribute('aria-label',label);return n;};
-  const brickOptions=Array.from({length:MAX_PLAN_BRICKS*2},(_,i)=>[(i+1)/2,barsText((i+1)/2)]);
+  // V6A: 줄 = 과목 · 세부내용 · 시간대만. 장수 입력칸 없음(새 줄은 NEW_ITEM_BRICKS, 저장된 줄의 값은 그대로 두고 "예전 목표 n장"으로만 보인다).
   const draw=()=>{
     rows.replaceChildren();
     draft.forEach((x,i)=>{
       const sub=select(subjects.some(s=>s.id===x.subjectId)?subjects.map(s=>[s.id,s.name]):[...subjects.map(s=>[s.id,s.name]),[x.subjectId,'기타']],x.subjectId,'과목');
-      sub.addEventListener('change',()=>{x.subjectId=sub.value;});
-      const title=el('input');title.type='text';title.value=x.title;title.setAttribute('maxlength',String(MAX_PLAN_TITLE));title.setAttribute('aria-label','할 일');title.setAttribute('placeholder','할 일');
-      title.addEventListener('input',()=>{x.title=title.value;});
-      const bricks=select(brickOptions,x.bricks,'목표 벽돌');bricks.addEventListener('change',()=>{x.bricks=Number(bricks.value);});
-      const block=select(PLAN_BLOCKS.map(b=>[b,b+' '+BLOCK_TEXT[b]]),x.block,'시간대');block.addEventListener('change',()=>{x.block=block.value;});
-      add(rows,add(el('div',null,'plan-edit-row'),sub,title,bricks,block,button('삭제',()=>{draft.splice(i,1);draw();},'secondary')));
+      sub.addEventListener('change',()=>{x.subjectId=sub.value;autoSave();});
+      const title=el('input');title.type='text';title.value=x.title;title.setAttribute('maxlength',String(MAX_PLAN_TITLE));title.setAttribute('aria-label','세부내용');title.setAttribute('placeholder','세부내용');
+      title.addEventListener('input',()=>{x.title=title.value;});title.addEventListener('change',()=>autoSave());
+      const block=select(PLAN_BLOCKS.map(b=>[b,BLOCK_TEXT[b]]),x.block,'시간대');block.addEventListener('change',()=>{x.block=block.value;autoSave();});   // V6F: 약자 없이 한글만
+      const old=oldTarget(x);
+      add(rows,add(el('div',null,'plan-edit-row'),sub,title,block,old!==null?el('span','예전 목표 '+barsText(old),'muted small plan-old-target'):null,button('삭제',()=>{draft.splice(i,1);draw();autoSave();},'secondary')));
     });
     if(!draft.length)add(rows,el('p','줄이 없습니다. "줄 추가"를 누르세요.','muted small'));
   };
   const addRow=()=>{
     if(draft.length>=MAX_PLAN_ITEMS){showErr('PLAN_ITEM_LIMIT');return;}
-    draft.push({id:newId(draft.length),subjectId:subjects[0]?.id??'kor',title:'',bricks:1,block:'M'});err.hidden=true;draw();
+    draft.push({id:newId(draft.length),subjectId:subjects[0]?.id??'kor',title:'',bricks:NEW_ITEM_BRICKS,block:'M'});err.hidden=true;draw();
   };
   const copyYesterday=()=>{
     const prev=planOf(life,shiftDay(date,-1));
     if(!prev?.items.length){err.textContent='어제 계획이 없습니다.';err.hidden=false;return;}
-    draft.splice(0,draft.length,...copyPlan(prev,date,i=>newId(i)).items);err.hidden=true;draw();   // 초안만 바꾼다. 저장은 "저장" 버튼
+    draft.splice(0,draft.length,...copyPlan(prev,date,i=>newId(i)).items);err.hidden=true;draw();autoSave();   // 초안만 바꾼다. 저장은 "저장" 버튼(V6F: 즉시 저장이 켜져 있으면 바로)
   };
+  // V6F (지시서 3): 앱이 ctx.planAutoSave를 켜면 줄을 고칠 때마다(과목·시간대 고르기, 세부내용 칸을 떠날 때, 삭제, 어제 복사) 바로 저장하고 시트는 열어 둔다. "저장됨 · 되돌리기"(1회).
+  // 저장은 아래 "저장" 핸들러 하나(save)가 auto 모드로 한다(쓰기 한 곳 규칙 그대로). 세부내용이 빈 새 줄처럼 규칙에 아직 안 맞으면 저장하지 않고 "아직 저장 안 됨". 저장 중에 또 고치면 끝난 뒤 한 번 더.
+  const saved=el('p',null,'notice plan-editor-saved');saved.hidden=true;let saving=false,again=false,undoItems=null,autoMode=null;
+  const showSaved=(text,withUndo)=>{saved.replaceChildren(el('span',text));if(withUndo&&undoItems)add(saved,button(PLAN_UNDO,()=>{const items=undoItems;undoItems=null;draft.splice(0,draft.length,...structuredClone(items));draw();autoSave(true);},'secondary plan-editor-undo'));saved.hidden=false;};
+  function autoSave(undoing=false){if(!ctx.planAutoSave)return;if(saving){again=true;return;}autoMode={undoing};save();}
   draw();
   let dlg=null,sealedAs=null;
   const save=()=>{
+    const auto=autoMode;autoMode=null;
     const mine={date,items:draft.map(x=>({id:x.id,subjectId:x.subjectId,title:String(x.title).trim(),bricks:Number(x.bricks),block:x.block}))};
-    try{validateLifeData('PLAN_DAY',date,mine);}catch(e){showErr(e?.code);return;}
-    dlg?.close?.();
+    try{validateLifeData('PLAN_DAY',date,mine);}catch(e){if(auto)showSaved('아직 저장 안 됨 · 세부내용을 채우면 저장돼요',false);else showErr(e?.code);return;}
+    if(auto&&stable(mine)===stable(base??{date,items:[]}))return;
+    if(!auto)dlg?.close?.();else saving=true;
     void ctx.perform(async()=>{
-      st.message=null;st.error=false;st.notices=[];
+      if(!auto){st.message=null;st.error=false;st.notices=[];}
       let sealed=false;
       try{
         if(sealedAs===stable(mine)&&await ctx.draftMode?.())sealed=true;   // 같은 내용을 봉인 초안으로 또 쌓지 않는다
         else{
           const r=await savePlanDay(ctx,{date,base,mine});
-          if(r.sealed){sealed=true;sealedAs=stable(mine);st.notices=r.notices.filter(n=>n.code!=='PLAN_LOCAL_DRAFT');}
+          if(r.sealed){sealed=true;sealedAs=stable(mine);if(!auto)st.notices=r.notices.filter(n=>n.code!=='PLAN_LOCAL_DRAFT');}
+          else if(auto){undoItems=auto.undoing?null:structuredClone(base?.items??[]);base=structuredClone(mine);showSaved(auto.undoing?'저장 전 계획으로 되돌렸어요 · 저장됨':'저장됨',!auto.undoing);onSaved?.();}
           else{st.message=r.status==='SAVED'?'하루 계획을 저장했습니다.':'이미 같은 계획이 저장되어 있습니다.';st.notices=r.notices;onSaved?.();}
         }
-        if(sealed)st.message=PLAN_NOTICE_TEXT.PLAN_LOCAL_DRAFT;
+        if(sealed){if(auto){note.hidden=false;showSaved(PLAN_NOTICE_TEXT.PLAN_LOCAL_DRAFT,false);}else st.message=PLAN_NOTICE_TEXT.PLAN_LOCAL_DRAFT;}
       }
-      catch(e){st.message=planErrorText(e?.code);st.error=true;}
+      catch(e){if(auto)showSaved(planErrorText(e?.code),false);else{st.message=planErrorText(e?.code);st.error=true;}}
+      finally{if(auto)saving=false;}
       await ctx.rerender();
+      if(auto){if(again){again=false;autoSave();}return;}
       if(sealed&&!ctx.locked?.()){note.hidden=false;dlg=ctx.sheet?.('하루 계획 편집',body)??null;}   // 임시 저장은 성공이 아니다: 시트와 입력을 그대로 다시 연다(H37-P1). 잠겼으면 열지 않는다(열린 모달은 로그인 칸을 막는다, FIX38)
     });
   };
   // 단추는 줄 목록 위에 둔다(줄이 많아 시트가 스크롤돼도 "저장"이 보인다).
-  add(body,el('p',dateLabel(date)+' 계획 · 줄 하나 = 과목 + 할 일 + 목표 벽돌(30분 = 1장)','muted small'),
-    add(el('div',null,'buttons'),button('줄 추가',addRow,'secondary'),button('어제 계획 복사',copyYesterday,'secondary'),button('저장',save,'primary')),err,note,rows);
+  add(body,el('p',dateLabel(date)+' 계획 · 줄 하나 = 과목 + 세부내용 + 시간대 · 벽돌은 공부 벽돌에서 그 과목을 공부하면 자동으로 채워져요','muted small'),
+    add(el('div',null,'buttons'),button('줄 추가',addRow,'secondary'),button('어제 계획 복사',copyYesterday,'secondary'),button(ctx.planAutoSave?'닫기':'저장',ctx.planAutoSave?()=>dlg?.close?.():save,'primary')),err,note,saved,rows);
   dlg=ctx.sheet?.('하루 계획 편집',body)??null;
   return {body,draft,save,addRow,copyYesterday};
 }
@@ -669,7 +797,7 @@ function openPlanEditor(ctx,st,date,{seed=[],onSaved=null}={}){
 export function renderPlan(root,ctx,st){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add}=h;
   const whole=ctx.getWhole(),life=whole.life??null,today=kstDate(ctx.now()),defs=lifeDefs(life),ach=achieve({life,study:whole.study??null,today});
-  const data={life,ach,today,exams:defs.exams,subjects:subjectMap(defs)};
+  const data={life,study:whole.study??null,ach,today,exams:defs.exams,subjects:subjectMap(defs)};
   followPlanToday(st,today);   // FIX53C (HW1)
   const out=add(el('section',null,'panel plan-panel'),add(el('div',null,'plan-head'),el('span','PLAN','eyebrow'),el('h2','계획표','panel-title')));out.id='life-plan';
   add(out,...viewChips(h,ctx,st,today),examLine(h,ctx,st,defs.exams,today));

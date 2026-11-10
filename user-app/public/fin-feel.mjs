@@ -4,7 +4,7 @@
 // "무엇을 할지" 정하는 문장은 이 카드에만 쓴다(2026-11-06 지시서의 명시 요구). fin-forecast.mjs·fin-plan.mjs의 옛 원칙과 옛 함수는 그대로다.
 import {formatWon,isSensitive,shiftMonth} from './fin-ledger.mjs';
 import {prepare,roundDiv} from './fin-charts.mjs';
-import {budgetStatus,monthInsight} from './fin-plan.mjs';
+import {budgetStatus,monthInsight,vaultBricks} from './fin-plan.mjs';
 import {fixedPlan,fixedSchedule,monthForecast,forecastNode,TIGHT_PCT} from './fin-forecast.mjs';
 import {recurringKey} from './fin-recurring.mjs';
 import {analysisCards} from './fin-analysis.mjs';
@@ -31,6 +31,32 @@ export function feelChip(f,{known,current}){
   if(!c||c.A<=0n)return {value:'-',foot:'고정비 예정 빼면 남은 돈 없음'};
   if(c.dl>0&&c.safe===0n)return {value:'-',foot:'고정비 예정 빼면 남은 돈 '+formatWon(c.A)+' · 하루 1원도 안 됨'};   // FIX36 (H36-M4)
   return c.dl>0?{value:formatWon(c.safe),foot:'고정비 예정 뺌 · 내일부터 하루 몫'}:{value:formatWon(c.A),foot:'고정비 예정 뺌 · 오늘이 마지막 날'};
+}
+// FIX67 (M-04): 오늘 몫 = (지금 쓸 수 있는 돈 A + 오늘 쓴 돈) ÷ 오늘 포함 남은 날(내림), 오늘 남은 몫 = 오늘 몫 − 오늘 쓴 돈. 마지막 날은 오늘 몫 = A + 오늘 쓴 돈(남은 몫 = A).
+// todaySpent = 오늘 쓴 돈(vaultWall today.spent, 모르면 null → null). 계산만(저장 0). 위젯·내보내기 값(life-money-facts·state-export)은 이 함수를 쓰지 않는다.
+export function vaultTodayShare(core,todaySpent){
+  if(!core||todaySpent===null||todaySpent===undefined)return null;
+  const n=BigInt(core.dl+1),x=core.A+todaySpent,share=x>=0n?x/n:-ceilDiv(-x,n),left=share-todaySpent;
+  return {share,spent:todaySpent,left,over:left<0n?-left:0n,last:core.dl===0};
+}
+// FIX67 (M-04·M-08): 금고 셋째 큰 숫자와 아래 작은 줄. 작은 줄 = 내일부터 하루 몫(core.safe = 지금까지의 칩 값). 넘겼으면 음수 숫자 대신 "오늘 몫을 ○원 넘겼어요"(state OVER).
+// 이번 달 지출 기록 0건(NO_DATA)이면 "-" 대신 예산 기준 하루 몫(금괴 한 개 = 예산 ÷ 날수)을 '참고'로. 모름 줄만 있는 달은 그대로 모름.
+export const VAULT_TODAY_TEXT=Object.freeze({label:'오늘 남은 몫',last:'오늘 남은 돈',noRecord:'이번 달 지출 기록이 아직 없어요',ref:'참고',fixed:'고정비 예정 뺌'});
+export const VAULT_OVER_SHARE=x=>'오늘 몫을 '+formatWon(x)+' 넘겼어요';
+export const vaultTomorrowText=core=>core.A<=0n?'내일부터 쓸 돈 없음':core.safe>0n?'내일부터 하루 '+formatWon(core.safe):'남은 '+core.dl+'일은 하루 1원도 안 돼요';
+// FIX67 (M-05): 금고 작은 줄과 예산 화면 "남은 금액" 아래 줄이 같은 글자(같은 feelCore). core가 없으면 빈 글자.
+export const vaultDayText=core=>!core?'':(core.dl===0?(core.A>0n?'오늘이 마지막 날':'고정비 예정 빼면 남은 돈 없음'):vaultTomorrowText(core))+' · '+VAULT_TODAY_TEXT.fixed;
+export function vaultTodayNum({f,s,v,todaySpent}){
+  const L=VAULT_TODAY_TEXT,label=L.label,none=foot=>({label,value:'-',foot,state:'NONE',share:null});
+  if(!s.current)return none('이번 달이 아님');
+  if(s.dataState==='NO_DATA')return {label,value:v?.perBrick===null||v?.perBrick===undefined?'-':formatWon(v.perBrick),tag:L.ref,foot:L.noRecord+' · 예산 ÷ 날수',state:'NO_RECORD',share:null};
+  const c=s.dataState==='KNOWN'?feelCore(f):null;
+  if(!c)return none('쓴 돈을 모름');
+  const t=vaultTodayShare(c,todaySpent),foot=vaultDayText(c);
+  if(c.dl===0)return {label:L.last,value:c.A>0n?formatWon(c.A):'-',foot,state:'LAST',share:t};
+  if(!t)return {label,value:'-',foot:'오늘 쓴 돈 모름 · '+foot,state:'NONE',share:null};
+  if(t.over>0n)return {label,value:VAULT_OVER_SHARE(t.over),foot,state:'OVER',share:t};
+  return {label,value:formatWon(t.left),foot,state:'LEFT',share:t};
 }
 
 // 최근 달의 변동 지출 평균. 소비 줄이 있고 순액을 모두 아는 달만 넣고 자료 없는 달은 건너뛴다(null≠0). 0달이면 null.
@@ -290,6 +316,14 @@ export function feelOfFin(fin,today){
   const prep=prepare(fin),rules=fin.recurring?.data.rules??[],status=budgetStatus(prep,fin.budgets,today.slice(0,7),today);
   return {status,feel:moneyFeel({prep,status,forecast:monthForecast({status,lines:prep.lines,rules,today}),rules})};
 }
+// EXP1: 내보내기용 오늘 줄. 돈 탭 금고 셋째 숫자와 같은 함수(vaultTodayNum → vaultTodayShare)의 오늘 몫(share)과 오늘 쓴 돈(spent)만 BigInt로 돌려준다.
+// 오늘 몫이 음수(이미 예산을 넘은 달)면 쓸 수 있는 돈은 0이다. 모름(예산 없음·자료 없음·쓴 돈 모름 줄)은 null — 0원이 아니다. 참고 값(NO_RECORD)은 내보내지 않는다.
+export function feelTodayOf(fin,today){
+  const prep=prepare(fin),rules=fin.recurring?.data.rules??[],s=budgetStatus(prep,fin.budgets,today.slice(0,7),today);
+  if(!s.total)return null;
+  const f=monthForecast({status:s,lines:prep.lines,rules,today}),v=vaultBricks(s),num=vaultTodayNum({f,s,v,todaySpent:vaultWall(prep,s,v).today?.spent??null});
+  return num.share?{share:num.share.share>0n?num.share.share:0n,spent:num.share.spent}:null;
+}
 // 내보내기용 진단: 단계·비율·날짜만 뽑는다. 금액·분류·가게·규칙 이름은 결과에 없다. 단계가 없으면(예산 없음·자료 없음·모름) null이고 줄도 없다.
 const MAX_PCT=999n;
 const capPct=v=>Number(v>MAX_PCT?MAX_PCT:v);
@@ -374,8 +408,9 @@ export function vaultMonthBar(T){
     goldPm:pm(a<e?a:e),spentPm:pm(a),pacePm:pm(e),budgetPm:pm(b)};
 }
 // DS3B 오늘 막대. wall = vaultWall() 그대로: 오늘 몫 perBrick, 오늘 쓴 돈 today.spent. 오늘 쓴 돈을 모르면(순액 모름 줄·모름 달) null.
-export function vaultTodayBar(wall){
-  const t=wall?.today,per=wall?.perBrick??null;
+// FIX67 (M-04): share를 주면(금고 카드 = vaultTodayShare의 오늘 몫) 그 값을 오늘 몫으로 쓴다. 안 주면 예전처럼 금괴 한 개.
+export function vaultTodayBar(wall,share=wall?.perBrick??null){
+  const t=wall?.today,per=share??null;
   if(!t||t.spent===null||per===null)return null;
   const sp=t.spent>0n?t.spent:0n,scale=[per,sp,1n].reduce((m,v)=>v>m?v:m),pm=v=>Number(v*1000n/scale);
   return {share:per,spent:t.spent,over:sp>per?sp-per:0n,sharePm:pm(per),fillPm:pm(sp<per?sp:per),spentPm:pm(sp)};
@@ -463,10 +498,10 @@ function barSvg(h,H,label,parts){
   return svg;
 }
 const overRect=(a,b,H)=>b>a?{x:a,y:2,width:b-a,height:H-4}:null;
-function numCell(h,kind,label,amount,foot,extra=''){
+function numCell(h,kind,label,amount,foot,extra='',tag=null){
   const own=kind==='today';
   return h.add(h.el('div',null,'vault-num vault-num-'+kind+(own?' vault-l1-main':'')+extra),
-    h.el('span',label,'vault-num-label'+(own?' vault-l1-label':'')),h.el('strong',amount,'vault-num-amount'+(own?' vault-l1-amount':'')),foot?h.el('span',foot,'vault-num-foot'+(own?' vault-l1-foot':'')):null);
+    h.el('span',label,'vault-num-label'+(own?' vault-l1-label':'')),h.el('strong',amount,'vault-num-amount'+(own?' vault-l1-amount':'')),tag?h.el('span',tag,'vault-num-tag'):null,foot?h.el('span',foot,'vault-num-foot'+(own?' vault-l1-foot':'')):null);
 }
 // 이달 막대: 금 = 쓴 돈(적당선까지), 벽돌색 = 적당선을 넘은 부분, 빈 칸 = 남은 돈, 세로 눈금 = 오늘까지 이만큼이 적당. 예산을 넘으면 예산 자리에 가는 선.
 function monthBarNode(h,m){
@@ -525,28 +560,28 @@ export function vaultCardNode(h,{prep,s,f,v,rules=[],narrow=false,live=null,fixe
       h.add(h.el('div',null,'button-row'),h.button(VAULT_NO_BUDGET_CTA,onCalc,'primary')),top,live,fcBox,fixed);
     return p;
   }
-  const known=v.state==='OK',wall=vaultWall(prep,s,v),chip=feelChip(f,{known,current:s.current}),over=Boolean(wall.today?.over);
+  const known=v.state==='OK',wall=vaultWall(prep,s,v),num=vaultTodayNum({f,s,v,todaySpent:wall.today?.spent??null}),over=num.state==='OVER';   // FIX67 (M-04): 넘김 = 오늘 몫(vaultTodayShare) 기준
   // DSFIX S1: 마이너스 = 칩과 같은 값(feelCore A = 예산 − 쓴 돈 − 고정비 예정)이 0보다 작을 때. 큰 숫자를 "−12,000원 초과"처럼 금액과 함께 빨강 계열로 보인다.
   const core=known&&s.current?feelCore(f):null,minus=Boolean(core&&core.A<0n);
   p.setAttribute('data-tone',!known?'none':feelTone(moneyFeel({prep,status:s,forecast:f,rules}),T));
-  // ① 숫자 3개. 쓴 돈·남은 돈 = budgetStatus total 그대로(넘으면 "이달 초과" + 넘은 금액), 오늘 쓸 수 있는 돈 = 칩 값 그대로. 모름·자료 없음은 0원이 아니다.
+  // ① 숫자 3개. 쓴 돈·남은 돈 = budgetStatus total 그대로(넘으면 "이달 초과" + 넘은 금액). 셋째 = 오늘 남은 몫(FIX67 vaultTodayNum, 아래 작은 줄 = 내일부터 하루 몫). 모름·자료 없음은 0원이 아니다.
   const unk=v.state==='NO_DATA'?'자료 없음':'모름',overMonth=known&&T.remaining<0n;
   const nums=h.add(h.el('div',null,'vault-nums'),
     numCell(h,'spent','쓴 돈',known?formatWon(T.actual):unk,known?unknownFoot:null),
     numCell(h,'left',overMonth?'이달 초과':'남은 돈',known?formatWon(overMonth?-T.remaining:T.remaining):'모름','예산 '+formatWon(T.budget),overMonth?' over':''),
-    numCell(h,'today','오늘 쓸 수 있는 돈',minus?VAULT_MINUS(core.A):chip.value,chip.foot));
+    numCell(h,'today',num.label,minus?VAULT_MINUS(core.A):num.value,num.foot,over&&!minus?' over':'',num.tag??null));
   const l1=h.add(h.el('div',null,'vault-l1'+(over?' over':'')+(minus?' minus':'')),nums,
     known?null:h.el('p',v.state==='NO_DATA'?'이 달 소비 자료가 없습니다(0원 아님). 예산 '+formatWon(T.budget)
       :'실제 금액 모름 줄만 있어 쓴 돈을 알 수 없습니다. 예산 '+formatWon(T.budget),'vault-sub'),
     // ② 이달 막대 ③ 오늘 막대: 쓴 돈을 알 때만(모름 달은 0원 막대로 그리지 않는다)
     known?monthBarNode(h,vaultMonthBar(T)):null,
-    known&&s.current?todayBarNode(h,vaultTodayBar(wall),vaultRestText(core)):null,
-    fixed,h.add(h.el('div',null,'vault-l1-side button-row'),h.button('빠른 지출 입력',onQuick,'primary')));
+    known&&s.current?todayBarNode(h,num.share?vaultTodayBar(wall,num.share.share):null,vaultRestText(core)):null,
+    fixed,h.add(h.el('div',null,'vault-l1-side button-row'),h.button('빠른 지출',onQuick,'primary')));   // FIX67 (MAN1 9): 단추 이름 하나로
   l1.setAttribute('data-over',over?'1':'0');l1.setAttribute('data-minus',minus?'1':'0');
   h.add(p,l1,feedback,top);
   // ⑤ 벽돌로 보기(접힘): 오늘 금괴 + 금괴 벽. 지우지 않고 옮겼다.
   const l2=h.add(h.el('details',null,'vault-l2'),h.el('summary','벽돌로 보기','vault-l2-sum'),
-    h.add(h.el('div',null,'vault-l2-today'),todayIngot(h,wall,minus),h.el('span','오늘 금괴 · 금 = 오늘 몫 중 남은 만큼','muted small')),
+    h.add(h.el('div',null,'vault-l2-today'),todayIngot(h,wall,minus),h.el('span','오늘 금괴 · 금 = 금괴 한 개(예산 ÷ 날수) 중 오늘 남은 만큼','muted small')),
     wallNode(h,wall,{cols:narrow?6:10}),vaultLegend(h),
     known?null:h.el('p',v.state==='NO_DATA'?'소비 줄이 없는 달은 0원이 아니라 자료 없음입니다.':'실제 금액 모름 줄 '+Number(s.unknownRows).toLocaleString('ko-KR')+'행은 합계에 넣지 않습니다.','muted small'));
   // 3층(접힘): 지금 내 돈·기대치 대비·금괴 한 개·이번 달 속도로 계산한 값·금고 계산기
