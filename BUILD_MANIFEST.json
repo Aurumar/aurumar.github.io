@@ -765,8 +765,8 @@
     },
     {
       "path": "user-app/public/life-ui.mjs",
-      "sourceSha256": "2280a2ad3e8254924ad37ed5c2bc7b3de4b3451673262e0df8e868bf8e3717d9",
-      "outputSha256": "2280a2ad3e8254924ad37ed5c2bc7b3de4b3451673262e0df8e868bf8e3717d9",
+      "sourceSha256": "c9ba5aedfe7ef22d4977b9f2e555bb70721a48593716efbef060016cf9b78ba8",
+      "outputSha256": "c9ba5aedfe7ef22d4977b9f2e555bb70721a48593716efbef060016cf9b78ba8",
       "dependencies": [
         "user-app/public/ui-kit.mjs",
         "user-app/public/life-flow.mjs",
@@ -774,6 +774,7 @@
         "user-app/public/life-quest.mjs",
         "user-app/public/study-stage.mjs",
         "user-app/public/study-rebase.mjs",
+        "user-app/public/life-rebase.mjs",
         "user-app/public/study-live.mjs",
         "user-app/public/study-room.mjs",
         "user-app/public/life-plan.mjs",
@@ -1557,14 +1558,14 @@
     {
       "path": "index.html",
       "sourcePath": "user-app/public/index.html",
-      "sourceSha256": "5ffb65368af982e200871d50175ff40239093f671d4ee995ed1cfb055273aa37",
-      "outputSha256": "d513070ff7f900265af0b961eff84816382a54b3957459cb8829069e70cf760a"
+      "sourceSha256": "334108ce555fc087ff24a354e56ea9018094fe6fb8318d8ef1663999f6759665",
+      "outputSha256": "9cbfd02bfd3a13563445d22d665811562944ec36757bda2aabe1fb16ad33a682"
     },
     {
       "path": "styles.css",
       "sourcePath": "user-app/public/styles.css",
-      "sourceSha256": "7305882b1d1372d2717176a74d60e1c7e63f2cfc35f3cfb2030df664b0f31040",
-      "outputSha256": "7305882b1d1372d2717176a74d60e1c7e63f2cfc35f3cfb2030df664b0f31040"
+      "sourceSha256": "8541c5238ecbe8ad561daee4d39257e3fe6667dba0094a0b3feba082d519f0d7",
+      "outputSha256": "8541c5238ecbe8ad561daee4d39257e3fe6667dba0094a0b3feba082d519f0d7"
     },
     {
       "path": "public-config.json",
@@ -1799,6 +1800,36 @@
       "sourcePath": "user-app/public/dc_h12.webp",
       "sourceSha256": "8650cd0a0c683b8ee68082e75dfb136388dcdbc4fa6a1f25ae576e17a951bb11",
       "outputSha256": "8650cd0a0c683b8ee68082e75dfb136388dcdbc4fa6a1f25ae576e17a951bb11"
+    },
+    {
+      "path": "brand-brick-512.png",
+      "sourcePath": "user-app/public/brand-brick-512.png",
+      "sourceSha256": "bc129e73a7a678b18732d788709f42001a79fd245f03d61bb94d4be220d78be1",
+      "outputSha256": "bc129e73a7a678b18732d788709f42001a79fd245f03d61bb94d4be220d78be1"
+    },
+    {
+      "path": "brand-b1-1280x720.png",
+      "sourcePath": "user-app/public/brand-b1-1280x720.png",
+      "sourceSha256": "f20d0db416e43d1b3d1eb9dc7f9a9da4ad6ed556594837ba15f505329c1e9680",
+      "outputSha256": "f20d0db416e43d1b3d1eb9dc7f9a9da4ad6ed556594837ba15f505329c1e9680"
+    },
+    {
+      "path": "favicon-16.png",
+      "sourcePath": "user-app/public/favicon-16.png",
+      "sourceSha256": "325c3a1de03fe337d14b31a4add92679a6da24c851c7694064cc849823c80c28",
+      "outputSha256": "325c3a1de03fe337d14b31a4add92679a6da24c851c7694064cc849823c80c28"
+    },
+    {
+      "path": "favicon-32.png",
+      "sourcePath": "user-app/public/favicon-32.png",
+      "sourceSha256": "98dc6170e6e08426351fe0d218a91809aa3150dbf3ca508ea70499b16897ed27",
+      "outputSha256": "98dc6170e6e08426351fe0d218a91809aa3150dbf3ca508ea70499b16897ed27"
+    },
+    {
+      "path": "favicon-48.png",
+      "sourcePath": "user-app/public/favicon-48.png",
+      "sourceSha256": "eaf2baac227ad9c99eff4b585d2e17c271d9bcb01548db11c8fdf5a722010c26",
+      "outputSha256": "eaf2baac227ad9c99eff4b585d2e17c271d9bcb01548db11c8fdf5a722010c26"
     }
   ]
 }

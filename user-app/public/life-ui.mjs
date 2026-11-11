@@ -9,6 +9,7 @@ import {todayQuestLine} from './life-quest.mjs';
 import {timerElapsedMin,timerRecordMin,liveTick,cardMinutes,countedMinutes} from './study-stage.mjs';
 import {DAILY_CHARS,dailyCharOf,dailyLineText,todayMinutes as studyTodayMinutes,lifetimeMinutes,stageOf,AVATAR_ART_READY,hmText as stageHm} from './study-stage.mjs';   // V6F: 오늘 탭의 오늘의 캐릭터
 import {OVERLAP_NOTICE,TIMER_OVERLAP_NOTICE} from './study-rebase.mjs';
+import {sameContent} from './life-rebase.mjs';   // FIX71: 성취표 칸 얹기(습관 벽돌 기준 비교)
 import {renderLive,liveRecordMin,liveElapsedMin,liveSettings,REST_SPLIT_MS} from './study-live.mjs';
 import {dayRoomCard,CELEBRATED_KEY} from './study-room.mjs';
 import {brickCells} from './study-room.mjs';   // DS1: 오늘 벽돌 칸(공부방 기둥과 같은 금 벽돌 스프라이트)
@@ -157,11 +158,11 @@ export async function prepareLife(ctx,st,gone=()=>false){
   let diary;try{diary=await diaryEntryState(ctx,st);}catch{diary={open:false};}   // FIX49B: 문이 닫혀 있으면 {open:false}(입구 0, 옛 칸 그대로)
   if(gone())return st;
   // OPS1A: 성취표가 지난 날 칸도 초안에만 둔다(앱이 autoStack을 켰을 때) → 쌓지 않은 지난 날 카드를 모두 세고 쌓는다(pendingAll). 성취표는 그 초안 카드를 바로 보인다(draftCards).
-  let draftCards={};
-  if(ctx.autoStack){try{for(const d of dates)if(d!==st.today){const s=await st.flow.state(d);if(s?.status==='LOCAL_DRAFT')draftCards[d]=s.card;}}catch{draftCards={};}}
+  let draftCards={},draftStates={};   // FIX71: draftStates = 그 초안의 base·바꾼 칸(성취표가 쌓인 카드 위에 칸 단위로 얹는다). draftCards는 그대로(자동 쌓기 key)
+  if(ctx.autoStack){try{for(const d of dates)if(d!==st.today){const s=await st.flow.state(d);if(s?.status==='LOCAL_DRAFT'){draftCards[d]=s.card;draftStates[d]=s;}}}catch{draftCards={};draftStates={};}}
   if(gone())return st;
   st.flowState=flowState;st.studyCard=studyCard;st.diary=diary;
-  st.pending=dates.filter(d=>d<st.today).slice(-3);st.pendingAll=dates.filter(d=>d<st.today);st.draftCards=draftCards;
+  st.pending=dates.filter(d=>d<st.today).slice(-3);st.pendingAll=dates.filter(d=>d<st.today);st.draftCards=draftCards;st.draftStates=draftStates;
   currentTimer(st,ctx.storage??globalThis.localStorage);
   return st;
 }
@@ -196,7 +197,7 @@ export function pendingStackCount(st){if(!st?.flowState)return 0;return (st.flow
 export function lockLife(st){
   if(!st)return;clearAutoStack(st);
   st.liveStop?.();st.liveStop=null;st.endSheet=null;
-  st.timer=null;st.liveOpen=false;st.flowState=null;st.studyCard=null;st.pending=[];st.pendingAll=[];st.draftCards={};st.message=null;st.error=false;st.focusNote=null;st.diary=null;st.diaryMessage=null;st.diaryNotices=[];st.linkNote=null;
+  st.timer=null;st.liveOpen=false;st.flowState=null;st.studyCard=null;st.pending=[];st.pendingAll=[];st.draftCards={};st.draftStates={};st.message=null;st.error=false;st.focusNote=null;st.diary=null;st.diaryMessage=null;st.diaryNotices=[];st.linkNote=null;
 }
 
 function entryFor(h,{now,minutes,count}={}){
@@ -226,7 +227,7 @@ function renderQuestLine({el,add,button},slot,line,open){
 export function renderLifeToday(root,ctx,st){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,hint,input}=h;
   const whole=ctx.getWhole(),life=whole.life??{habits:[],days:[],subjects:[],exams:null};
-  const defs=lifeDefs(life),fs=st.flowState,date=st.today,card=fs.card,box=st.ports?.box??null,T=box?.TEXT;
+  const defs=lifeDefs(life),fs=st.flowState,date=st.today,card=fs.status==='LOCAL_DRAFT'?overlayDay(stackedDay(ctx,date),fs):fs.card,box=st.ports?.box??null,T=box?.TEXT;   // FIX71: 초안은 쌓인 카드 위에 칸 단위로
   const act=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{await fn();}catch(e){st.message=box?.ERROR_TEXT[e?.code]??lifeErrorText(e?.code);st.error=true;}flagBoxFail(st,date);await prepareLife(ctx,st);await ctx.rerender();});
   const out=add(el('section',null,'panel next-panel life-panel'),null);out.id='life-today';
 
@@ -988,18 +989,37 @@ function openBoardCell(ctx,st,row,date,{act,recordAction,openActionPast}){
   }else add(body,add(el('div',null,'buttons'),button(BOARD_TEXT.done,()=>save('done'),'primary')));
   add(body,add(el('div',null,'buttons'),button(BOARD_TEXT.miss,()=>save('miss')),e?button(BOARD_TEXT.clear,()=>save(null)):null),hint(BOARD_TEXT.noneNote),err);
 }
-// OPS1A: 성취표가 보는 그날 카드 = 이 기기 초안(지난 날 draftCards · 오늘 flowState) → 없으면 쌓인 카드. 화면용이며 쓰기 0.
+// FIX71 (CAP3 O-CAP3-1, 통제탑 2026-11-11): 화면이 보는 그날 카드 = 쌓인 카드 위에 이 기기 초안(s = LOCAL_DRAFT 상태)을 칸 단위로 얹은 것. 날짜 단위로 통째로 고르지 않는다.
+// 초안의 칸 = 초안이 base(고치기 시작한 때의 금고 값) 대비 넣거나 바꾼 칸(초안 값)·지운 칸(빈칸). base에서 그대로 옮겨 온 칸은 쌓인 값(다른 탭이 그 사이 바로 쌓은 칸이 가려지지 않게).
+// 기분·한 줄·날 종류도 초안이 바꾼 것만 초안 값. 판이 있는데 base를 못 찾으면 예전처럼 초안 카드 그대로. 화면용이며 쓰기 0(쌓기 결과·금고·연산은 그대로).
+export function overlayDay(stacked,s){
+  if(s?.status!=='LOCAL_DRAFT')return s?.card??stacked??null;
+  if(!stacked||!s.changes||(!s.base&&s.baseHeads?.length))return s.card;
+  const {added,modified,removed,scalars}=s.changes,habits={...stacked.habits};
+  for(const id of [...added,...modified])habits[id]=s.card.habits[id];
+  for(const id of removed)delete habits[id];
+  const out={...stacked,habits};for(const k of scalars)out[k]=s.card[k];
+  if(s.card.basis!==undefined&&(out.basis===undefined||!sameContent(s.card.basis,s.base?.basis)))out.basis=s.card.basis;   // 습관 벽돌 기준: 쌓기(rebase)와 같은 규칙
+  return out;
+}
+const stackedDay=(ctx,date)=>(ctx.getWhole().life?.days??[]).find(d=>d.date===date)?.data??null;
+// OPS1A: 성취표가 보는 그날 카드 = 이 기기 초안(지난 날 draftCards · 오늘 flowState)이 있으면 쌓인 카드 위에 칸 단위로 얹은 것(FIX71), 없으면 쌓인 카드. 화면용이며 쓰기 0.
+function draftStateOf(st,date,today){
+  if(st.draftCards?.[date])return st.draftStates?.[date]??{status:'LOCAL_DRAFT',card:st.draftCards[date]};
+  if(date===today&&st.today===today&&st.flowState?.status==='LOCAL_DRAFT')return st.flowState;
+  return null;
+}
 function boardCard(ctx,st,date,today){
-  if(st.draftCards?.[date])return st.draftCards[date];
-  if(date===today&&st.today===today&&st.flowState?.status==='LOCAL_DRAFT')return st.flowState.card;
-  return (ctx.getWhole().life?.days??[]).find(d=>d.date===date)?.data??null;
+  const s=draftStateOf(st,date,today),stacked=stackedDay(ctx,date);
+  return s?overlayDay(stacked,s):stacked;
 }
 export function boardLife(ctx,st,life,today){
   if(!life)return life;
-  const drafts={...(st.draftCards??{})};if(st.today===today&&st.flowState?.status==='LOCAL_DRAFT')drafts[today]=st.flowState.card;
+  const drafts={};for(const k of Object.keys(st.draftCards??{}))drafts[k]=draftStateOf(st,k,today);
+  if(st.today===today&&st.flowState?.status==='LOCAL_DRAFT')drafts[today]=st.flowState;
   const keys=Object.keys(drafts);if(!keys.length)return life;
-  const days=(life.days??[]).map(d=>drafts[d.date]?{...d,data:drafts[d.date]}:d);
-  for(const k of keys)if(!days.some(d=>d.date===k))days.push({date:k,id:k,data:drafts[k],heads:[],updatedAt:null});
+  const days=(life.days??[]).map(d=>drafts[d.date]?{...d,data:overlayDay(d.data,drafts[d.date])}:d);
+  for(const k of keys)if(!days.some(d=>d.date===k))days.push({date:k,id:k,data:drafts[k].card,heads:[],updatedAt:null});
   days.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
   return {...life,days};
 }

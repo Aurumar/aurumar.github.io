@@ -117,7 +117,7 @@ label.inline{display:flex;align-items:center;gap:8px;margin:8px 0}
 .brand{display:flex;gap:10px;align-items:center;font-size:16px;font-weight:800}
 .brand{letter-spacing:.06em;color:#3b2a10}
 .brand small{display:block;font-size:11px;color:var(--lb-ink-3);font-weight:500;letter-spacing:.05em;margin-top:3px}
-.brand-mark{width:42px;height:42px;flex-shrink:0;display:block;filter:drop-shadow(0 1px 2px #3b2a1038)}
+.brand-mark{width:42px;height:42px;flex-shrink:0;display:block;border-radius:10px;object-fit:cover;filter:drop-shadow(0 1px 2px #3b2a1038)}
 .rail-label{color:var(--lb-ink-3);margin:37px 11px 15px}
 nav{display:grid;gap:5px}
 nav button{background:none;border:1px solid transparent;border-radius:var(--lb-r-2);text-align:left;color:var(--lb-ink-3);padding:10px 12px;display:flex;align-items:center;gap:12px;font-weight:600;box-shadow:none}
@@ -450,7 +450,7 @@ pre.path:empty{display:none}
 .intro-panel h2{font-size:30px;line-height:1.55;letter-spacing:-.06em}
 .intro-panel p{font-size:13px;color:#7c6d4c}
 .intro-panel .small{font-size:12px}
-.intro-mark{width:108px;height:108px;display:block;margin:20px 0 27px;filter:drop-shadow(0 2px 4px #3b2a1038)}
+.intro-mark{width:100%;max-width:360px;height:auto;aspect-ratio:16/9;display:block;margin:20px 0 27px;border-radius:16px;object-fit:cover;filter:drop-shadow(0 2px 4px #3b2a1038)}
 
 /* ===== 10. 모달 · 바텀시트 ===== */
 .field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 15px}
