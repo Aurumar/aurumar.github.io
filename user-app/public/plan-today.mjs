@@ -44,7 +44,9 @@ export function todayPlanModel({life=null,study=null,date,today,timer=null,draft
   const rate=rateUntilToday(sum.rate,date,today),prev=planOf(life,shiftDay(date,-1));
   const head=!rows.length?null:future?'계획 '+rows.length+'개':'계획 '+link.total+'개 중 '+link.done+'개 달성';
   const outside=future?[]:link.outside;
-  return {date,today,isToday,future,rows,planned:sum.planned,achieved:sum.achieved,rate,head,empty:!rows.length,hasPrev:Boolean(prev?.items?.length),
+  // FIX68 (HUNT65 F7): 손 완료 표시(marks)한 줄은 그 줄 목표 장수를 채운 것으로 친 벽돌 달성(상태 내보내기 plan_done). 손 완료가 없으면 achieved와 같다.
+  const achievedMarked=future?sum.achieved:Math.min(sum.planned,sum.achieved+rows.filter(r=>r.manual).reduce((n,r)=>n+Math.max(0,r.bricks-Math.min(r.got,r.bricks)),0));
+  return {date,today,isToday,future,rows,planned:sum.planned,achieved:sum.achieved,achievedMarked,rate,head,empty:!rows.length,hasPrev:Boolean(prev?.items?.length),
     itemsTotal:link.total,itemsDone:link.done,outside,outsideBricks:outside.reduce((n,s)=>n+s.bricks+s.pieces*0.5,0),
     title:isToday?'오늘 계획':dateLabel(date)+' 계획',timerItem:byId};
 }

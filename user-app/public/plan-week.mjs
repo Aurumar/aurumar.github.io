@@ -8,7 +8,7 @@ import {lifeDefs,kstDate,shiftDay,validateLifeData,SUBJECT_COLOR_KEYS,PLAN_BLOCK
 import {achieve} from './life-achieve.mjs';
 import {stable} from './life-rebase.mjs';
 import {planOf,sortedItems,actualOf,planVsActual,copyPlan,savePlanDay,planErrorText,unknownOutcome,PLAN_NOTICE_TEXT,barsText,rateText,RATE_MEANING,mondayOf,dateLabel,NO_SUBJECT_COLOR,choosePlanDate,followPlanToday,weekDraftChanged,
-  daySessions,linkPlan,readPlanMarks,itemStateText,oldTarget,goalVsText,NEW_ITEM_BRICKS} from './life-plan.mjs';
+  daySessions,linkPlan,readPlanMarks,itemStateText,oldTarget,goalVsText,NEW_ITEM_BRICKS,todayDraft,studyDraftOf} from './life-plan.mjs';
 import {openChipSheet,blockLabel,BLOCK_SHORT,titleOr} from './plan-today.mjs';
 export const WEEKDAYS=Object.freeze(['월','화','수','목','금','토','일']);
 export const CELL_SHOW=3,LONG_PRESS_MS=450;
@@ -76,13 +76,14 @@ export function shortNames(subjects){
 }
 // 그 주의 격자 내용. V6A: 줄마다 그 날 공부 세션을 자동으로 붙인 상태(life-plan linkPlan, 오늘 카드와 같은 규칙)를 got·state로 둔다.
 // 벽돌 기준 planned·rate는 예전 값(옛 줄의 bricks 합)으로 남겨 두고(다른 화면이 읽을 수 있게), 머리줄은 목표 대비(하루 목표 × 7)와 줄 수 기준 달성을 쓴다.
-export function weekGridModel({life=null,study=null,monday,today,draft=createWeekDraft(),storage=null}){
+// FIX68 (HUNT65 F7): studyDraft = 아직 쌓지 않은 오늘 공부 카드. 오늘 칸의 연결·"n개 중 m개"는 오늘 카드와 같이 초안으로 센다(표시만, 저장 0).
+export function weekGridModel({life=null,study=null,monday,today,draft=createWeekDraft(),storage=null,studyDraft=null}){
   const defs=lifeDefs(life),subjects=new Map(defs.subjects.map(s=>[s.id,s])),letters=shortNames(defs.subjects);
   const ach=achieve({life,study,today}),weeks=new Map(ach.weeks.map(w=>[w.monday,w])),changed=new Set(changedDates(draft));
   const days=[],subjectActual=new Map();let planned=0,actual=0,plannedToDate=0,achievedToDate=0,plannedLater=0,itemsTotal=0,itemsDone=0,itemsLater=0;
   for(let k=0;k<7;k++){
     const date=shiftDay(monday,k),items=sortedItems(dayItems(life,draft,date)),act=actualOf(weeks,date),pva=planVsActual(items,act),future=date>today;
-    const link=linkPlan(items,daySessions(study,date),readPlanMarks(storage,date));
+    const link=linkPlan(items,daySessions(study,date,todayDraft(studyDraft,date,today)),readPlanMarks(storage,date));
     const rows=items.map(x=>{
       const r=link.rows.get(x.id),s=subjects.get(x.subjectId)??null;
       return {...x,name:s?.name??'기타',color:s?.color??NO_SUBJECT_COLOR,letter:letters.get(x.subjectId)??'?',got:r.bricks+r.pieces*0.5,state:future?'PLAN':r.state,stateText:itemStateText(r,future),oldTarget:oldTarget(x)};
@@ -180,7 +181,7 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
   if(!st.week||st.week.session!==sess)st.week=createWeekDraft(sess);
   followPlanToday(st,day0);   // FIX53C (HW1): 날이 바뀌었으면 고르지 않은 주는 이번 주로. FIX55C1 (HL2): 그 주에 저장 안 한 입력이 있으면 머문다
   const w=st.week,monday=st.monday??=mondayOf(day0),whole=ctx.getWhole(),life=whole.life??null;
-  const m=weekGridModel({life,study:whole.study??null,monday,today:day0,draft:w,storage:ctx.storage??null});   // V6A: 손 완료·"다른 항목으로" 값(앱 ctx의 기기 저장소)을 읽기만
+  const m=weekGridModel({life,study:whole.study??null,monday,today:day0,draft:w,storage:ctx.storage??null,studyDraft:studyDraftOf(ctx,day0)});   // V6A: 손 완료·"다른 항목으로" 값(앱 ctx의 기기 저장소)을 읽기만
   if(w.pick&&!m.subjects.some(s=>s.id===w.pick))w.pick=null;
   const rerender=()=>{void ctx.rerender();};
   const say=(text,error=false)=>{w.message=text;w.error=error;w.notices=[];};

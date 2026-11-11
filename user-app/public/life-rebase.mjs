@@ -59,6 +59,9 @@ export function rebase({date,base,mine,latest}){
     }
     merged[k]=v;
   }
+  // FIX68 (HUNT65 F2): 습관 벽돌 기준(basis, 선택 칸)은 알림 없이 합친다. 내가 바꿨으면 내 기준, 아니면 최신 기준(최신에 없으면 내 기준). 둘 다 없으면 칸을 두지 않는다(예전 모양).
+  const bb=base?.basis,bm=mine?.basis,bt=latest?.basis,bv=bm!==undefined&&!same(bm,bb)?bm:bt??bm;
+  if(bv!==undefined)merged.basis=structuredClone(bv);
   if(latest?sameContent(merged,latest):!hasChanges(null,merged))return {status:'ALREADY_APPLIED',notices};
   try{validateLifeData('LIFE_DAY',date,merged);}
   catch(e){return {status:'REJECTED',code:e.code??'LIFE_REBASE_INVALID',notices,detail:{habits:Object.keys(keep).length}};}

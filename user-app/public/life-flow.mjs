@@ -3,7 +3,7 @@
 // 화면을 열거나 동기화하는 것만으로는 어떤 엔티티도 쓰지 않는다: 쓰기는 confirm()과 saveDefinitions()(습관·과목·시험 편집 저장)에서만 일어난다.
 // 초안은 확정 성공을 확인한 뒤에만 지운다. 검증 거부·저장 실패·응답 불명이면 초안을 그대로 둔다.
 // 건강·공부와 달리 PC 초안 저널(drafts.lbd)은 쓰지 않는다: 저널의 목록 응답이 LIFE_DAY 본문을 돌려주지 않는다. 상자(브라우저 IndexedDB 암호문) 또는 메모리다.
-import {validateLifeData,emptyDay,emptyDiary,kstDate,lifeDefs,recordsDoorState,DEFAULT_HABITS,DEFAULT_SUBJECTS,habitPinned,HABIT_UNPIN_ORDER} from './life-model.mjs';
+import {validateLifeData,emptyDay,emptyDiary,kstDate,lifeDefs,recordsDoorState,DEFAULT_HABITS,DEFAULT_SUBJECTS,habitPinned,HABIT_UNPIN_ORDER,habitBasis,habitBasisFor,keepHabitBasis,HABIT_EPOCH} from './life-model.mjs';
 import {rebase,rebaseDiary,hasChanges,diffDay,stable} from './life-rebase.mjs';
 
 const codeOf=e=>typeof e?.code==='string'?e.code:(e?.message??'UNKNOWN');
@@ -39,8 +39,10 @@ const basesOf=(b,touched)=>{const out={};if(b&&typeof b==='object'&&!Array.isArr
 // 흐름의 종류 설정. rows = 그 종류의 쌓인 목록(lifeRawView), door = 확정 직전 쓰기 문 검사(새 기록만), maskedHistory = 이력 값이 가린 사본이라 base로 그대로 쓰면 안 됨(FIX49A 4.4).
 // fields = 바꾼 칸 이름을 초안에 함께 두는 종류(FIX50A), knownBase = 그 목록으로 base를 고친다.
 // chips = 상한이 있어 병합에서 잘릴 수 있는 칩 칸(FIX53B).
-export const LIFE_KIND=Object.freeze({type:'LIFE_DAY',empty:emptyDay,rows:life=>life?.days??[],rebase,changed:hasChanges,diff:diffDay,draftReason:DRAFT_REASON,confirmReason:CONFIRM_REASON,door:false,maskedHistory:false,fields:null,knownBase:null,chips:null});
-export const DIARY_KIND=Object.freeze({type:'DIARY_DAY',empty:emptyDiary,rows:life=>life?.diaries??[],rebase:rebaseDiary,changed:diaryChanged,diff:diffDiary,draftReason:DIARY_DRAFT_REASON,confirmReason:DIARY_CONFIRM_REASON,door:true,maskedHistory:true,fields:DIARY_FIELDS,knownBase:diaryKnownBase,chips:Object.freeze(['good','bad'])});
+// basis = 쓰기 전에 습관 벽돌 기준을 카드에 적는 종류(FIX68, HUNT65 F2): 오늘(과 그 뒤) 카드는 쓸 때마다 지금 목록으로, 지난 카드는 이미 적힌 기준을 두고 없으면 habitBasisFor로 한 번 적는다.
+//  FIX68B: 카드에 적는 것은 기록 문이 열렸을 때만(#basis). 닫혀 있으면 카드에는 칸이 없고 기준은 이 기기에만 둔다.
+export const LIFE_KIND=Object.freeze({type:'LIFE_DAY',empty:emptyDay,rows:life=>life?.days??[],rebase,changed:hasChanges,diff:diffDay,draftReason:DRAFT_REASON,confirmReason:CONFIRM_REASON,door:false,maskedHistory:false,fields:null,knownBase:null,chips:null,basis:true});
+export const DIARY_KIND=Object.freeze({type:'DIARY_DAY',empty:emptyDiary,rows:life=>life?.diaries??[],rebase:rebaseDiary,changed:diaryChanged,diff:diffDiary,draftReason:DIARY_DRAFT_REASON,confirmReason:DIARY_CONFIRM_REASON,door:true,maskedHistory:true,fields:DIARY_FIELDS,knownBase:diaryKnownBase,chips:Object.freeze(['good','bad']),basis:false});
 // FIX53B (HUNT52 HF8): 칩 병합에서 상한 때문에 잘려 나간 칩. mergeChips는 내 칩을 먼저 남기므로(내 목록은 상한 안) 잘린 칩은 언제나 "최신이 더했고 내가 손대지 않은 칩"이다.
 const droppedChips=(b,m,t,out)=>{const B=new Set(b??[]),M=new Set(m??[]),O=new Set(out??[]);return (t??[]).filter(x=>!B.has(x)&&!M.has(x)&&!O.has(x));};
 
@@ -57,6 +59,14 @@ export class LifeFlow{
     return list.reduce((a,b)=>(b.createdAt>=a.createdAt?b:a));
   }
   #baseOf(date,heads){return heads.length?this.#p.revision(date,heads[0]):null;}
+  // FIX68B (통제탑 2026-11-11): 기준(basis)은 기존 기록 문(recordsDoorState, 일기와 같은 문)이 열렸을 때만 카드에 적는다. r65 검사기는 basis 칸이 있는 LIFE_DAY를 거절한다.
+  // 닫혀 있으면(문 포트가 없는 맨 포트 포함) 카드에서 빼고, 확정 때 이 기기 저장소(lb.habit.basis)에만 둔다(keepBasis). 열려 있으면 FIX68 그대로(포트가 없으면 예전 모양).
+  #doorOpen(){return Boolean(this.#p.doorOpen?.());}
+  #basis(date,card){
+    if(!this.#k.basis)return;
+    if(!this.#doorOpen()){delete card.basis;return;}
+    const b=this.#p.basis?.(date,card);if(b)card.basis=b;
+  }
   // FIX50A: 초안의 base. 바꾼 칸 목록이 있는 종류(일기)는 바꾸지 않은 칸을 초안 값으로 본다(diaryKnownBase).
   // FIX52C (Codex R1): 초안에 둔 base 값(bases)이 있는 칸은 그 값을 base로 쓴다(판을 못 찾거나 가린 사본이어도 다른 기기 값을 잘못 덮거나 되살리지 않는다).
   #draftBase(date,draft){
@@ -87,6 +97,7 @@ export class LifeFlow{
       const next=structuredClone(s.card);
       mutate(next);
       next.date=date;
+      this.#basis(date,next);
       validateLifeData(this.#k.type,date,next);
       // FIX51A (HUNT50 A2): 원래 값으로 되돌린 칸은 목록에서 뺀다(base와 같으면 결과적으로 바꾸지 않은 칸 → 병합에서 다른 기기 값이 남는다).
       // s.base에서 목록 밖 칸은 초안 값이고, 목록 안 칸은 그 판의 값이다. 가린 이력 사본의 글(UNKNOWN_BASE_TEXT)은 어떤 입력과도 같지 않아 목록에 남는다(모르면 예전 규칙).
@@ -196,7 +207,8 @@ export class LifeFlow{
       // FIX55C2 (HF10-b): 다른 창이 이 초안을 이미 저장(또는 버림)했다. 금고 최신에 내 변경이 그대로 있으면 성공, 아니면 지금 실패(FIX59F: 입력을 초안으로 다시 넣어 둠).
       if(!draft)return gone();
       // FIX49B (D49 5.2, FIX46A ★): 새 기록(일기)은 일반 저장 경로라 문이 없다. 최신을 받은 뒤(다른 기기가 연 문도 보이게) 쓰기 전에 문을 본다. 닫혀 있으면 아무것도 쓰지 않고 초안을 둔다.
-      if(this.#k.door&&!this.#p.doorOpen?.())return {status:'REJECTED',code:'RECORDS_DOOR_CLOSED'};
+      const open=this.#doorOpen();
+      if(this.#k.door&&!open)return {status:'REJECTED',code:'RECORDS_DOOR_CLOSED'};
       const now=await this.#draftFor(date);
       if(!now)return lost?gone():{status:'NOTHING_TO_CONFIRM'};   // FIX58F: 잃은 변경이 있으면 "바뀐 것 없음"으로 닫지 않는다
       if(now.draftId!==draft.draftId){if(attempt<limit)continue;return {status:'STALE',code:STALE_BASE};}
@@ -209,6 +221,9 @@ export class LifeFlow{
       const latest=this.#p.latest(date),base=this.#draftBase(date,draft);
       const rb=this.#k.rebase({date,base,mine:draft.body.data,latest:latest.card});
       if(rb.status==='REJECTED')return {status:'REJECTED',code:rb.code};
+      // FIX68B: 문 닫힘 = 최신(문 열린 기기)의 기준도 싣지 않는다. 그날 기준(합친 카드의 기준 → 이 기기 옛 날 기준 → 지금 목록)은 빼기 전에 정해 확정 때 이 기기에 둔다.
+      let keep=null;
+      if(this.#k.basis&&!open&&rb.card){keep=this.#p.basis?.(date,rb.card)??null;delete rb.card.basis;}
       const empty=this.#k.empty(date);
       if(rb.status==='ALREADY_APPLIED'){await this.#p.drafts.discard(draft.draftId);return applied(rb,base??empty,draft.body.data,latest.card??empty);}
       const f={base:base??empty,mine:draft.body.data,latest:latest.card??empty,card:rb.card};
@@ -226,6 +241,7 @@ export class LifeFlow{
         target={draftId:saved.draftId,body};
       }
       collect(rb,f);
+      if(keep)this.#p.keepBasis?.(date,keep);   // FIX68B: 문 닫힘 = 쌓을 때의 기준은 이 기기에만
       let result;
       try{result=await this.#p.drafts.commit(target.draftId);}
       catch(e){
@@ -349,6 +365,10 @@ export function createLifePorts(ctx,kind=LIFE_KIND){
     terminal:ctx.receipt?async rid=>(await ctx.receipt(rid))?.status!=='NOT_ESTABLISHED':()=>false,
     makeBody:async({requestId,date,data,heads,reason})=>{const fields={entityType:kind.type,entityId:date,expectedHeads:[...heads],data:structuredClone(data),reason,confirmed:false};return {requestId,commandDigest:await ctx.digest({type:'ENTITY',...fields}),...fields};},
     now:()=>ctx.now(),newRequestId:()=>ctx.uid(),
+    // FIX68 (HUNT65 F2): 쓰려는 카드의 습관 벽돌 기준. 오늘·앞날 = 지금 목록, 지난 날 = 카드에 적힌 기준 → 이 기기가 정해 둔 옛 날 기준 → 지금 목록. HABIT_EPOCH 전 날은 null.
+    basis:(date,card)=>{const l=life(),b=date<HABIT_EPOCH?null:date>=kstDate(ctx.now())?habitBasis(l):habitBasisFor(l,date,card);return b?structuredClone(b):null;},
+    // FIX68B: 문이 닫혀 있을 때 쌓는 카드의 기준은 이 기기 저장소(lb.habit.basis, frozenBasis가 읽는 곳)에만 둔다. 같은 날은 덮어쓴다(문 열림의 "오늘 카드는 쓸 때마다 지금 목록"과 같다).
+    keepBasis:(date,b)=>keepHabitBasis(storageOf(ctx),date,b),
     drafts:mode==='DEVICE_BOX'?box.port(kind.type,{write}):{
       list:async()=>[...memoryDrafts.values()],
       save:async({type,body,touched,bases})=>{const id='local'+(++seq);memoryDrafts.set(id,{draftId:id,type,body:structuredClone(body),...(Array.isArray(touched)?{touched:[...touched],...(bases&&typeof bases==='object'?{bases:structuredClone(bases)}:{})}:{}),createdAt:new Date().toISOString()+String(seq).padStart(6,'0')});return {draftId:id,status:'LOCAL_DRAFT'};},

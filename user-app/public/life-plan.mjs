@@ -253,16 +253,21 @@ export function dayPlanLink(life,study,date,{draft=null,storage=null}={}){
   return linkPlan(planOf(life,date)?.items??[],daySessions(study,date,draft),readPlanMarks(storage,date));
 }
 // from~to(양끝 포함) 계획 줄 수와 완료 수. 오늘보다 뒤 날의 줄은 later로 따로 센다(달성 분모 = 오늘까지).
-export function planItemsDone(life,study,from,to,today,storage=null){
+// FIX68 (HUNT65 F7): draft = 아직 쌓지 않은 오늘 공부 카드. 오늘 카드("오늘 계획")와 같이 오늘 줄은 초안으로 센다(표시만, 저장 0). 다른 날짜 초안은 쓰지 않는다.
+export function planItemsDone(life,study,from,to,today,storage=null,draft=null){
   const byDate=new Map((study?.days??[]).map(d=>[d.date,d]));let total=0,done=0,later=0;
   for(const p of life?.plans??[]){
     if(p.date<from||p.date>to)continue;
     const n=p.data?.items?.length??0;if(!n)continue;
     if(p.date>today){later+=n;continue;}
-    const r=linkPlan(p.data.items,daySessions({days:byDate.has(p.date)?[byDate.get(p.date)]:[]},p.date),readPlanMarks(storage,p.date));total+=r.total;done+=r.done;
+    const r=linkPlan(p.data.items,daySessions({days:byDate.has(p.date)?[byDate.get(p.date)]:[]},p.date,todayDraft(draft,p.date,today)),readPlanMarks(storage,p.date));total+=r.total;done+=r.done;
   }
   return {total,done,later};
 }
+// 오늘 공부 초안을 그 날짜에 쓸지: 오늘이고 초안 날짜가 오늘일 때만.
+export const todayDraft=(draft,date,today)=>draft&&date===today&&draft.date===today?draft:null;
+// 앱이 넘겨 준 오늘 공부 초안(ctx.studyDraft, 없으면 null).
+export const studyDraftOf=(ctx,today)=>{try{return ctx?.studyDraft?.(today)??null;}catch{return null;}};
 export const itemsDoneText=c=>c.total>0?'계획 '+c.total+'개 중 '+c.done+'개 달성':null;
 // "목표 대비" = 하루 목표(설정 한 곳, achieve의 goalBricks) × 날수.
 export const goalVsText=(actual,goal,days)=>'목표 대비 '+barsText(actual)+' / '+barsText(goal*days);
@@ -536,7 +541,7 @@ function monthView(h,ctx,st,data){
   const out=h.el('section',null,'plan-card plan-month');
   h.add(out,navRow(h,ym.slice(0,4)+'년 '+Number(ym.slice(5,7))+'월',()=>{choosePlanDate(st,'month',shiftMonth(ym,-1));void ctx.rerender();},()=>{choosePlanDate(st,'month',shiftMonth(ym,1));void ctx.rerender();},()=>{choosePlanDate(st,'month',today.slice(0,7),false);void ctx.rerender();},'이번 달',ym===today.slice(0,7)));
   // P1C: 앱이 ctx.planMonth를 넘겨 주면 과목 × 주차 표(plan-month.mjs)를 그리고, 날짜 달력은 그 안의 "날짜로 보기"로 들어간다. 못 받으면 아래 날짜 달력 그대로.
-  const items=planItemsDone(data.life,data.study,ym+'-01',ym+'-'+String(daysInMonth(ym)).padStart(2,'0'),today,ctx.storage??null);   // V6A: 이 달 계획 줄 n개 중 m개(손 완료 표시 포함)
+  const items=planItemsDone(data.life,data.study,ym+'-01',ym+'-'+String(daysInMonth(ym)).padStart(2,'0'),today,ctx.storage??null,studyDraftOf(ctx,today));   // V6A: 이 달 계획 줄 n개 중 m개(손 완료 표시 포함) · FIX68 F7: 오늘 초안 포함
   const table=ctx.planMonth?.(st,{data,ym,items,dateGrid:()=>dateGrid(h,ctx,st,data,ym),goWeek:monday=>{choosePlanDate(st,'monday',monday);setView(st,ctx,'WEEK');void ctx.rerender();}})??null;
   h.add(out,...(table?[table]:dateGrid(h,ctx,st,data,ym)));
   return out;
@@ -649,7 +654,7 @@ function yearView(h,ctx,st,data){
     }
     grid.append(h.add(row,cells));
   });
-  const items=planItemsDone(data.life,data.study,year+'-01-01',year+'-12-31',today,ctx.storage??null);
+  const items=planItemsDone(data.life,data.study,year+'-01-01',year+'-12-31',today,ctx.storage??null,studyDraftOf(ctx,today));
   h.add(out,grid,h.el('p',[itemsDoneText(items),'한 칸 = 1주(월요일이 속한 달) · 채운 길이 = 하루 목표 '+barsText(ach.goalBricks)+' × 7일 대비 쌓은 벽돌 · ★ = 시험 주'].filter(Boolean).join(' · '),'muted small plan-year-note'));
   return out;
 }
@@ -711,7 +716,7 @@ function csatView(h,ctx,st,data){
   const feel=h.el('div',null,'plan-feel');
   h.add(feel,h.add(h.el('div',null,'plan-feel-cell'),h.el('strong',c.weekendsLeft+'번'),h.el('span','남은 주말')),h.add(h.el('div',null,'plan-feel-cell'),h.el('strong',c.examsLeft+'번'),h.el('span','남은 모의고사')),h.add(h.el('div',null,'plan-feel-cell'),h.el('strong',hourShareText(c.hoursLeft)),h.el('span','오늘 1시간의 몫'),h.el('small','남은 공부 가능 시간 '+c.hoursLeft.toLocaleString('ko-KR')+'시간(하루 '+STUDY_HOURS_PER_DAY+'h)','muted')));
   const rail=h.el('section',null,'plan-card');h.add(rail,h.el('h3','시험 레일 · '+c.target.name+' D-'+c.dDay),railSvg(h,exams,today,ach),h.el('p','남은 일요일 '+c.sundaysLeft+'번 · 구간 색은 시기(기본기→파이널)가 진해지는 순서입니다.','muted small'));
-  const items=planItemsDone(data.life,data.study,'0000-01-01',today,today,ctx.storage??null),itemsText=itemsDoneText(items);   // V6A: 지금까지 계획 줄 n개 중 m개
+  const items=planItemsDone(data.life,data.study,'0000-01-01',today,today,ctx.storage??null,studyDraftOf(ctx,today)),itemsText=itemsDoneText(items);   // V6A: 지금까지 계획 줄 n개 중 m개
   const wall=h.el('section',null,'plan-card');h.add(wall,h.el('h3','벽돌 용량 벽'),wallSvg(h,cap),h.el('p',cap.days+'일 × '+cap.goal+'장 = '+cap.total.toLocaleString('ko-KR')+'장 쌓을 수 있어요 · 지금까지 '+barsText(cap.stacked)+' 쌓음'+(itemsText?' · 지금까지 '+itemsText:''),'plan-sum'));
   h.add(out,grid,feel,rail,wall);
   return out;

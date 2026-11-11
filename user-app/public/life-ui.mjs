@@ -34,6 +34,7 @@ export const LIFE_ERROR_TEXT=Object.freeze({
   ABORTED:'서버가 이 쌓기를 받지 않았습니다(기록되지 않음) · 입력은 그대로 있습니다. 다시 쌓을 수 있습니다.',
   INVALID_TIMER_END:'끝난 시각은 시작 뒤 24시간 안이고 지금보다 앞이어야 합니다.',
   INVALID_TIMER_END_REST:'끝난 시각은 휴식을 시작한 시각보다 늦을 수 없습니다.',
+  HLT_NAP_FUTURE:'낮잠이 끝난 시각이 지금보다 뒤라 기록하지 않았어요 · 시작 시각이나 분을 줄여 주세요.',   // FIX68 (HUNT65 F6)
 });
 export const lifeErrorText=code=>LIFE_ERROR_TEXT[code]??(code?'처리하지 못했어요 · 입력은 그대로 있습니다.'+' · 문의 코드 ▾\u2060'+code+'\u2060':'쌓지 못했습니다.');
 export const LIFE_NOTICE_TEXT=Object.freeze({
@@ -391,10 +392,12 @@ function openDailySheet(h,d,art){
   return sheet(TODAY_CHAR_TEXT.sheet,add(el('div',null,'today-char-sheet'),el('p',TODAY_CHAR_TEXT.sub,'muted small'),el('p',dailyLineText(d),'dc-next'),list));
 }
 // V6B 낮잠 줄: "낮잠: 안 잠" / 잤으면 분·시작 시각. [낮잠 잤음] → 15·30·60분·직접 + 시작 시각(선택) → 건강 카드 낮잠으로 바로 쌓는다(ctx.nap, 앱이 넘김).
+// FIX68 (MAN3 M1): 저장(또는 임시 입력)에 들어간 칸은 "저장하지 않은 입력"이 아니다. 앱의 사라진 입력 검사(app.mjs saRaw·data-edit-init)가 보는 처음 값을 지금 값으로 맞춘다.
+export const markSaved=(...nodes)=>{for(const n of nodes)if(n?.dataset)n.dataset.editInit=n.type==='checkbox'?(n.checked?'1':'0'):String(n.value??'');};
 export function renderNapLine(ctx,st,{el,add,button,input},date){
   const nap=ctx.nap??null;if(!nap)return null;
   const naps=nap.list(date)??[],line=add(el('div',null,'life-nap'),el('span',naps.length?naps.map(n=>'낮잠 '+n.minutes+'분'+(n.start?' ('+n.start+'~)':'')).join(' · '):'낮잠: 안 잠','life-nap-text'));line.id='today-nap';
-  const save=m=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{const r=await nap.add(m,(st.napStart??'').trim());st.message=r.text;st.error=r.error;st.napOpen=false;st.napStart='';}catch(x){st.message=lifeErrorText(x?.code);st.error=true;}await prepareLife(ctx,st);await ctx.rerender();});
+  const save=m=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{const r=await nap.add(m,(st.napStart??'').trim());st.message=r.text;st.error=r.error;st.napOpen=false;st.napStart='';markSaved(start,custom);}catch(x){st.message=lifeErrorText(x?.code);st.error=true;}await prepareLife(ctx,st);await ctx.rerender();});
   if(!st.napOpen){add(line,button(naps.length?'낮잠 더':'낮잠 잤음',()=>{st.napOpen=true;void ctx.rerender();},'secondary life-nap-open'));return line;}
   const start=input(st.napStart??'',{inputmode:'numeric',placeholder:'시작 HH:MM (선택)','aria-label':'낮잠 시작 시각',maxlength:'5'});start.addEventListener('input',()=>{st.napStart=start.value;});
   const custom=input('',{inputmode:'numeric',placeholder:'분','aria-label':'낮잠 분 직접',maxlength:'3'});
@@ -546,15 +549,19 @@ function renderBricks(ctx,st,h,defs,life,act,goalBricks,liveSlot=null){
 function timerOps(ctx,st,act){
   // B6: 타이머 "끝내고 담기"만 세션 id에 T 표지(lf_<과목>_T…)를 붙인다 → 구간 [at − 분, at]을 아는 세션. 분 입력은 그대로(구간 모름).
   // R34B: 타이머는 시작 시각에서 정한 id(lf_<과목>_T<시작 ms 36진>)를 넘긴다(B6 T 표지 + R33B 멱등). id가 없을 때만 표지 + uid로 만든다.
+  // FIX68 (HUNT65 F1, 통제탑): 타이머 세션(T)은 시작 시각의 날짜 카드에 담는다(끝 시각과 같은 자리 st.timer의 startIso). 자정을 넘겨 끝나도 시작한 날의 공부·계획 줄에 붙는다.
+  // 세션 at은 그대로 끝 시각(구간 [at − 분, at]). 카드 날짜와 at은 하루 차이까지 검사기가 받는다(끝 시각은 시작 + 24시간 이내). 분 입력은 예전대로 지금 날짜.
   const recordNow=async(subject,m,mark='',id=null)=>{
     if(!(Number.isInteger(m)&&m>=1&&m<=1440))throw Object.assign(new Error('INVALID_LIFE_MINUTES'),{code:'INVALID_LIFE_MINUTES'});
     const s=await studyFlow(ctx);if(!s)throw Object.assign(new Error('STUDY_OFF'),{code:'STUDY_OFF'});
-    const now=mark==='T'&&st.timer?.endIso?st.timer.endIso:ctx.now();   // FIX34 (H4·H5): 타이머 세션은 적어 둔 끝 시각으로 기록한다(구간 [at − 분, at]과 카드 날짜가 실제 집중에 맞게)
+    const now=mark==='T'&&st.timer?.endIso?st.timer.endIso:ctx.now();   // FIX34 (H4·H5): 타이머 세션은 적어 둔 끝 시각으로 기록한다(구간 [at − 분, at]이 실제 집중에 맞게)
+    const startIso=mark==='T'?st.timer?.startIso:null;
+    const day=startIso&&Number.isFinite(Date.parse(startIso))&&Date.parse(startIso)<=Date.parse(now)?kstDate(startIso):kstDate(now);
     const sid=id??sessionIdFor(subject.id,mark?mark+ctx.uid().slice(0,7):ctx.uid().slice(0,8));
-    await s.st.flow.addRow(kstDate(now),'sessions',{id:sid,subject:studyCodeOf(subject.id),state:'COMPLETED',plannedMin:m,confirmedMin:m,restartLocator:'',at:now});
+    await s.st.flow.addRow(day,'sessions',{id:sid,subject:studyCodeOf(subject.id),state:'COMPLETED',plannedMin:m,confirmedMin:m,restartLocator:'',at:now});
     const b=brickOf(m);st.message=subject.name+' '+m+'분을 담았습니다 · '+(b.bricks?b.bricks+'장':'')+(b.bricks&&b.pieces?' + ':'')+(b.pieces?'조각 1':'')+(!b.bricks&&!b.pieces?'벽돌 0 (10분부터 조각)':'')+' · "오늘 쌓기"를 누르면 함께 쌓입니다';
-    st.linkNote={date:kstDate(now),sessionId:sid,subjectId:subject.id};   // V6A: 담기 직후 "○○ 계획에 반영됨" 한 줄(공부 벽돌 칸이 그린다, 저장 0)
-    return kstDate(now);
+    st.linkNote={date:day,sessionId:sid,subjectId:subject.id};   // V6A: 담기 직후 "○○ 계획에 반영됨" 한 줄(공부 벽돌 칸이 그린다, 저장 0)
+    return day;
   };
   // FIX31 (D1): 타이머는 담기가 저장된 뒤에만 지운다. 거절(읽기 전용·잠김·공부 꺼짐)이나 초안 저장 실패(Quota 등)면 시작 시각을 남겨 집중 시간을 잃지 않는다.
   // R33B (HUNT32 D1·S2): 성공 판정은 그 날 STUDY_DAY 레코드 자체가 디스크에 써졌는가(has&&!dirty)다. 다른 날짜·종류 초안의 STALE·Quota(상자 전체 failed)는 보지 않는다.
@@ -581,7 +588,7 @@ function timerOps(ctx,st,act){
       if(day){await s.st.ports?.drafts.retryStale?.(day);await box?.flush().catch(()=>{});st.message=subject.name+' 집중은 이미 담았습니다 · 다시 담지 않았어요.';}
       else if(old&&!confirmed){openTimerEnd(ctx,st,subject,act,finishTimer);return;}
       else day=await recordNow(subject,m,'T',id);
-      if(!found&&linkItem)writePlanMarks(ctx.storage??globalThis.localStorage,day,k=>{k.links[id]=linkItem;});   // V6A: 계획 줄의 [▶ 집중]으로 시작했으면 그 줄에 붙인다(이 기기 화면 설정)
+      if(!found&&linkItem)writePlanMarks(ctx.storage??globalThis.localStorage,day,k=>{k.links[id]=linkItem;});   // V6A: 계획 줄의 [▶ 집중]으로 시작했으면 그 줄에 붙인다(이 기기 화면 설정). FIX68 F1: day = 시작 날짜(그 줄이 있는 날)
       if(!found&&day!==today)st.message=subject.name+' '+m+'분을 '+dateLabel(day)+' 공부 카드에 담았습니다 · 그 날짜는 공부 화면에서 쌓을 수 있어요.';
     }catch(e){keep(box?.ERROR_TEXT[e?.code]??lifeErrorText(e?.code));return;}
     const b=box?.statusFor('STUDY_DAY',day);

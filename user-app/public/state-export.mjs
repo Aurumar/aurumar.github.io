@@ -8,6 +8,7 @@
 import {lifeDefs,entryDone,nearestExam,dDay,shiftDay,kstDate,hhmmFromIso,subjectOfSession,diaryOpenDate} from './life-model.mjs';
 import {achieve,SUBJECT_BY_CODE,studyBricks,smallWeight} from './life-achieve.mjs';
 import {todayPlanModel} from './plan-today.mjs';
+import {readPlanMarks} from './life-plan.mjs';
 import {moneyFacts} from './life-money-facts.mjs';
 import {csatTarget} from './life-plan.mjs';
 import {feelOfFin,feelExport,feelExportText,feelTodayOf} from './fin-feel.mjs';
@@ -365,16 +366,17 @@ export function focusMinByHour(study,today){
   }
   return by;
 }
-export function widgetStatusOf({life=null,study=null,fin=null,money=null,now,device='PC',title=null,lastSyncAt=null}){
+// FIX68 (HUNT65 F7): marks = 이 기기의 손 완료 값(없으면 planStorage에서 life-plan readPlanMarks(저장소, 오늘)). plan_done은 손 완료 줄을 채운 것으로 센다(achievedMarked, 없으면 예전 값과 같다).
+export function widgetStatusOf({life=null,study=null,fin=null,money=null,now,device='PC',title=null,lastSyncAt=null,marks=null,planStorage=null}){
   const at=isoOf(now);if(!at)throw new Error('BAD_NOW');
   const today=kstDate(at),diaryDay=diaryOpenDate(at);
   const ach=life?guard(()=>achieve({life,study,fin,today,money})):null,top=ach?.levels?.[ach.topArea]??null;
-  const plan=life?guard(()=>todayPlanModel({life,study,date:today,today})):null;
+  const plan=life?guard(()=>todayPlanModel({life,study,date:today,today,marks:marks??(planStorage?readPlanMarks(planStorage,today):null)})):null;
   const day=ach?.days?.find(d=>d.date===diaryDay)??null;
   return {v:1,device:WIDGET_FILE_DEVICES.includes(device)?device:'PC',exported_at:at,diary_day:diaryDay,
     level:top?.level??null,xp:top?.into??null,xp_next:top?.need??null,title:ach&&typeof title==='function'?titleText(guard(()=>title(ach))):null,
     bricks_total:ach?guard(()=>studyBricks(ach.weeks)+smallWeight(ach.weeks)):null,bricks_week:ach?.currentWeek?.value??null,streak_days:ach?.streak?.days??null,
-    diary_done:Boolean(day?.diary),plan_done:plan?.achieved??null,plan_total:plan?.planned??null,last_sync_at:isoOf(lastSyncAt),
+    diary_done:Boolean(day?.diary),plan_done:plan?.achievedMarked??plan?.achieved??null,plan_total:plan?.planned??null,last_sync_at:isoOf(lastSyncAt),
     bricks_today:ach?.todayDay?.value??null,bricks_goal_day:ach?.goalBricks??null,focus_min_by_hour_7d:guard(()=>focusMinByHour(study,today))};
 }
 // FIX58Q (HUNT55 HS2): 잠금·로그아웃 때 바로 덮어쓰는 빈 숫자 파일. 칸은 지금 WIDGET_FILE_KEYS 전부: 숫자·칭호·마지막 동기화·EXP1 새 3칸은 null, 일기 false. 어느 프로필의 숫자도 싣지 않는다.

@@ -359,14 +359,16 @@ export function ledgerMatch(lines,draft,dates){
   return lines.find(l=>l.kind==='EXPENSE'&&dates.includes(l.date)&&wonOf(l.net)===a&&similar(recurringKey(l.merchant)))??null;
 }
 const validDay=d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d);
-// FIX67 (M-01): 빠른 지출·거래 입력 저장 직전 확인. 같은 계정·지출·같은 금액·날짜 ±1일 + ledgerMatch의 가맹점 규칙(둘 다 있으면 비슷할 때만, 한쪽이 비면 금액·날짜만).
-// 맞으면 그 줄을 돌려준다(묻기만, 저장을 막지 않는다). skipKey = 고치는 거래 자신의 줄 key('T:'+id).
+// FIX67 (M-01): 빠른 지출·거래 입력 저장 직전 확인. 맞으면 그 줄을 돌려준다(묻기만, 저장을 막지 않는다). skipKey = 고치는 거래 자신의 줄 key('T:'+id).
+// FIX68 (HUNT65 F4, 통제탑): 같은 계정·지출·같은 금액·**같은 날만**(±1일 아님), 가맹점은 **두 쪽 다 이름이 있고** 비슷할 때만(같음·한쪽이 다른 쪽을 포함). 한쪽이 비면 묻지 않는다.
+const bothNamed=(a,b)=>Boolean(a)&&Boolean(b)&&(a===b||a.length>=LEDGER_MATCH_MIN_NAME&&b.length>=LEDGER_MATCH_MIN_NAME&&(a.includes(b)||b.includes(a)));
 export function sameExpense(lines,{date,amount,accountId,merchant='',kind='EXPENSE'},{skipKey=null}={}){
   if(kind!=='EXPENSE'||!accountId||!Array.isArray(lines)||!validDay(date))return null;
-  const d=dayNum(date),mine=lines.filter(l=>l.accountId===accountId&&l.key!==skipKey&&validDay(l.date)&&Math.abs(dayNum(l.date)-d)<=1);
-  return ledgerMatch(mine,{amount,merchant},[...new Set(mine.map(l=>l.date))]);
+  const a=wonOf(amount),mk=recurringKey(merchant);if(a===null||!mk)return null;
+  return lines.find(l=>l.accountId===accountId&&l.key!==skipKey&&l.kind==='EXPENSE'&&l.date===date&&wonOf(l.net)===a&&bothNamed(recurringKey(l.merchant),mk))??null;
 }
-// FIX67 (M-01·M-03): 장부 점검 줄. 직접 입력한 지출 중 같은 날·같은 금액·같은 계정(가맹점은 sameExpense와 같은 규칙)인 묶음. 계산만(저장 0).
+// FIX67 (M-01·M-03): 장부 점검 줄. 직접 입력한 지출 중 같은 날·같은 금액·같은 계정(가맹점은 둘 다 있으면 비슷할 때만, 한쪽이 비면 금액·날짜만)인 묶음. 계산만(저장 0).
+// FIX68 (HUNT65 F4): 묶는 규칙은 그대로, 안내 글만 "확인해 보세요"(정리 유도 없음).
 // 두 기기에서 따로 넣어 합쳐진 거래도 같은 줄이라 여기서 드러난다. pairs = 묶음마다 (건수 − 1)의 합. 가져온 원천 행은 원천의 중복 의심 묶음이 따로 다룬다.
 export function sameExpenseGroups(lines){
   const by=new Map();
@@ -391,10 +393,11 @@ export function sameExpenseGroups(lines){
 // 화면 문구. name = 화면에 보일 가맹점 이름(가리기 설정을 부른 쪽이 적용). 날짜는 월/일.
 const md=d=>Number(d.slice(5,7))+'/'+Number(d.slice(8,10));
 export const SAME_EXPENSE_TEXT=Object.freeze({
-  ask:(l,name)=>'같은 결제로 보이는 지출이 이미 있어요('+md(l.date)+' '+(name||'가맹점 없음')+' '+formatWon(l.net)+')',
+  // FIX68 (HUNT65 F4, 통제탑 문구): 같은 날 같은 가게·금액이 진짜 두 번일 수 있다(출퇴근 교통 등). 묻는 말 + 겹친 줄만 보이고, 정리를 권하지 않는다.
+  ask:(l,name)=>'혹시 두 번 넣었나요? 매일 같은 지출이면 그대로 저장하세요. ('+md(l.date)+' '+(name||'가맹점 없음')+' '+formatWon(l.net)+')',
   force:'그래도 저장',cancel:'취소',
   check:n=>'같은 날·같은 금액·같은 계정 지출 '+n+'쌍',open:'확인하기',close:'모두 보기',
-  checkNote:'한 건이 실제로 중복이면 그 줄의 [무효화]로 정리하세요(사유 입력 · 이력 보존). 자동으로 지우지 않습니다.',
+  checkNote:'확인해 보세요.',
   refund:(l,name)=>'장부에 같은 금액 지출이 있어요('+md(l.date)+' '+(name||'가맹점 없음')+' '+formatWon(l.net)+')',refundBtn:'이 지출을 환불로 정리',
 });
 export const REFUND_LOOKBACK_DAYS=14;

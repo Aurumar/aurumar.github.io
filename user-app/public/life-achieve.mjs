@@ -2,13 +2,15 @@
 // 이 모듈은 어떤 기록도 쓰지 않고 시계·난수·저장소·네트워크를 쓰지 않는다. 같은 입력이면 어느 기기에서나 같은 결과다.
 // 입력의 날짜별 LIFE_DAY는 최신 카드 하나뿐이다(이력 revision을 세지 않는다). 공부 세션은 COMPLETED만 센다.
 // 설계: AUTOPILOT\tasks\B42_ACHIEVE_TOWER.md(숫자 최우선), ADDENDUM A2·A7.
-import {brickOf,entryDone,lifeDefs,dayNumber,shiftDay,subjectOfSession,habitPinned,habitState,DEFAULT_DAILY_GOAL_BRICKS} from './life-model.mjs';
+import {brickOf,entryDone,lifeDefs,dayNumber,shiftDay,subjectOfSession,habitPinned,habitState,DEFAULT_DAILY_GOAL_BRICKS,HABIT_EPOCH} from './life-model.mjs';
 // V6B 습관 벽돌·행동 경험치 (통제탑 V6B A4). 쌓인 기록에서 다시 계산하는 투영이라 완료를 되돌리면(완료→못함·지움) 경험치·벽돌도 같이 사라진다(이중 지급 없음).
 // 습관 벽돌 1장 = 그날 고정한 매일 습관(숨김·복구·주 단위 목표 제외)과 켜 둔 기본 행동(몸 돌보기 등, 코어 행동 기록)이 모두 "완료"(일부·못함·기록 없음은 아님).
 // 공부 벽돌(bricks·value·목표·업적·아바타)과 섞지 않는다: days[i].habitBrick, week.habitBricks, habitBricks에만 있다. 탑 줄눈 색은 HABIT_BRICK_JOINT(V6C가 그린다).
 // 행동 경험치: 기본 행동 결과 완료 10 · 일부 5(습관 한 칸 = 5 × 난이도 2와 같은 크기), 그 행동 영역의 레벨에 더한다. 행동 결과는 앱이 life.actionDays·life.actionDefs로 넘긴다(없으면 예전과 같은 결과).
 // 새 보상은 HABIT_EPOCH 이후 날짜에만 붙는다(그 전 날짜의 XP는 그대로).
-export const HABIT_EPOCH='2026-11-09';
+// FIX68 (HUNT65 F2, 통제탑): 그날의 분모는 카드에 적힌 기준(basis, 쌓을 때의 목록) → 이 기기가 정해 둔 옛 날 기준(life.basisFrozen) → 지금 목록 순이다.
+// 나중에 습관을 추가·보관·고정 해제해도 기준이 정해진 날의 벽돌·XP는 바뀌지 않는다(기준 밖 습관은 그날 분모에 없다, 기준 안 습관은 지금 숨겨도 그날 분모에 있다).
+export {HABIT_EPOCH};
 export const HABIT_XP=Object.freeze({BRICK:15,ACTION_DONE:10,ACTION_PART:5});
 export const HABIT_BRICK_JOINT='HABIT';   // 탑에서 습관 벽돌 줄눈 색 키(공부 벽돌은 과목 색). 색 값은 V6C 재질 작업이 정한다
 const DOMAIN_AREA=Object.freeze({B:'BODY',C:'BODY',D:'HEAD',F:'HEAD',E:'MONEY'});
@@ -107,6 +109,12 @@ function compute(life,study,today,money=null){
   // 완벽한 날·연속 50% 판정의 분모(B43, 통제탑 결정): 매일 하는 습관만. 복구 종류와 주 단위 목표 습관(운동 등)은 뺀다(해 냈으면 XP는 그대로).
   const core=visible.filter(h=>h.kind!=='RECOVERY'&&h.target.per!=='WEEK');
   const pinnedCore=core.filter(habitPinned),acts=(life?.actionDefs??[]).filter(a=>a?.active),actionDays=life?.actionDays??null;   // V6B 습관 벽돌 분모
+  // FIX68 (F2): 그날 기준이 있으면 그 id들로 분모를 만든다. 기준의 습관 정의를 못 찾으면(정의가 없는 id) 완료 여부만 보는 습관으로 센다.
+  const habitById=new Map(defs.habits.map(h=>[h.id,h])),actById=new Map((life?.actionDefs??[]).map(a=>[a.actionId,a]));
+  const BASIS_ONLY=Object.freeze({kind:'CHECK',target:Object.freeze({time:null,minutes:null,count:null,per:'DAY'})});
+  const basisAt=(date,card)=>{const b=card?.basis??life?.basisFrozen?.[date]??null;if(!b||!Array.isArray(b.habits)||!Array.isArray(b.actions)||!Array.isArray(b.core))return null;
+    const hab=id=>habitById.get(id)??{...BASIS_ONLY,id};
+    return {core:b.habits.map(hab),acts:b.actions.map(id=>actById.get(id)??{actionId:id,name:id,active:false,domain:null}),all:b.core.map(hab)};};
   let habitBrickTotal=0,habitAny=false;
   const subjects=new Map(defs.subjects.map(s=>[s.id,s]));
   const oldest=shiftDay(today,-MAX_SPAN_DAYS);
@@ -183,10 +191,11 @@ function compute(life,study,today,money=null){
   const doneOf=(i,h)=>{const c=parsed[i].card;return Boolean(c&&Object.hasOwn(c.habits,h.id)&&entryDone(h,c.habits[h.id]));};
   const recoveryHabits=defs.habits.filter(h=>h.kind==='RECOVERY'),recoveryWeeks=new Set();
   const visibleDone=new Array(n),qualified=new Array(n);
+  const coreAt=new Array(n);for(let i=0;i<n;i++)coreAt[i]=basisAt(dates[i],parsed[i].card)?.all??core;   // FIX68 (F2): 그날 기준의 보이는 매일 습관(없으면 지금 목록)
   for(let i=0;i<n;i++){
-    let vd=0;for(const h of core)if(doneOf(i,h))vd++;
+    let vd=0;for(const h of coreAt[i])if(doneOf(i,h))vd++;
     visibleDone[i]=vd;
-    qualified[i]=parsed[i].value2>0||(Boolean(parsed[i].card)&&core.length>0&&vd*2>=core.length);
+    qualified[i]=parsed[i].value2>0||(Boolean(parsed[i].card)&&coreAt[i].length>0&&vd*2>=coreAt[i].length);
     if(recoveryHabits.some(h=>doneOf(i,h)))recoveryWeeks.add(weekOf(i));
   }
   const streakAt=new Array(n),bridged=new Array(n).fill(false),bridgeUsed=new Set();
@@ -229,6 +238,7 @@ function compute(life,study,today,money=null){
   const examDays=(defs.exams?.items??[]).map(x=>dayNumber(x.date));
   const stOf=new Map(hStat.map(st=>[st.h.id,st]));
   const pickHabit=i=>{
+    const core=coreAt[i].filter(h=>stOf.has(h.id));   // FIX68 (F2): 그날 기준 목록(정의가 없는 id는 고르지 않음)
     if(!core.length)return null;
     const span=Math.min(DAILY_WINDOW,i);
     if(stackedPrefix[i]-stackedPrefix[i-span]<DAILY_MIN_RECORDS)return core.find(h=>h.id===WAKE_ID)??core[0];
@@ -303,7 +313,7 @@ function compute(life,study,today,money=null){
     }
     const allDone=ids=>ids.every(id=>{const h=byId.get(id);return Boolean(h&&doneOf(i,h));});
     let comboXp=0;
-    const morning=allDone(MORNING_IDS),studyRoutine=allDone(COMMUTE_IDS)&&p.bricks>=STUDY_ROUTINE_BRICKS,perfect=Boolean(p.card)&&core.length>0&&visibleDone[i]===core.length;
+    const morning=allDone(MORNING_IDS),studyRoutine=allDone(COMMUTE_IDS)&&p.bricks>=STUDY_ROUTINE_BRICKS,perfect=Boolean(p.card)&&coreAt[i].length>0&&visibleDone[i]===coreAt[i].length;
     if(morning){comboXp+=XP.COMBO_MORNING;areaXp.BODY+=XP.COMBO_MORNING;note('BODY',date,'아침 콤보',XP.COMBO_MORNING);}
     if(studyRoutine){comboXp+=XP.COMBO_STUDY;areaXp.HEAD+=XP.COMBO_STUDY;note('HEAD',date,'공부 루틴 콤보',XP.COMBO_STUDY);}
     if(perfect)comboXp+=XP.COMBO_PERFECT;                                // 완벽한 날은 특정 영역 소속이 아니다(하루 XP에만 더한다)
@@ -358,9 +368,9 @@ function compute(life,study,today,money=null){
     // V6B: 기본 행동 경험치·습관 벽돌(HABIT_EPOCH 이후). 행동 결과가 없고 벽돌도 없으면 칸을 만들지 않는다(기존 결과와 같은 모양).
     let actionXp=0,habitBrick=false;
     if(date>=HABIT_EPOCH){
-      const outs=actionDays?.[date]??null;
-      for(const a of acts){const o=outs?.[a.actionId];const x=o==='COMPLETE'?HABIT_XP.ACTION_DONE:o==='PARTIAL'?HABIT_XP.ACTION_PART:0;if(x){const area=actionArea(a.domain);actionXp+=x;areaXp[area]+=x;note(area,date,a.name,x);}}
-      habitBrick=pinnedCore.length+acts.length>0&&pinnedCore.every(h=>Boolean(p.card)&&habitState(h,Object.hasOwn(p.card.habits,h.id)?p.card.habits[h.id]:null)==='done')&&acts.every(a=>outs?.[a.actionId]==='COMPLETE');
+      const outs=actionDays?.[date]??null,fixed=basisAt(date,p.card),dayCore=fixed?.core??pinnedCore,dayActs=fixed?.acts??acts;
+      for(const a of dayActs){const o=outs?.[a.actionId];const x=o==='COMPLETE'?HABIT_XP.ACTION_DONE:o==='PARTIAL'?HABIT_XP.ACTION_PART:0;if(x){const area=actionArea(a.domain);actionXp+=x;areaXp[area]+=x;note(area,date,a.name,x);}}
+      habitBrick=dayCore.length+dayActs.length>0&&dayCore.every(h=>Boolean(p.card)&&habitState(h,Object.hasOwn(p.card.habits,h.id)?p.card.habits[h.id]:null)==='done')&&dayActs.every(a=>outs?.[a.actionId]==='COMPLETE');
       if(habitBrick){bonusXp+=HABIT_XP.BRICK;earned.push('HABIT_BRICK');habitBrickTotal++;}
       if(habitBrick||actionXp)habitAny=true;
     }
@@ -377,7 +387,7 @@ function compute(life,study,today,money=null){
       s.bricks+=pt.bricks;s.pieces+=pt.pieces;week.subjects.set(key,s);
     }
     days[i]={date,card:Boolean(p.card),habitXp,brickXp:p.brickXp,comboXp,bonusXp,ignite:p.ignite,boss,morning,studyRoutine,perfect,raw,mult10,xp,streak:streakAt[i],bridged:bridged[i],qualified:qualified[i],
-      bricks:p.bricks,pieces:p.pieces,gold:p.gold,gems:p.gems,value:p.value2/2,visibleDone:visibleDone[i],visibleTotal:core.length,goal:goalAt(i),earned,daily,parts:p.parts,reviews:p.reviews,mistakes:p.mistakes};
+      bricks:p.bricks,pieces:p.pieces,gold:p.gold,gems:p.gems,value:p.value2/2,visibleDone:visibleDone[i],visibleTotal:coreAt[i].length,goal:goalAt(i),earned,daily,parts:p.parts,reviews:p.reviews,mistakes:p.mistakes};
     if(anyDiary)Object.assign(days[i],{diary:Boolean(dy),weekReview:reviewAt[i],diaryXp,diaryStreak:diaryStreakAt[i],small:smallWeight});
     if(habitBrick||actionXp)Object.assign(days[i],{habitBrick,actionXp});
   }

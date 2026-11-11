@@ -1026,8 +1026,9 @@ button.diary-num.selected,button.diary-num.selected:hover{background:var(--lb-go
 @media(max-width:759px){.diary-sheet[data-step="1"] .diary-write,.diary-sheet[data-step="2"] .diary-rate,.diary-actions-wide{display:none}}
 @media(min-width:760px){.diary-cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.diary-actions-rate,.diary-actions-write{display:none}}
 .life-stack-bar{position:sticky;bottom:calc(var(--lb-s-2) + env(safe-area-inset-bottom));z-index:4;display:flex;align-items:center;gap:var(--lb-s-3);padding:var(--lb-s-2) var(--lb-s-3);border-radius:var(--lb-r-3);background:var(--lb-surface-solid);border:1px solid var(--lb-line);box-shadow:var(--lb-shadow-2)}
-.life-stack-btn{flex:1 1 auto;min-height:56px;font-size:17px;font-weight:800}
-.life-stack-note{white-space:nowrap}
+/* FIX68 (HUNT65 F3): 단추 글자는 꺾이지 않는다(한 줄·글자 폭만큼은 줄지 않음). 좁은 폭(344)에서는 안내 글이 줄어들고 줄바꿈해 줄 높이가 단추 한 줄 높이 수준으로 남는다. */
+.life-stack-btn{flex:1 0 auto;min-height:56px;font-size:17px;font-weight:800;white-space:nowrap}
+.life-stack-note{flex:0 1 auto;min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.3}
 @media(min-width:601px){#view-content:has(>.next-panel)>.life-panel{grid-column:1/-1}}
 .life-edit-row{display:flex;flex-wrap:wrap;gap:var(--lb-s-2);align-items:center;padding:10px 0;border-bottom:1px solid var(--lb-line-soft)}
 .life-edit-row input[type=text],.life-edit-row input:not([type]){flex:1 1 130px;min-width:0}

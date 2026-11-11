@@ -46,7 +46,7 @@ export function buildWidgetSummary({ach,planRows=[],today,at}){
   const bricks=day&&day.date===today?half(day.value,999):null,goal=whole(ach?.goalBricks,0,999);
   const plan=[...(planRows??[])].map((r,i)=>({r,i})).filter(({r})=>WIDGET_BLOCKS.includes(r?.block)&&isHalf(r.bricks,99))
     .sort((a,b)=>BLOCK_ORDER[a.r.block]-BLOCK_ORDER[b.r.block]||a.i-b.i).slice(0,WIDGET_LIMITS.plan)
-    .map(({r})=>({b:r.block,s:subjectText(r.name),done:half(Math.min(r.got??0,99),99)??0,total:r.bricks}));
+    .map(({r})=>({b:r.block,s:subjectText(r.name),done:half(Math.min(r.manual?Math.max(r.got??0,r.bricks):r.got??0,99),99)??0,total:r.bricks}));   // FIX68 F7: 손 완료 줄은 다 채움
   return {
     v:WIDGET_VERSION,date:today,at:whole(at,1,9999999999999),
     bricks,goal,
@@ -61,9 +61,10 @@ export function buildWidgetSummary({ach,planRows=[],today,at}){
 }
 
 // 쌓인 기록 → 요약. 화면이 쓰는 것과 같은 계산(achieve·오늘 계획 카드)을 그대로 쓴다.
-export function widgetSummaryOf({life=null,study=null,fin=null,money=null,today,at}){
+// FIX68 (HUNT65 F7): marks = 이 기기의 손 완료·"다른 항목으로" 값(앱이 life-plan readPlanMarks로 읽어 넘긴다, 이 모듈은 저장소를 읽지 않는다). 오늘 계획 카드와 같은 연결로 센다(없으면 예전 그대로).
+export function widgetSummaryOf({life=null,study=null,fin=null,money=null,today,at,marks=null}){
   const ach=achieve({life,study,fin,today,money});
-  const m=todayPlanModel({life,study,date:today,today});
+  const m=todayPlanModel({life,study,date:today,today,marks});
   return buildWidgetSummary({ach,planRows:m.rows,today,at});
 }
 

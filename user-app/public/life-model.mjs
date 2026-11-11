@@ -100,8 +100,16 @@ function validateEntry(e){
   requireValue(e.done||(e.at===null&&e.minutes===null&&e.count===null),'INVALID_LIFE_ENTRY');
 }
 export function cardBytes(d){return new TextEncoder().encode(JSON.stringify(d)).length;}
+// FIX68 (HUNT65 F2, 통제탑): 그날 기준(basis, 선택 칸) = 그 카드를 쌓을 때의 습관 목록. habits = 습관 벽돌 분모(고정한 매일 습관), actions = 켜 둔 기본 행동,
+// core = 완벽한 날·연속 50%·일간 퀘스트 분모(보이는 매일 습관, 고정 여부 무관). 칸 추가만(옛 칸 뜻 그대로), 없으면 예전 모양.
+export const MAX_BASIS_IDS=60;
+function validateBasis(b){
+  shape(b,['habits','actions','core'],'INVALID_LIFE_BASIS');
+  for(const list of [b.habits,b.actions,b.core])requireValue(Array.isArray(list)&&list.length<=MAX_BASIS_IDS&&list.every(lifeIdOK)&&new Set(list).size===list.length,'INVALID_LIFE_BASIS');
+}
 function validateDay(id,d){
-  shape(d,['date','habits','mood','note','dayType'],'INVALID_LIFE_DAY');
+  shape(d,['date','habits','mood','note','dayType',...(plain(d)&&Object.hasOwn(d,'basis')?['basis']:[])],'INVALID_LIFE_DAY');
+  if(Object.hasOwn(d,'basis'))validateBasis(d.basis);
   requireValue(dateKeyOK(id)&&d.date===id,'INVALID_LIFE_DATE');
   requireValue(plain(d.habits),'INVALID_LIFE_DAY');
   const keys=Object.keys(d.habits);
@@ -372,6 +380,48 @@ export function habitState(h,e){
   return 'done';
 }
 export const MISSED_ENTRY=Object.freeze({done:false,at:null,minutes:null,count:null});
+// V6B 습관 벽돌·기본 행동 경험치를 세는 첫 날. FIX68: 이 날부터의 카드에 쌓을 때의 기준(basis)을 함께 적는다.
+export const HABIT_EPOCH='2026-11-09';
+// FIX68 (HUNT65 F2): 지금 목록으로 정한 습관 벽돌 기준. 습관 = 보이는·고정·매일(복구 종류·주 단위 목표 제외), 행동 = 켜 둔 기본 행동(life.actionDefs, 앱이 붙여 준다).
+export function habitBasis(life){
+  const core=lifeDefs(life).habits.filter(h=>!h.hidden&&h.kind!=='RECOVERY'&&h.target.per!=='WEEK'),ids=list=>[...new Set(list)].sort().slice(0,MAX_BASIS_IDS);
+  const actions=(life?.actionDefs??[]).filter(a=>a?.active&&lifeIdOK(a.actionId)).map(a=>a.actionId);
+  return {habits:ids(core.filter(habitPinned).map(h=>h.id)),actions:ids(actions),core:ids(core.map(h=>h.id))};
+}
+// 그 날의 기준: 카드에 적힌 기준 → 이 기기에서 먼저 정해 둔 옛 날 기준(life.basisFrozen, 앱이 붙여 준다) → 지금 목록. HABIT_EPOCH 전 날은 null(기준을 적지 않는다).
+export function habitBasisFor(life,date,card=null){
+  if(!dateKeyOK(date)||date<HABIT_EPOCH)return null;
+  return card?.basis??life?.basisFrozen?.[date]??habitBasis(life);
+}
+// FIX68 (HUNT65 F2, 통제탑 "옛 자료는 지금 규칙으로 계산하되 한 번 정해지면 다시 바뀌지 않게"): 기준이 적히지 않은 지난 카드(HABIT_EPOCH~어제)는 이 기기에서 처음 본 때의 목록으로 정해
+// 이 기기 저장소(lb.habit.basis, 화면 설정과 같은 곳, 기록·동기화 아님)에 둔다. 한 번 적은 날은 다시 계산하지 않는다. 그 카드를 다시 쌓으면 이 값이 카드에 적힌다(habitBasisFor).
+export const HABIT_BASIS_KEY='lb.habit.basis',HABIT_BASIS_DAYS=400;
+export function frozenBasis(life,today,storage){
+  let all={};
+  try{const v=JSON.parse(storage?.getItem(HABIT_BASIS_KEY)??'null');if(plain(v))all=v;}catch{/* 깨졌거나 막힌 저장소면 이번 실행만 */}
+  const ok=b=>{try{validateBasis(b);return true;}catch{return false;}};
+  const out={};let changed=false;
+  for(const [d,b] of Object.entries(all))if(dateKeyOK(d)&&ok(b))out[d]=b;else changed=true;
+  for(const row of life?.days??[]){
+    const d=row.date;
+    if(!dateKeyOK(d)||d<HABIT_EPOCH||d>=today||row.data?.basis||Object.hasOwn(out,d))continue;
+    out[d]=habitBasis(life);changed=true;
+  }
+  const keep=Object.keys(out).sort().slice(-HABIT_BASIS_DAYS),kept=Object.fromEntries(keep.map(k=>[k,out[k]]));
+  if(changed||keep.length!==Object.keys(out).length)try{storage?.setItem(HABIT_BASIS_KEY,JSON.stringify(kept));}catch{/* 기록에는 영향 없음 */}
+  return kept;
+}
+// FIX68B (통제탑 2026-11-11): 기록 문이 닫혀 있으면 카드에 기준을 적지 않는다(r65 검사기가 basis 칸을 거절). 쌓을 때의 기준은 여기에(같은 lb.habit.basis) 둔다. 같은 날은 덮어쓴다.
+// frozenBasis가 그대로 읽어 그날 분모로 쓴다. HABIT_EPOCH 전 날·모양이 틀린 기준은 두지 않는다. 저장소가 막혀도 던지지 않는다(기록에는 영향 없음). 돌려주는 값 = 적었는지.
+export function keepHabitBasis(storage,date,b){
+  if(!dateKeyOK(date)||date<HABIT_EPOCH||!b)return false;
+  try{validateBasis(b);}catch{return false;}
+  let all={};
+  try{const v=JSON.parse(storage?.getItem(HABIT_BASIS_KEY)??'null');if(plain(v))all=v;}catch{/* 깨졌으면 새로 */}
+  all[date]=structuredClone(b);
+  const keep=Object.keys(all).sort().slice(-HABIT_BASIS_DAYS);
+  try{storage.setItem(HABIT_BASIS_KEY,JSON.stringify(Object.fromEntries(keep.map(k=>[k,all[k]]))));return true;}catch{return false;}
+}
 export function dDay(today,date){return dayNumber(date)-dayNumber(today);}
 // 오늘 이후(오늘 포함)의 가장 가까운 시험. 없으면 null.
 export function nearestExam(exams,today){

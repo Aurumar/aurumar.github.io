@@ -530,9 +530,17 @@ export async function easyAdd(ctx,st,item,{note=null}={}){
 export function doseItem(profile,{amount,at}){return {type:'dose',profileKey:profile.key,amount,unit:profile.data.unit,at};}
 export function stateItem(kind,score,at){return {type:'change',kind,intensity:score,at,endAt:null};}
 // 낮잠: 분과 시작 시각(선택). 시작이 없으면 지금 끝난 것으로 본다(시작 = 지금 − 분).
+// FIX68 (HUNT65 F6, 통제탑): 시작 시각은 약 시각과 같은 규칙이다 — 지금보다 늦은 시각이면 전날. 그래도 끝이 지금보다 뒤(미래)면 만들지 않는다(napProblem = 이유 코드).
+export const NAP_FUTURE='HLT_NAP_FUTURE';
+const napStart=(date,minutes,startHm,nowIso)=>startHm?isoFromKst(date,startHm,Date.parse(isoFromKst(date,startHm,0)??'')>Date.parse(nowIso)?-1:0):new Date(Date.parse(nowIso)-minutes*60000).toISOString();
+export function napProblem(date,minutes,startHm,nowIso){
+  const start=napStart(date,minutes,startHm,nowIso);
+  if(!start||!isoOK(start)||!(minutes>=1&&minutes<=NAP_MAX_MINUTES*4))return 'INVALID_HLT_TIME';
+  return Date.parse(start)+minutes*60000>Date.parse(nowIso)?NAP_FUTURE:null;
+}
 export function napItem(date,minutes,startHm,nowIso){
-  const start=startHm?isoFromKst(date,startHm,0):new Date(Date.parse(nowIso)-minutes*60000).toISOString();
-  if(!start||!isoOK(start)||!(minutes>=1&&minutes<=NAP_MAX_MINUTES*4))return null;
+  if(napProblem(date,minutes,startHm,nowIso))return null;
+  const start=napStart(date,minutes,startHm,nowIso);
   return {type:'sleep',kind:'nap',startAt:start,endAt:new Date(Date.parse(start)+minutes*60000).toISOString()};
 }
 export function napsOf(raw,date){
@@ -540,11 +548,14 @@ export function napsOf(raw,date){
   return (c?.items??[]).filter(i=>i.type==='sleep'&&i.kind==='nap'&&i.endAt!==null).map(i=>({minutes:spanMinutes(i),start:hhmmKst(i.startAt)}));
 }
 // 하루 타임라인(0~24시, KST) 자료: 복용 점(+용량), 상태 막대, 낮잠·수면 띠, 공부 벽돌 띠. 비공개 약은 showPrivate가 아니면 이름 대신 "약".
+// FIX68 (HUNT65 F5, 통제탑): 이 날 카드에 있는 전날 복용(자정 근처에 "23:50"을 넣어 전날로 해석된 것)은 0시 칸에 점을 두고 글자는 "어제 HH:MM"(저장 위치는 그대로).
+// 전날 복용만 doses[].prev = true, when = '어제 HH:MM'(그 밖의 복용 모양은 예전 그대로 {m,label}).
+const hhmmOf=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 export function timelineData(card,{labelOf=()=>'약',study=null,date}){
   const dayStart=Date.parse(date+'T00:00:00+09:00'),min=iso=>Math.round((Date.parse(iso)-dayStart)/60000),clip=m=>Math.max(0,Math.min(1440,m));
   const out={doses:[],states:[],sleeps:[],study:[]};
   for(const i of card?.items??[]){
-    if(i.type==='dose'){const m=min(i.at);if(m>=0&&m<1440)out.doses.push({m,label:labelOf(i.profileKey)+' '+i.amount+(UNIT_TEXT[i.unit]??i.unit)});}
+    if(i.type==='dose'){const m=min(i.at),label=labelOf(i.profileKey)+' '+i.amount+(UNIT_TEXT[i.unit]??i.unit);if(m>=0&&m<1440)out.doses.push({m,label});else if(m<0&&m>=-1440)out.doses.push({m:0,label,when:'어제 '+hhmmOf(m+1440),prev:true});}
     else if(i.type==='change'&&(i.kind==='fatigue'||i.kind==='depression')){const m=min(i.at);if(m>=0&&m<1440)out.states.push({m,kind:i.kind,score:Math.min(STATE_MAX,i.intensity)});}
     else if(i.type==='sleep'&&i.endAt!==null){const a=clip(min(i.startAt)),b=clip(min(i.endAt));if(b>a)out.sleeps.push({a,b,kind:i.kind});}
   }
@@ -588,7 +599,9 @@ function timelineSvg(doc,data){
 export function renderEasyHealth(root,ctx,st){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,hint,section,input,field}=h;
   const raw=st.raw,today=kstDate(ctx.now()),nowIso=ctx.now();
-  const run=(item,opts)=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;st.easy=null;try{const r=await easyAdd(ctx,st,item(),opts?.());st.message=r.text;st.error=r.error;}catch(e){st.message=hltErrorText(e?.code);st.error=true;}await prepareHealth(ctx,st);await ctx.rerender();});
+  // FIX68 (MAN3 M1): 저장(또는 임시 입력)에 들어간 칸(복용 시각·직접 용량·메모)은 "저장하지 않은 입력"으로 세지 않게 앱의 처음 값 표시(data-edit-init)를 지금 값으로 맞춘다. 실패하면 그대로(남은 입력).
+  const markSaved=fields=>{for(const n of fields())if(n?.dataset)n.dataset.editInit=String(n.value??'');};
+  const run=(item,opts,fields=()=>[])=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;st.easy=null;try{const r=await easyAdd(ctx,st,item(),opts?.());st.message=r.text;st.error=r.error;markSaved(fields);}catch(e){st.message=hltErrorText(e?.code);st.error=true;}await prepareHealth(ctx,st);await ctx.rerender();});
   const out=add(el('div',null,'hlt-easy'),null);out.id='hlt-easy';
   // 1) 약 복용
   const meds=raw.profiles.filter(p=>p.data.kind==='MED'&&p.data.enabled&&!p.data.removed&&(st.showPrivate||!p.data.private));
@@ -604,7 +617,7 @@ export function renderEasyHealth(root,ctx,st){
     const at=input(e.at,{inputmode:'numeric',placeholder:'지금 '+hhmmKst(nowIso),'aria-label':'복용 시각 HH:MM (비우면 지금)',maxlength:'5'});at.addEventListener('input',()=>{e.at=at.value;});
     const amountOf=()=>{const v=e.custom.trim()?num(e.custom):pick.data.defaultAmount*e.step;if(!(v>0&&v<=MAX_AMOUNT)){const x=new Error('INVALID_HLT_DOSE');x.code='INVALID_HLT_DOSE';throw x;}return v;};
     const atOf=()=>{const t=e.at.trim();if(!t)return nowIso;const iso=isoFromKst(today,t,Date.parse(isoFromKst(today,t,0)??'')>Date.parse(nowIso)?-1:0);if(!iso||!isoOK(iso)){const x=new Error('INVALID_HLT_TIME');x.code='INVALID_HLT_TIME';throw x;}return iso;};
-    add(ms,steps,add(el('div',null,'buttons'),field('직접 용량',custom),field('시각 (비우면 지금)',at),button('저장',run(()=>doseItem(pick,{amount:amountOf(),at:atOf()})),'primary'),button('취소',()=>{st.easy=null;void ctx.rerender();})));
+    add(ms,steps,add(el('div',null,'buttons'),field('직접 용량',custom),field('시각 (비우면 지금)',at),button('저장',run(()=>doseItem(pick,{amount:amountOf(),at:atOf()}),null,()=>[custom,at]),'primary'),button('취소',()=>{st.easy=null;void ctx.rerender();})));
   }
   add(ms,hint(MED_NOTE));
   add(out,ms);
@@ -613,7 +626,7 @@ export function renderEasyHealth(root,ctx,st){
   const memo=input(st.easyMemo??'',{maxlength:'60',placeholder:EASY_TEXT.memo,'aria-label':EASY_TEXT.memo});memo.addEventListener('input',()=>{st.easyMemo=memo.value;});
   for(const [k,name] of STATE_KINDS){
     const line=add(el('div',null,'hlt-state-row'),el('span',name,'hlt-state-name'));
-    for(let v=0;v<=STATE_MAX;v++){const b=button(String(v),run(()=>stateItem(k,v,ctx.now()),()=>{const m=(st.easyMemo??'').trim();st.easyMemo='';return m?{note:hhmmKst(ctx.now())+' '+name+' '+v+' '+m}:{};}),'secondary hlt-state-btn hlt-s'+v);b.setAttribute('aria-label',name+' '+v);add(line,b);}
+    for(let v=0;v<=STATE_MAX;v++){const b=button(String(v),run(()=>stateItem(k,v,ctx.now()),()=>{const m=(st.easyMemo??'').trim();st.easyMemo='';return m?{note:hhmmKst(ctx.now())+' '+name+' '+v+' '+m}:{};},()=>[memo]),'secondary hlt-state-btn hlt-s'+v);b.setAttribute('aria-label',name+' '+v);add(line,b);}
     add(ss,line);
   }
   add(ss,memo);add(out,ss);
@@ -622,7 +635,7 @@ export function renderEasyHealth(root,ctx,st){
   const study=(ctx.getWhole().study?.days??[]).find(d=>d.date===st.date)?.data??null;
   const tl=timelineData(st.flowState?.card??card,{labelOf,study,date:st.date});
   const ts=add(section(EASY_TEXT.timeline+' · '+st.date,'아래 숫자 = 시각(0~24시) · 띠 = 수면(진한)·낮잠(연한) · 금 선 = 공부 벽돌 · 점 = 복용 · 막대 = 무기력(금)·우울(남)'),timelineSvg(doc,tl));
-  const doseList=tl.doses.map(d=>String(Math.floor(d.m/60)).padStart(2,'0')+':'+String(d.m%60).padStart(2,'0')+' '+d.label);
+  const doseList=tl.doses.map(d=>(d.when??hhmmOf(d.m))+' '+d.label);
   add(ts,hint(doseList.length?'복용 · '+doseList.join(' · '):'이 날 복용 기록 없음'));
   add(out,ts);
   // 4) 심해지는 시간대
