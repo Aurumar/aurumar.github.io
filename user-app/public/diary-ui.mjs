@@ -5,7 +5,7 @@
 // 기분은 오늘 카드 값 그대로(★3): 일기에는 기분 입력이 없고 자동 줄에 카드 기분을 보여 주기만 한다.
 // 글은 알림·토스트·내보내기·이력 제목에 넣지 않는다. 화면 문구·상태 줄·저장 사유에도 글을 싣지 않는다. 지난 일기 글은 누를 때만 만든다(화면을 보는 사람 고려).
 import {sheet} from './ui-kit.mjs';
-import {LifeFlow,createLifePorts,DIARY_KIND,STACK_DONE} from './life-flow.mjs';
+import {LifeFlow,createLifePorts,DIARY_KIND,STACK_DONE,shownCard} from './life-flow.mjs';
 import {PLAN_NOTICE_TEXT,planErrorText} from './life-plan.mjs';
 import {DIARY_GOOD_CHIPS,DIARY_BAD_CHIPS,MAX_DIARY_GOOD,MAX_DIARY_BAD,MAX_DIARY_TEXT,MAX_DIARY_TOMORROW,
   emptyDiary,recordsDoorState,lifeDefs,entryDone,sumBricks,shiftDay,kstDate,diaryOpenDate} from './life-model.mjs';
@@ -208,7 +208,10 @@ export function renderDiaryEntry(ctx,st,{open}){
 export async function openDiarySheet(ctx,st,date,opts={}){
   const flow=ensureDiaryFlow(ctx,st),box=st.diaryPorts?.box??null,doc=ctx.document??globalThis.document,{el,add,button}=maker(doc);
   const whole=ctx.getWhole(),life=whole.life??null,defs=lifeDefs(life);
-  const s=await flow.state(date),work=structuredClone(s.card);
+  // FIX72: 시트에 보이는 값 = 쌓인 일기 위에 이 기기 초안의 바꾼 칸만 얹은 결과(같은 기기 다른 창이 저장한 칸이 초안에 가려지지 않게). 저장은 그대로 건드린 칸만 쓴다.
+  const s=await flow.state(date);let shown=s.card;
+  try{shown=shownCard(DIARY_KIND,s,st.diaryPorts?.latest?.(date))??s.card;}catch{shown=s.card;}
+  const work=structuredClone(shown);
   // FIX50A (HUNT49 A1): 시트를 연 시점의 판. 초안이 없던 날은 첫 입력의 초안을 이 판 위에 만든다(그 사이 다른 기기가 저장했으면 확정 때 칸별로 합친다).
   const from=s.status==='LOCAL_DRAFT'?null:{heads:[...s.baseHeads],card:structuredClone(s.card)},touched=new Set();
   // 자동 줄의 재료(읽기만): 그날 오늘 카드·공부 카드(초안 포함)

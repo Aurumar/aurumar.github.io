@@ -2,7 +2,7 @@
 // 스위치 위치(결정): 이 기기의 로컬 설정(localStorage) — hlt-ui와 같은 이유(금고 공유로 두면 아직 갱신하지 않은 기기가 HOLD). 저장소가 막혀 있으면 이번 실행 동안만 유지한다.
 // 화면 규칙: DOM 생성 함수만 쓴다(innerHTML·인라인 style·외부 라이브러리 없음). 문제 본문·정답·해설을 넣는 칸은 없다 — 출처 표기+번호, 오답 원인 코드, 메모(100자)뿐.
 // 복습 알림은 앱 안 표시까지(건수·밀린 복습을 복습 목록 맨 위에). 휴대폰 푸시 알림은 만들지 않았다.
-import {StudyFlow} from './study-flow.mjs';
+import {StudyFlow,shownCard} from './study-flow.mjs';
 import {projectStudy} from './study-projection.mjs';
 import {reviewSummary,defaultReviewDue} from './study-schedule.mjs';
 import {SUBJECTS,SESSION_STATES,PROVENANCE,BOOK_TAG,MAX_BOOK,ERROR_CODES,EVIDENCE_STATUS,RESULTS,MAX_LOCATOR,MAX_NOTE,kstDate,shiftDay,dateKeyOK,bookRefFrom,bookRefText} from './study-model.mjs';
@@ -171,9 +171,11 @@ const int=s=>typeof s==='string'&&/^\d+$/.test(s.trim())?Number(s.trim()):NaN;
 const subjectOptions=()=>SUBJECTS.map(c=>[c,subjectText(c)]);
 const dueText=r=>r.daysLate>0?r.due+' 예정 · '+r.daysLate+'일 늦음':r.due+' 예정 · 오늘';
 
+// FIX72: 화면에 보일 상태 = 카드만 study-flow shownCard(쌓인 카드 + 이 기기 초안, 줄 단위)로 바꾼 사본. 포트에 latest가 없으면(화면 시험의 가짜 흐름) 그대로.
+export function viewState(st,fs){try{const c=shownCard(fs,st.ports?.latest?.(fs.card?.date??st.date))??fs.card;return c===fs.card?fs:{...fs,card:c};}catch{return fs;}}
 export function renderStudy(root,ctx,st){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,hint,section,row,input,select,field}=h;
-  const fs=st.flowState,date=st.date,isToday=date===st.today;
+  const fs=viewState(st,st.flowState),date=st.date,isToday=date===st.today;   // FIX72: 세션·오답·복습 목록은 표시 카드(쓰기는 흐름이 초안에 한다)
   const box=st.ports?.box??null,T=box?.TEXT;   // B3c: 이 기기 상자(브라우저)일 때만 있다
   const seen=()=>(st.resumed??=new Set()).add(date);   // 이 날짜에서 한 번이라도 입력했으면 "저장된 초안이 있어요" 안내를 다시 띄우지 않는다
   // B2C (DEFECT-5 묶음): 상자 쓰기 실패는 save가 던지지 않는다(설계). 버튼이 끝났을 때 그 날짜 초안이 실패 상태면 성공 문구 대신 실패 문구를 보인다(날짜가 옮겨 갔을 수 있어 st.date).
@@ -302,6 +304,8 @@ export function renderStudy(root,ctx,st){
   add(fin,add(el('div',null,'buttons'),
     button('카드 쌓기',act(async()=>{
       const r=await st.flow.confirm(date);st.notices=r.notices??[];
+      // FIX72: 쌓은 직후 앱의 금고 사본을 다시 읽는다(읽기만, 일기 저장과 같음). 같은 기기 다른 창의 초안이 남은 날 방금 쌓은 줄이 화면에서 안 보이지 않게.
+      if(r.status==='CONFIRMED'||r.status==='ALREADY_APPLIED')try{await ctx.reload?.();}catch{/* 다음 동기화가 다시 읽는다 */}
       if(r.status==='REJECTED'){st.message=studyErrorText(r.code);st.error=true;}
       else if(['UNKNOWN','SYNC_FAILED','FAILED','STALE'].includes(r.status)){st.message=(r.code&&STUDY_ERROR_TEXT[r.code])||STATUS_TEXT[r.status];st.error=true;}
       else st.message=STATUS_TEXT[r.status]??'처리하지 못했어요'+' · 문의 코드 ▾\u2060'+r.status+'\u2060';

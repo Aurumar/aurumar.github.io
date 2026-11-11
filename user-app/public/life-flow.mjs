@@ -15,6 +15,13 @@ const STALE_BASE='CARD_DRAFT_STALE_BASE',EDIT_ROUNDS=5,DRAFT_GONE='CARD_DRAFT_NO
 const MINE_NOTICE=/(OVERWRITTEN|KEPT_MINE|KEPT_LOCAL)$/;
 const flowError=code=>Object.assign(new Error(code),{code});
 const sameHeads=(a,b)=>a.length===b.length&&a.every((h,i)=>h===b[i]);
+// FIX72 (FIX71 규칙): 화면에 보일 카드 = 쌓인 카드(latest) 위에 이 기기 초안을 칸 단위로 얹은 결과(그 종류의 rebase = 쌓기와 같은 규칙, 읽기만).
+// 일기는 state의 base가 이미 "바꾼 칸만 내 것"(diaryKnownBase)이라 바꾸지 않은 칸은 쌓인 값이 보인다. 초안이 최신 카드 위에 있으면 초안 그대로, 합칠 수 없으면 초안 그대로.
+export function shownCard(kind,s,latest){
+  if(s?.status!=='LOCAL_DRAFT'||!latest||sameHeads(s.baseHeads??[],latest.heads??[]))return s?.card;
+  const rb=kind.rebase({date:s.card.date,base:s.base,mine:s.card,latest:latest.card});
+  return rb.status==='MERGED'?rb.card:rb.status==='ALREADY_APPLIED'?latest.card??s.card:s.card;
+}
 // FIX49B (D49 5.2): 일기 저장 사유는 고정 문구만 쓴다(이력에 그대로 보인다, 글을 넣지 않는다). 합칠 것이 없으면 임시 입력 본문을 그대로 확정하므로 두 사유를 같게 둔다(이력에 '임시 저장'으로 보이지 않게).
 export const DIARY_CONFIRM_REASON='일기 저장';
 export const DIARY_DRAFT_REASON=DIARY_CONFIRM_REASON;
@@ -553,10 +560,17 @@ export function createPlanDrafts({port,box=null,getLife,rebase:rebasePlan,write,
       return {stacked,failed,codes};
     },
     // 화면용 life: plans에 초안 값을 얹는다(금고 heads는 그대로). 같은 life·같은 초안이면 같은 객체(다시 그려도 캐시가 깨지지 않게).
+    // FIX72 (FIX71 규칙): 금고 값이 초안의 base와 다르면(같은 기기 다른 창이 그 사이 쌓음) 초안을 통째로 보이지 않고 쌓인 줄 위에 이 초안의 줄을 줄 id 단위로 얹는다
+    // (쌓기 flush가 쓰는 rebasePlan과 같은 규칙, 읽기만). 이미 다 들어 있으면 금고 값, 합칠 수 없으면 예전처럼 초안 그대로.
     overlay(life){
       if(!cache.size||!life)return life;
       if(memo?.life===life&&memo.ver===ver)return memo.out;
-      const plans=(life.plans??[]).map(p=>cache.has(p.date)?{...p,data:structuredClone(cache.get(p.date).mine)}:p);
+      const shown=(p,d)=>{
+        if(typeof rebasePlan!=='function'||stable(p.data??null)===stable(d.base??null))return structuredClone(d.mine);
+        const rb=rebasePlan({date:p.date,base:d.base,mine:d.mine,latest:p.data});
+        return structuredClone(rb.status==='MERGED'?rb.plan:rb.status==='ALREADY_APPLIED'?p.data:d.mine);
+      };
+      const plans=(life.plans??[]).map(p=>cache.has(p.date)?{...p,data:shown(p,cache.get(p.date))}:p);
       for(const [date,d] of cache)if(!plans.some(p=>p.date===date))plans.push({date,id:date,data:structuredClone(d.mine),heads:[],updatedAt:null});
       plans.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);   // lifeRawView와 같이 최신 날짜가 앞
       const out={...life,plans};memo={life,ver,out};return out;

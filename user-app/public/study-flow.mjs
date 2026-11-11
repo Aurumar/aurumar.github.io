@@ -12,6 +12,13 @@ export const DRAFT_REASON='공부 카드 임시 저장';
 export const CONFIRM_REASON='공부 카드 확정';
 
 const sameHeads=(a,b)=>a.length===b.length&&a.every((h,i)=>h===b[i]);
+// FIX72 (FIX71 규칙): 화면에 보일 카드 = 쌓인 카드(latest) 위에 이 기기 초안을 줄(세션·오답·복습 id) 단위로 얹은 결과(쌓기의 rebase와 같은 규칙, 읽기만).
+// 초안이 최신 카드 위에 있으면 초안 그대로. 합칠 수 없으면(REJECTED) 예전처럼 초안 그대로. 이미 다 들어 있으면(ALREADY_APPLIED) 쌓인 카드.
+export function shownCard(s,latest){
+  if(s?.status!=='LOCAL_DRAFT'||!latest||sameHeads(s.baseHeads??[],latest.heads??[]))return s?.card;
+  const rb=rebase({date:s.card.date,base:s.base,mine:s.card,latest:latest.card});
+  return rb.status==='MERGED'?rb.card:rb.status==='ALREADY_APPLIED'?latest.card??s.card:s.card;
+}
 const err=code=>Object.assign(new Error(code),{code});
 // FIX34 (HUNT34 H1): 같은 타이머(같은 시작 시각 = 같은 id)를 두 창이 따로 끝냈으면 같은 집중이다 → 먼저 디스크에 적힌 행을 쓴다(id 충돌로 막지 않음).
 const adoptTimerRows=(mine,disk)=>({...mine,sessions:mine.sessions.map(s=>sessionMark(s.id)==='T'?disk.sessions.find(x=>x.id===s.id)??s:s)});

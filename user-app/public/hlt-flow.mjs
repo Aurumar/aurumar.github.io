@@ -11,6 +11,12 @@ export const DRAFT_REASON='건강 카드 임시 저장';
 export const CONFIRM_REASON='건강 카드 확정';
 
 const sameHeads=(a,b)=>a.length===b.length&&a.every((h,i)=>h===b[i]);
+// FIX72 (FIX71 규칙): 화면에 보일 카드 = 쌓인 카드(latest) 위에 이 기기 초안을 항목 단위로 얹은 결과(쌓기 미리보기 previewRebase와 같은 규칙, 읽기만).
+// 초안이 최신 카드 위에 있으면(판 같음) 초안 그대로, 초안이 없으면 state의 카드 그대로. 같은 기기 다른 창이 그 사이 쌓은 항목이 초안에 가려지지 않게.
+export function shownCard(s,latest){
+  if(s?.status!=='LOCAL_DRAFT'||!latest||sameHeads(s.baseHeads??[],latest.heads??[]))return s?.card;
+  return previewRebase({date:s.card.date,base:s.base,mine:s.card,latest:latest.card}).card;
+}
 // B16: 초안 상자가 "이 카드를 계산한 뒤 그 날짜 초안이 바뀜"을 알리는 코드. 편집은 최신 초안을 다시 읽어 같은 변경을 다시 적용한다(정해진 횟수까지).
 const STALE_BASE='CARD_DRAFT_STALE_BASE',EDIT_ROUNDS=5;
 const flowError=code=>Object.assign(new Error(code),{code});

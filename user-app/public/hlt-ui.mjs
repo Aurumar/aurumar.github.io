@@ -3,7 +3,7 @@
 // 새 엔티티 종류로 두면 같은 문제가 첫 쓰기에서 생긴다 → 안전한 쪽은 기기별 로컬. 저장소가 막혀 있으면 이번 실행 동안만 유지한다.
 // 화면 규칙: DOM 생성 함수만 쓴다(innerHTML·인라인 style·외부 라이브러리 없음). 비공개 습관은 "숨김 항목 보기"를 누른 뒤에만 보이고,
 // 앱을 다시 열면 다시 숨겨진다(저장하지 않음). 숨김 상태에서는 라벨뿐 아니라 횟수·시각·마지막 기록 후 n일·7·30일 횟수·알림 문구에도 나오지 않는다.
-import {HltFlow} from './hlt-flow.mjs';
+import {HltFlow,shownCard} from './hlt-flow.mjs';
 import {hltView,hltHomeLine,stepsAverage,sleepStepsToday} from './hlt-projection.mjs';
 import {HLT_LIMITS,kstDate,kstMinutes,shiftDay,dateKeyOK,isoOK,UNITS,MEAL_KINDS,MEAL_SIZES,SLEEP_KINDS,CHANGE_KINDS,SYMPTOM_KINDS,MAX_NOTE,MAX_LABEL,MAX_ITEMS,ITEM_TYPES,MAX_STEPS,STEPS_ITEM_ID,nearDate,MAX_SLEEP_MS,MAX_AMOUNT} from './hlt-model.mjs';
 const HLT_PROFILE_LIMIT=HLT_LIMITS.HLT_PROFILE;
@@ -140,6 +140,8 @@ export function createPorts(ctx){
 // ---- 화면 상태(모듈 단위, 저장하지 않는다: 앱을 다시 열면 숨김 항목도 다시 숨겨진다) ----
 export function createHealthState(){return {date:null,showPrivate:false,showRemoved:false,notices:[],message:null,error:false,form:null,flowState:null,flow:null,ports:null,pendingSleep:null,sleepFix:null};}
 const profileMapAll=raw=>new Map(raw.profiles.map(p=>[p.key,p]));
+// FIX72: 화면에 보일 카드(hlt-flow shownCard: 쌓인 카드 + 이 기기 초안, 항목 단위). 포트에 latest가 없으면(화면 시험의 가짜 흐름) state 카드 그대로.
+export function viewCard(st,fs){try{return shownCard(fs,st.ports?.latest?.(fs.card?.date??st.date))??fs.card;}catch{return fs.card;}}
 // 프로필 저장: 다른 기기가 먼저 같은 프로필을 고쳤으면(STALE_HEADS) 최신을 받아 그 위에 방금 저장하려던 값을 그대로 쓴다(B3d: 비공개·삭제는 양방향 자유라 합치는 규칙이 없다).
 // B17 (A8-D03, 통제탑 결정): field를 주면(지금은 '사용 중단/다시 사용' 버튼만) 재시도 때 최신 프로필을 다시 읽어 그 필드 하나만 바꿔 저장한다(버튼의 의도는 한 필드뿐).
 // field 없는 저장(프로필 편집·비공개·삭제·복원)은 기존 "전체 값 마지막 쓰기" 그대로(hlt-profile-rules P07, hlt-ui H10).
@@ -411,14 +413,16 @@ export function renderHealth(root,ctx,st){
   add(out,q);
 
   // 3) 항목
-  const list=section('그날 항목','항목 '+fs.card.items.filter(visible).length+'개'+(fs.card.items.length>=MAX_ITEMS?' · 최대 '+MAX_ITEMS+'개':''));
-  const items=fs.card.items.filter(visible);
+  // FIX72: 항목 목록은 쌓인 카드 위에 이 기기 초안을 항목 단위로 얹어 보인다(같은 기기 다른 창이 바로 쌓은 항목이 초안에 가려지지 않게, 표시만).
+  const shown=viewCard(st,fs);
+  const list=section('그날 항목','항목 '+shown.items.filter(visible).length+'개'+(shown.items.length>=MAX_ITEMS?' · 최대 '+MAX_ITEMS+'개':''));
+  const items=shown.items.filter(visible);
   if(!items.length)add(list,hint('아직 항목이 없습니다.'));
   for(const it of items)add(list,row(itemLabel[it.type]+' · '+itemSummary(it,labelOf),null,add(el('div',null,'buttons'),
     button('수정',()=>{st.form={type:it.type,id:it.id,item:it};void ctx.rerender();}),
     button('삭제',act(async()=>{await st.flow.removeItem(date,it.id);})))));
   const adders=add(el('div',null,'buttons'));
-  for(const t of ITEM_TYPES){if(t==='steps'&&fs.card.items.some(i=>i.type==='steps'))continue;add(adders,button(itemLabel[t]+' 추가',()=>{st.form={type:t,id:null,item:null};void ctx.rerender();}));}   // 걸음은 카드당 1개: 있으면 "수정"으로 고친다
+  for(const t of ITEM_TYPES){if(t==='steps'&&shown.items.some(i=>i.type==='steps'))continue;add(adders,button(itemLabel[t]+' 추가',()=>{st.form={type:t,id:null,item:null};void ctx.rerender();}));}   // 걸음은 카드당 1개: 있으면 "수정"으로 고친다
   add(list,adders);
   // B58B: 다리가 있고 healthState().supported일 때만 보인다(PC·노트북·iPad·브라우저에서는 ctx.foldHealth()가 null). 교체 확인창이 없는 환경에서는 덮어쓰지 않는다.
   const fold=ctx.foldHealth?.()??null;
@@ -543,6 +547,8 @@ export async function easyAdd(ctx,st,item,{note=null}={}){
   }}
   const r=await flow.confirm(date);
   const ok=r.status==='CONFIRMED'||r.status==='ALREADY_APPLIED';
+  // FIX72: 쌓은 직후 앱의 금고 사본을 다시 읽는다(읽기만, 일기 저장과 같음). 안 읽으면 같은 기기 다른 창의 초안이 남은 날 방금 쌓은 항목이 화면에서 안 보인다.
+  if(ok)try{await ctx.reload?.();}catch{/* 다음 동기화가 다시 읽는다 */}
   return {status:r.status,error:!ok&&r.status!=='NEEDS_CHOICE',text:ok?EASY_TEXT.saved:r.status==='REJECTED'?hltErrorText(r.code):EASY_TEXT.kept};
 }
 export function doseItem(profile,{amount,at}){return {type:'dose',profileKey:profile.key,amount,unit:profile.data.unit,at};}
@@ -651,7 +657,7 @@ export function renderEasyHealth(root,ctx,st){
   // 3) 하루 타임라인(보고 있는 날짜)
   const card=(raw.days.find(d=>d.date===st.date)?.data)??null,labelOf=key=>{const p=raw.profiles.find(x=>x.key===key);return p&&(st.showPrivate||!p.data.private)?p.data.label:'약';};
   const study=(ctx.getWhole().study?.days??[]).find(d=>d.date===st.date)?.data??null;
-  const tl=timelineData(st.flowState?.card??card,{labelOf,study,date:st.date});
+  const tl=timelineData(st.flowState?viewCard(st,st.flowState):card,{labelOf,study,date:st.date});   // FIX72: 항목 목록과 같은 표시 카드
   const ts=add(section(EASY_TEXT.timeline+' · '+st.date,'아래 숫자 = 시각(0~24시) · 띠 = 수면(진한)·낮잠(연한) · 금 선 = 공부 벽돌 · 점 = 복용 · 막대 = 무기력(금)·우울(남)'),timelineSvg(doc,tl));
   const doseList=tl.doses.map(d=>(d.when??hhmmOf(d.m))+' '+d.label);
   add(ts,hint(doseList.length?'복용 · '+doseList.join(' · '):'이 날 복용 기록 없음'));
