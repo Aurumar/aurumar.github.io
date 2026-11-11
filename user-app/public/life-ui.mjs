@@ -14,6 +14,7 @@ import {dayRoomCard,CELEBRATED_KEY} from './study-room.mjs';
 import {brickCells} from './study-room.mjs';   // DS1: 오늘 벽돌 칸(공부방 기둥과 같은 금 벽돌 스프라이트)
 import {examLineText,daySummary,barsText,ddayChips,ddayChipsNode,planOf,dayPlanLink,writePlanMarks,BLOCK_TEXT} from './life-plan.mjs';
 import {diaryEntryState,renderDiaryEntry,openDiarySheet,diaryDayRow,diaryErrorText} from './diary-ui.mjs';   // FIX49B: 일기 입구·시트(쓰기 문이 열렸을 때만)
+import {LOG_LIMIT_CODE,LOG_LIMIT_TEXT} from './fin-ledger.mjs';   // OPS1A: LOG_LIMIT 전용 문구(한 곳에서)
 import {HABIT_KINDS,HABIT_AREAS,DAY_TYPES,MAX_NAME,MAX_NOTE,SUBJECT_COLOR_KEYS,HABIT_HINTS,
   kstDate,diaryOpenDate,shiftDay,dateKeyOK,dayNumber,hhmmFromIso,timeOK,targetTimeOK,lifeIdOK,
   brickOf,sumBricks,entryDone,nearestExam,lifeDefs,weekCount,studyCodeOf,sessionIdFor,timerSessionId,timerTagFrom,subjectOfSession,emptyDay,
@@ -35,6 +36,7 @@ export const LIFE_ERROR_TEXT=Object.freeze({
   INVALID_TIMER_END:'끝난 시각은 시작 뒤 24시간 안이고 지금보다 앞이어야 합니다.',
   INVALID_TIMER_END_REST:'끝난 시각은 휴식을 시작한 시각보다 늦을 수 없습니다.',
   HLT_NAP_FUTURE:'낮잠이 끝난 시각이 지금보다 뒤라 기록하지 않았어요 · 시작 시각이나 분을 줄여 주세요.',   // FIX68 (HUNT65 F6)
+  [LOG_LIMIT_CODE]:LOG_LIMIT_TEXT,   // OPS1A: 금고 평생 연산 10,000에 닿음(초안은 그대로)
 });
 export const lifeErrorText=code=>LIFE_ERROR_TEXT[code]??(code?'처리하지 못했어요 · 입력은 그대로 있습니다.'+' · 문의 코드 ▾\u2060'+code+'\u2060':'쌓지 못했습니다.');
 export const LIFE_NOTICE_TEXT=Object.freeze({
@@ -89,6 +91,14 @@ export function createLifeState(){return {today:null,flow:null,ports:null,boxRef
 function flagBoxFail(st,date){
   const box=st.ports?.box;
   for(const kind of ['LIFE_DAY','STUDY_DAY']){const b=box?.statusFor(kind,date);if(b?.has&&b.own&&!st.error){st.message=box.ERROR_TEXT[b.own]??box.TEXT.failed;st.error=true;}}
+}
+// FIX70 (HUNT67 F2, 통제탑 2026-11-11): 칸 입력은 이 기기 상자에 확실히 남았을 때만 초안으로 묶는다(자동 쌓기). 상자 저장이 실패·STALE(같은 기기 다른 창)이면
+// 이 창을 닫을 때 입력이 사라지므로 예전처럼 바로 쌓는다(그날 카드 1장 = 연산 1). memory = 상자가 없는 환경(메모리 초안)도 바로 쌓을지
+// (성취표 = OPS1A가 새로 묶은 길이라 예. 오늘 탭 칩 = V6F부터 메모리 초안 + 화면 안내 그대로라 아니오).
+// 쌓기는 기존 그날 카드 1장 쌓기 핸들러(stackAt)의 only 조건으로 한다(쌓기·결과 알림 지점이 늘지 않음).
+function draftLoose(st,date,{memory=true}={}){
+  const box=st.ports?.box;if(!box)return memory&&st.ports?.persistent===false;
+  const b=box.statusFor('LIFE_DAY',date);return Boolean(b?.has&&(b.dirty||b.own));
 }
 // FIX34 (HUNT34 H4): endIso = 첫 "끝내고 담기"를 누른 시각. 담기가 실패하고 앱을 닫아도 다시 누를 때 이 시각을 쓴다(누른 시각까지 분이 부풀지 않게). 이 기기 저장소 값이고 기록 형식이 아니다.
 // 시작 시각 칸(TIMER_KEY)은 그대로 두고 옆 칸(TIMER_END_KEY)에 어느 타이머의 끝인지 함께 적는다(다른 타이머의 끝 시각을 쓰지 않게).
@@ -146,8 +156,12 @@ export async function prepareLife(ctx,st,gone=()=>false){
   try{const s=await studyFlow(ctx);if(s)studyCard=(await s.st.flow.state(st.today));}catch{studyCard=null;}
   let diary;try{diary=await diaryEntryState(ctx,st);}catch{diary={open:false};}   // FIX49B: 문이 닫혀 있으면 {open:false}(입구 0, 옛 칸 그대로)
   if(gone())return st;
+  // OPS1A: 성취표가 지난 날 칸도 초안에만 둔다(앱이 autoStack을 켰을 때) → 쌓지 않은 지난 날 카드를 모두 세고 쌓는다(pendingAll). 성취표는 그 초안 카드를 바로 보인다(draftCards).
+  let draftCards={};
+  if(ctx.autoStack){try{for(const d of dates)if(d!==st.today){const s=await st.flow.state(d);if(s?.status==='LOCAL_DRAFT')draftCards[d]=s.card;}}catch{draftCards={};}}
+  if(gone())return st;
   st.flowState=flowState;st.studyCard=studyCard;st.diary=diary;
-  st.pending=dates.filter(d=>d<st.today).slice(-3);
+  st.pending=dates.filter(d=>d<st.today).slice(-3);st.pendingAll=dates.filter(d=>d<st.today);st.draftCards=draftCards;
   currentTimer(st,ctx.storage??globalThis.localStorage);
   return st;
 }
@@ -159,19 +173,30 @@ export async function prepareLife(ctx,st,gone=()=>false){
 // EXP1 (통제탑 결정): 기다림 60초 → 300초(5분). 금고 연산은 평생 10,000이라 하루 5~10회면 3년 안에 닿는다. 아침에 몰아 누르는 입력을 한 번에 묶는다.
 export const AUTO_STACK_MS=300000;
 export const AUTO_STACK_TEXT=Object.freeze({soon:'5분 안에 자동으로 쌓여요',line:n=>'아직 안 쌓은 입력 '+n+'개',now:'지금 쌓기',held:'임시 저장 모드라 자동으로 쌓지 않아요'});
-export function clearAutoStack(st){if(!st)return;if(st.autoTimer)(globalThis.clearTimeout)(st.autoTimer);st.autoTimer=null;}
-function scheduleAutoStack(ctx,st,run){
+export function clearAutoStack(st){if(!st)return;if(st.autoTimer)(globalThis.clearTimeout)(st.autoTimer);st.autoTimer=null;st.autoKey=undefined;}
+// FIX70 (HUNT67 O1, 통제탑 2026-11-11): 기다림은 "마지막 입력(초안 변경) 뒤 5분"이다. key = 지금 쌓지 않은 입력의 내용(오늘·공부·지난 날 초안 카드 +
+// 앱이 넘기는 건강·계획 초안, ctx.pendingKey). 같은 key로 다시 부르면(화면 다시 그리기·탭 이동·동기화 뒤 다시 그리기) 도는 기다림을 다시 시작하지 않고
+// 부를 동작만 새 것으로 바꾼다. 내용이 바뀌었거나(새 입력) key가 null이면 예전처럼 다시 시작한다(한 줄 입력을 치는 중은 지운 뒤 다시 건다).
+export function autoStackKey(ctx,st){
+  const fs=st?.flowState;
+  try{return JSON.stringify([fs?.status==='LOCAL_DRAFT'?fs.card:null,st?.studyCard?.status==='LOCAL_DRAFT'?st.studyCard.card:null,st?.pendingAll??st?.pending??[],st?.draftCards??{},ctx?.pendingKey?.()??null]);}catch{return null;}
+}
+// OPS1A: 앱도 이 함수로 오늘 화면 밖(계획·기록·건강)의 쌓지 않은 입력을 같은 기다림(같은 st.autoTimer 한 칸)으로 쌓는다 → 타이머는 언제나 1개.
+export function scheduleAutoStack(ctx,st,run,key=autoStackKey(ctx,st)){
+  if(ctx.autoStack&&st.autoTimer&&key!==null&&st.autoKey===key){st.autoRun=run;return;}   // FIX70 (O1): 입력이 그대로면 기다림 그대로
   clearAutoStack(st);if(!ctx.autoStack)return;
-  const id=globalThis.setTimeout(()=>{st.autoTimer=null;if(ctx.locked?.())return;void (async()=>{try{if(await ctx.draftMode?.()){st.autoHeld=true;await ctx.rerender?.();return;}}catch{return;}st.autoHeld=false;run();})();},AUTO_STACK_MS);
+  st.autoKey=key;st.autoRun=run;
+  const id=globalThis.setTimeout(()=>{st.autoTimer=null;st.autoKey=undefined;if(ctx.locked?.())return;void (async()=>{try{if(await ctx.draftMode?.()){st.autoHeld=true;await ctx.rerender?.();return;}}catch{return;}st.autoHeld=false;(st.autoRun??run)();})();},AUTO_STACK_MS);
   id?.unref?.();st.autoTimer=id;
 }
 // 쌓지 않은 하루 카드 수(오늘 카드 초안 + 오늘 공부 초안 + 어제 이전 초안 날짜). 화면 어디서나 보이는 줄이 쓴다.
-export function pendingStackCount(st){if(!st?.flowState)return 0;return (st.flowState.status==='LOCAL_DRAFT'?1:0)+(st.studyCard?.status==='LOCAL_DRAFT'?1:0)+(st.pending?.length??0);}
+// OPS1A: 어제 이전 초안 날짜는 화면 안내(st.pending, 최근 3일)가 아니라 전부(st.pendingAll)를 센다(성취표로 지난 날 칸을 고친 초안 포함).
+export function pendingStackCount(st){if(!st?.flowState)return 0;return (st.flowState.status==='LOCAL_DRAFT'?1:0)+(st.studyCard?.status==='LOCAL_DRAFT'?1:0)+((st.pendingAll??st.pending)?.length??0);}
 // FIX37C (H37-S2): 잠금·로그아웃. 덮개 째깍·벽돌 사건을 멈추고 메모리 값을 비운다. 저장소는 쓰지 않는다(타이머 칸은 그대로라 잠금을 풀면 prepareLife가 다시 읽는다).
 export function lockLife(st){
   if(!st)return;clearAutoStack(st);
   st.liveStop?.();st.liveStop=null;st.endSheet=null;
-  st.timer=null;st.liveOpen=false;st.flowState=null;st.studyCard=null;st.pending=[];st.message=null;st.error=false;st.focusNote=null;st.diary=null;st.diaryMessage=null;st.diaryNotices=[];st.linkNote=null;
+  st.timer=null;st.liveOpen=false;st.flowState=null;st.studyCard=null;st.pending=[];st.pendingAll=[];st.draftCards={};st.message=null;st.error=false;st.focusNote=null;st.diary=null;st.diaryMessage=null;st.diaryNotices=[];st.linkNote=null;
 }
 
 function entryFor(h,{now,minutes,count}={}){
@@ -256,11 +281,12 @@ export function renderLifeToday(root,ctx,st){
   const hs=defs.habits.filter(x=>!x.hidden),moreGrid=el('div',null,'life-habits life-habits-more');   // V6B: 고정한 습관만 바로 보이고 나머지는 "더 보기"
   if(!hs.length)add(grid,hint('보이는 습관이 없습니다. 습관 편집에서 추가하거나 숨김을 풀어 주세요.'));
   const floatXp=st.floatXp;st.floatXp=null;
-  const setEntry=(hb,make)=>act(async()=>{
+  // FIX70 (F2): 칩 입력은 초안에 넣고, 앱이 묶을 때(autoStack) 상자에 확실히 남지 않았으면 그 자리에서 쌓는다(메모리 초안은 V6F 그대로 = 화면 안내).
+  const setEntry=(hb,make)=>stackAt(act,ctx,st,date,async()=>{
     const wasDone=entryDone(hb,card.habits[hb.id]??null),entry=make();
     await st.flow.setHabit(date,hb.id,entry);
     if(!wasDone&&entry&&entryDone(hb,entry))st.floatXp={habitId:hb.id,text:'+'+habitXpToday(ach,hb.id)};   // 다시 그린 뒤 칸 위에 잠깐 보인다
-  });
+  },()=>Boolean(ctx.autoStack)&&draftLoose(st,date,{memory:false}));
   for(const hb of hs){
     const e=card.habits[hb.id]??null,done=entryDone(hb,e),cell=el('div',null,'life-habit '+(done?'done':'todo')+' kind-'+hb.kind.toLowerCase());
     cell.dataset.habitId=hb.id;
@@ -343,8 +369,9 @@ export function renderLifeToday(root,ctx,st){
   if(stackXp>0){stackBtn.setAttribute('aria-label','오늘 쌓기, 예상 +'+stackXp+' XP');add(stackBtn,el('span','+'+stackXp+' XP','life-stack-xp'));}
   // V6F: 쌓지 않은 입력이 있으면 입력이 멈춘 뒤 같은 "오늘 쌓기"를 자동으로 한 번(앱이 ctx.autoStack을 켰을 때). 한 줄 입력을 치는 동안은 기다림을 다시 시작한다.
   const pendingNow=dirty||studyDirty,autoText=ctx.autoStack&&pendingNow?' · '+(st.autoHeld?AUTO_STACK_TEXT.held:AUTO_STACK_TEXT.soon):'';
-  if(pendingNow)scheduleAutoStack(ctx,st,()=>stackBtn.click());else clearAutoStack(st);
-  note.addEventListener('input',()=>scheduleAutoStack(ctx,st,()=>stackBtn.click()));
+  // FIX70 (O1): 다시 그리기만으로는 기다림을 다시 시작하지 않는다(같은 입력 = 같은 key). 앱(ctx.pendingKey)은 오늘 카드 밖 입력도 세므로 예약 지우기는 앱의 줄이 한다.
+  if(pendingNow)scheduleAutoStack(ctx,st,()=>stackBtn.click());else if(!ctx.pendingKey)clearAutoStack(st);
+  note.addEventListener('input',()=>{clearAutoStack(st);scheduleAutoStack(ctx,st,()=>stackBtn.click());});   // 한 줄 입력을 치는 중 = 새 입력(언제나 다시 시작)
   add(out,add(el('div',null,'life-stack-bar'),stackBtn,el('span',pendingNow?'변경 있음'+autoText:fs.status==='CONFIRMED'?'쌓음':'','muted small life-stack-note')));
   root.append(out);
   return out;
@@ -352,21 +379,23 @@ export function renderLifeToday(root,ctx,st){
 // V6F: 화면 어디서나 보이는 줄의 "지금 쌓기"와 "저장 후 종료"(앱 단추 핸들러)만 부른다. 쌓지 않은 하루 카드를 날짜 순으로 모두 쌓는다
 // (그날 카드 1장씩 = 연산 1씩, 오늘 날짜는 "오늘 쌓기"와 같이 공부 초안을 먼저). 화면 문구는 부른 쪽이 정한다.
 export async function stackPending(ctx,st){
+  if(st)st.stackCodes=[];   // OPS1A: 이번 쌓기의 실패 코드(앱이 LOG_LIMIT 전용 문구를 고른다)
   if(!st?.flow||ctx.locked?.())return {stacked:0,failed:0,left:pendingStackCount(st)};
   clearAutoStack(st);
   try{await st.ports?.box?.flush?.();}catch{/* 한 줄 입력 저장 실패는 아래 쌓기 결과로 드러난다 */}
-  const s=st.studyCard?.status==='LOCAL_DRAFT'?await studyFlow(ctx):null,dates=[...(st.pending??[])];
+  const s=st.studyCard?.status==='LOCAL_DRAFT'?await studyFlow(ctx):null,dates=[...(st.pendingAll??st.pending??[])];
   if(st.flowState?.status==='LOCAL_DRAFT'||s)dates.push(st.today);
-  let stacked=0,failed=0;
+  let stacked=0,failed=0;const codes=[];
   for(const d of dates){
     try{
       const r=await stackDay(d,{life:st.flow,study:d===st.today?s?.st.flow??null:null});
-      if(r.phase==='STUDY_FAILED'){failed++;continue;}
+      if(r.phase==='STUDY_FAILED'){failed++;codes.push(r.study?.code??null);continue;}
       if(r.study)await ctx.reload?.();
-      if(STACK_DONE.includes(r.life?.status)||r.study)stacked++;else if(r.life?.status!=='NOTHING_TO_CONFIRM')failed++;
-    }catch{failed++;}
+      if(STACK_DONE.includes(r.life?.status)||r.study)stacked++;else if(r.life?.status!=='NOTHING_TO_CONFIRM'){failed++;codes.push(r.life?.code??null);}
+    }catch(e){failed++;codes.push(e?.code??null);}
   }
   await prepareLife(ctx,st);
+  st.stackCodes=codes.filter(c=>typeof c==='string');
   return {stacked,failed,left:pendingStackCount(st)};
 }
 // V6F (지시서 6): 오늘 카드 한쪽에 오늘의 캐릭터(하루) 작은 그림 + "오늘 3h · 의대생 해부학 · 다음 변신까지 0:42", 평생 등급(누적) 이름표를 항상 같이.
@@ -396,7 +425,8 @@ function openDailySheet(h,d,art){
 export const markSaved=(...nodes)=>{for(const n of nodes)if(n?.dataset)n.dataset.editInit=n.type==='checkbox'?(n.checked?'1':'0'):String(n.value??'');};
 export function renderNapLine(ctx,st,{el,add,button,input},date){
   const nap=ctx.nap??null;if(!nap)return null;
-  const naps=nap.list(date)??[],line=add(el('div',null,'life-nap'),el('span',naps.length?naps.map(n=>'낮잠 '+n.minutes+'분'+(n.start?' ('+n.start+'~)':'')).join(' · '):'낮잠: 안 잠','life-nap-text'));line.id='today-nap';
+  // OPS1A: shown = 아직 안 쌓은 초안 낮잠까지(앱이 넘김)
+  const naps=(nap.shown?nap.shown(date):nap.list(date))??[],line=add(el('div',null,'life-nap'),el('span',naps.length?naps.map(n=>'낮잠 '+n.minutes+'분'+(n.start?' ('+n.start+'~)':'')).join(' · '):'낮잠: 안 잠','life-nap-text'));line.id='today-nap';
   const save=m=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{const r=await nap.add(m,(st.napStart??'').trim());st.message=r.text;st.error=r.error;st.napOpen=false;st.napStart='';markSaved(start,custom);}catch(x){st.message=lifeErrorText(x?.code);st.error=true;}await prepareLife(ctx,st);await ctx.rerender();});
   if(!st.napOpen){add(line,button(naps.length?'낮잠 더':'낮잠 잤음',()=>{st.napOpen=true;void ctx.rerender();},'secondary life-nap-open'));return line;}
   const start=input(st.napStart??'',{inputmode:'numeric',placeholder:'시작 HH:MM (선택)','aria-label':'낮잠 시작 시각',maxlength:'5'});start.addEventListener('input',()=>{st.napStart=start.value;});
@@ -488,7 +518,8 @@ async function reportConfirm(ctx,st,r){
   try{await ctx.exportAfterStack?.(st,r.status);}catch{st.message=(st.message??'')+' · 상태 내보내기 실패: 내보내지 못했습니다.';}
 }
 // 그 날 카드 1장 쌓기 핸들러(어제 카드 쌓기 단추 · V6B 성취표 칸). before = 쌓기 전에 초안에 넣을 입력(없으면 그대로). 쌓기 결과 알림·자동 내보내기는 reportConfirm 그대로 한 번.
-const stackAt=(act,ctx,st,d,before=null)=>act(async()=>{if(before)await before();const r=await st.flow.confirm(d);await reportConfirm(ctx,st,r);});
+// FIX70 (F2): only = 입력을 넣은 뒤 쌓을지 정하는 조건(없으면 언제나 쌓음). 묶는 입력은 상자에 확실히 남지 않았을 때만(draftLoose) 쌓는다.
+const stackAt=(act,ctx,st,d,before=null,only=null)=>act(async()=>{if(before)await before();if(only&&!only())return;const r=await st.flow.confirm(d);await reportConfirm(ctx,st,r);});
 // 누르면 onTap, 길게(0.5초) 누르면 onHold. 길게 누른 뒤 따라오는 click은 무시한다.
 function pressable(node,onTap,onHold){
   let timer=null,held=false;
@@ -744,7 +775,8 @@ function openEntrySheet(ctx,st,hb,e){
   else{const c=input(e?.count?String(e.count):'',{inputmode:'numeric'});add(body,field('횟수',c));read=()=>{const v=int(c.value);if(!(v>=1&&v<=99))throw Object.assign(new Error('INVALID_LIFE_ENTRY'),{code:'INVALID_LIFE_ENTRY'});return entryFor(hb,{count:v});};}
   const err=el('p',null,'notice error');err.hidden=true;
   const dlg=sheet(hb.name+' 수정',body);
-  const apply=entry=>{dlg.close();void ctx.perform(async()=>{st.message=null;st.error=false;try{await st.flow.setHabit(date,hb.id,entry);}catch(x){st.message=lifeErrorText(x?.code);st.error=true;}flagBoxFail(st,date);await prepareLife(ctx,st);await ctx.rerender();});};
+  const run=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{await fn();}catch(x){st.message=lifeErrorText(x?.code);st.error=true;}flagBoxFail(st,date);await prepareLife(ctx,st);await ctx.rerender();});
+  const apply=entry=>{dlg.close();stackAt(run,ctx,st,date,()=>st.flow.setHabit(date,hb.id,entry),()=>Boolean(ctx.autoStack)&&draftLoose(st,date,{memory:false}))();};   // FIX70 (F2): 오늘 칩과 같은 규칙
   add(body,err,add(el('div',null,'buttons'),button('저장',()=>{try{apply(read());}catch(x){err.textContent=lifeErrorText(x.code);err.hidden=false;}},'primary'),e?button('지우기',()=>apply(null)):null));
 }
 
@@ -939,8 +971,10 @@ function openBoardCell(ctx,st,row,date,{act,recordAction,openActionPast}){
     add(body,add(el('div',null,'buttons'),...[['COMPLETE','done'],['PARTIAL','part'],['NOT_DONE','miss']].map(([o,s])=>button(BOARD_TEXT[s],()=>{dlg.close();recordAction(row.action,o);},s==='done'?'primary':'secondary'))));
     return;
   }
-  const hb=row.h,nowHm=hhmmFromIso(ctx.now()),e=(ctx.getWhole().life?.days??[]).find(d=>d.date===date)?.data.habits[hb.id]??null;
-  const save=pick=>{dlg.close();const entry=boardEntry(hb,pick,{nowHm,date,today});stackAt(act,ctx,st,date,()=>st.flow.setHabit(date,hb.id,entry))();};
+  // OPS1A: 지금 값은 초안이 있으면 초안 카드(누른 즉시 반영), 없으면 쌓인 카드.
+  const hb=row.h,nowHm=hhmmFromIso(ctx.now()),e=(boardCard(ctx,st,date,today)?.habits??{})[hb.id]??null;
+  // OPS1A (통제탑 2026-11-11): 앱이 autoStack을 켜면 칸은 그날 카드 초안에만 넣는다(연산 0). 쌓기는 자동 쌓기(5분)·지금 쌓기·저장 후 종료(그날 카드 1장 = 연산 1). 끄면 예전처럼 바로 쌓는다.
+  const save=pick=>{dlg.close();const entry=boardEntry(hb,pick,{nowHm,date,today});const put=()=>st.flow.setHabit(date,hb.id,entry);stackAt(act,ctx,st,date,put,ctx.autoStack?()=>draftLoose(st,date):null)();};   // FIX70 (F2): 앱이 묶으면 초안에 넣고 상자에 확실히 남지 않았을 때만(메모리 초안 포함) 바로 쌓기, 끄면 예전처럼 바로 쌓기
   const err=el('p',null,'notice error');err.hidden=true;
   const fail=()=>{err.textContent=lifeErrorText('INVALID_LIFE_ENTRY');err.hidden=false;};
   add(body,el('p',BOARD_TEXT[habitState(hb,e)]+(e&&entryDone(hb,e)?' · '+habitValueText(hb,e,null):''),'muted small hb-now'));
@@ -954,9 +988,24 @@ function openBoardCell(ctx,st,row,date,{act,recordAction,openActionPast}){
   }else add(body,add(el('div',null,'buttons'),button(BOARD_TEXT.done,()=>save('done'),'primary')));
   add(body,add(el('div',null,'buttons'),button(BOARD_TEXT.miss,()=>save('miss')),e?button(BOARD_TEXT.clear,()=>save(null)):null),hint(BOARD_TEXT.noneNote),err);
 }
+// OPS1A: 성취표가 보는 그날 카드 = 이 기기 초안(지난 날 draftCards · 오늘 flowState) → 없으면 쌓인 카드. 화면용이며 쓰기 0.
+function boardCard(ctx,st,date,today){
+  if(st.draftCards?.[date])return st.draftCards[date];
+  if(date===today&&st.today===today&&st.flowState?.status==='LOCAL_DRAFT')return st.flowState.card;
+  return (ctx.getWhole().life?.days??[]).find(d=>d.date===date)?.data??null;
+}
+export function boardLife(ctx,st,life,today){
+  if(!life)return life;
+  const drafts={...(st.draftCards??{})};if(st.today===today&&st.flowState?.status==='LOCAL_DRAFT')drafts[today]=st.flowState.card;
+  const keys=Object.keys(drafts);if(!keys.length)return life;
+  const days=(life.days??[]).map(d=>drafts[d.date]?{...d,data:drafts[d.date]}:d);
+  for(const k of keys)if(!days.some(d=>d.date===k))days.push({date:k,id:k,data:drafts[k],heads:[],updatedAt:null});
+  days.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
+  return {...life,days};
+}
 export function renderHabitBoard(root,ctx,st,{actionDefs=[],actionDays={},actionDetail=null,recordAction=null,openActionPast=null}={}){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,hint}=h;
-  const whole=ctx.getWhole(),life=whole.life??null,today=kstDate(ctx.now());
+  const whole=ctx.getWhole(),today=kstDate(ctx.now()),life=ctx.autoStack?boardLife(ctx,st,whole.life??null,today):whole.life??null;   // OPS1A: 초안 칸도 바로 보인다
   st.board??={mode:'WEEK',anchor:today,open:null};
   const b=st.board,dates=boardDates(b.mode,b.anchor);
   const board=habitBoard({life,actionDefs,actionDays,dates,today});
@@ -968,7 +1017,7 @@ export function renderHabitBoard(root,ctx,st,{actionDefs=[],actionDays={},action
   const range=b.mode==='MONTH'?dates[0].slice(0,4)+'년 '+Number(dates[0].slice(5,7))+'월':dateLabel(dates[0])+' ~ '+dateLabel(dates[6]);
   add(sec,add(el('div',null,'hb-head'),el('h2',BOARD_TEXT.title,'panel-title'),button(BOARD_TEXT.add,()=>openEditor(ctx,st),'primary hb-add')),
     add(el('div',null,'hb-nav'),seg,button('◀',go(step(-1)),'secondary'),el('strong',range,'hb-range'),button('▶',go(step(1)),'secondary'),b.anchor!==today?button('오늘',go(today),'secondary'):null));
-  const ach=achieve({life,study:whole.study??null,fin:whole.fin??null,today,money:ctx.money?.(today)??null}),wk=ach.currentWeek?.habitBricks??0;
+  const ach=achieve({life:whole.life??null,study:whole.study??null,fin:whole.fin??null,today,money:ctx.money?.(today)??null}),wk=ach.currentWeek?.habitBricks??0;   // 벽돌 수는 쌓은 기록 기준(오늘 화면 XP와 같음)
   add(sec,el('p',BOARD_TEXT.bricks(wk,ach.habitBricks??0),'hb-bricks'),hint(BOARD_TEXT.brickRule));
   if(st.message)add(sec,el('p',st.message,st.error?'notice error life-message':'notice life-message'));
   const wrap=add(el('div',null,'hb-scroll'),null),table=el('table',null,'hb-table'+(b.mode==='MONTH'?' hb-month':''));add(wrap,table);
@@ -1044,3 +1093,4 @@ export function renderPastDays(root,ctx,st){
   return sec;
 }
 export {lifeIdOK,targetTimeOK,subjectOfSession,emptyDay,dayNumber};
+export {createPlanDrafts} from './life-flow.mjs';   // OPS1A: 앱이 계획 초안(PLAN_DAY 묶기)을 만들 때 쓴다(앱은 이 모듈만 불러온다)

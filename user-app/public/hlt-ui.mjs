@@ -6,7 +6,6 @@
 import {HltFlow} from './hlt-flow.mjs';
 import {hltView,hltHomeLine,stepsAverage,sleepStepsToday} from './hlt-projection.mjs';
 import {HLT_LIMITS,kstDate,kstMinutes,shiftDay,dateKeyOK,isoOK,UNITS,MEAL_KINDS,MEAL_SIZES,SLEEP_KINDS,CHANGE_KINDS,SYMPTOM_KINDS,MAX_NOTE,MAX_LABEL,MAX_ITEMS,ITEM_TYPES,MAX_STEPS,STEPS_ITEM_ID,nearDate,MAX_SLEEP_MS,MAX_AMOUNT} from './hlt-model.mjs';
-
 const HLT_PROFILE_LIMIT=HLT_LIMITS.HLT_PROFILE;
 export const HLT_SWITCH_KEY='lb.hlt.enabled';
 let memorySwitch=true;   // B38: 저장값이 없으면 켜짐(명시적으로 끈 기기만 '0'으로 꺼짐)
@@ -25,6 +24,7 @@ export const HLT_ERROR_TEXT=Object.freeze({
   APP_ENTITY_LIMIT:'개수 한도에 닿았습니다.',STALE_HEADS:'다른 기기에서 먼저 바뀌었습니다. 다시 받아 합친 뒤 쌓으세요.',BROKEN_HLT_WAKE_REFERENCE:'맑아짐 기록은 같은 카드의 기상 기록을 가리켜야 합니다.',
   MD_NOT_WRITE_READY:'지금은 서버에 쌓을 수 없습니다. 임시 입력은 이 기기에 남아 있습니다.',VERSION_CONFLICT:'다른 기기가 먼저 쌓았습니다. 다시 쌓기를 누르면 받아서 합칩니다.',
   ABORTED:'서버가 이 쌓기를 받지 않았습니다(기록되지 않음) · 임시 입력은 그대로 있습니다. 다시 쌓을 수 있습니다.',
+  LOG_LIMIT:'저장 공간이 꽉 찼어요. 입력은 이 기기에 남아 있어요. 이월이 필요해요.',   // OPS1A: 금고 평생 연산 10,000(fin-ledger LOG_LIMIT_TEXT와 같은 글, 건강 화면 import 그래프는 그대로라 글로 둔다 · 시험 OPS1A-3b)
 });
 export const hltErrorText=code=>HLT_ERROR_TEXT[code]??(code?'처리하지 못했어요 · 임시 입력은 그대로 있습니다.'+' · 문의 코드 ▾\u2060'+code+'\u2060':'쌓지 못했습니다.');
 export const NOTICE_TEXT=Object.freeze({
@@ -170,6 +170,7 @@ export async function prepareHealth(ctx,st,gone=()=>false){
   if(gone())return st;
   st.flowState=view.state;
   if(view.pendingSleep!==undefined)st.pendingSleep.v=view.pendingSleep;
+  if(view.dates!==undefined)st.draftDates=view.dates;   // FIX70 (HUNT67 F3): 남은 건강 초안의 모든 날짜
   return st;
 }
 
@@ -338,7 +339,7 @@ export function renderHealth(root,ctx,st){
   const out=el('div',null,'hlt-view');
 
   // 1) 상태·날짜
-  const head=section('건강 · 하루 1장','입력은 이 기기에 임시로 모이고, "카드 쌓기"를 눌러야 기록으로 쌓입니다.');
+  const head=section('건강 · 하루 1장',EASY_TEXT.head);   // FIX69 (CAP2 F1): OPS1A 묶기(5분 자동 쌓기)와 같은 말 한 줄
   const chipText=()=>{
     const b=box?.statusFor('HLT_DAY',date);
     if(st.form)return '입력 중 (아직 저장 전)';
@@ -354,7 +355,8 @@ export function renderHealth(root,ctx,st){
   if(st.ports?.persistent===false)add(head,hint('이 환경에는 임시 저장 공간이 없어 임시 입력이 앱을 닫거나 새로고침하면 사라집니다. 쌓기 전에 닫지 마세요. (PC 앱에서는 임시 입력이 기기에 암호화되어 남습니다.)'));
   if(box){
     const s=box.status(),b=box.statusFor('HLT_DAY',date);
-    add(head,hint(T.modeBox));
+    // FIX69: 칩이 이미 "이 기기에 암호화 저장됨 · … · 다른 기기에서는 안 보임"이면 설명은 남은 뜻만 한 줄(같은 말 두 번 없음)
+    add(head,hint(!st.form&&!b.typing&&b.has&&!b.dirty?BOX_NOTE_SHORT:T.modeBox));
     if(s.failed)add(head,el('p',box.ERROR_TEXT[s.failed]??T.failed,'notice error card-draft-failed'));
     if(s.unreadable)add(head,hint(T.unreadable));
     // 카드를 열었을 때 이 날짜의 초안이 상자에 있으면: 이어서 쓰기 / 버리기(확인창). 자동으로 덮어쓰거나 확정하지 않는다.
@@ -515,14 +517,30 @@ export const MED_NOTE='약은 처방대로 · 바꾸려면 의사와 상의하�
 export const NAP_CHIPS=Object.freeze([15,30,60]);
 export const EASY_TEXT=Object.freeze({meds:'약 복용',medsSub:'칩을 누르면 지금 시각 · 기본 용량으로 기록해요. 시각·용량은 바꿀 수 있어요.',noMeds:'내 약이 없어요 · 아래 "약·습관 목록"에서 약을 등록하세요(앱이 약 이름을 미리 넣지 않아요).',
   state:'지금 상태',stateSub:'0 없음 ~ 4 아주 심함 · 누르면 지금 시각으로 기록 · 하루에 여러 번 가능',memo:'메모 한 줄 (선택, 그날 메모 칸에 붙어요)',
-  saved:'기록했어요',kept:'임시 입력에 넣었어요 · "카드 쌓기"로 쌓으세요',timeline:'하루 타임라인',summary:'심해지는 시간대 (최근 14일)',few:'자료 부족',
-  napNone:'낮잠: 안 잠',napAsk:'낮잠 잤음',nap:m=>'낮잠 '+m+'분'});
+  saved:'기록했어요',kept:'임시 입력에 넣었어요 · "카드 쌓기"로 쌓으세요',batched:'이 기기에 넣었어요 · 5분 안에 자동으로 쌓여요',timeline:'하루 타임라인',summary:'심해지는 시간대 (최근 14일)',few:'자료 부족',
+  napNone:'낮잠: 안 잠',napAsk:'낮잠 잤음',nap:m=>'낮잠 '+m+'분',
+  head:'누르면 이 기기에 먼저 담기고 5분 안에 자동으로 쌓여요.',stacked:'쌓음'});
+export const BOX_NOTE_SHORT='브라우저 저장소를 지우면 사라짐 · 백업 아님.';
+// FIX69 (CAP2 F1): 앱의 쌓기(지금 쌓기·자동 쌓기·저장 후 종료)가 건강 카드를 쌓았거나 못 쌓았으면 카드 안 결과 문구도 바꾼다.
+// 실패(LOG_LIMIT 포함) = 상단 #status와 같은 말, 성공 = "쌓음". "5분 안에 자동으로 쌓여요"가 실패 뒤에 남지 않게.
+export function noteStackResult(st,{ok,text}){st.message=ok?EASY_TEXT.stacked:text;st.error=!ok;}
 const easyFlow=(ctx,st)=>{if(!st.flow){st.ports=createPorts(ctx);st.flow=new HltFlow(st.ports);st.pendingSleep=st.flow.pending;}return st.flow;};
 // 오늘 카드에 항목 하나를 넣고 바로 쌓는다. 결과 {status, text, error}.
+// OPS1A (통제탑 2026-11-11): 앱이 ctx.opBatch를 켜고 초안이 기기에 남는 환경(상자·저널, persistent)이면 쌓지 않고 초안에만 둔다(연산 0).
+// 쌓기는 앱의 자동 쌓기(5분)·지금 쌓기·저장 후 종료가 한다(그날 건강 카드 1장 = 연산 1). 메모리 초안 환경은 예전처럼 바로 쌓는다(닫으면 사라지지 않게).
 export async function easyAdd(ctx,st,item,{note=null}={}){
   const flow=easyFlow(ctx,st),date=kstDate(ctx.now());
   await flow.addItem(date,item);
+  (st.resumed??=new Set()).add(date);   // FIX69 (CAP2 F2): 방금 만든 초안에는 복원 질문을 띄우지 않는다(질문은 다시 열었을 때 남아 있던 초안에만)
   if(note){const cur=(await flow.state(date)).card.note??'',line=(cur?cur+' / ':'')+note;await flow.setNote(date,[...line].length>MAX_NOTE?cur:line);}
+  // FIX70 (HUNT67 F2, 통제탑 2026-11-11): 상자 저장 결과를 본다. 이 창 입력이 상자에 확실히 남지 않았으면(같은 기기 다른 창 때문의 STALE_DRAFT·쓰기 실패)
+  // 초안에 두지 않고 아래에서 바로 쌓는다(OPS1A 전 동작). "이 기기에 넣었어요" 문구는 상자 저장이 성공했을 때만.
+  const b=st.ports?.box?.statusFor?.('HLT_DAY',date),loose=Boolean(b?.has&&(b.dirty||b.own));
+  if(ctx.opBatch&&st.ports?.persistent){if(!loose){
+    st.today??=date;st.date??=date;if(st.date===date)st.flowState=await flow.state(date);   // 화면 어디서나 보이는 "아직 안 쌓은 입력" 줄이 바로 센다
+    st.draftDates=[...new Set([...(st.draftDates??[]),date])].sort();   // FIX70 (F3)
+    return {status:'LOCAL_DRAFT',error:false,text:EASY_TEXT.batched};
+  }}
   const r=await flow.confirm(date);
   const ok=r.status==='CONFIRMED'||r.status==='ALREADY_APPLIED';
   return {status:r.status,error:!ok&&r.status!=='NEEDS_CHOICE',text:ok?EASY_TEXT.saved:r.status==='REJECTED'?hltErrorText(r.code):EASY_TEXT.kept};

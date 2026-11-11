@@ -1524,6 +1524,13 @@ button.today-char{display:flex;align-items:center;gap:10px;width:100%;min-height
 .pending-stack{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:6px 0;padding:6px 12px;border-left:3px solid var(--lb-gold-2);background:var(--lb-gold-soft);font-weight:700;color:var(--lb-ink-1)}
 .pending-stack[hidden]{display:none}
 .pending-stack-btn{min-height:44px}
+/* OPS1A: 남은 저장 횟수 얇은 경고 줄(오늘·계획·기록·돈 탭 위). 2,000 이하 금색, 500 이하 붉은색 */
+.op-warn{margin:4px 0;padding:3px 12px;font-size:.82rem;font-weight:700;line-height:1.4;border-left:3px solid var(--lb-gold-2);background:var(--lb-gold-soft);color:var(--lb-gold-3)}
+.op-warn-red{border-left-color:var(--lb-bad);background:var(--lb-bad-bg);color:var(--lb-bad)}
+.op-warn[hidden]{display:none}
+/* FIX69 (CAP2 F3): 계획 편집 시트 초안 문구 "이 기기에 저장됨 · …"과 [되돌리기] 사이 틈 8px(좁은 폭에서 단추가 다음 줄로 내려가면 줄 사이 6px) */
+.plan-editor-saved{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.plan-editor-saved[hidden]{display:none}
 /* 성취표: 이름 열(왼쪽)·달성·연속 열(오른쪽)은 고정, 날짜 칸만 가로 밀기. 고정 열 가장자리 그림자 = 밀 수 있다는 단서. 하루 달성률 "100%"는 한 줄 */
 .hb-scroll{position:relative;overscroll-behavior-x:contain}
 .hb-table .hb-name-col{position:sticky;left:0;z-index:1;background:var(--lb-surface-solid);box-shadow:6px 0 6px -6px var(--lb-ink-4)}

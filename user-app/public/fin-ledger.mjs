@@ -252,6 +252,17 @@ export function opBudgetNotice(b){
   if(b.stage==='PREPARE')return {stage:b.stage,tone:'info',text:left+' · 이월 준비 단계입니다. 남은 저장 횟수이 줄면 새 기록으로 옮겨야 합니다.'};
   return {stage:'OK',tone:'muted',text:left};
 }
+// OPS1A (통제탑 2026-11-11): 오늘·계획·기록·돈 탭 위 얇은 경고 줄. 남은 연산 2,000 이하(PREPARE부터) 금색, 500 이하 붉은색, 모르면(UNKNOWN) 줄 없음(지금과 같음).
+// 문구만이고 동작을 막지 않는다. 숫자 = opBudget 남은 연산(검증한 원격 버전 기준, 다른 기기가 그 뒤 쓴 연산은 빠질 수 있음).
+export const OP_WARN_PREPARE=2000,OP_WARN_RED=500;
+export const opWarnText=n=>'저장 여유 '+opCount(n)+'번 남음 · 더보기 > 백업에서 이월 준비';
+export function opWarnLine(b){
+  if(!b?.known||!countOK(b.remaining,VAULT_OP_LIMIT)||b.remaining>OP_WARN_PREPARE)return null;
+  return {tone:b.remaining<=OP_WARN_RED?'red':'gold',remaining:b.remaining,text:opWarnText(b.remaining)};
+}
+// OPS1A: 서버가 쓰기를 LOG_LIMIT(평생 연산 10,000)로 막았을 때의 전용 문구. 입력 초안은 지우지 않는다(흐름이 확정 성공 뒤에만 지움).
+export const LOG_LIMIT_CODE='LOG_LIMIT';
+export const LOG_LIMIT_TEXT='저장 공간이 꽉 찼어요. 입력은 이 기기에 남아 있어요. 이월이 필요해요.';
 
 // ---------- 로컬 저장 용량(F9, F10-5에서 형식별로 고침) ----------
 // 값은 settings.localState({bytes,limit,recordFormat,seal})에서 오며, 없으면 UNKNOWN(막지 않음).

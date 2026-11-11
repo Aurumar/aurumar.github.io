@@ -44,7 +44,9 @@ export class HltFlow{
   // K1 (B38-8): 화면 준비용. 초안 목록을 한 번만 읽어 그날 상태와 취침 기록(pendingSleep)을 함께 돌려준다(읽기만).
   async screen(date){
     const all=await this.#p.drafts.list();
-    return {state:this.#stateOf(date,this.#draftIn(all,date)),pendingSleep:this.#pendingIn(all)};
+    // FIX70 (HUNT67 F3): dates = 이 기기에 남은 건강 카드 초안의 모든 날짜(자정을 넘긴 어제 초안 포함). 앱의 "아직 안 쌓은 입력"·쌓기가 쓴다(같은 목록 1번 읽기).
+    const dates=[...new Set(all.filter(d=>d.type==='ENTITY'&&d.body?.entityType==='HLT_DAY'&&typeof d.body.entityId==='string').map(d=>d.body.entityId))].sort();
+    return {state:this.#stateOf(date,this.#draftIn(all,date)),pendingSleep:this.#pendingIn(all),dates};
   }
   #stateOf(date,draft){
     const latest=this.#p.latest(date);

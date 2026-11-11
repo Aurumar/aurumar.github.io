@@ -464,4 +464,105 @@ export function collectRows(work,life,defs=lifeDefs(life)){
   return rows;
 }
 
+// ---- OPS1A (통제탑 2026-11-11): 계획 줄 고치기 묶기 ----
+// 금고는 평생 연산 10,000번이라, 계획 줄을 고칠 때마다 PLAN_DAY를 쓰지 않고 이 기기 초안 상자(card-draft-box의 PLAN_DAY 종류, 암호문 · 창을 닫아도 남음)에 {base, mine}을 둔다(연산 0).
+// 쌓기(자동 쌓기 5분 · 지금 쌓기 · 저장 후 종료)가 flush로 날마다 기존 저장 함수 1번(PLAN_DAY 1개 = 연산 1) → 같은 날 여러 번 고쳐도 쌓을 때 1번.
+// base = 처음 고치기 시작한 때의 금고 값(초안이 있는 동안 그대로). 쌓을 때 그 사이 다른 기기가 바꾼 줄은 기존 줄 id 3자 병합(rebase = life-plan rebasePlan)이 합친다(손실 0).
+// 화면은 overlay(life)로 초안 값을 바로 본다(누른 즉시 반영). 상자가 없는 환경(메모리 초안)에서는 앱이 만들지 않는다 → 예전처럼 바로 저장.
+// 저장 형식·스키마 변경 없음: 상자 본문은 확정 본문과 같은 PLAN_DAY 모양에 base(planBase)만 더 둔다(암호문 안, 금고 쓰기 본문에는 넣지 않음).
+// 금고에 직접 쓰지 않는다: 쓰기는 넘겨받은 write(앱 = life-plan savePlanDay에 direct:true) 한 곳이다. 새 공개 모듈을 만들지 않으려고 같은 초안 흐름 모듈에 둔다.
+export const PLAN_DRAFT_REASON='하루 계획 저장';
+const PLAN_DATE_RE=/^\d{4}-\d{2}-\d{2}$/;
+const planRowOf=(life,date)=>(life?.plans??[]).find(p=>p.date===date)??null;
+// port = 상자의 port('PLAN_DAY') 모양(list·save·discard). box = 쓰기가 디스크에 닿았는지 볼 상자(statusFor, 없으면 닿은 것으로 봄).
+// rebase = rebasePlan, write(ctx,{date,base,mine}) = 실제 저장, now = 초안 시각(시험은 고정 시계).
+// FIX70 (HUNT67 F1·F4, 통제탑 2026-11-11): 같은 기기 두 창이 한 상자를 쓴다. 고칠 때마다(put)·쌓을 때마다(flush) 디스크의 초안을 다시 읽어 기준으로 삼고,
+// 상자 저장에 {base: 읽은 초안 draftId}를 넘겨 그 사이 다른 창이 바꿨으면(CARD_DRAFT_STALE_BASE·STALE_DRAFT) 다시 읽어 그 위에 rebasePlan으로 얹는다(정해진 횟수).
+// 다른 창 초안 위에 합치지 못하거나 끝내 저장하지 못하면 덮어쓰지 않고 null(부른 쪽이 예전처럼 바로 저장) → 어떤 길에서도 다른 창의 줄을 조용히 지우지 않는다.
+// 잠긴 채 읽은 캐시(blind)는 잠금이 풀린 뒤 다시 읽어야 한다(앱이 blind()를 보고 reload). put·flush는 언제나 다시 읽으므로 빈 캐시로 저장하지 않는다.
+const PLAN_PUT_ROUNDS=3;
+export function createPlanDrafts({port,box=null,getLife,rebase:rebasePlan,write,now=()=>new Date().toISOString()}){
+  const cache=new Map();let ver=0,memo=null,blind=false;
+  const changed=()=>{ver++;memo=null;};
+  const locked=()=>Boolean(port.locked?.());
+  const read=async(fresh=false)=>{
+    blind=locked();
+    const list=await port.list(fresh?{fresh:true}:undefined),next=new Map();
+    if(locked())blind=true;
+    for(const d of list){
+      const b=d?.body;if(d?.type!=='ENTITY'||b?.entityType!=='PLAN_DAY'||!PLAN_DATE_RE.test(b.entityId??'')||!b.data)continue;
+      const cur=next.get(b.entityId);if(cur&&cur.createdAt>d.createdAt)continue;
+      next.set(b.entityId,{draftId:d.draftId,base:b.planBase??null,mine:b.data,heads:[...(b.expectedHeads??[])],createdAt:d.createdAt});
+    }
+    cache.clear();for(const [k,v] of next)cache.set(k,v);changed();
+  };
+  const ready=read().catch(()=>{});
+  // 상자에 실제로 써졌는지(쓰기 실패·거부를 상자가 던지지 않을 수 있다). 상자를 모르면 써진 것으로 본다(시험 포트).
+  const persisted=date=>{const s=box?.statusFor?.('PLAN_DAY',date);return !s||(s.has&&!s.dirty&&!s.own);};
+  // FIX70: 이 창이 디스크에 둔 적 없는 STALE 입력만 버린다(상자: 메모리에서 빼고 디스크를 다시 읽음, 다른 창 초안은 그대로). 디스크에 있는 초안은 지우지 않는다.
+  const dropStale=async draftId=>{try{const x=(await port.list()).find(v=>v?.draftId===draftId);if(x)await port.discard(x.draftId);}catch{/* 다음 put·flush가 디스크를 다시 읽는다 */}};
+  const api={
+    ready,reload:()=>read(true),blind:()=>blind&&!locked(),
+    count:()=>cache.size,dates:()=>[...cache.keys()].sort(),get:date=>cache.has(date)?structuredClone(cache.get(date)):null,
+    // 화면 기준값(base)과 지금 보이는 값(디스크의 초안 또는 금고)이 다르면 그 위에 줄 id 3자 병합. 결과가 처음 base와 같아지면 초안을 지운다(쌓을 것 없음).
+    // 돌려주는 값은 savePlanDay와 같은 모양 + drafted:true. null = 상자에 남기지 못함(부른 쪽이 예전처럼 바로 저장한다, 입력을 잃지 않게).
+    async put(date,base,mine){
+      await ready;
+      for(let round=1;round<=PLAN_PUT_ROUNDS;round++){
+        const was=cache.get(date)?.draftId??null;
+        try{await read(true);}catch{return null;}   // FIX70: 디스크를 읽지 못하면 기준을 모른다 → 묶지 않는다
+        const d=cache.get(date),row=planRowOf(getLife(),date),stored=row?.data??null,shown=d?d.mine:stored,other=(d?.draftId??null)!==was;
+        let next=mine,notices=[];
+        if(stable(shown)!==stable(base??null)){
+          const rb=rebasePlan({date,base,mine,latest:shown});
+          if(rb.status==='REJECTED'){if(other)return null;throw flowError(rb.code);}   // FIX70: 다른 창 초안 위에 합치지 못함 → 덮어쓰지 않고 바로 저장
+          if(rb.status==='ALREADY_APPLIED')return {status:'ALREADY_APPLIED',notices:rb.notices};
+          next=rb.plan;notices=rb.notices;
+        }else if(shown&&stable(shown)===stable(mine))return {status:'ALREADY_APPLIED',notices:[]};
+        const keep=d?d.base:stored,heads=d?d.heads:row?[...row.heads]:[];
+        if(stable(next)===stable(keep)){
+          if(d){await port.discard(d.draftId);if(cache.get(date)===d){cache.delete(date);changed();}}
+          return {status:'SAVED',drafted:true,notices,plan:next};
+        }
+        const body={entityType:'PLAN_DAY',entityId:date,expectedHeads:heads,data:structuredClone(next),planBase:keep===null?null:structuredClone(keep),reason:PLAN_DRAFT_REASON};
+        let r;
+        try{r=await port.save({type:'ENTITY',body},{base:d?.draftId??null});}
+        catch(e){if(e?.code==='CARD_DRAFT_STALE_BASE')continue;throw e;}   // 읽은 뒤 다른 창이 바꿨다 → 다시 읽어 그 위에
+        if(!persisted(date)){
+          // STALE(읽은 뒤 다른 창이 디스크를 바꿈)이면 이 입력만 버리고 다시 읽어 그 위에 얹는다. 다른 실패(공간·키)는 디스크 초안을 지우지 않고 바로 저장으로.
+          if(box?.statusFor?.('PLAN_DAY',date)?.own==='STALE_DRAFT'){await dropStale(r?.draftId);continue;}
+          return null;
+        }
+        cache.set(date,{draftId:r?.draftId??null,base:keep,mine:structuredClone(next),heads,createdAt:now()});changed();
+        return {status:'SAVED',drafted:true,notices,plan:next};
+      }
+      return null;
+    },
+    // 쌓기: 날짜 순으로 날마다 write 1번. 성공(쓰기·이미 같음·임시 저장 봉인)한 날만 초안을 지운다. 실패한 날은 초안 그대로(입력을 잃지 않음).
+    // FIX70: 쌓기 전에 디스크를 다시 읽는다(다른 창이 고친 초안·잠긴 채 만든 빈 캐시). 읽지 못하면 아는 것만 쌓는다.
+    async flush(ctx){
+      await ready;let stacked=0,failed=0;const codes=[];
+      try{await read(true);}catch{/* 캐시 그대로 */}
+      for(const date of api.dates()){
+        const d=cache.get(date);if(!d)continue;
+        try{await write(ctx,{date,base:d.base,mine:d.mine});}catch(e){failed++;codes.push(typeof e?.code==='string'?e.code:'FAILED');continue;}
+        try{if(d.draftId)await port.discard(d.draftId);}catch{/* 다음 쌓기에서 같은 값 = ALREADY_APPLIED(연산 0) */}
+        if(cache.get(date)===d){cache.delete(date);changed();}
+        stacked++;
+      }
+      return {stacked,failed,codes};
+    },
+    // 화면용 life: plans에 초안 값을 얹는다(금고 heads는 그대로). 같은 life·같은 초안이면 같은 객체(다시 그려도 캐시가 깨지지 않게).
+    overlay(life){
+      if(!cache.size||!life)return life;
+      if(memo?.life===life&&memo.ver===ver)return memo.out;
+      const plans=(life.plans??[]).map(p=>cache.has(p.date)?{...p,data:structuredClone(cache.get(p.date).mine)}:p);
+      for(const [date,d] of cache)if(!plans.some(p=>p.date===date))plans.push({date,id:date,data:structuredClone(d.mine),heads:[],updatedAt:null});
+      plans.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);   // lifeRawView와 같이 최신 날짜가 앞
+      const out={...life,plans};memo={life,ver,out};return out;
+    },
+  };
+  return api;
+}
+
 export {kstDate};

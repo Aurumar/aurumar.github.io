@@ -35,6 +35,10 @@ export const CARD_DRAFT_DB='LIFE_BRICK_CARD_DRAFTS_V1';
 export const CARD_DRAFT_FORMAT='LB_CARD_DRAFT_1';
 // FIX49B (D49 5.2): 일기(DIARY_DAY) 초안도 같은 상자에 둔다. 이 종류를 모르는 옛 빌드는 열 수 없는 초안으로 보존한다(지우지 않음, 아래 open·readAll).
 export const CARD_DRAFT_KINDS=Object.freeze(['HLT_DAY','STUDY_DAY','LIFE_DAY','DIARY_DAY']);
+// OPS1A (통제탑 2026-11-11): 하루 계획(PLAN_DAY) 초안도 같은 상자에 둔다(계획 줄 고치기 묶기, life-flow createPlanDrafts). 하루 카드가 아니라서 카드 종류 목록(위, 안내 문구가 쓰는 것)과 따로 둔다.
+// 이 종류를 모르는 옛 빌드는 일기와 같이 열 수 없는 초안으로 보존한다(지우지 않음).
+export const CARD_DRAFT_EXTRA_KINDS=Object.freeze(['PLAN_DAY']);
+const BOX_KINDS=Object.freeze([...CARD_DRAFT_KINDS,...CARD_DRAFT_EXTRA_KINDS]);
 export const CARD_DRAFT_LIMITS=Object.freeze({records:60,recordBytes:96*1024});
 export const CARD_DRAFT_EVENT='lb:card-drafts-changed';
 export const CARD_DRAFT_DEBOUNCE_MS=600;
@@ -172,7 +176,7 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
   async function open(row,key){
     if(!key||row.kid!==key.kid)return {reason:'KEY_MISSING'};
     try{
-      if(row.scope!==scopeId||!CARD_DRAFT_KINDS.includes(row.kind)||!DATE_RE.test(row.date)||!Number.isSafeInteger(row.rev)||row.rev<1)throw fail('SHAPE');
+      if(row.scope!==scopeId||!BOX_KINDS.includes(row.kind)||!DATE_RE.test(row.date)||!Number.isSafeInteger(row.rev)||row.rev<1)throw fail('SHAPE');
       const pt=await cr.subtle.decrypt({name:'AES-GCM',iv:row.iv,additionalData:aad(row.kind,row.date,row.rev)},key.key,row.ct);
       const d=JSON.parse(dec.decode(pt));
       if(d?.format!==CARD_DRAFT_FORMAT||typeof d.draftId!=='string'||d.type!=='ENTITY'||d.body?.entityType!==row.kind||d.body.entityId!==row.date||typeof d.createdAt!=='string')throw fail('SHAPE');
@@ -399,7 +403,7 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
   const guardWrite=()=>{if(isLocked()||!unlocked())throw fail('CARD_DRAFT_LOCKED');if(!canWrite())throw fail('CARD_DRAFT_READ_ONLY');};
   // HltFlow·StudyFlow가 쓰는 drafts 포트(list/save/discard/commit). 초안 모양 {draftId,type:'ENTITY',body,createdAt}은 저널·메모리와 같다.
   function port(kind,{write}={}){
-    if(!CARD_DRAFT_KINDS.includes(kind))throw fail('CARD_DRAFT_KIND');
+    if(!BOX_KINDS.includes(kind))throw fail('CARD_DRAFT_KIND');
     const byDraft=id=>live().find(e=>e.kind===kind&&e.draft.draftId===id)??null;
     // FIX34 (H1): 이 창 초안 본문(mine)과 디스크 초안 본문(disk)을 합친 새 본문. 기준(base)은 내 초안의 heads, 명령 서명은 흐름의 makeBody로 다시 만든다(내용이 바뀌므로).
     // 합칠 수 없으면(REBASE_ID_COLLISION·검증 위반) 던진다. confirmCount는 초안의 값을 그대로 둔다(rebase의 +1은 확정용이다).
@@ -425,7 +429,8 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
         if(e?.stale&&!e.deleted)await api.save({type:e.draft.type,body:e.draft.body,touched:e.draft.touched,bases:e.draft.bases});
       }),
       locked:()=>isLocked()||!unlocked(),   // B18 (H13-C05): 흐름이 재적용 회차 전에 로그아웃 잠금을 본다
-      list:tracked(async()=>{if(isLocked())return [];await load();if(!unlocked())return [];return live().filter(e=>e.kind===kind).map(e=>structuredClone(e.draft));}),
+      // FIX70 (HUNT67 F1): opts.fresh = 메모리 사본 대신 디스크를 다시 읽는다(같은 기기 다른 창이 그 사이 쓴 초안을 본다). 이 창의 미저장 입력(dirty)은 그대로 둔다(readAll 규칙).
+      list:tracked(async opts=>{if(isLocked())return [];if(opts?.fresh)loaded=null;await load();if(!unlocked())return [];return live().filter(e=>e.kind===kind).map(e=>structuredClone(e.draft));}),
       // B16: opts.input = defer 토큰(그 실행의 저장), opts.base = 이 카드를 계산한 초안의 draftId(없었으면 null). 둘 다 선택.
       save:tracked(async({type,body,touched,bases},opts={})=>{
         if(type!=='ENTITY'||body?.entityType!==kind||!DATE_RE.test(body?.entityId??''))throw fail('CARD_DRAFT_SHAPE');

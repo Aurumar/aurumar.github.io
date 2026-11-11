@@ -24,6 +24,7 @@ export const PLAN_ERROR_TEXT=Object.freeze({
   MD_NOT_WRITE_READY:'지금은 서버에 저장할 수 없습니다. 입력은 이 화면에 남아 있습니다.',
   MD_PENDING_RECONCILE_REQUIRED:'이 저장이 서버에 반영됐는지 아직 모릅니다. 새로 저장하지 말고 더보기 > 고급에서 "결과 모르는 저장 확인"을 누르세요.',
   HOLD_UNKNOWN_SAVE:'저장 결과가 불명확합니다. 새로 저장하지 말고 먼저 확인하세요.',
+  LOG_LIMIT:'저장 공간이 꽉 찼어요. 입력은 이 기기에 남아 있어요. 이월이 필요해요.',   // OPS1A: fin-ledger LOG_LIMIT_TEXT와 같은 글(이 모듈은 import 목록이 고정이라 글로 둔다, 시험 OPS1A가 같음을 확인)
   // 새 기록(D46): 과목 주간 목표·모의고사 결과·칭호
   INVALID_PLAN_GOAL:'과목 목표 모양이 올바르지 않습니다.',INVALID_GOAL_WEEK:'과목 목표는 그 주 월요일로 저장합니다.',INVALID_GOAL_ITEM:'과목 목표 줄이 올바르지 않습니다(같은 과목이 두 번 들어갈 수 없습니다).',
   INVALID_GOAL_BRICKS:'목표는 0.5장 단위로 0.5~120장입니다.',GOAL_ITEM_LIMIT:'과목 목표는 20과목까지입니다.',PLAN_GOAL_TOO_LARGE:'과목 목표가 너무 큽니다.',
@@ -163,8 +164,10 @@ export function rebasePlan({date,base,mine,latest}){
 // 저장: 계획 시트의 "저장" 버튼만 부른다. 최신이 내가 편집을 시작한 때와 같으면 내 초안 그대로, 다르면 합친 결과를 엔티티 1개로 쓴다.
 // 겹침(STALE_HEADS)이면 최신을 받아 다시 합쳐 한 번 더 시도한다(쓰기는 성공한 1번만 일어난다).
 // 임시 저장 모드에서는 봉인 초안으로만 들어가 계획표에 안 보인다: sealed:true와 PLAN_LOCAL_DRAFT 알림을 함께 돌려준다(H37-P1). 부른 쪽은 sealed면 성공으로 말하지 말고 초안을 남긴다.
-export async function savePlanDay(ctx,{date,base,mine}){
+// OPS1A: ctx.planDrafts(앱이 넘김, life-flow createPlanDrafts)가 있으면 금고에 쓰지 않고 이 기기 초안에 둔다(연산 0). direct = 쌓기(flush)가 부르는 실제 저장.
+export async function savePlanDay(ctx,{date,base,mine,direct=false}){
   validateLifeData('PLAN_DAY',date,mine);
+  if(ctx.planDrafts&&!direct){const r=await ctx.planDrafts.put(date,base,mine);if(r)return r;}   // null = 상자에 남기지 못함 → 예전처럼 바로 저장(입력을 잃지 않게)
   for(let attempt=1;attempt<=3;attempt++){
     const row=planRow(ctx.getWhole().life,date),latest=row?.data??null;
     let data=mine,notices=[];
@@ -182,6 +185,9 @@ export async function savePlanDay(ctx,{date,base,mine}){
   }
   throw Object.assign(new Error('STALE_HEADS'),{code:'STALE_HEADS'});
 }
+
+// OPS1A: 초안에 둔 계획 줄(life-flow createPlanDrafts)의 저장 결과 문구. 쌓기는 자동 쌓기(5분)·지금 쌓기·저장 후 종료.
+export const PLAN_DRAFT_TEXT='이 기기에 저장됨 · 5분 안에 자동으로 쌓여요';
 
 // ---------- V6A: 계획은 말로, 벽돌은 자동 ----------
 // 계획 줄 = 과목 + 세부내용 + 시간대만 사람이 적는다. 새 줄의 bricks 칸은 1(= 벽돌 1장이면 완료, 저장 형식 그대로라 옛 빌드도 받는다). 이미 저장된 bricks 값은 지우지 않고 "예전 목표 n장"으로만 보인다.
@@ -779,7 +785,7 @@ function openPlanEditor(ctx,st,date,{seed=[],onSaved=null}={}){
         else{
           const r=await savePlanDay(ctx,{date,base,mine});
           if(r.sealed){sealed=true;sealedAs=stable(mine);if(!auto)st.notices=r.notices.filter(n=>n.code!=='PLAN_LOCAL_DRAFT');}
-          else if(auto){undoItems=auto.undoing?null:structuredClone(base?.items??[]);base=structuredClone(mine);showSaved(auto.undoing?'저장 전 계획으로 되돌렸어요 · 저장됨':'저장됨',!auto.undoing);onSaved?.();}
+          else if(auto){undoItems=auto.undoing?null:structuredClone(base?.items??[]);base=structuredClone(mine);showSaved((auto.undoing?'저장 전 계획으로 되돌렸어요 · ':'')+(r.drafted?PLAN_DRAFT_TEXT:'저장됨'),!auto.undoing);onSaved?.();}   // OPS1A: 초안이면 "이 기기에 저장됨 · 5분 안에 자동으로 쌓여요"
           else{st.message=r.status==='SAVED'?'하루 계획을 저장했습니다.':'이미 같은 계획이 저장되어 있습니다.';st.notices=r.notices;onSaved?.();}
         }
         if(sealed){if(auto){note.hidden=false;showSaved(PLAN_NOTICE_TEXT.PLAN_LOCAL_DRAFT,false);}else st.message=PLAN_NOTICE_TEXT.PLAN_LOCAL_DRAFT;}
