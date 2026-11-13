@@ -390,14 +390,14 @@ function tag(h,subjects,id,{dashed=false}={}){
   const dot=h.svg('svg',{class:'life-dot',width:10,height:10,viewBox:'0 0 10 10','aria-hidden':'true'});dot.append(h.svg('circle',{cx:5,cy:5,r:5,fill:s.color}));
   n.dataset.subjectId=id;n.append(dot,h.el('span',s.name+(s.bridge?' · 징검다리':'')));return n;
 }
-// 칩 4개. '오늘'은 날짜도 오늘로 되돌린다. '멀리'는 마지막에 본 먼 보기(없으면 연)로 가고, 고른 동안 아래에 연·수능까지 칩 줄을 연다.
+// 칩 4개. '오늘'은 날짜도 오늘로 되돌린다. '월'은 과목 표(FIX75 H74-4: '달력' 진입이 세운 날짜 달력 monthDates를 끈다). '멀리'는 마지막에 본 먼 보기(없으면 연)로 가고, 고른 동안 아래에 연·수능까지 칩 줄을 연다.
 function viewChips(h,ctx,st,today){
   const far=FAR_VIEWS.includes(st.view),rows=[];
   const line=(list,label,cls)=>{
     const row=h.el('div',null,cls);row.setAttribute('role','toolbar');row.setAttribute('aria-label',label);
     for(const [key,text] of list){
       const on=key==='FAR'?far:st.view===key;
-      const pick=()=>{if(key==='DAY')choosePlanDate(st,'date',today,false);setView(st,ctx,key==='FAR'?(far?st.view:st.far??FAR_VIEWS[0]):key);if(FAR_VIEWS.includes(st.view))st.far=st.view;void ctx.rerender();};
+      const pick=()=>{if(key==='DAY')choosePlanDate(st,'date',today,false);if(key==='MONTH')st.monthDates=false;setView(st,ctx,key==='FAR'?(far?st.view:st.far??FAR_VIEWS[0]):key);if(FAR_VIEWS.includes(st.view))st.far=st.view;void ctx.rerender();};
       const b=ctx.kit?.chip?ctx.kit.chip(text,{selected:on,onClick:pick}):h.button(text,pick,'lb-chip'+(on?' selected':''));
       b.setAttribute('aria-pressed',String(on));b.dataset.view=key;row.append(b);
     }

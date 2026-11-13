@@ -3,7 +3,7 @@
 // 칸: 날짜,가맹점,금액,분류,정기,수단 — 소비 줄(지출·환불)만, 금액은 원 단위 정수(지출 양수·환불 음수), 최근 13개월, 무효화된 거래 제외(투영 finLines가 이미 뺀다).
 // 넣지 않음: 메모, 카드·계좌 번호(끝 4자리 포함), 계정 이름·발급사·메모, 위치, 기기 ID. "민감 가맹점 가리기"가 켜져 있으면 가린 표시 그대로.
 // 쓰기 쪽(host fin-tx-writer.mjs)이 경로(%USERPROFILE%\AURUMAR_HQ\state\FIN_TX.csv)를 고정하고 같은 모양 검사를 한 번 더 한다(시험이 두 쪽 상수를 대조).
-import {shownMerchant,shiftMonth,csvSafe} from './fin-ledger.mjs';
+import {shownMerchant,shiftMonth,csvSafe,dateOK} from './fin-ledger.mjs';
 import {matchDraft} from './fin-recurring.mjs';
 import {STACK_DONE} from './life-flow.mjs';
 
@@ -11,7 +11,7 @@ export const FIN_TX_ROUTE='/api/fin-tx-export',FIN_TX_FILE='FIN_TX.csv';
 export const FIN_TX_HEADER=Object.freeze(['날짜','가맹점','금액','분류','정기','수단']);
 export const FIN_TX_MONTHS=13,FIN_TX_MAX_BYTES=524288,FIN_TX_PART_BYTES=24576,FIN_TX_MAX_PARTS=32,FIN_TX_MERCHANT_MAX=60,FIN_TX_CATEGORY_MAX=30;
 export const FIN_TX_MEANS=Object.freeze({CARD:'카드',CASH:'현금',BANK:'이체',EPAY:'간편결제',LOAN:'대출',OTHER:'기타'});
-export const FIN_TX_SWITCH_KEY='lb.fin.txexport';
+export const FIN_TX_SWITCH_KEY='lb.fin.txexport',FIN_TX_CLEAR_KEY='lb.fin.txclear';
 export const FIN_TX_LABEL='가계부 거래를 비서에게 넘기기(이 PC 파일)';
 export const FIN_TX_NOTICE='가게 이름·금액·날짜가 이 PC의 AURUMAR_HQ\\state\\FIN_TX.csv에 저장되고, 비서(Claude)가 월 1회 읽습니다. 메모·카드번호는 넣지 않습니다.';
 export const FIN_TX_BOM='\uFEFF',FIN_TX_EOL='\r\n';
@@ -19,19 +19,26 @@ export const finTxHeaderOnly=()=>FIN_TX_BOM+FIN_TX_HEADER.join(',')+FIN_TX_EOL;
 export const finTxCutLine=month=>'# 잘림: '+month+' 이전 생략';
 
 // ---- 이 기기 설정: 토글(기본 끔). 저장소가 막혀 있으면 이번 실행 동안만 ----
-let memoryOn=false;
+let memoryOn=false,memoryClear=false;
 export function finTxEnabled(storage){try{const v=storage?.getItem(FIN_TX_SWITCH_KEY);return v===null||v===undefined?memoryOn:v==='1';}catch{return memoryOn;}}
-export function setFinTxEnabled(on,storage){memoryOn=Boolean(on);try{storage?.setItem(FIN_TX_SWITCH_KEY,on?'1':'0');}catch{/* 이번 실행 동안만 */}return finTxEnabled(storage);}
+export function setFinTxEnabled(on,storage){memoryOn=Boolean(on);try{storage?.setItem(FIN_TX_SWITCH_KEY,on?'1':'0');}catch{/* 이번 실행 동안만 */}if(on)setFinTxClearPending(false,storage);return finTxEnabled(storage);}
+// FIX75 (H74-3): 끄기의 clear가 실패하면 이 기기에 "지우기 대기"를 남기고 다음 쌓기 때 clear를 다시 한다. 다시 켜면 새 내용으로 덮어쓰므로 지운다.
+export function finTxClearPending(storage){try{const v=storage?.getItem(FIN_TX_CLEAR_KEY);return v===null||v===undefined?memoryClear:v==='1';}catch{return memoryClear;}}
+function setFinTxClearPending(on,storage){memoryClear=Boolean(on);try{storage?.setItem(FIN_TX_CLEAR_KEY,on?'1':'0');}catch{/* 이번 실행 동안만 */}}
 
 // ---- 줄 만들기(순수) ----
-// 글 칸 정리: 제어 문자 → 공백, 공백 모으기, 카드·계좌 번호 모양(숫자·* 8개 이상이 - 또는 공백으로 이어진 것)은 ####로, 길이 제한.
-const NUMBER_SHAPE=/[0-9*](?:[0-9*]|[- ](?=[0-9*])){7,}/g;
+// 글 칸 정리: 제어 문자 → 공백, 숫자·구분자가 되는 호환 글자(전각 숫자 등)는 NFKC로, 공백 모으기, 카드·계좌 번호 모양은 ####로, 길이 제한.
+// FIX75 (H74-1·2): 공백을 먼저 모은 뒤 가린다(두 칸·NBSP·전각 공백 번호). 번호 모양 = 숫자·* 8개 이상이 구분자(공백·- . / – —) 1~3자로 이어진 것, 날짜(YYYY-MM-DD 모양)는 뺀다.
+// host(fin-tx-writer.mjs)도 같은 두 정규식으로 NFKC 뒤 검사한다(시험이 대조). 글자 하나씩 NFKC: 숫자·*·구분자가 나오는 글자만 바꾸고 나머지(한글 호환 자모 등)는 그대로 둔다.
+export const FIN_TX_NUMBER_SHAPE=/[0-9*](?:[0-9*]|[\s\-./–—]{1,3}(?=[0-9*])){7,}/g;
+export const FIN_TX_DATE_SHAPE=/^(?:19|20)\d{2}[\s\-./–—]{1,3}(?:0?[1-9]|1[0-2])[\s\-./–—]{1,3}(?:0?[1-9]|[12]\d|3[01])$/;
+const numberMatch=m=>(m.match(/[0-9*]/g)??[]).length>=8&&!FIN_TX_DATE_SHAPE.test(m);
+const nfkcPart=c=>{const n=c.normalize('NFKC');return /[0-9*\s\-./–—]/.test(n)?n:c;};
 export function finTxText(value,max){
   if(typeof value!=='string')return '';
-  const t=value.replace(/[\u0000-\u001F\u007F-\u009F\u2028\u2029\uFEFF]+/g,' ').replace(NUMBER_SHAPE,m=>(m.match(/[0-9*]/g)??[]).length>=8?'####':m).replace(/\s+/g,' ').trim();
+  const t=value.replace(/[\u0000-\u001F\u007F-\u009F\u2028\u2029\uFEFF]+/g,' ').replace(/[^\0-\x7F]/gu,nfkcPart).replace(/[\s\xA0　]+/g,' ').replace(FIN_TX_NUMBER_SHAPE,m=>numberMatch(m)?'####':m).trim();
   return [...t].slice(0,max).join('');
 }
-const dateOK=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v);
 const netOf=v=>{try{return v===null||v===undefined?null:typeof v==='bigint'?v:BigInt(v);}catch{return null;}};
 const meansOf=(fin,accountId)=>{const t=(fin.accounts??[]).find(a=>a.id===accountId)?.data?.type;return Object.hasOwn(FIN_TX_MEANS,t??'')?FIN_TX_MEANS[t]:FIN_TX_MEANS.OTHER;};
 const labelOf=(fin,c)=>c===null||c===undefined||c===''?'분류 없음':fin.labels?.expense?.[c]??fin.labels?.income?.[c]??c;
@@ -43,17 +50,20 @@ function recurringOf(l,rules){
 }
 // fin = whole.fin(투영 결과: lines·accounts·labels·recurring). today = YYYY-MM-DD. mask = 화면의 "민감 가맹점 가리기" 상태.
 // 돌려주는 값: [{month,cells:[날짜,가맹점,금액,분류,정기,수단]}] 날짜 오름차순.
-export function finTxRows(fin,today,{mask=true}={}){
-  if(!fin||!Array.isArray(fin.lines)||!dateOK(today))return [];
-  const to=today.slice(0,7),from=shiftMonth(to,-(FIN_TX_MONTHS-1)),rules=fin.recurring?.data?.rules??[],out=[];
+// FIX75 (H74-6): 날짜 검사는 장부(fin-ledger dateOK)와 같은 실제 날짜 검사. 없는 날짜(2026-02-30 등) 줄은 그 줄만 빼고(host가 파일 전체를 거부하지 않게) 13개월 창 안의 것을 센다.
+export function finTxRows(fin,today,opts){return collectRows(fin,today,opts).rows;}
+function collectRows(fin,today,{mask=true}={}){
+  if(!fin||!Array.isArray(fin.lines)||!dateOK(today))return {rows:[],badDates:0};
+  const to=today.slice(0,7),from=shiftMonth(to,-(FIN_TX_MONTHS-1)),rules=fin.recurring?.data?.rules??[],out=[];let badDates=0;
   for(const l of fin.lines){
-    if(!l||l.voided||(l.kind!=='EXPENSE'&&l.kind!=='REFUND')||!dateOK(l.date))continue;
+    if(!l||l.voided||(l.kind!=='EXPENSE'&&l.kind!=='REFUND'))continue;
+    if(!dateOK(l.date)){const m=typeof l.date==='string'?l.date.slice(0,7):'';if(m>=from&&m<=to)badDates++;continue;}
     const month=l.date.slice(0,7),net=netOf(l.net);
     if(month<from||month>to||net===null)continue;   // 순액 모름(부분 취소)은 금액이 없어 넣지 않는다
     out.push({month,date:l.date,key:String(l.key??''),cells:[l.date,finTxText(shownMerchant(l,mask),FIN_TX_MERCHANT_MAX)||'가맹점 없음',net.toString(),finTxText(labelOf(fin,l.category),FIN_TX_CATEGORY_MAX)||'분류 없음',recurringOf(l,rules),meansOf(fin,l.accountId)]});
   }
   out.sort((a,b)=>a.date.localeCompare(b.date)||a.key.localeCompare(b.key));
-  return out.map(({month,cells})=>({month,cells}));
+  return {rows:out.map(({month,cells})=>({month,cells})),badDates};
 }
 // CSV 칸: 글 칸(가맹점·분류)은 수식 주입 방지(csvSafe) 뒤 항상 따옴표. 날짜·금액·정기·수단은 정해진 모양이라 그대로.
 const quote=t=>'"'+t.replace(/"/g,'""')+'"';
@@ -81,28 +91,32 @@ export function finTxParts(text,partBytes=FIN_TX_PART_BYTES){
 }
 
 // ---- 보내기: 켜져 있는 PC 앱에서만. ctx = {surface, storage, fin()=>whole.fin|null, today()=>YYYY-MM-DD, mask()=>bool, send(body)=>Promise, newId()=>16자리 hex}. 절대 던지지 않는다 ----
-// 돌려주는 값: {status:'SKIPPED',reason:'SURFACE'|'OFF'|'NO_FIN'} | {status:'OK',rows,cut,bytes} | {status:'FAILED',code}.
+// 돌려주는 값: {status:'SKIPPED',reason:'SURFACE'|'OFF'|'NO_FIN'} | {status:'OK',rows,cut,bytes[,badDates]} | {status:'FAILED',code}. badDates = 뺀 없는 날짜 줄 수(있을 때만).
 export async function exportFinTx(ctx){
   if(ctx?.surface!=='APP_SHELL')return {status:'SKIPPED',reason:'SURFACE'};
   if(!finTxEnabled(ctx.storage))return {status:'SKIPPED',reason:'OFF'};
   try{
     const fin=ctx.fin();if(!fin)return {status:'SKIPPED',reason:'NO_FIN'};   // 기록을 아직 못 읽었으면 예전 파일을 빈 글로 덮지 않는다
-    const out=buildFinTxCsv(finTxRows(fin,ctx.today(),{mask:ctx.mask?.()!==false}));
+    const got=collectRows(fin,ctx.today(),{mask:ctx.mask?.()!==false}),out=buildFinTxCsv(got.rows);
     const parts=finTxParts(out.text),upload=ctx.newId();
     if(parts.length>FIN_TX_MAX_PARTS){const e=new Error('FIN_TX_TOO_LARGE');e.code='FIN_TX_TOO_LARGE';throw e;}
     for(let i=0;i<parts.length;i++)await ctx.send({upload,index:i,count:parts.length,part:parts[i]});
-    return {status:'OK',rows:out.rows,cut:out.cut,bytes:out.bytes};
+    return {status:'OK',rows:out.rows,cut:out.cut,bytes:out.bytes,...(got.badDates?{badDates:got.badDates}:{})};
   }catch(e){return {status:'FAILED',code:typeof e?.code==='string'?e.code:'fail'};}
 }
 // 끄면 파일을 지우지 않고 머리말만 남긴 빈 CSV로 덮어쓴다(삭제 금지). 표면만 본다(토글은 이미 꺼졌다).
+// FIX75 (H74-3): 보내기 전에 "지우기 대기"를 남기고 성공하면 지운다 → 실패(엑셀이 파일을 열어 둠 등)·중간 종료면 다음 쌓기 때 다시 한다.
 export async function clearFinTx(ctx){
   if(ctx?.surface!=='APP_SHELL')return {status:'SKIPPED',reason:'SURFACE'};
-  try{await ctx.send({clear:true});return {status:'OK'};}
+  setFinTxClearPending(true,ctx.storage);
+  try{await ctx.send({clear:true});setFinTxClearPending(false,ctx.storage);return {status:'OK'};}
   catch(e){return {status:'FAILED',code:typeof e?.code==='string'?e.code:'fail'};}
 }
 // LIFE_STATE를 쓰는 같은 때: 쌓기 성공(STACK_DONE) 직후와 앱을 연 뒤 첫 투영 뒤 1번. 표면·토글 검사는 exportFinTx 안에 있다.
+// 꺼져 있고 이 기기에 지우기 대기가 있으면 쌓기 직후 clear를 다시 한다(H74-3).
 export async function exportFinTxAfterStack(ctx,status){
   if(!STACK_DONE.includes(status))return {status:'SKIPPED',reason:'NOT_STACKED'};
+  if(ctx?.surface==='APP_SHELL'&&!finTxEnabled(ctx.storage)&&finTxClearPending(ctx.storage))return clearFinTx(ctx);
   return exportFinTx(ctx);
 }
 
@@ -115,11 +129,14 @@ export const FIN_TX_TEXT=Object.freeze({
   FIN_TX_TOO_LARGE:'내용이 너무 커서 쓰지 못했습니다.',
   NO_FIN:'가계부 기록을 아직 읽지 못했습니다. 다음 쌓기 때 넘깁니다.',
   fail:'쓰지 못했습니다. 다음 쌓기 때 다시 시도합니다.',
+  clearFail:'파일을 비우지 못했어요. FIN_TX.csv를 연 프로그램(엑셀 등)을 닫으면 다음 쌓기 때 다시 비웁니다.',
 });
+const badDateText=n=>' 날짜가 잘못된 거래 '+n+'건은 빼고 넘겼습니다.';
 export function finTxResultText(r,on){
-  if(r?.status==='OK')return on?FIN_TX_TEXT.on+(r.cut?' (오래된 달 일부 생략: '+r.cut+' 이전)':''):FIN_TX_TEXT.off;
+  if(r?.status==='OK')return on?FIN_TX_TEXT.on+(r.cut?' (오래된 달 일부 생략: '+r.cut+' 이전)':'')+(r.badDates>0?badDateText(r.badDates):''):FIN_TX_TEXT.off;
   if(r?.status==='SKIPPED'&&r.reason==='NO_FIN')return FIN_TX_TEXT.NO_FIN;
-  const code=r?.code;return Object.hasOwn(FIN_TX_TEXT,code??'')&&!['on','off','NO_FIN','fail'].includes(code)?FIN_TX_TEXT[code]:FIN_TX_TEXT.fail;
+  if(!on&&r?.status==='FAILED')return FIN_TX_TEXT.clearFail;   // 끄기 실패: 지우기 대기가 남아 다음 쌓기 때 다시 비운다(H74-3)
+  const code=r?.code;return Object.hasOwn(FIN_TX_TEXT,code??'')&&!['on','off','NO_FIN','fail','clearFail'].includes(code)?FIN_TX_TEXT[code]:FIN_TX_TEXT.fail;
 }
 
 // ---- 화면: 설정 안의 작은 카드. PC 앱(APP_SHELL)이 아니면 그리지 않는다(Fold·iPad·브라우저는 파일 쓰기가 없다) ----
