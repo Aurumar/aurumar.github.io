@@ -1,4 +1,4 @@
-// P1A: 계획 탭 '주' 보기 = 7열(월~일) × 4블록(M 오전·L 오후·D 저녁·N 밤) + 합 격자. 앱이 ctx.planWeek로 넘겨 주면 life-plan의 주 보기가 이것을 그린다(못 받으면 옛 막대 보기).
+// P1A: 계획 탭 '주' 보기 = 7열(월~일) × 시간대 + 합 격자. V7B: 시간대는 3줄(오전·오후·저녁), 옛 밤(N) 줄은 저장값 그대로 저녁 칸에 보인다(life-plan shownBlock). 앱이 ctx.planWeek로 넘겨 주면 life-plan의 주 보기가 이것을 그린다(못 받으면 옛 막대 보기).
 // 설계: AUTOPILOT\design\P1D_PLAN_CALENDAR_DESIGN.md 2.3·5(P1A). 합성 데이터로만 시험한다. 화면 규칙: DOM 생성 함수만(innerHTML·인라인 style·외부 라이브러리 없음), 과목 색은 SVG stroke 속성, 그 밖의 색은 styles.css 토큰.
 // 입력(탭-탭): 아래 과목 칩을 고른 채 칸의 "+"를 누르면 그 과목 1장, 같은 칸을 다시 누르면 +0.5장. 과목을 안 고르고 누르거나 줄을 길게 누르면 칩 시트(plan-today의 openChipSheet 재사용: 벽돌·시간대·할 일·지우기).
 // 이 모든 입력은 이 화면 메모리의 초안(st.week)만 바꾼다(쓰기 0, 누르는 동안에도 0). 기록은 "저장 (바뀐 날 n)" 단추 하나에서만: 바뀐 날마다 기존 savePlanDay(PLAN_DAY 1개 = 연산 1, 줄 id 3자 병합·STALE_HEADS 재시도)를 차례로 부른다.
@@ -8,8 +8,8 @@ import {lifeDefs,kstDate,shiftDay,validateLifeData,SUBJECT_COLOR_KEYS,PLAN_BLOCK
 import {achieve} from './life-achieve.mjs';
 import {stable} from './life-rebase.mjs';
 import {planOf,sortedItems,actualOf,planVsActual,copyPlan,savePlanDay,planErrorText,unknownOutcome,PLAN_NOTICE_TEXT,barsText,rateText,RATE_MEANING,mondayOf,dateLabel,NO_SUBJECT_COLOR,choosePlanDate,followPlanToday,weekDraftChanged,
-  daySessions,linkPlan,readPlanMarks,itemStateText,oldTarget,goalVsText,NEW_ITEM_BRICKS,todayDraft,studyDraftOf} from './life-plan.mjs';
-import {openChipSheet,blockLabel,BLOCK_SHORT,titleOr} from './plan-today.mjs';
+  daySessions,linkPlan,readPlanMarks,itemStateText,oldTarget,goalVsText,NEW_ITEM_BRICKS,todayDraft,studyDraftOf,SHOWN_BLOCKS,shownBlock} from './life-plan.mjs';
+import {openChipSheet,blockLabel,BLOCK_SHORT,titleOr,slotLabel} from './plan-today.mjs';
 export const WEEKDAYS=Object.freeze(['월','화','수','목','금','토','일']);
 export const CELL_SHOW=3,LONG_PRESS_MS=450;
 export const ITEMS_MEANING='달성 = 그 과목을 공부해 벽돌 1장 이상이 붙은 계획 줄(오늘까지) · 목표 대비 = 하루 목표 × 7일';
@@ -38,7 +38,7 @@ export function newItemId(items,uid){
 }
 // 탭-탭(V6A): 고른 과목이 그 칸에 없으면 줄 하나를 넣는다(세부내용 = 과목 이름, bricks 칸 = NEW_ITEM_BRICKS). 이미 있으면 아무것도 바꾸지 않는다(장수를 올리지 않음).
 export function tapCell(life,draft,{date,block,subjectId,name,uid}){
-  if(dayItems(life,draft,date).some(x=>x.block===block&&x.subjectId===subjectId))return null;
+  if(dayItems(life,draft,date).some(x=>shownBlock(x.block)===shownBlock(block)&&x.subjectId===subjectId))return null;
   return editDay(life,draft,date,items=>{items.push({id:newItemId(items,uid),subjectId,title:titleOr('',name),bricks:NEW_ITEM_BRICKS,block});return items;});
 }
 // 복사 줄 id = 대상 날짜 + 원본 줄 id(H37-P2): 두 기기가 같은 주를 복사해도 같은 줄이 되어 3자 병합이 두 배로 만들지 않는다. 복사의 복사는 앞 꼬리표를 떼어 길이가 늘지 않는다.
@@ -91,7 +91,7 @@ export function weekGridModel({life=null,study=null,monday,today,draft=createWee
     planned+=pva.planned;actual+=act.total;
     for(const [id,s] of act.bySubject)subjectActual.set(id,(subjectActual.get(id)??0)+s.value);
     if(!future){plannedToDate+=pva.planned;achievedToDate+=pva.achieved;itemsTotal+=link.total;itemsDone+=link.done;}else{plannedLater+=pva.planned;itemsLater+=link.total;}
-    days.push({date,weekday:WEEKDAYS[k],cells:PLAN_BLOCKS.map(b=>rows.filter(r=>r.block===b)),planned:pva.planned,items:items.length,actual:act.total,isToday:date===today,past:date<today,changed:changed.has(date)});
+    days.push({date,weekday:WEEKDAYS[k],cells:SHOWN_BLOCKS.map(b=>rows.filter(r=>shownBlock(r.block)===b)),planned:pva.planned,items:items.length,actual:act.total,isToday:date===today,past:date<today,changed:changed.has(date)});
   }
   const end=shiftDay(monday,6),state=monday>today?'FUTURE':end<today?'PAST':'NOW';
   return {monday,end,state,days,subjectActual,planned,actual,plannedToDate,achievedToDate,plannedLater,rate:plannedToDate>0?achievedToDate/plannedToDate:null,
@@ -218,13 +218,14 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
   const grid=el('div',null,'pw-grid');grid.setAttribute('role','grid');grid.setAttribute('aria-label',short(monday)+' 주 계획, 칸 = 그 날 그 시간대');
   grid.append(el('span',null,'pw-corner'));
   for(const d of m.days){const c=add(el('span',null,'pw-dayhead'+(d.isToday?' today':'')+(d.changed?' changed':'')),el('strong',d.weekday),el('small',String(Number(d.date.slice(8,10)))));c.dataset.date=d.date;grid.append(c);}
-  PLAN_BLOCKS.forEach((b,bi)=>{
-    const lab=el('span',BLOCK_SHORT[b],'pw-block');lab.title=blockLabel(b);grid.append(lab);
+  SHOWN_BLOCKS.forEach((b,bi)=>{
+    const lab=slotLabel(h,b,'pw-block');lab.title=blockLabel(b);grid.append(lab);   // V7B: 시간대 이름 + 아이콘(시간대 색)
     for(const d of m.days){
       const rows=d.cells[bi],cell=el('div',null,'pw-cell'+(d.isToday?' today':'')+(d.past?' past':'')+(rows.length?'':' empty'));cell.dataset.date=d.date;cell.dataset.block=b;
       for(const r of rows.slice(0,CELL_SHOW))cell.append(itemNode(h,r,{onTap:w.pick?tap(d.date,b):sheetFor(d.date,b,r),onLong:sheetFor(d.date,b,r)}));
       if(rows.length>CELL_SHOW){const more=button('+'+(rows.length-CELL_SHOW),listFor(d.date,b,rows),'pw-more');more.setAttribute('aria-label','숨은 줄 '+(rows.length-CELL_SHOW)+'개');cell.append(more);}
       const plus=button('+',tap(d.date,b),'pw-add');plus.setAttribute('aria-label',dateLabel(d.date)+' '+blockLabel(b)+(w.pick?' · '+nameOf(w.pick)+' 넣기':' · 줄 넣기'));cell.append(plus);
+      ctx.freshLock?.(cell,d.date,{note:false});   // V7D2: 새 시작 전 날짜 칸은 읽기 전용(줄 넣기·고치기 단추 잠금)
       grid.append(cell);
     }
   });
@@ -237,6 +238,9 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
     t.append(s);grid.append(t);
   }
   add(out,grid);
+  // V7D2: 이 주에 새 시작 전 날짜가 있으면 한 줄. 주 전체가 기준 전이면 이 주의 쓰기 단추를 모두 잠근다(날짜 이동 줄은 그대로).
+  const freshDays=m.days.filter(d=>ctx.freshBefore?.(d.date));
+  if(freshDays.length){if(nav.dataset)nav.dataset.freshKeep='1';if(freshDays.length<m.days.length)add(out,el('p',(ctx.freshText?.lock??'새 시작 전 기록이라 읽기만 할 수 있어')+' ('+short(freshDays[0].date)+'~'+short(freshDays.at(-1).date)+')','notice fresh-lock-note pw-fresh'));}
 
   const picks=el('div',null,'pt-chips pw-picks');picks.setAttribute('role','toolbar');picks.setAttribute('aria-label','넣을 과목');
   for(const s of m.subjects)picks.append(subjectChip(h,s,w.pick===s.id,()=>{w.pick=w.pick===s.id?null:s.id;rerender();}));
@@ -276,6 +280,8 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
   // V6F: 즉시 저장일 때 [저장]은 저장 못 한 날이 남았을 때만 보이고, 방금 저장한 것은 한 번 되돌릴 수 있다.
   const undo=autoSave&&w.undo?button(PLAN_UNDO_TEXT,()=>{const days=w.undo.days;w.undo=null;let bad=null;for(const [d,items] of days){const code=editDay(ctx.getWhole().life??null,w,d,()=>structuredClone(items));if(code)bad=code;}if(bad){say(planErrorText(bad),true);rerender();return;}commit();},'secondary pw-undo'):null;
   add(out,add(buttons,autoSave&&!n?null:save,undo));
+  if(freshDays.length===m.days.length)ctx.freshLock?.(out,m.days[0].date);   // V7D2: 주 전체가 새 시작 전
+  else if(freshDays.length&&!last.disabled){last.disabled=true;last.setAttribute('aria-disabled','true');last.title=ctx.freshText?.lock??'';}   // 지난주처럼은 기준 전 날짜에도 넣으려 하므로 이 주에서는 막는다
   return out;
 }
 export const PLAN_SAVED_TEXT='저장됨',PLAN_UNDO_TEXT='되돌리기';

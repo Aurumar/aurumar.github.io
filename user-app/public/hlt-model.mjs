@@ -156,6 +156,9 @@ export function hltTransition(v,old,ctx){
     if(before.get(it.id)!==flatKey(it)){requireValue(!p.data.removed,'HLT_PROFILE_REMOVED');requireValue(p.data.enabled,'HLT_PROFILE_DISABLED');}
   }
 }
+// V7D2 (설계 V7D 4.1): "이 기록 비우기" = 항목을 비우고 confirmCount+1(hltTransition 규칙 그대로). 메모 칸이 있던 카드는 빈 메모로 둔다(칸 모양 그대로). 1건 = 연산 1.
+export const emptyHltDay=d=>({date:d.date,items:[],confirmCount:d.confirmCount+1,...(Object.hasOwn(d,'note')?{note:''}:{})});
+export const hltDayEmpty=d=>Array.isArray(d?.items)&&!d.items.length&&!(d.note??'');
 // 이력 화면·백업 요약 제목(항상 문자열). 비공개 프로필의 라벨은 제목에 쓰지 않는다.
 export function hltTitle(v){
   const d=v.data;

@@ -6,6 +6,7 @@
 import {AVATAR_ART_READY,artFile,cardMinutes,lifetimeMinutes,stageOf,todayEffectOf,hmText,countedSession,countedMinutes} from './study-stage.mjs';   // V6F: 담은(COMPLETED) 세션만
 import {brickOf,sumBricks} from './life-model.mjs';
 import {TODAY_EFFECTS} from './study-stage.mjs';   // AV5: 오늘 상태 6단계 표(효과 층 이름)
+import {dailyCharOf} from './study-stage.mjs';   // V7A: STUDY LIVE 장면 이름표 = 오늘의 캐릭터
 import {XP} from './life-achieve.mjs';
 
 // ---- 방 단계 표: 소유자가 바꾸기 쉽게 여기 한 곳에만 둔다(STUDY_STAGES와 같은 방식). fromMin = 오늘 누적 분이 이 값 이상이면 그 단계. ----
@@ -251,7 +252,8 @@ export function roomScene(doc,{stage=null,wings=true,props=true,label='공부방
     if(wings&&(!last||last.keys.bricks!==keys.bricks))for(const side of ['l','r'])wg[side+'pillar'].replaceChildren(...pillarNodes(svg,m.pile,side));   // DS1: 벽돌 기둥은 더미가 바뀔 때만
     node.className=props?roomClass(m,wings?' room-wide':''):'room room-plain';
     const fxNow=TODAY_EFFECTS.find(e=>e.level===m.fx)??TODAY_EFFECTS[0];
-    node.setAttribute('aria-label',props?label+' '+m.stage.id+' '+m.stage.label+' · 벽돌 더미 '+m.pile.length+'칸'+(m.more?' (+'+m.more+')':''):label+' · 오늘 상태 '+fxNow.level+'단계 '+fxNow.label);
+    const dc=Number.isFinite(m.liveMin)?dailyCharOf(m.liveMin):null;   // V7A: STUDY LIVE(liveRoom)는 "오늘 상태" 대신 오늘의 캐릭터 이름을 읽어 준다
+    node.setAttribute('aria-label',props?label+' '+m.stage.id+' '+m.stage.label+' · 벽돌 더미 '+m.pile.length+'칸'+(m.more?' (+'+m.more+')':''):dc?label+' · 오늘의 캐릭터 '+dc.h+'h '+dc.label:label+' · 오늘 상태 '+fxNow.level+'단계 '+fxNow.label);
     last={keys,counts:Object.fromEntries(FRONT_LAYERS.map(k=>[k,shapes[k].length])),spines:m.spines,windowOn:m.windowOn,no:m.no};
     if(fresh)celebrate(fresh);
   }
@@ -278,7 +280,7 @@ export function liveRoom(ctx,{stage,state,timer,draftCard=null,props=true}){
   const doc=ctx.document??globalThis.document,win=doc?.defaultView??null,storage=ctx.storage??globalThis.localStorage??null;
   const card=cardOf(ctx.getWhole?.()?.study??null,state.roomInputs.date,draftCard),sessions=(card?.sessions??[]).filter(x=>x?.id!==state.ownId);   // FIX37C (H37-S6): 카드에 이미 든 이 타이머 세션은 진행 중 분으로만 센다(liveState와 같음)
   const scene=roomScene(doc,{stage,wings:true,props,label:props?'오늘의 방':'오늘의 공부',win});
-  const modelOf=s=>roomModel({todayMin:s.roomInputs.todayMin,pile:pileOf(sessions,Math.floor(s.clock.studyMs/60000)),effectLevel:s.roomInputs.effectLevel});
+  const modelOf=s=>({...roomModel({todayMin:s.roomInputs.todayMin,pile:pileOf(sessions,Math.floor(s.clock.studyMs/60000)),effectLevel:s.roomInputs.effectLevel}),liveMin:s.roomInputs.todayMin});   // V7A: liveMin = 이름표용 오늘 분
   const due=s=>timer?.startIso?celebrateDue(storage,timer.startIso,s.session.bricks,s.session.gold):null;
   scene.paint(modelOf(state),{fresh:due(state)});
   return {node:scene.node,scene,update:s=>{if(s.roomInputs.date!==state.roomInputs.date)return;scene.paint(modelOf(s),{fresh:due(s)});},stop:scene.stop};

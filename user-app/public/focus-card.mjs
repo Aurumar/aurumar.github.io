@@ -172,7 +172,7 @@ function maker(doc){
   const select=(options,value)=>{const n=el('select');for(const [v,t] of options){const o=el('option',t);o.value=String(v);n.append(o);}n.value=String(value);return n;};
   return {el,add,button,hint,select};
 }
-const FILL=Object.freeze({STUDY:'#D4A83A',DISTRACT:'#D9534F',OTHER:'#A2957F'});   // ui-kit 팔레트 값. 색은 SVG 속성으로만(인라인 style 없음)
+const FILL=Object.freeze({STUDY:'#E8C45A',DISTRACT:'#D9534F',OTHER:'#B5B5B5'});   // ui-kit 팔레트 값(V7C: 공부 = 밝은 금, 기타 = 중성 회색). 색은 SVG 속성으로만(인라인 style 없음)
 function splitBar(doc,r){
   const NS='http://www.w3.org/2000/svg',svg=doc.createElementNS(NS,'svg'),total=r.studyMin+r.distractMin+r.otherMin;
   svg.setAttribute('class','focus-bar');svg.setAttribute('viewBox','0 0 300 10');svg.setAttribute('width','100%');svg.setAttribute('height','10');svg.setAttribute('preserveAspectRatio','none');

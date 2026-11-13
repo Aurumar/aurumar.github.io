@@ -9,22 +9,27 @@
 import {WebGLRenderer,Scene,PerspectiveCamera,HemisphereLight,DirectionalLight,PointLight,BoxGeometry,ConeGeometry,SphereGeometry,CircleGeometry,CylinderGeometry,TorusGeometry,ExtrudeGeometry,Shape,BufferGeometry,BufferAttribute,MeshStandardMaterial,MeshBasicMaterial,PointsMaterial,LineBasicMaterial,InstancedMesh,Mesh,Points,LineSegments,Group,Object3D,Color,Fog,DataTexture,RGBAFormat,UnsignedByteType,RepeatWrapping,LinearFilter,LinearMipmapLinearFilter,SRGBColorSpace,EquirectangularReflectionMapping,PMREMGenerator,PCFSoftShadowMap,BackSide,Raycaster,Vector2,Vector3} from './three.module.js';
 import {towerScene,quality3d,framesTooSlow,initialCamera,clampCamera,cameraPosition,FOV,GOLD,BRICK_W,BRICK_D,BRICK_GAP,ROW_H,TEX,WALL_TILE,brickTexels,wallTexels,groundTexels,envTexels,skyAt,starField,flyAt,flyFrom,dustAt,flashAt,shakeAt,autoRotateAt,AUTO_ROTATE_SECONDS,DUST_POINTS,DUST_SECONDS,FLASH_SECONDS,SHAKE_SECONDS,TIERS,START_TIER,nextTier,p50,p95,GROUND_R,SKY_R,fogRange,shadowBox,
   COLS,DEPTH,PHI,CRANE_UP,SPARKS,DONE_ROOF_DROP,blueprint,houseTop,wholeCamera,gateCamera,isTallHouse,startView,flyFirst,settleCamera,spinKeepsFront,WHOLE_VIEW_PAD,craneRows,completionAt,sparkAt,BONUS_SPARKS,BONUS_BURST_SECONDS,bonusFresh,bonusSparkAt,withBadges,houseLabels,towersToPulse,pulseAt,PULSE_SECONDS,
-  BRICK_MATERIALS,MORTAR_IVORY,brickTint,BLUEPRINT_STYLE,blueprintFade,DAIS,TOWER_GOLD,JOINT,jointRows,TOP_GLOW,topGlow,glowPulse,sunWheel,daisTexels} from './tower-3d-layout.mjs';
+  BRICK_MATERIALS,MORTAR_IVORY,brickTint,BLUEPRINT_STYLE,blueprintFade,DAIS,TOWER_GOLD,JOINT,jointRows,TOP_GLOW,topGlow,glowPulse,sunWheel,daisTexels,MARBLE,MORTAR_GLOW,CHAMPAGNE_WALL,BLACK_MARBLE,goldFrame,isGoldRow,isShadeFace,shadeWalls} from './tower-3d-layout.mjs';
 
-const MORTAR=MORTAR_IVORY,CORE='#F1EADB',SLAB='#E4D9C3',WINDOW='#FFE9A8',MORTAR_DARK='#4A3F2E',DUST='#E9DFC8',TAP_PX=8,TAP_MS=500,ROTATE_PER_PX=0.008,ZOOM_PER_WHEEL=0.0012,KEY_ROTATE=0.2,KEY_ZOOM=0.9,FRAME_LOG=120,LIT_WINDOWS=1.2;
+// V7T: 구조벽·바닥판 = 흰 대리석(베이지 #F1EADB·모래색 #E4D9C3 없음), 연속일 빛 띠 바탕 = 샴페인(갈색 #4A3F2E 없음), 먼지 = 흰 대리석 가루.
+// V7T2: 쌓인 층 구조벽 = 옅은 샴페인 금(금속), 바닥판 = 금 처마(goldFrame 묶음). SLAB은 완공 지붕 기본색으로만 남는다.
+const MORTAR=MORTAR_IVORY,CORE=CHAMPAGNE_WALL.color,SLAB=MARBLE.slab,WINDOW='#FFE9A8',MORTAR_DARK=TOWER_GOLD.line,DUST='#F2F0EB',TAP_PX=8,TAP_MS=500,ROTATE_PER_PX=0.008,ZOOM_PER_WHEEL=0.0012,KEY_ROTATE=0.2,KEY_ZOOM=0.9,FRAME_LOG=120,LIT_WINDOWS=1.2;
 let active=null;
 
 // 상자 여러 개를 한 도형으로 합친다. UV는 면 안의 월드 좌표 / tile이라 층 높이가 달라도 구조벽 무늬 크기가 같다. 행에 color가 있으면 정점 색으로 싣는다.
+// V7T2: 행에 top·under(위·아래 면), xs(±x 면), low(옆면 아래 가장자리) 색이 있으면 그 면·정점만 그 색(금 처마·기둥, goldFrame).
+// V7T3: 행에 shadeFace가 있으면 그늘 면(키 라이트 반대쪽 옆면, isShadeFace)은 shadeFace(위) → shadeLow(아래 가장자리) 짙은 금.
+const faceColor=(r,n,s,low)=>(n===1?(s>0?r.top:r.under):r.shadeFace&&isShadeFace(n,s)?(low&&r.shadeLow)||r.shadeFace:(low&&r.low)||(n===0&&r.xs))||r.color;
 function worldBoxes(rows,tile){
   const pos=[],nor=[],uv=[],idx=[],col=[],c3=new Color(),colored=rows.some(r=>r.color);
   for(const r of rows){
     const c=[r.x,r.y,r.z],hs=[r.sx/2,r.sy/2,r.sz/2];
-    if(colored)c3.set(r.color??'#FFFFFF');
     for(const [n,a,b] of [[0,2,1],[1,0,2],[2,0,1]])for(const s of [-1,1]){
       const base=pos.length/3;
       for(const [i,j] of [[-1,-1],[1,-1],[1,1],[-1,1]]){
         const p=[0,0,0],q=[0,0,0];p[n]=c[n]+s*hs[n];p[a]=c[a]+i*hs[a];p[b]=c[b]+j*hs[b];q[n]=s;
-        pos.push(...p);nor.push(...q);uv.push(p[a]/tile,p[b]/tile);if(colored)col.push(c3.r,c3.g,c3.b);
+        pos.push(...p);nor.push(...q);uv.push(p[a]/tile,p[b]/tile);
+        if(colored){c3.set(faceColor(r,n,s,p[1]<c[1])??'#FFFFFF');col.push(c3.r,c3.g,c3.b);}
       }
       const ccw=((a+1)%3===b?1:-1)*s>0;   // e_a×e_b가 바깥 법선과 같은 쪽이면 그대로, 아니면 뒤집는다
       idx.push(...(ccw?[0,1,2,0,2,3]:[0,2,1,0,3,2]).map(k=>base+k));
@@ -137,12 +142,16 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   const trimMat=own(new MeshStandardMaterial({color:TOWER_GOLD.mid,metalness:1,roughness:0.3}));
   const craneMat=own(new MeshStandardMaterial({roughness:0.5,metalness:0.5,vertexColors:true}));
   // 줄눈: 습관 XP 밝기 = 금빛 발광 세기. 인스턴스 색의 파랑을 줄여 밝기를 싣고, 발광에 (1-파랑)을 곱한다.
-  const mortarMat=own(new MeshStandardMaterial({color:MORTAR,roughness:0.95,metalness:0,emissive:GOLD,emissiveIntensity:0.5+1.1*sky.glow}));
+  // V7T: 레몬색으로 뜨던 빈 칸(파랑 0.85까지 빼고 GOLD 발광) → 파랑은 MORTAR_GLOW.blue만큼만 빼고 밝은 금(light)으로 은은하게.
+  // V7T2: 빈 칸 줄눈 판도 쌓인 층의 구조벽 바깥면이라 흰색 대신 옅은 샴페인 금 금속(구조벽과 같은 값, 환경맵). 습관 빛(발광)은 그대로.
+  const mortarMat=own(new MeshStandardMaterial({color:CORE,roughness:CHAMPAGNE_WALL.roughness,metalness:CHAMPAGNE_WALL.metalness,emissive:TOWER_GOLD.light,emissiveIntensity:0.5+1.1*sky.glow}));
   mortarMat.onBeforeCompile=sh=>{sh.fragmentShader=sh.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n\ttotalEmissiveRadiance *= 1.0 - vColor.b;');};
   // V6C 줄눈 선 판(벽돌 뒤): gold-shadow, 습관 벽돌 날은 JOINT.habit. 틈으로만 보이는 가는 선이라 조명 계산 없는 재질(가장 싸다), 벽돌 다음에 그려 가려진 픽셀은 깊이 검사로 건너뛴다.
   const jointMat=own(new MeshBasicMaterial({color:0xffffff}));
-  const coreMat=own(new MeshStandardMaterial({color:CORE,map:wallTex,bumpMap:wallTex,bumpScale:0.4,roughness:0.92,metalness:0}));
-  const slabMat=own(new MeshStandardMaterial({color:SLAB,map:wallTex,roughness:0.9,metalness:0}));
+  // V7T2: 구조벽 = 옅은 샴페인 금 금속(환경맵). 금 뼈대 묶음 = 정점 색 × 금속(환경맵): 금 정점은 금속 금, 검은 대리석 정점은 거의 검고 환경맵만 은은하게 비친다(셰이더 치환 추가 없음, T2A-7).
+  // V7T3: 구조벽 색은 정점 색(shadeWalls: 빛 받는 면 샴페인 금 CORE, 그늘 면 짙은 금)으로 옮겼다. 재질 값은 V7T2 그대로.
+  const coreMat=own(new MeshStandardMaterial({vertexColors:true,map:wallTex,bumpMap:wallTex,bumpScale:0.4,roughness:CHAMPAGNE_WALL.roughness,metalness:CHAMPAGNE_WALL.metalness}));
+  const frameMat=own(new MeshStandardMaterial({vertexColors:true,roughness:BLACK_MARBLE.roughness,metalness:BLACK_MARBLE.metalness}));
   // 창: 밤이면 켜지고, 완공된 집은 늘 전부 켜져 있다(완공 순간에는 0에서 켜진다).
   const winGlow=0.3+0.9*sky.glow,windowMat=own(new MeshStandardMaterial({color:WINDOW,emissive:WINDOW,emissiveIntensity:data.parts.ROOF_DONE&&!celebrate?LIT_WINDOWS:winGlow,roughness:0.3,metalness:0}));
   const glow=own(new MeshBasicMaterial({color:0xffffff}));
@@ -151,9 +160,10 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   const plainMat=own(new MeshStandardMaterial({roughness:0.82,metalness:0,vertexColors:true}));
   const ornMat=own(new MeshStandardMaterial({color:0xffffff,metalness:0.7,roughness:0.3}));
   const leafMat=own(new MeshStandardMaterial({roughness:0.9,metalness:0}));
-  const roofMat=own(new MeshStandardMaterial({color:data.cone?.color??SLAB,roughness:0.7,metalness:0.1}));
-  const daisMat=own(new MeshStandardMaterial({map:daisTex,roughness:0.35,metalness:0})),daisSideMat=own(new MeshStandardMaterial({color:DAIS.side,roughness:0.4,metalness:0}));
-  const lit=[brickMat,halfMat,goldMat,todayMat,trimMat,craneMat,daisMat,daisSideMat,mortarMat,coreMat,slabMat,windowMat,stoneMat,plainMat,ornMat,leafMat,roofMat];
+  // V7T: 완공 지붕 = 금속 금(환경맵), 단상 = 광택 흰 대리석(거칠기 0.18, 환경맵으로 은은한 반사, 금속 아님).
+  const roofMat=own(new MeshStandardMaterial({color:data.cone?.color??SLAB,roughness:0.3,metalness:0.9}));
+  const daisMat=own(new MeshStandardMaterial({map:daisTex,roughness:0.18,metalness:0})),daisSideMat=own(new MeshStandardMaterial({color:DAIS.side,roughness:0.3,metalness:0.9}));
+  const lit=[brickMat,halfMat,goldMat,todayMat,trimMat,craneMat,daisMat,daisSideMat,mortarMat,coreMat,frameMat,windowMat,stoneMat,plainMat,ornMat,leafMat,roofMat];
 
   const place=(mesh,i,r)=>{dummy.position.set(r.x,r.y,r.z);dummy.rotation.set(0,0,0);dummy.scale.set(r.sx,r.sy,r.sz);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);};
   // 벽돌: p(비행 자세)가 있으면 그 위치·회전·눌림으로, 아직 출발 전이면 숨긴다. 눌림은 바닥을 붙인 채 높이만 줄인다.
@@ -178,7 +188,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
     s.rows.forEach((r,j)=>{placeBrick(s.mesh,j,r);s.mesh.setColorAt(j,tint.set(brickTint(data,r)).multiplyScalar(r.shade??1));});
     s.mesh.instanceMatrix.needsUpdate=true;s.mesh.instanceColor.needsUpdate=true;scene.add(s.mesh);
   }
-  const mortarTint=b=>tint.setRGB(1,1-0.15*b,1-0.85*b);
+  const mortarTint=b=>tint.setRGB(1,1-MORTAR_GLOW.green*b,1-MORTAR_GLOW.blue*b);
   const mortarMesh=instanced(cube,mortarMat,data.mortar,r=>mortarTint(r.brightness),{receive:true});
   const mortarAt=new Map(data.mortar.map((m,i)=>[m.floor+':'+m.col,i]));
   const joints=jointRows(data),jointBase=new Color(JOINT.base),jointHabit=new Color(JOINT.habit),jointFlash=new Color(TOWER_GOLD.hi);
@@ -186,8 +196,8 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   const jointMesh=instanced(cube,jointMat,joints,r=>jointTint(r));if(jointMesh)jointMesh.renderOrder=1;
   const jointAt=new Map(joints.map((r,i)=>[r.floor+':'+r.col,i]));
   slot.dataset.joints=String(joints.length);slot.dataset.habitJoints=String(joints.filter(r=>r.habit).length);
-  const coreMesh=new Mesh(own(worldBoxes(data.cores,WALL_TILE)),coreMat);coreMesh.castShadow=coreMesh.receiveShadow=true;scene.add(coreMesh);
-  const slabMesh=new Mesh(own(worldBoxes(data.slabs,WALL_TILE)),slabMat);slabMesh.castShadow=slabMesh.receiveShadow=true;scene.add(slabMesh);
+  const coreMesh=new Mesh(own(worldBoxes(shadeWalls(data.cores),WALL_TILE)),coreMat);coreMesh.castShadow=coreMesh.receiveShadow=true;scene.add(coreMesh);
+  const frameMesh=new Mesh(own(worldBoxes(goldFrame(data,[...data.plain,...data.badgeRows].filter(isGoldRow)),WALL_TILE)),frameMat);frameMesh.castShadow=frameMesh.receiveShadow=true;scene.add(frameMesh);   // V7T2: 옛 바닥판 묶음 자리(드로우콜 그대로)
   instanced(cube,windowMat,data.windows,fixed('#FFFFFF'));
   const dark=new Color(MORTAR_DARK),gold=new Color(GOLD);
   instanced(cube,glow,data.bands,r=>tint.copy(dark).lerp(gold,r.brightness));
@@ -196,7 +206,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   instanced(cone,trimMat,data.spire,fixed('#FFFFFF'),{cast:true});
   // T2B 성 부품: 장면이 정지해 있으니 돌·단색 상자는 묶음마다 한 도형으로 합친다(드로우콜 1개씩).
   const merged=(rows,mat,parent=scene)=>{if(!rows.length)return null;const m=new Mesh(own(worldBoxes(rows,WALL_TILE)),mat);m.castShadow=m.receiveShadow=true;parent.add(m);return m;};
-  merged(data.stone,stoneMat);merged([...data.plain,...data.badgeRows],plainMat);   // T2C 업적 장식은 단색 묶음에 합친다
+  merged(data.stone.filter(r=>!r.base),stoneMat);merged([...data.plain,...data.badgeRows].filter(r=>!isGoldRow(r)),plainMat);   // T2C 업적 장식은 단색 묶음에 합친다. V7T2: 기단·계단(base)·금 문·현판은 금 뼈대 묶음
   instanced(cube,windowMat,data.glass,fixed('#FFFFFF'));
   instanced(cone,ornMat,data.ornaments,r=>tint.set(r.color),{cast:true});
   instanced(cube,leafMat,data.flowers,r=>tint.set(r.color));
@@ -336,6 +346,8 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
       const pm=new PMREMGenerator(renderer);env=own(pm.fromEquirectangular(eq).texture);pm.dispose();
     }
     for(const m of [brickMat,halfMat,goldMat,todayMat,trimMat,craneMat,ornMat]){m.envMap=T.env?env:null;m.needsUpdate=true;}
+    for(const m of [roofMat,daisMat,daisSideMat]){m.envMap=T.env?env:null;m.needsUpdate=true;}   // V7T: 금 지붕·광택 대리석 단상도 같은 스튜디오를 비춘다
+    for(const m of [coreMat,mortarMat,frameMat]){m.envMap=T.env?env:null;m.needsUpdate=true;}   // V7T2: 샴페인 금 구조벽·빈 칸 판·금 뼈대(처마·기둥·문·현판·검은 대리석 받침)
     if(bpFaces)bpFaces.visible=name!=='LOW';
     stars.visible=T.stars&&sky.stars>0.02;
     if(dust)dust.visible=T.dust;

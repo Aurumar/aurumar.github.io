@@ -4,9 +4,10 @@
 
 // 평생 등급 표: 소유자가 바꾸기 쉽게 여기 한 곳에만 둔다. hours = 그 등급이 시작되는 누적 공부 시간. 맨 위는 0, 아래로 갈수록 커야 한다.
 // AV4C(2026-11-06 통제탑 결정): 20단계 → 12단계. 단계 번호는 어디에도 저장하지 않고 언제나 누적 분에서 다시 구하므로 옛 20단계 값이 남아 있을 곳이 없다.
+// V7A (2026-11-11 소유자): 12단계 표시 이름 '의사 (금빛)' → '명의'(名醫). 이름은 화면 글자뿐이라 id(s12)·기준 시간·저장 값은 그대로다.
 export const STUDY_STAGES=Object.freeze([
   ['첫 책상',0],['습관',100],['몰입',300],['실전',600],['의대 합격',900],['예과',1100],
-  ['첫 흰 가운',1400],['국시 합격',1700],['인턴',2000],['레지던트',2300],['전문의',2600],['의사 (금빛)',3000],
+  ['첫 흰 가운',1400],['국시 합격',1700],['인턴',2000],['레지던트',2300],['전문의',2600],['명의',3000],
 ].map(([name,hours],i)=>Object.freeze({no:i+1,id:'s'+String(i+1).padStart(2,'0'),name,hours})));
 export const FINAL_STAGE=STUDY_STAGES[STUDY_STAGES.length-1];
 export const STAR_EVERY_HOURS=250;   // 마지막 등급 이후 이만큼마다 금빛 별 1개
@@ -112,8 +113,9 @@ export function todayEffectOf(todayMin){
 // AV8 (2026-11-10 통제탑, 소유자 결정): 오늘의 캐릭터 13단계(오늘 0h~12h+). 평생 등급(STUDY_STAGES)·그 그림(av_s*)과 별개로 병행한다.
 // 소유자가 바꾸기 쉽게 여기 한 곳에만 둔다. h = 오늘 누적 공부 시간(시간 단위 내림), 12h 이상은 모두 12. 그림 = dc_hNN.webp(공개 폴더, 변환은 AUTOPILOT\tools\av8-daily-webp.py).
 // 오늘 분은 STUDY LIVE가 이미 쓰는 오늘 누적 분 그대로다. 저장 0·서버 쓰기 0·네트워크 0. 날짜가 바뀌면 오늘 카드가 새로 시작하므로 0h로 돌아간다(새 로직 없음).
+// V7A (2026-11-11 소유자): 11h = '전문의', 12h = '명의'(名醫). "금빛"은 캐릭터 이름에서 뺀다. 그림 파일·h는 그대로.
 export const DAILY_CHARS=Object.freeze([
-  '등교','수험생 필기','수험생 몰입','의대생 해부학','의대생','본과','병원 실습','국시 준비','인턴','레지던트','레지던트 수술','전문의','의사 (금빛)',
+  '등교','수험생 필기','수험생 몰입','의대생 해부학','의대생','본과','병원 실습','국시 준비','인턴','레지던트','레지던트 수술','전문의','명의',
 ].map((label,h)=>Object.freeze({h,file:'dc_h'+String(h).padStart(2,'0')+'.webp',label})));
 export function dailyCharOf(todayMin){
   const minutes=Number.isFinite(todayMin)&&todayMin>0?Math.floor(todayMin):0,h=Math.min(DAILY_CHARS.length-1,Math.floor(minutes/60)),next=DAILY_CHARS[h+1]??null;
@@ -121,6 +123,22 @@ export function dailyCharOf(todayMin){
 }
 // "오늘 3h · 의대생 해부학 · 다음 변신까지 0:42" (h:mm, 남은 분 그대로). 12h면 다음이 없다.
 export const dailyLineText=d=>'오늘 '+d.h+'h · '+d.label+(d.next?' · 다음 변신까지 '+clockText(d.toNextMin):' · 오늘 최고 단계');
+// V7A (2026-11-11 소유자): 타이머·상태 화면의 "오늘 상태"(AV5 효과 6단계) 띠 대신 쓰는 오늘의 캐릭터 13단계 띠의 순수 계산. 경계·이름은 위 DAILY_CHARS 그대로. 저장 0.
+// todayMs = 오늘 누적 공부(ms). 단계는 dailyCharOf(내림한 분)과 같고, 다음 캐릭터까지 남은 시간은 정수 초(시계와 같은 내림)로 센다.
+export function dailyStepsOf(todayMs){
+  const sec=Number.isFinite(todayMs)&&todayMs>0?Math.floor(todayMs/1000):0,d=dailyCharOf(Math.floor(sec/60));
+  const steps=DAILY_CHARS.map(c=>({...c,state:c.h<d.h?'done':c.h===d.h?'now':'todo'}));
+  return {h:d.h,label:d.label,file:d.file,next:d.next,steps,minutes:Math.floor(sec/60),toNextSec:d.next?d.next.h*3600-sec:null,top:d.next===null};
+}
+// "다음 캐릭터까지 0:42 · 의대생" (h:mm, 분은 올림 → 1초 남아도 0:01). 12h면 "오늘 최고 단계 · 명의".
+export const dailyNextText=p=>{if(p.top)return '오늘 최고 단계 · '+p.label;const m=Math.ceil(p.toNextSec/60);return '다음 캐릭터까지 '+clockText(m)+' · '+p.next.label;};
+// 미리보기 시트 문구: 필요한 시간 "오늘 3시간" · 남은 시간 "오늘 1시간 18분 더 하면"(분 올림, 잠긴 단계만) · 지금/지나온 단계는 "지금 단계"/"오늘 이미 지나왔어요".
+export const dailyNeedText=c=>c.h===0?'오늘 0시간부터':'오늘 '+c.h+'시간';
+export function dailyMoreText(c,todayMs){
+  const sec=Number.isFinite(todayMs)&&todayMs>0?Math.floor(todayMs/1000):0,left=c.h*3600-sec;
+  if(left<=0)return dailyCharOf(Math.floor(sec/60)).h===c.h?'지금 단계예요':'오늘 이미 지나왔어요';
+  return '오늘 '+hmText(Math.ceil(left/60))+' 더 하면';
+}
 
 // DS5 (설계 V5 §2.2): 오늘 효과 5단계 띠의 순수 계산. 경계·이름은 위 TODAY_EFFECTS를 그대로 읽는다(새 경계값 없음). 저장 0.
 // todayMs = 오늘 누적 공부(ms). 단계는 todayEffectOf(내림한 분)과 같고, 다음 단계까지 남은 시간은 정수 초(시계와 같은 내림)로 센다.

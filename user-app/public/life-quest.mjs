@@ -245,7 +245,7 @@ export function renderWeekGoals(ctx,{monday,state,subjects,actual,report}){
   const h=maker(ctx.document??globalThis.document),{el,add,button}=h,head=state==='NOW'?'이번 주 과목 목표':'이 주 과목 목표',out=el('div',null,'pw-goals');
   if(!recordsOpen(ctx))return add(out,el('p',head+' · '+DOOR_WAIT,'muted small pw-goal-wait'));
   const life=ctx.getWhole().life??null,row=goalRow(life,monday),p=goalProgress(row?.data.goals??[],actual),names=new Map(lifeDefs(life).subjects.map(s=>[s.id,s.name]));
-  add(out,el('strong',head,'pw-goal-head'));
+  add(out,add(el('div',null,'rc-line'),el('strong',head,'pw-goal-head'),ctx.clearMenu?.('PLAN_GOAL',monday)??null));   // V7D2: 저장한 주간 목표 ⋯ 메뉴
   if(p.rate!==null)add(out,el('p','목표 대비 '+Math.round(p.rate*100)+'% ('+num(p.got)+' / '+num(p.total)+'장)','plan-sum pw-goal-rate'));
   for(const r of p.rows)add(out,el('p',(names.get(r.subjectId)??'기타')+' '+num(r.actual)+' / '+brickText(r.bricks),'muted small pw-goal-line'));
   if(state==='PAST'){if(p.rate===null)add(out,el('p','이 주에는 정한 목표가 없습니다.','muted small'));return out;}   // 지난 주는 보기만 한다
@@ -314,7 +314,7 @@ export function renderExamResults(ctx,{exams,today,report}){
   add(out,button('모의고사 결과 넣기',()=>open(null),'secondary plan-result-add'));
   if(!results.length)return out;
   const box=add(el('details',null,'plan-result-list'),el('summary','모의고사 결과 '+results.length+'건'));
-  for(const r of results){const b=button(resultName(r,exams)+' · '+r.data.takenOn+' · '+r.data.scores.length+'과목',()=>open(r.id),'secondary plan-result-row');b.dataset.resultId=r.id;add(box,b);}
+  for(const r of results){const b=button(resultName(r,exams)+' · '+r.data.takenOn+' · '+r.data.scores.length+'과목',()=>open(r.id),'secondary plan-result-row');b.dataset.resultId=r.id;const menu=ctx.clearMenu?.('EXAM_RESULT',r.id)??null;add(box,menu?add(el('div',null,'rc-line'),b,menu):b);}   // V7D2: 결과마다 ⋯ 메뉴
   const t=gradeTrend(results,exams,subjects);
   if(t.rows.length){
     const table=el('table',null,'plan-result-trend'),head=el('tr');table.setAttribute('aria-label','과목별 등급 추이');

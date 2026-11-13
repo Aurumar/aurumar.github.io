@@ -3,9 +3,9 @@
 // B41부터 life-ui·app.mjs가 쓴다. life-plan·life-tower는 이 파일을 app.mjs와 함께 불러오지 않으려고(시험에서 따로 불러올 수 있게) import하지 않고 ctx.kit로 받는다.
 import {el,add,button} from './app.mjs';
 
-export const PALETTE=Object.freeze({bg:'#FAF7F0',gold1:'#FAEAB7',gold2:'#D4A83A',gold3:'#A67A14',ink1:'#2A2113',ink2:'#4A3D27',ink3:'#6B5B40',ink4:'#A2957F'});   // DS7: 금색 B
-export const SUBJECT_COLORS=Object.freeze({kor:'#8E6BC4',math:'#A6714E',eng:'#D9534F',hist:'#5BA66B',soc:'#D4B33C',sci:'#4F86C6',bio:'#3FA7A0'});
-export const AREA_COLORS=Object.freeze({body:'#5BA66B',head:'#4F86C6',money:'#D4A83A',heart:'#C4709A'});
+export const PALETTE=Object.freeze({bg:'#FBF8F1',gold1:'#FAEAB7',gold2:'#E8C45A',gold3:'#E3BE4C',ink1:'#1E1E1E',ink2:'#1E1E1E',ink3:'#5B5B5B',ink4:'#6E6E6E'});   // V7C: 밝은 금 + 중성 글자(황토·갈색 없음)
+export const SUBJECT_COLORS=Object.freeze({kor:'#8E6BC4',math:'#A6714E',eng:'#D9534F',hist:'#5BA66B',soc:'#EBC84E',sci:'#4F86C6',bio:'#3FA7A0'});   // V7C: 사회 노랑 #D4B33C(머스터드) → 밝은 노랑
+export const AREA_COLORS=Object.freeze({body:'#5BA66B',head:'#4F86C6',money:'#E8C45A',heart:'#C4709A'});   // V7C: 돈 = 밝은 금
 
 // DS1 (설계 V5 §2.1): 버튼 종류는 셋뿐. primary = 금속 채움(--gold-metal, 한 화면 1개) / secondary = 금 테두리 / text = 글자만. 모양은 styles.css 3절.
 // 크기 표지(공부 화면): lb-btn-start 집중 시작 60px 전체 너비 · lb-btn-finish 끝내고 담기 64px(좁은 화면 56px) · lb-btn-pair 휴식(끝내고 담기와 같은 높이).

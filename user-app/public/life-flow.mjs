@@ -488,8 +488,10 @@ const planRowOf=(life,date)=>(life?.plans??[]).find(p=>p.date===date)??null;
 // 다른 창 초안 위에 합치지 못하거나 끝내 저장하지 못하면 덮어쓰지 않고 null(부른 쪽이 예전처럼 바로 저장) → 어떤 길에서도 다른 창의 줄을 조용히 지우지 않는다.
 // 잠긴 채 읽은 캐시(blind)는 잠금이 풀린 뒤 다시 읽어야 한다(앱이 blind()를 보고 reload). put·flush는 언제나 다시 읽으므로 빈 캐시로 저장하지 않는다.
 const PLAN_PUT_ROUNDS=3;
-export function createPlanDrafts({port,box=null,getLife,rebase:rebasePlan,write,now=()=>new Date().toISOString()}){
+// V7D1: skip(date) = 참이면 새 시작 기준 전 날짜(쌓지도 세지도 보이지도 않고 디스크 초안은 그대로, skipped()로만 센다). 없으면 예전과 같다. 만든 뒤 skipWhen(fn)으로도 정한다.
+export function createPlanDrafts({port,box=null,getLife,rebase:rebasePlan,write,now=()=>new Date().toISOString(),skip=()=>false}){
   const cache=new Map();let ver=0,memo=null,blind=false;
+  const live=()=>[...cache.keys()].filter(d=>!skip(d)).sort();
   const changed=()=>{ver++;memo=null;};
   const locked=()=>Boolean(port.locked?.());
   const read=async(fresh=false)=>{
@@ -510,7 +512,7 @@ export function createPlanDrafts({port,box=null,getLife,rebase:rebasePlan,write,
   const dropStale=async draftId=>{try{const x=(await port.list()).find(v=>v?.draftId===draftId);if(x)await port.discard(x.draftId);}catch{/* 다음 put·flush가 디스크를 다시 읽는다 */}};
   const api={
     ready,reload:()=>read(true),blind:()=>blind&&!locked(),
-    count:()=>cache.size,dates:()=>[...cache.keys()].sort(),get:date=>cache.has(date)?structuredClone(cache.get(date)):null,
+    count:()=>live().length,dates:live,skipped:()=>[...cache.keys()].filter(d=>skip(d)).sort(),skipWhen:fn=>{skip=typeof fn==='function'?fn:()=>false;changed();},get:date=>cache.has(date)?structuredClone(cache.get(date)):null,
     // 화면 기준값(base)과 지금 보이는 값(디스크의 초안 또는 금고)이 다르면 그 위에 줄 id 3자 병합. 결과가 처음 base와 같아지면 초안을 지운다(쌓을 것 없음).
     // 돌려주는 값은 savePlanDay와 같은 모양 + drafted:true. null = 상자에 남기지 못함(부른 쪽이 예전처럼 바로 저장한다, 입력을 잃지 않게).
     async put(date,base,mine){
@@ -563,15 +565,15 @@ export function createPlanDrafts({port,box=null,getLife,rebase:rebasePlan,write,
     // FIX72 (FIX71 규칙): 금고 값이 초안의 base와 다르면(같은 기기 다른 창이 그 사이 쌓음) 초안을 통째로 보이지 않고 쌓인 줄 위에 이 초안의 줄을 줄 id 단위로 얹는다
     // (쌓기 flush가 쓰는 rebasePlan과 같은 규칙, 읽기만). 이미 다 들어 있으면 금고 값, 합칠 수 없으면 예전처럼 초안 그대로.
     overlay(life){
-      if(!cache.size||!life)return life;
+      if(!live().length||!life)return life;
       if(memo?.life===life&&memo.ver===ver)return memo.out;
       const shown=(p,d)=>{
         if(typeof rebasePlan!=='function'||stable(p.data??null)===stable(d.base??null))return structuredClone(d.mine);
         const rb=rebasePlan({date:p.date,base:d.base,mine:d.mine,latest:p.data});
         return structuredClone(rb.status==='MERGED'?rb.plan:rb.status==='ALREADY_APPLIED'?p.data:d.mine);
       };
-      const plans=(life.plans??[]).map(p=>cache.has(p.date)?{...p,data:shown(p,cache.get(p.date))}:p);
-      for(const [date,d] of cache)if(!plans.some(p=>p.date===date))plans.push({date,id:date,data:structuredClone(d.mine),heads:[],updatedAt:null});
+      const plans=(life.plans??[]).map(p=>cache.has(p.date)&&!skip(p.date)?{...p,data:shown(p,cache.get(p.date))}:p);
+      for(const [date,d] of cache)if(!skip(date)&&!plans.some(p=>p.date===date))plans.push({date,id:date,data:structuredClone(d.mine),heads:[],updatedAt:null});
       plans.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);   // lifeRawView와 같이 최신 날짜가 앞
       const out={...life,plans};memo={life,ver,out};return out;
     },

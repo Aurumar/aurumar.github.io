@@ -11,7 +11,8 @@ export const PRODID='-//LIFE BRICK//B46 ICS export//KO';
 export const UID_HOST='lifebrick.local';
 export const TIMED_MINUTES=60;                       // 시각 일정은 끝 시각 정보가 없어 한 시간으로 둔다
 export const MAX_SUMMARY=150,MAX_ITEMS=2000,MAX_REPEAT=400;
-const BLOCK_TEXT=Object.freeze({M:'오전',A:'오후',E:'저녁',N:'밤'});
+const BLOCK_TEXT=Object.freeze({M:'오전',A:'오후',E:'저녁'});
+const shownBlock=b=>b==='N'?'E':b;   // V7B: 옛 밤 줄은 저녁 일정에 묶는다(life-plan shownBlock과 같은 규칙, 저장값은 그대로)
 const encoder=new TextEncoder();
 
 // ---- 글 정리 ----
@@ -88,7 +89,7 @@ export function collectIcsItems({events=[],plans=[],life=null,today,skipPlanDays
   for(const row of skipPlanDays?[]:life?.plans??[]){
     const d=row?.data;if(!d||excluded(d)||row.date<from||row.date>to)continue;
     const blocks=new Map();
-    for(const x of d.items??[])if(!excluded(x))blocks.set(x.block,[...(blocks.get(x.block)??[]),x.title]);
+    for(const x of d.items??[])if(!excluded(x)){const b=shownBlock(x.block);blocks.set(b,[...(blocks.get(b)??[]),x.title]);}
     for(const [block,titles] of blocks)push('pd-'+safeId(row.date)+'-'+safeId(block),'공부 계획 · '+(BLOCK_TEXT[block]??'')+' · '+[...new Set(titles)].join(' · '),row.date,null);
   }
   for(const x of lifeDefs(life).exams.items??[])if(!excluded(x))pushOpen('ex-'+safeId(x.id),'시험 · '+x.name+(x.status==='잠정'?' (잠정)':''),x.date,null);

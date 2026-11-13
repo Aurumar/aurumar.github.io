@@ -30,6 +30,7 @@ function subjectText(name){
   return s||'기타';
 }
 const BLOCK_ORDER=Object.fromEntries(WIDGET_BLOCKS.map((b,i)=>[b,i]));
+const shownBlock=b=>b==='N'?'E':b;   // V7B: 화면 시간대는 오전·오후·저녁. 옛 밤 줄은 저녁으로 보낸다(위젯 파일 모양·검사는 그대로, N도 계속 받는다)
 
 // 비서 문구는 코드만 보낸다(문장은 앱이 고른다, 숫자만 끼움).
 export function widgetTip(bricks,goal){
@@ -45,8 +46,8 @@ export function buildWidgetSummary({ach,planRows=[],today,at}){
   const day=ach?.todayDay??null,top=ach?.topArea??null,lv=top?ach.levels?.[top]?.level:null,week=ach?.currentWeek??null;
   const bricks=day&&day.date===today?half(day.value,999):null,goal=whole(ach?.goalBricks,0,999);
   const plan=[...(planRows??[])].map((r,i)=>({r,i})).filter(({r})=>WIDGET_BLOCKS.includes(r?.block)&&isHalf(r.bricks,99))
-    .sort((a,b)=>BLOCK_ORDER[a.r.block]-BLOCK_ORDER[b.r.block]||a.i-b.i).slice(0,WIDGET_LIMITS.plan)
-    .map(({r})=>({b:r.block,s:subjectText(r.name),done:half(Math.min(r.manual?Math.max(r.got??0,r.bricks):r.got??0,99),99)??0,total:r.bricks}));   // FIX68 F7: 손 완료 줄은 다 채움
+    .sort((a,b)=>BLOCK_ORDER[shownBlock(a.r.block)]-BLOCK_ORDER[shownBlock(b.r.block)]||a.i-b.i).slice(0,WIDGET_LIMITS.plan)
+    .map(({r})=>({b:shownBlock(r.block),s:subjectText(r.name),done:half(Math.min(r.manual?Math.max(r.got??0,r.bricks):r.got??0,99),99)??0,total:r.bricks}));   // FIX68 F7: 손 완료 줄은 다 채움
   return {
     v:WIDGET_VERSION,date:today,at:whole(at,1,9999999999999),
     bricks,goal,

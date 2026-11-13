@@ -167,10 +167,13 @@ export function examEvents(exams){
 // 실리는 것은 과목 이름·장 수·EVENT 제목·시각뿐이다. 설정과 상태는 이 기기 저장소에만 있고 기록이 아니다.
 export const IMPORTED_EVENT_PREFIX='ics-';
 export const MIRROR_DAYS=14;
-export const MIRROR_BLOCK_TEXT=Object.freeze({M:'오전',A:'오후',E:'저녁',N:'밤'});
-export const MIRROR_BLOCK_LABELS=Object.freeze({M:'오전',A:'오후',E:'저녁',N:'밤'});   // V6F: 화면에 약자 없음
+// V7B: 일정으로 만드는 시간대는 3개(오전·오후·저녁). 옛 밤(N) 줄은 저녁 일정에 묶는다. 이 기기 설정의 N 시각 칸(MIRROR_BLOCK_DEFAULTS)은 옛 값 호환으로 남기고,
+// 옛 밤 일정 key(lb-pd-…-N)는 지우기 대상(MIRROR_BLOCKS 4개)에 그대로 들어 있어 다음 맞추기 때 캘린더에서 빠진다.
+export const MIRROR_BLOCK_TEXT=Object.freeze({M:'오전',A:'오후',E:'저녁'});
+export const MIRROR_BLOCK_LABELS=Object.freeze({M:'오전',A:'오후',E:'저녁'});   // V6F: 화면에 약자 없음
 export const MIRROR_BLOCK_DEFAULTS=Object.freeze({M:Object.freeze({start:'08:00',end:'12:00'}),A:Object.freeze({start:'13:00',end:'18:00'}),E:Object.freeze({start:'19:00',end:'22:00'}),N:Object.freeze({start:'22:00',end:'24:00'})});
-const MIRROR_BLOCKS=Object.keys(MIRROR_BLOCK_DEFAULTS),MIRROR_REPEAT_MAX=400,TIMED_EVENT_MS=3600000;
+const MIRROR_BLOCKS=Object.keys(MIRROR_BLOCK_DEFAULTS),MIRROR_SHOWN_BLOCKS=Object.keys(MIRROR_BLOCK_LABELS),MIRROR_REPEAT_MAX=400,TIMED_EVENT_MS=3600000;
+const mirrorBlockOf=b=>b==='N'?'E':b;
 const DATE=/^\d{4}-\d{2}-\d{2}$/,BLOCK_END=/^(?:(?:[01]\d|2[0-3]):[0-5]\d|24:00)$/,MIRROR_EVENT_KEY=/^lb-ev-[A-Za-z0-9-]{1,58}$/;
 const minutesOf=hm=>Number(hm.slice(0,2))*60+Number(hm.slice(3));
 const localMs=(date,hm)=>{const [y,m,d]=date.split('-').map(Number),[h,mi]=hm.split(':').map(Number);return new Date(y,m-1,d,h,mi).getTime();};
@@ -193,10 +196,10 @@ export function eventOccurrenceKey(id,index){
 export function planBlockEvents(row,{names=new Map(),blocks=MIRROR_BLOCK_DEFAULTS}={}){
   const d=row?.data,out=[];
   if(!d||hiddenItem(d)||!DATE.test(row.date))return out;
-  for(const block of MIRROR_BLOCKS){
+  for(const block of MIRROR_SHOWN_BLOCKS){
     const bySubject=new Map();let total=0;
     for(const x of d.items??[]){
-      if(!x||x.block!==block||hiddenItem(x)||!Number.isFinite(x.bricks)||x.bricks<=0)continue;
+      if(!x||mirrorBlockOf(x.block)!==block||hiddenItem(x)||!Number.isFinite(x.bricks)||x.bricks<=0)continue;
       const name=names.get(x.subjectId)??'공부';bySubject.set(name,(bySubject.get(name)??0)+x.bricks);total+=x.bricks;
     }
     if(!total)continue;
@@ -588,7 +591,7 @@ export function renderMirrorSettings(root,ctx){
   else for(const c of cals)h.add(row,kit.chip(c.name||'이름 없는 캘린더',{selected:c.id===p.calendarId,onClick:()=>{br.chooseMirrorCalendar(c.id);ctx.rerender?.();}}));
   h.add(sec,row);
   h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle(MIRROR_TEXT.events,p.events,on=>{br.setMirror({events:on});})));
-  for(const block of MIRROR_BLOCKS){
+  for(const block of MIRROR_SHOWN_BLOCKS){
     const blockRow=h.add(h.el('div',null,'native-row'),h.el('span',MIRROR_BLOCK_LABELS[block],'muted small'));
     for(const field of ['start','end']){
       const shown=()=>{const v=br.mirrorPrefs().blocks[block][field];return v==='24:00'?'00:00':v;},t=h.el('input');

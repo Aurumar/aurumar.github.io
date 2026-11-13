@@ -130,6 +130,9 @@ export function studyTransition(v,old,ctx){
   if(!old)requireValue([...ctx.entities.values()].filter(x=>x.entityType===type).length<STUDY_LIMITS[type],'APP_ENTITY_LIMIT');
   requireValue(d.confirmCount===(old?old.data.confirmCount+1:1),'STUDY_CONFIRM_COUNT_MISMATCH');
 }
+// V7D2 (설계 V7D 4.1): "이 기록 비우기" = 세 배열을 비우고 confirmCount+1(studyTransition 규칙 그대로). 새 칸·새 종류 없음, 1건 = 연산 1.
+export const emptyStudyDay=d=>({date:d.date,sessions:[],mistakes:[],reviews:[],confirmCount:d.confirmCount+1});
+export const studyDayEmpty=d=>Array.isArray(d?.sessions)&&!d.sessions.length&&!d.mistakes?.length&&!d.reviews?.length;
 // 이력 화면·백업 요약 제목(항상 문자열). 문제·메모 내용은 제목에 쓰지 않는다.
 export function studyTitle(v){return '공부 기록 · '+v.data.date;}
 // wholeLifeView가 싣는 원자료: 엔티티 그대로(heads 포함). 최신 날짜가 앞.

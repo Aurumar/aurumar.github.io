@@ -225,5 +225,5 @@ export function renderWeekReviewButton(ctx,{monday,today=null}){
   if(!monday||monday>mondayOf(day0)||!reviewDoorOpen(ctx))return null;
   const {el,add,button}=maker(ctx.document??globalThis.document),row=reviewRow(ctx.getWhole().life??null,monday);
   const b=button((monday===mondayOf(day0)?'이번 주':'이 주')+' 돌아보기'+(row?' · 저장됨':''),()=>{openWeekReview(ctx,{monday,today:day0});},'secondary wr-plan-open');b.dataset.navOnly='1';
-  return add(el('div',null,'buttons wr-plan'),b);
+  return add(el('div',null,'buttons wr-plan'),b,ctx.clearMenu?.('WEEK_REVIEW',monday)??null);   // V7D2: 저장한 주간 리뷰 ⋯ 메뉴
 }

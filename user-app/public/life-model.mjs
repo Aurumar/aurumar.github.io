@@ -295,17 +295,17 @@ export const DEFAULT_HABITS=Object.freeze([
 export const HABIT_HINTS=Object.freeze({'hb-sun':'일어나서 햇볕 쬔 시간','hb-in':'공부 시작','hb-out':'공부 마감','hb-recovery':'뉴에이지/산책','hb-nolate':'야식을 안 먹었으면 체크'});
 // 색 → 칩 CSS 클래스 키. styles.css 토큰(--lb-subj-*, ui-kit SUBJECT_COLORS)과 값이 같은 색만 클래스로 그리고, 나머지 색은 SVG fill 점으로 그린다.
 // 과목 기본색표가 아니다(DS2: 영어 기본색 주황은 토큰에 없어 점으로 그린다). 빨강 #D9534F는 eng 토큰 색과 같아서 그 클래스를 그대로 쓴다.
-export const SUBJECT_COLOR_KEYS=Object.freeze({'#8E6BC4':'kor','#A6714E':'math','#D9534F':'eng','#5BA66B':'hist','#D4B33C':'soc','#4F86C6':'sci','#3FA7A0':'bio'});
+export const SUBJECT_COLOR_KEYS=Object.freeze({'#8E6BC4':'kor','#A6714E':'math','#D9534F':'eng','#5BA66B':'hist','#EBC84E':'soc','#4F86C6':'sci','#3FA7A0':'bio'});   // V7C: 노랑 #D4B33C → #EBC84E
 // DS2 (V5 2.4, 소유자 결정 2026-11-08): 과목 색 설정의 12색 팔레트. 저장은 기존 SUBJECT_DEF.color 칸(새 칸·새 종류 없음).
 export const SUBJECT_PALETTE=Object.freeze([
   ['보라','#8E6BC4'],['남색','#4F5FA6'],['파랑','#4F86C6'],['청록','#3FA7A0'],['초록','#5BA66B'],['올리브','#8A9A3C'],
-  ['노랑','#D4B33C'],['주황','#D9823B'],['빨강','#D9534F'],['분홍','#C96C9A'],['갈색','#A6714E'],['회청','#6E7F8E'],
+  ['노랑','#EBC84E'],['주황','#D9823B'],['빨강','#D9534F'],['분홍','#C96C9A'],['갈색','#A6714E'],['회청','#6E7F8E'],
 ].map(([name,hex])=>Object.freeze({name,hex})));
-export const NEW_SUBJECT_COLOR='#C9A227';   // 편집 화면에서 새로 만든 과목의 첫 색(기본값이 없는 과목의 "기본값으로")
+export const NEW_SUBJECT_COLOR='#E3BE4C';   // V7C: 황토 #C9A227 → 밝은 금. 편집 화면에서 새로 만든 과목의 첫 색(기본값이 없는 과목의 "기본값으로")
 const subject=(id,name,color,exam,bridge,order)=>Object.freeze({id,name,color,exam,bridge,hidden:false,order});
 export const DEFAULT_SUBJECTS=Object.freeze([
   subject('kor','국어','#8E6BC4',true,false,0),subject('math','수학','#A6714E',true,false,1),subject('eng','영어','#D9823B',true,false,2),
-  subject('hist','한국사','#5BA66B',true,false,3),subject('soc','통합사회','#D4B33C',true,false,4),subject('sci','통합과학','#4F86C6',true,false,5),
+  subject('hist','한국사','#5BA66B',true,false,3),subject('soc','통합사회','#EBC84E',true,false,4),subject('sci','통합과학','#4F86C6',true,false,5),
   subject('bio','생물','#3FA7A0',false,true,6),
 ]);
 export const DEFAULT_SUBJECT_COLORS=Object.freeze(Object.fromEntries(DEFAULT_SUBJECTS.map(s=>[s.id,s.color])));
@@ -343,6 +343,49 @@ export const DEFAULT_EXAMS=Object.freeze({items:Object.freeze([
 export const emptyDay=date=>({date,habits:{},mood:null,note:'',dayType:'NORMAL'});
 export const emptyDiary=date=>({date,score:null,energy:null,good:[],bad:[],tomorrow:'',text:''});
 export const emptyWeekReview=monday=>({monday,pick:null,next:''});
+// V7D2 (설계 V7D 4.1 안 A0): "이 기록 비우기" = 기존 스키마의 빈 값으로 덮어쓰기. 새 칸·새 종류·지움 표시 없음(옛 빌드도 받는다). 1건 = 연산 1.
+// LIFE_DAY는 기준(basis) 칸 없이 가장 옛 모양으로 쓴다. EXAM_RESULT는 검사기가 빈 scores를 받으므로(validateExamResult) 시험 id·응시일은 그대로 두고 점수만 비운다.
+export const LIFE_CLEAR_TYPES=Object.freeze(['LIFE_DAY','PLAN_DAY','PLAN_GOAL','DIARY_DAY','WEEK_REVIEW','EXAM_RESULT']);
+export function emptyLifeRecord(type,id,data){
+  if(type==='LIFE_DAY')return emptyDay(id);
+  if(type==='PLAN_DAY')return {date:id,items:[]};
+  if(type==='PLAN_GOAL')return {monday:id,goals:[]};
+  if(type==='DIARY_DAY')return emptyDiary(id);
+  if(type==='WEEK_REVIEW')return emptyWeekReview(id);
+  if(type==='EXAM_RESULT')return {examId:data.examId,takenOn:data.takenOn,scores:[]};
+  requireValue(false,'CLEAR_TYPE_UNSUPPORTED');
+}
+// 이미 빈 값인가(비울 것이 없음). 모르는 종류는 거짓.
+export function lifeRecordEmpty(type,d){
+  if(!plain(d))return false;
+  if(type==='LIFE_DAY')return plain(d.habits)&&!Object.keys(d.habits).length&&d.mood===null&&d.note===''&&d.dayType==='NORMAL';
+  if(type==='PLAN_DAY')return Array.isArray(d.items)&&!d.items.length;
+  if(type==='PLAN_GOAL')return Array.isArray(d.goals)&&!d.goals.length;
+  if(type==='DIARY_DAY')return d.score===null&&d.energy===null&&!d.good?.length&&!d.bad?.length&&d.tomorrow===''&&d.text==='';
+  if(type==='WEEK_REVIEW')return d.pick===null&&d.next==='';
+  if(type==='EXAM_RESULT')return Array.isArray(d.scores)&&!d.scores.length;
+  return false;
+}
+// 비우기 화면이 쓰는 종류별 정보(종류 이름·쌓인 기록 찾기·요약·새 시작 판정 날짜). 요약에는 내용 글을 넣지 않는다(개수·글자 수만).
+export const LIFE_CLEAR_KIND=Object.freeze({LIFE_DAY:'오늘 카드',PLAN_DAY:'하루 계획',PLAN_GOAL:'과목 주간 목표',DIARY_DAY:'일기',WEEK_REVIEW:'주간 리뷰',EXAM_RESULT:'모의고사 결과'});
+const CLEAR_LIST=Object.freeze({LIFE_DAY:['days','date'],PLAN_DAY:['plans','date'],PLAN_GOAL:['goals','monday'],DIARY_DAY:['diaries','date'],WEEK_REVIEW:['weekReviews','monday'],EXAM_RESULT:['results','id']});
+export function lifeRecordOf(life,type,id){
+  const [list,key]=CLEAR_LIST[type]??[];if(!list)return null;
+  return (Array.isArray(life?.[list])?life[list]:[]).find(x=>x[key]===id)??null;
+}
+export function lifeRecordSummary(type,d){
+  const n=a=>Array.isArray(a)?a.length:0,chars=s=>[...String(s??'')].length;
+  if(type==='LIFE_DAY')return '습관 '+Object.keys(d.habits??{}).length+'칸'+(d.mood!==null?' · 기분':'')+(d.note?' · 한 줄':'');
+  if(type==='PLAN_DAY')return '계획 '+n(d.items)+'줄';
+  if(type==='PLAN_GOAL')return '목표 '+n(d.goals)+'개';
+  if(type==='DIARY_DAY')return '일기'+(d.score!==null?' · 점수':'')+' · 글 '+chars(d.text)+'자';
+  if(type==='WEEK_REVIEW')return '고른 문장 '+(d.pick?1:0)+' · 다음 주 한 가지 '+chars(d.next)+'자';
+  if(type==='EXAM_RESULT')return '과목 '+n(d.scores)+'개';
+  return '';
+}
+// 보이는 날짜(모의고사 = 본 날)와 새 시작 판정 날짜(V7D1 fresh-start FRESH_DATE_RULE과 같음: 주 기록 = 그 주 일요일).
+export const lifeClearDate=(type,id,d)=>type==='EXAM_RESULT'?d?.takenOn??null:id;
+export const lifeClearCheckDate=(type,id,d)=>(type==='PLAN_GOAL'||type==='WEEK_REVIEW')&&dateKeyOK(id)?shiftDay(id,6):lifeClearDate(type,id,d);
 
 // ---- 계산(저장하지 않음) ----
 // 한 세션의 벽돌: 30분마다 1장, 나머지가 10분 이상이면 조각 1개, 9분 이하는 0(ADDENDUM A2).

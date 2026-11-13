@@ -173,6 +173,8 @@ export async function prepareHealth(ctx,st,gone=()=>false){
   st.flowState=view.state;
   if(view.pendingSleep!==undefined)st.pendingSleep.v=view.pendingSleep;
   if(view.dates!==undefined)st.draftDates=view.dates;   // FIX70 (HUNT67 F3): 남은 건강 초안의 모든 날짜
+  // V7D1: 새 시작 기준 전 날짜 초안은 쌓기 셈·쌓기에서 빼고 freshDrafts로만 둔다(디스크 초안은 지우지 않음). ctx.freshBefore가 없으면 예전과 같다.
+  if(ctx.freshBefore&&Array.isArray(st.draftDates)){st.freshDrafts=st.draftDates.filter(d=>ctx.freshBefore(d));st.draftDates=st.draftDates.filter(d=>!ctx.freshBefore(d));}
   return st;
 }
 
@@ -352,8 +354,8 @@ export function renderHealth(root,ctx,st){
   const chipEl=el('p',chipText(),'hlt-chip');
   const dateIn=input(date,{inputmode:'numeric',placeholder:'YYYY-MM-DD',maxlength:'10'});
   const go=d=>()=>{if(!dateKeyOK(d)){st.message='날짜는 YYYY-MM-DD 형식이어야 합니다.';st.error=true;void ctx.rerender();return;}st.date=d;st.form=null;st.message=null;st.notices=[];void ctx.perform(async()=>{await prepareHealth(ctx,st);await ctx.rerender();});};
-  add(head,add(el('div',null,'buttons'),button('◀ 전날',()=>go(shiftDay(date,-1))()),dateIn,button('이동',()=>go(dateIn.value.trim())()),button('▶ 다음날',()=>go(shiftDay(date,1))()),button('오늘',()=>go(st.today)())),
-    chipEl);
+  const nav=add(el('div',null,'buttons'),button('◀ 전날',()=>go(shiftDay(date,-1))()),dateIn,button('이동',()=>go(dateIn.value.trim())()),button('▶ 다음날',()=>go(shiftDay(date,1))()),button('오늘',()=>go(st.today)()));if(nav.dataset)nav.dataset.freshKeep='1';   // V7D2: 기준 전 날짜를 보면 날짜 이동만 남기고 잠근다
+  add(head,nav,add(el('div',null,'rc-line'),chipEl,ctx.clearMenu?.('HLT_DAY',date)??null));   // V7D2: 쌓은 건강 카드 ⋯ 메뉴
   if(st.ports?.persistent===false)add(head,hint('이 환경에는 임시 저장 공간이 없어 임시 입력이 앱을 닫거나 새로고침하면 사라집니다. 쌓기 전에 닫지 마세요. (PC 앱에서는 임시 입력이 기기에 암호화되어 남습니다.)'));
   if(box){
     const s=box.status(),b=box.statusFor('HLT_DAY',date);
@@ -501,10 +503,12 @@ export function renderHealth(root,ctx,st){
     for(const p of view.removedProfiles)add(prof,row(p.data.label,profileDetail(p.data),add(el('div',null,'buttons'),
       button('복원',act(async()=>{await saveProfile(ctx,p.key,{...p.data,removed:false},p.heads,'건강 항목 복원');st.message='복원했습니다.';},{draft:false})))));
   }
-  add(out,prof);
+  add(out,prof);if(prof.dataset)prof.dataset.freshKeep='1';   // V7D2: 건강 항목 설정(날짜와 무관한 설정류)은 기준 전 날짜를 볼 때도 그대로
 
   // 7) 숨김 항목 — 눌러도 외부 전송 허용을 뜻하지 않는다.
-  add(out,add(el('div',null,'buttons'),button(st.showPrivate?'숨김 항목 다시 숨기기':'숨김 항목 보기',()=>{st.showPrivate=!st.showPrivate;void ctx.rerender();})),hint('숨김 항목은 이 화면에서만 보이며, 앱을 다시 열면 다시 숨겨집니다. 보기 버튼이 외부 전송을 허용한다는 뜻은 아닙니다.'));
+  const privRow=add(el('div',null,'buttons'),button(st.showPrivate?'숨김 항목 다시 숨기기':'숨김 항목 보기',()=>{st.showPrivate=!st.showPrivate;void ctx.rerender();}));if(privRow.dataset)privRow.dataset.freshKeep='1';
+  add(out,privRow,hint('숨김 항목은 이 화면에서만 보이며, 앱을 다시 열면 다시 숨겨집니다. 보기 버튼이 외부 전송을 허용한다는 뜻은 아닙니다.'));
+  ctx.freshLock?.(out,date);   // V7D2: 새 시작 전 날짜면 카드 입력은 읽기 전용 + 한 줄(지금까지는 저장 때 거절만)
   root.append(out);
   return out;
 }

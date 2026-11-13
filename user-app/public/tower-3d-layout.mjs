@@ -11,24 +11,51 @@ export const GOLD='#F0CF6E';
 // DS6 금빛 벽돌(설계 V5 2.7: 금은 "번 것"에만). 위치·크기·개수는 그대로, 색·재질만.
 // V6C 금빛 탑(통제탑 2026-11-10, V5 2.7 토큰): DS6 뒤에도 화면이 "황토 벽돌"이었던 까닭 = 금속 벽돌이 거의 고른 베이지 환경만 비춰 한 가지 평면색이 되고, 저녁 하늘이 금↔남색을 섞어 회갈색이 됐다.
 // 그래서 금 3단(밝은 면·중간·그늘)과 gold-shadow 테두리를 벽돌 질감에 직접 싣고, 인스턴스 색은 나이 밝기(흰색 쪽)만 곱한다. 이 토큰은 탑 3D 전용(화면 CSS 금색 B 토큰은 그대로).
-export const TOWER_GOLD=Object.freeze({hi:'#FFF1C2',mid:'#E3B341',deep:'#B07D18',shadow:'#5C3D0A'}),IVORY_1='#FAF7F0',IVORY_2='#F1ECE0',CHAMPAGNE='#F2E3C2';
-export const BRICK_GOLD=TOWER_GOLD.mid,MORTAR_IVORY='#F1ECE0';
+// V7T 진짜 금빛(통제탑 2026-11-11, 기준 = 지휘소 금빛 탑 화법: 넓은 면은 밝은 금, 흰 반사띠, 깊은 색은 아주 좁게): V6C 뒤 화면이 "사막"이었던 까닭 =
+// 아이보리·샴페인·모래색 판과 베이지 안개를 따뜻한 빛이 한 번 더 누렇게 물들였고, 금속 금이 짙은 갈색 띠(gold-shadow)를 비추고 갈색 테두리·줄눈을 둘러 똥색 금이 됐다.
+// 그래서 금 = 밝은 금 #F2D27A~#E8C45A + 모서리 하이라이트 #FFF6D8 + 가는 샴페인 선 #D9C48A(4토큰, 갈색·황토·겨자·주황 없음), 둘레 = 흰 대리석(노란기·채도 낮게).
+// V7T2 깊이 있는 금(통제탑 2026-11-12, 기준 = 지휘소 금빛 탑 렌더 hq_tower_emblem_1024): V7T 뒤 기본 각도에서 "흰 건물에 금 조각"이었던 까닭 = 깊은 색이 샴페인까지라 대비가 흰색 쪽으로만 생겼고 실루엣(구조벽·바닥판)이 흰 대리석이었다.
+// 그래서 짙은 금 deep #CDA343(허용 범위 DEEP_GOLD #B8892A~#CFA544, 색상 38~47°, 휘도 ≥120, R>G>B — 갈색·황토 아님)을 벽돌 아래 모따기·세로 테두리·처마 아래에만, 실루엣은 금 처마·금 기둥·샴페인 금 구조벽.
+// 범위 안에서 밝은 쪽을 고른 까닭: 화면에서 조명·밉맵으로 조금 어두워져도 V7T 픽셀 분류의 갈색 선(명도 0.72) 위에 남게.
+export const TOWER_GOLD=Object.freeze({hi:'#FFF6D8',light:'#F2D27A',mid:'#E8C45A',line:'#D9C48A',deep:'#CDA343'}),IVORY_1='#FAF8F3',IVORY_2='#F0EEE9',CHAMPAGNE='#F4EFE4';
+export const DEEP_GOLD=Object.freeze({lo:'#B8892A',hi:'#CFA544',hueMin:38,hueMax:47,lumMin:120,maxShare:0.15});
+export const BRICK_GOLD=TOWER_GOLD.mid,MORTAR_IVORY='#F4F2ED';
+// V7T2 쌓인 층의 구조벽 바깥면 = 옅은 샴페인 금(금속 0.6~0.75, 번 금벽돌보다 옅고 덜 반짝여 "번 것"과 "구조"가 구분된다). 안 쌓인 층(예상도)은 아이보리 반투명 그대로.
+export const CHAMPAGNE_WALL=Object.freeze({color:'#EFDFAF',metalness:0.7,roughness:0.35});
+// V7T2 검은 대리석 받침(기단·계단, 은은한 반사) + 윗모서리 가는 금 테. 바닥 원판은 흰 대리석 그대로.
+// 금 뼈대 묶음(금 처마·기둥·문·현판과 한 도형, 드로우콜 1)이라 재질 값을 같이 쓴다: 금속 0.9·거칠기 0.28 → 검은 정점은 거의 검고 환경맵 반사(약 2%)만 은은하게 남는다.
+export const BLACK_MARBLE=Object.freeze({body:'#2A2826',metalness:0.9,roughness:0.28,rim:'#E8C45A',rimH:0.05,rimT:0.03});
+// V7T3 그늘 면 짙은 금(통제탑 2026-11-12, 기준 그림 = 왼쪽 면 밝은 금 + 흰 반사, 오른쪽 면·처마 아래·모서리 짙은 금): V7T2 뒤 기본 각도에서 "버터 금"이었던 까닭 =
+// 금속 면의 밝기는 거의 환경맵 반사로 정해지는데 환경맵이 방위마다 같은 흰색이라 앞면과 오른쪽 면이 같은 밝은 금이었다(해 세기 상향은 금속 면에 거의 듣지 않는다).
+// 그래서 키 라이트를 왼쪽 앞(-x, +z)으로 정하고, 빛 반대쪽 면(+x·-z, 기본 각도의 오른쪽 면과 뒷면)의 구조벽·처마·기둥에 짙은 금 정점 색을 준다(재질·정점 색만, 셰이더 치환 추가 없음 T2A-7).
+// 해·하늘·안개·환경맵은 그대로라 시각이 바뀌어도 그늘 면은 같은 짙은 금이다. 색은 DEEP_GOLD 범위 안에서 색상 43~46°·휘도 146~159:
+// 화면에서는 흰 환경 반사가 파랑을 올려(약 +25) 색상이 3~5° 내려가고 휘도가 조금 오른다 → 화면 색상 40~43°·휘도 약 150(짙은 금). 범위 가운데(#C29733, 색상 42°)는 화면에서 37°(주황 판정)로 떨어졌다.
+// 짙은 금 면적 상한은 그늘 면에 한해 45%(shadeMaxShare), 빛 받는 면(벽돌 질감)은 DEEP_GOLD.maxShare 15% 그대로.
+export const KEY_LIGHT=Object.freeze({x:-1,z:1});
+export const isShadeFace=(axis,sign)=>axis===0?sign*KEY_LIGHT.x<0:axis===2?sign*KEY_LIGHT.z<0:false;   // 면 법선(축 0=x·2=z, 부호)이 키 라이트 반대쪽이면 그늘 면. 윗면·아랫면(축 1)은 아니다.
+export const SHADE_GOLD=Object.freeze({wall:'#BC9A2C',wallLow:'#B8922A',cornice:'#C29E3A',corniceLow:'#BC9A2C',pillar:'#BC9A2C',shadeMaxShare:0.45});
+// V7T 흰 대리석(바닥 원판·구조벽·바닥판·대지): 거의 흰색, R-B ≤ 8.
+export const MARBLE=Object.freeze({white:'#FAF9F6',wall:'#F6F5F1',slab:'#ECEAE5',vein:'#D8D7D3'});
+// V7T 빈 칸(줄눈 판) 습관 XP 빛: 인스턴스 색에서 빼는 초록·파랑 몫(V6C 0.15·0.85는 레몬색) — 화면 파일이 (1, 1-green·b, 1-blue·b)로 쓴다.
+export const MORTAR_GLOW=Object.freeze({green:0.08,blue:0.45});
 // 나이 밝기: 오늘 = 질감 금 그대로(가장 밝다), 이번 주·지난 주는 조금씩 낮춘다(녹·얼룩·황토 없음).
 export const BRICK_AGE_TINT=Object.freeze({TODAY:'#FFFFFF',WEEK:'#F7F5F0',OLD:'#EDEAE3'});
 export const BRICK_MATERIALS=Object.freeze({
-  brick:Object.freeze({metalness:0.95,roughness:0.33}),
-  half:Object.freeze({metalness:0.95,roughness:0.35}),
+  brick:Object.freeze({metalness:0.95,roughness:0.28}),   // V7T: 0.33 → 0.28(광택을 조금 더 또렷하게)
+  half:Object.freeze({metalness:0.95,roughness:0.3}),
   gold:Object.freeze({metalness:1,roughness:0.25}),   // 90분 금벽돌: 한결 매끈한 광택(발광은 화면 파일이 하늘 밝기로 정한다)
-  today:Object.freeze({metalness:0.95,roughness:0.3,emissive:TOWER_GOLD.hi,emissiveIntensity:0.2}),   // 오늘: 하이라이트 쪽으로 약하게 밝다
+  today:Object.freeze({metalness:0.95,roughness:0.27,emissive:TOWER_GOLD.hi,emissiveIntensity:0.2}),   // 오늘: 하이라이트 쪽으로 약하게 밝다
 });
 export const brickAge=(scene,r)=>r.today?'TODAY':scene.floors[r.floor]?.current?'WEEK':'OLD';
 // 작은 금빛 벽돌(일기·리뷰)은 같은 나이 밝기를 흰색 쪽으로 옅게.
 export const brickTint=(scene,r)=>{const c=BRICK_AGE_TINT[brickAge(scene,r)];return r.small?mixHex(c,'#FFFFFF',0.5):c;};
 // 완공 예상도: 진한 금 선(WebGL 선은 늘 1px이라 불투명도 0.4로 가늘게) + 위로 갈수록 배경색 쪽으로 옅어진다(fade, 꼭대기에서 85%). 아이보리 반투명 유리(0.05).
-export const BLUEPRINT_STYLE=Object.freeze({line:TOWER_GOLD.deep,lineOpacity:0.4,fade:0.85,glass:IVORY_1,glassOpacity:0.05});
+// V7T: 주황으로 보이던 gold-deep 선 → 가는 샴페인 선(0.7), 안 쌓인 층은 아이보리 반투명 유리(0.35)로 흰 하늘·금 벽돌과 뚜렷이 다르게.
+export const BLUEPRINT_STYLE=Object.freeze({line:TOWER_GOLD.line,lineOpacity:0.7,fade:0.85,glass:'#F3EEE2',glassOpacity:0.35});
 export const blueprintFade=(y,bp)=>BLUEPRINT_STYLE.fade*clamp01((y-bp.roof)/Math.max(1e-6,bp.top+CONE_H+2-bp.roof));
 // 바닥: 아이보리 대리석 원형 단상(정원·나무까지 덮는다) + 단상 아래 아이보리 대지.
-export const DAIS=Object.freeze({r:15,h:0.3,side:IVORY_2});
+// V7T: 흰 대리석 원판 + 옆면 금 테(원판 가장자리가 흰 하늘에 녹지 않게, 화면 파일이 금속 금으로 그린다).
+export const DAIS=Object.freeze({r:15,h:0.3,side:TOWER_GOLD.mid});
 // V6C 꼭대기 작은 빛: 지금 층(이번 주) 위, 오늘 칸 앞에 작은 금빛 점광 1개(그림자 없음). 광원은 반구광·해·이 점광 3개가 상한이다.
 export const TOP_GLOW=Object.freeze({color:TOWER_GOLD.hi,intensity:3,distance:7,decay:2,lift:0.55,out:0.9,r:0.07}),MAX_LIGHTS=3;
 export function topGlow(scene){
@@ -42,9 +69,10 @@ export const MORTAR_FULL_XP=100,MAX_LAMPS=12,MAX_SPIRE_TIERS=12,MAX_PARTICLES=48
 export const MAX_INSTANCES=20000,LOW_CORES=2,LOW_MEMORY_GB=1,SLOW_FRAME_MS=200,SLOW_FRAME_COUNT=10;
 export const MOTION_SECONDS=4,FALL_SECONDS=1.4,GROW_SECONDS=1.6;
 export const FOV=38,PHI=0.3,MIN_ZOOM=0.45,MIN_VIEW_H=18;
-export const AREA_COLORS=Object.freeze({BODY:'#5BA66B',HEAD:'#4F86C6',MONEY:'#D4A83A',HEART:'#D9534F'});
+export const AREA_COLORS=Object.freeze({BODY:'#5BA66B',HEAD:'#4F86C6',MONEY:TOWER_GOLD.mid,HEART:'#D9534F'});   // V7T: 돈 영역 황토(#D4A83A) → 밝은 금
 // V6F: 금빛 탑 위에서 튀던 파란 지붕·깃발 → 원뿔 지붕(모퉁이 탑·완공 지붕)은 gold-deep, 영역 깃발은 아이보리. 영역 색은 난간·등에만 남긴다.
-export const TOWER_ROOF=TOWER_GOLD.deep,TOWER_FLAG=IVORY_1;
+// V7T: 주황·갈색으로 보이던 gold-deep 원뿔 → 밝은 금(mid).
+export const TOWER_ROOF=TOWER_GOLD.mid,TOWER_FLAG=IVORY_1;
 const SIDES=Object.freeze(['BODY','HEAD','MONEY','HEART']);
 export const BRICK_W=0.92,BRICK_D=0.46,BRICK_GAP=0.06;
 // 벽돌 앞면은 탑 앞면보다 BRICK_OUT 튀어나오고, 줄눈 판의 앞면은 벽돌 앞면보다 MORTAR_IN 들어가 있다(벽돌 사이 틈으로 보이는 들어간 줄눈).
@@ -70,13 +98,14 @@ const box=(x,y,z,sx,sy,sz,extra)=>({x,y,z,sx,sy,sz,...extra});
 
 // ---------- T2B 집 부품 슬롯: 날짜(시즌의 passed)와 투영으로만 정해진다. 기본 부품은 시간이 지나면 반드시 붙고, 달성률 60%/90%면 은/금 장식이 더해진다 ----------
 export const FOUND_H=1.2,CONE_H=4.2,CRANE_UP=4,MAX_FLOWERS=64,MAX_TREES=16,GOLD_PER_TREE=10,MAX_LABELS=8,BLUEPRINT_MAX_FLOORS=160,WHOLE_PHI=0.45;
-export const GRADE_COLORS=Object.freeze({BASE:'#CDBFA4',SILVER:'#C9D1DB',GOLD});
+export const GRADE_COLORS=Object.freeze({BASE:'#E6E4DF',SILVER:'#C9D1DB',GOLD});   // V7T: 기본 등급 돌림띠 모래색(#CDBFA4) → 옅은 대리석
 // DS6: 기단·창틀·화단·길·방수포는 아이보리 대리석 톤, 비계·크레인은 금속 + 갈고리·돛대 끝 금 포인트(공사장 노랑·파랑 없음).
 // V6C: 갈색으로 보이던 기단·화단 판 = 아이보리 석재(ivory-1/2), 비계·크레인 = 회색 덩어리 대신 가는 짙은 청동 선(시선이 탑에 가게).
-export const KIT=Object.freeze({plinth:IVORY_1,step:IVORY_2,door:'#6B4A2E',frame:'#F3ECDD',shutter:'#4D6B5A',plaque:'#5A3E2A',pole:'#8A8F99',flag:'#D9534F',dirt:IVORY_2,lawn:IVORY_1,sprout:'#7DBA5A',path:IVORY_1,post:'#4A3B2C',flame:'#FFB347',trunk:'#6B4A2E',crown:'#3F7D45',sapling:'#8CC063',tarp:IVORY_2,timber:'#4A3A26',slate:'#56657F',crane:'#3E3122',ballast:'#2F2619',cabin:IVORY_2,cable:'#3E3122',hook:BRICK_GOLD});
-const FLOWER_COLORS=['#E86A8F','#F2C14E','#9C7BD8','#F28C5B','#F4F1EA'];
+// V7T: 바닥에 깔린 판(화단·길·방수포·계단)은 흰 대리석(IVORY_1/2가 이제 노란기 낮은 흰색), 문·현판 = 금, 비계·크레인·뼈대·기둥 = 짙은 중성 회색(갈색 없음), 횃불 = 따뜻한 금빛.
+export const KIT=Object.freeze({plinth:IVORY_1,step:IVORY_2,door:TOWER_GOLD.mid,frame:MARBLE.wall,shutter:'#4D6B5A',plaque:TOWER_GOLD.mid,pole:'#8A8F99',flag:'#D9534F',dirt:IVORY_2,lawn:IVORY_1,sprout:'#7DBA5A',path:IVORY_1,post:'#4A4844',flame:'#FFD98A',trunk:'#77736C',crown:'#3F7D45',sapling:'#8CC063',tarp:IVORY_2,timber:'#4A4844',slate:'#56657F',crane:'#46443F',ballast:'#3A3935',cabin:IVORY_2,cable:'#46443F',hook:BRICK_GOLD});
+const FLOWER_COLORS=['#E86A8F','#F2C14E','#9C7BD8','#F3A6B6','#F4F1EA'];   // V7T: 주황 꽃(#F28C5B) → 연분홍
 // seasons(life-tower의 seasonsOf 결과)가 없으면 기단만. 정원은 끝에서 세 번째 시즌(기본 일정 = 6평), 지붕 골조는 끝에서 두 번째(하반기 모평), 완공은 마지막(수능)이 지나면.
-export const TITLE_FLAG_COLORS=Object.freeze({BRONZE:'#B0763A',SILVER:GRADE_COLORS.SILVER,GOLD,HIDDEN:GRADE_COLORS.SILVER});   // Q1C 칭호 깃발 색(숨김 칭호는 자동 선택 순위가 은과 같아 은색)
+export const TITLE_FLAG_COLORS=Object.freeze({BRONZE:TOWER_GOLD.line,SILVER:GRADE_COLORS.SILVER,GOLD,HIDDEN:GRADE_COLORS.SILVER});   // Q1C 칭호 깃발 색(숨김 칭호는 자동 선택 순위가 은과 같아 은색). V7T: 동(갈색 #B0763A) → 샴페인
 export function houseParts(ach,seasons=null){
   const S=ach.hasRecords&&seasons?.length?seasons:null,n=S?S.length:0,passed=S?S.filter(s=>s.passed).length:0,done=Boolean(S&&S.at(-1).passed);
   return {FOUNDATION:Boolean(ach.hasRecords),SEASON_TRIM:S?S.filter(s=>s.passed&&s.floorTo>=0).map(s=>s.k):[],
@@ -166,10 +195,10 @@ export function towerScene(ach,{seasons=null,titleTier=null}={}){
   const towers=SIDES.map(area=>{const t=cornerTower(area,ach.levels[area]?.level??1);stone.push(...t.stone);lamps.push(...t.lamps);if(t.rail)rails.push(t.rail);if(t.roof)towerRoofs.push(t.roof);return t.tower;});
   if(parts.FOUNDATION){
     const tag={part:'FOUNDATION'},fz=HALF_D+0.8;
-    stone.push(box(0,found/2,0,COLS+1.6,found,DEPTH+1.6,{color:KIT.plinth,...tag}),box(0,0.15,0,COLS+2.4,0.3,DEPTH+2.4,{color:KIT.step,...tag}));
+    stone.push(box(0,found/2,0,COLS+1.6,found,DEPTH+1.6,{color:KIT.plinth,...tag,base:true}),box(0,0.15,0,COLS+2.4,0.3,DEPTH+2.4,{color:KIT.step,...tag,base:true}));   // V7T2: base = 화면이 검은 대리석으로 그린다(goldFrame)
     plain.push(box(0,0.3+0.375,fz+0.01,1.4,0.75,0.06,{color:KIT.door,...tag}));   // 성문(기단 앞면의 아치 문)
     for(const sx of [-1,1])stone.push(box(sx*0.8,0.3+0.42,fz+0.04,0.2,0.84,0.12,{color:KIT.frame,...tag}));
-    stone.push(box(0,1.08,fz+0.04,1.8,0.18,0.12,{color:KIT.frame,...tag}),box(0,1.1,fz+0.08,0.24,0.26,0.14,{color:KIT.frame,...tag}),box(0,0.08,HALF_D+1.5,1.8,0.16,0.6,{color:KIT.step,...tag}));
+    stone.push(box(0,1.08,fz+0.04,1.8,0.18,0.12,{color:KIT.frame,...tag}),box(0,1.1,fz+0.08,0.24,0.26,0.14,{color:KIT.frame,...tag}),box(0,0.08,HALF_D+1.5,1.8,0.16,0.6,{color:KIT.step,...tag,base:true}));
   }
   // 시즌 마감: 그 시즌 꼭대기 바닥판 높이에 돌림띠(데이터 벽돌을 가리지 않는다), 앞 현판(시험 이름), 은·금이면 모서리 장식, 보스면 깃발, 그 시즌 층마다 왼쪽 벽에 아치 창틀·덧문.
   for(const s of seasons??[]){
@@ -252,7 +281,8 @@ export function towerScene(ach,{seasons=null,titleTier=null}={}){
 }
 // V6C 줄눈 선(그리기 전용, towerScene 결과·개수는 그대로): 벽돌이 쌓인 칸(층·요일)마다 벽돌 뒤·줄눈 판 앞에 얇은 판 하나 → 벽돌 사이 틈으로 gold-shadow 가는 선이 보인다.
 // V6B 습관 벽돌을 얻은 날(week.days[col].habitBrick)은 색만 다르다(JOINT.habit). 공부 벽돌이 없는 습관 날은 그 칸 바닥에 얇은 띠(habitSill)만.
-export const JOINT=Object.freeze({base:TOWER_GOLD.shadow,habit:TOWER_GOLD.hi,t:0.01,in:0.015,habitSill:0.08});
+// V7T: gold-shadow(짙은 갈색) 선이 벽돌을 갈색으로 둘러 똥색 금으로 보였다 → 샴페인 선(금 면이 한 덩어리로 이어진다, 습관 날은 하이라이트 금).
+export const JOINT=Object.freeze({base:TOWER_GOLD.line,habit:TOWER_GOLD.hi,t:0.01,in:0.015,habitSill:0.08});
 export function jointRows(scene){
   const top=new Map();
   for(const b of scene.bricks){const k=b.floor+':'+b.col;top.set(k,Math.max(top.get(k)??-Infinity,b.y+b.sy/2+BRICK_GAP/2));}
@@ -264,10 +294,37 @@ export function jointRows(scene){
   }
   return out;
 }
+// V7T2 금 뼈대(그리기 전용, towerScene 결과·개수는 그대로. V5 2.7 예외 — 통제탑 2026-11-12 (b)): 화면 파일이 한 도형(드로우콜 1, 옛 바닥판 묶음 자리)으로 합친다.
+// 층 바닥판 = 금 처마(윗면 금, 앞·옆면 밝은 금 → 아래 가장자리 짙은 금), 층 모서리 4곳 = 가는 금 기둥(앞뒤 면 밝은 금, 옆면 짙은 금), 기단·계단(base) = 검은 대리석 + 윗모서리 금 테.
+// 행의 top·under = 위·아래 면 색, low = 옆면 아래 가장자리 색(위 → 아래로 번진다), xs = 좌우(±x) 면 색. 없으면 color.
+export const CORNICE=Object.freeze({top:TOWER_GOLD.mid,face:TOWER_GOLD.light,under:TOWER_GOLD.deep}),PILLAR=Object.freeze({w:0.08,face:TOWER_GOLD.light,side:TOWER_GOLD.deep});
+// 금 문·현판·업적 금(단색 묶음의 금 행)도 이 묶음으로 옮겨 금속 금으로 그린다(재질만, 위치·크기 그대로). 모퉁이 탑 원뿔 지붕은 나무와 같은 원뿔 묶음이라 색만 금(새 묶음 금지).
+const GOLD_ROW_COLORS=new Set([TOWER_GOLD.mid,TOWER_GOLD.light,TOWER_GOLD.line,GOLD]);
+export const isGoldRow=r=>GOLD_ROW_COLORS.has(r.color);
+// V7T3: 처마·기둥의 그늘 면(isShadeFace)은 shadeFace(위) → shadeLow(아래 가장자리) 짙은 금. 빛 받는 면은 V7T2 그대로.
+export function goldFrame(scene,goldRows=[]){
+  const S=SHADE_GOLD,rows=scene.slabs.map(s=>({...s,color:CORNICE.face,top:CORNICE.top,under:CORNICE.under,low:CORNICE.under,shadeFace:S.cornice,shadeLow:S.corniceLow}));
+  rows.push(...goldRows);
+  scene.floors.forEach((f,i)=>{
+    const y0=f.base+SLAB_H,h=f.top-y0;
+    for(const [a,b] of [[1,1],[-1,1],[1,-1],[-1,-1]])rows.push(box(a*HALF_W,y0+h/2,b*HALF_D,PILLAR.w,h,PILLAR.w,{floor:i,pillar:true,color:PILLAR.face,xs:PILLAR.side,shadeFace:S.pillar}));
+  });
+  const B=BLACK_MARBLE,o=B.rimT/2;
+  for(const r of scene.stone){
+    if(!r.base)continue;
+    rows.push({...r,color:B.body});
+    const y=r.y+r.sy/2-B.rimH/2,hx=r.sx/2+o,hz=r.sz/2+o,rim={color:B.rim,rim:true};
+    rows.push(box(r.x,y,r.z+hz,r.sx+B.rimT*2,B.rimH,B.rimT,rim),box(r.x,y,r.z-hz,r.sx+B.rimT*2,B.rimH,B.rimT,rim),box(r.x+hx,y,r.z,B.rimT,B.rimH,r.sz,rim),box(r.x-hx,y,r.z,B.rimT,B.rimH,r.sz,rim));
+  }
+  return rows;
+}
+// V7T3 쌓인 층 구조벽(그리기 전용, 입력 불변): 빛 받는 면 = 샴페인 금(V7T2 그대로), 그늘 면 = 짙은 금(위 wall → 아래 가장자리 wallLow). 화면 파일이 정점 색으로 싣는다.
+export const shadeWalls=cores=>cores.map(r=>({...r,color:CHAMPAGNE_WALL.color,shadeFace:SHADE_GOLD.wall,shadeLow:SHADE_GOLD.wallLow}));
 
 // ---------- T2C 업적 장식: badges(life-tower의 houseBadges 결과)대로 머릿돌·성문 현판·문장·옥상 깃발·시험 깃발·탑 깃발·금 테를 놓는다. 전부 기단 또는 지붕 위라 데이터 벽돌을 가리지 않는다 ----------
-export const PLAQUE_COLORS=Object.freeze({WOOD:'#8A5A2B',SILVER:GRADE_COLORS.SILVER,GOLD,GEM:GOLD}),STREAK_COLORS=Object.freeze({WHITE:'#F4F1EA',BLUE:CHAMPAGNE,GOLD}),CREST_COLORS=Object.freeze(['#B0763A',GRADE_COLORS.SILVER,GOLD]);
-const GEM_COLOR='#59C9E0',CORNERSTONE_COLOR='#E9E0CC';
+// V7T: 나무 현판·동 문장(갈색) → 샴페인, 머릿돌 = 흰 대리석.
+export const PLAQUE_COLORS=Object.freeze({WOOD:TOWER_GOLD.line,SILVER:GRADE_COLORS.SILVER,GOLD,GEM:GOLD}),STREAK_COLORS=Object.freeze({WHITE:'#F4F1EA',BLUE:CHAMPAGNE,GOLD}),CREST_COLORS=Object.freeze([TOWER_GOLD.line,GRADE_COLORS.SILVER,GOLD]);
+const GEM_COLOR='#59C9E0',CORNERSTONE_COLOR=MARBLE.white;
 // 새 객체를 돌려준다(입력 불변). titleName = Q1C가 고른 칭호(표시만). 없으면 badges.title. 글자는 현판이 생긴 뒤에만 얹는다.
 export function withBadges(scene,badges,{titleName=null}={}){
   const rows=[],labels=[];let top=0;
@@ -467,17 +524,22 @@ const mixHex=(a,b,t)=>{const x=rgbOf(a),y=rgbOf(b);return hexOf(x.map((v,i)=>v+(
 
 // V6C 금속 금벽돌 면(DataTexture는 y=0이 아래): 한 벽돌 안에 금 3단 — 위쪽 밝은 면(gold-hi 쪽) → 가운데 금(gold) → 아래 그늘(gold-deep 쪽),
 // 위 모따기 = gold-hi 쪽, 아래 모따기 = gold-deep 쪽, 맨 가장자리 2px = gold-deep·gold-shadow 반반(벽돌 뒤 줄눈 판의 gold-shadow 선과 이어진다). 아주 옅은 가로 결(헤어라인)뿐, 구멍·얼룩 없음. broken이면 위 가장자리를 깎은 조각(반 칸)용.
+// V7T 진짜 금 면(지휘소 탑 화법을 벽돌 한 장에): 아래 금(mid) → 가운데 밝은 금(light) → 위쪽 흰 반사띠(hi 쪽, 면 높이 약 16%) → 다시 밝은 금 → 위 모따기 하이라이트 hi.
+// 깊은 색은 맨 가장자리 2px의 샴페인 테(line)와 아래 모따기(mid·line 반반)뿐, 갈색·짙은 그늘 없음. 왼쪽 모따기는 조금 밝게, 오른쪽은 샴페인 쪽(빛이 왼쪽 위에서 온다).
+// V7T2: 아래 2px·좌우 세로 테두리 2px·아래 모따기 = 짙은 금 deep(섞지 않는다 — 금과 섞은 중간색은 허용 범위 밖 황토가 된다) — 짙은 금은 면적 약 11%(DEEP_GOLD.maxShare 15% 이하). 위 테두리·오른쪽 모따기는 V7T 그대로.
 export function brickTexels(seed=1,{broken=false}={}){
-  const [w,h]=TEX.brick,px=new Uint8Array(w*h*4),G=TOWER_GOLD,[hi,mid,deep,shadow]=[G.hi,G.mid,G.deep,G.shadow].map(rgbOf);
-  const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
+  const [w,h]=TEX.brick,px=new Uint8Array(w*h*4),G=TOWER_GOLD,[hi,light,mid,line,deep]=[G.hi,G.light,G.mid,G.line,G.deep].map(rgbOf);
+  const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t),rim=mix(line,mid,0.25).map(v=>v*0.94);   // 위 가는 테 ≈ #D0B876(조금 깊은 샴페인 금, 갈색 아님)
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
-    const t=(y+0.5)/h,edge=Math.min(x,w-1-x,y,h-1-y);
-    let c=t>0.45?mix(mid,hi,0.9*smooth(clamp01((t-0.45)/0.45))):t<0.28?mix(mid,deep,0.5*smooth(clamp01((0.28-t)/0.28))):mid;
-    if(edge<2)c=mix(deep,shadow,0.5);
-    else if(edge<5)c=y>=h-5?mix(c,hi,0.85):y<5?mix(c,deep,0.55):c;
+    const t=(y+0.5)/h,u=(x+0.5)/w,edge=Math.min(x,w-1-x,y,h-1-y),band=Math.exp(-(((u-0.3)/0.06)**2)),streak=Math.exp(-(((t-0.8)/0.05)**2));
+    let c=mix(mid,light,smooth(clamp01((t-0.15)/0.45)));
+    c=mix(c,mid,0.7*smooth(clamp01((u-0.6)/0.4)));
+    c=mix(c,hi,Math.min(1,0.7*band+0.2*smooth(clamp01((t-0.6)/0.3))+0.25*streak));
+    if(edge<2)c=y>=h-2?rim:deep;
+    else if(edge<5)c=y>=h-5?mix(c,hi,0.9):y<5?deep:x<5?mix(c,hi,0.35):mix(c,line,0.4);
     const g=1+0.02*(hash01(seed+1,y,0)-0.5)+0.015*(valueNoise(seed,x,y,32,w/32,h/32)-0.5);
     c=c.map(v=>v*g);
-    if(broken&&y>h-4-5*valueNoise(seed+3,x,0,8,w/8,1))c=mix(c,shadow,0.45);
+    if(broken&&y>h-4-5*valueNoise(seed+3,x,0,8,w/8,1))c=mix(c,rim.map(v=>v*0.93),0.8);   // 깨진 위 가장자리 = 조금 더 깊은 샴페인(갈색 아님)
     put(px,(y*w+x)*4,...c);
   }
   return px;
@@ -487,26 +549,27 @@ export function wallTexels(seed=2){
   const [w,h]=TEX.wall,px=new Uint8Array(w*h*4),CH=16,CW=32,M=2;
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
     const row=Math.floor(y/CH),xx=(x+(row%2)*CW/2)%w,col=Math.floor(xx/CW),joint=y%CH<M||xx%CW<M;
-    const v=joint?0.9+0.02*hash01(seed+1,x,y):0.95+0.03*hash01(seed,row,col)+0.02*valueNoise(seed,x,y,8,w/8,h/8);
-    put(px,(y*w+x)*4,v,v*0.985,v*0.955);
+    const v=joint?0.94+0.02*hash01(seed+1,x,y):0.96+0.025*hash01(seed,row,col)+0.015*valueNoise(seed,x,y,8,w/8,h/8);
+    put(px,(y*w+x)*4,v,v*0.995,v*0.985);   // V7T: 흰 대리석(노란기 v*0.955 → v*0.985), 줄눈 0.9 → 0.94
   }
   return px;
 }
-// 대지(단상 밖): 아이보리 석회암(ivory-1 쪽), 아주 옅은 얼룩. 잔디·흙 없음.
+// 대지(단상 밖): 아이보리 석회암(ivory-1 쪽), 아주 옅은 얼룩. 잔디·흙 없음. V7T: 흰 대리석 쪽(노란기 낮게).
 export function groundTexels(seed=3){
   const [w,h]=TEX.ground,px=new Uint8Array(w*h*4);
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
-    const v=0.965+0.02*valueNoise(seed,x,y,32,w/32,h/32)+0.01*valueNoise(seed+1,x,y,8,w/8,h/8);
-    put(px,(y*w+x)*4,v,v*0.985,v*0.95);
+    const v=0.97+0.02*valueNoise(seed,x,y,32,w/32,h/32)+0.01*valueNoise(seed+1,x,y,8,w/8,h/8);
+    put(px,(y*w+x)*4,v,v*0.995,v*0.985);
   }
   return px;
 }
 // 아이보리 대리석 단상 윗면(원판 UV: 가운데 = 0.5,0.5): 비스듬한 아주 옅은 결 + 집 둘레 연한 접지 그늘(V6C: 0.16→0.08, 가운데 0.3 안쪽이 가장 진하고 0.55에서 사라진다).
+// V7T: 흰 대리석(바탕 거의 흰색, 결은 베이지 대신 옅은 회색), 접지 그늘 0.08 → 0.12(부드럽게, 집 밑만).
 export function daisTexels(seed=4){
-  const [w,h]=TEX.dais,px=new Uint8Array(w*h*4),base=[0.98,0.97,0.94],vein=[0.9,0.86,0.78];
+  const [w,h]=TEX.dais,px=new Uint8Array(w*h*4),base=[0.985,0.982,0.975],vein=[0.85,0.85,0.845];
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
     const n=valueNoise(seed,x,y,32,w/32,h/32),k=Math.pow(1-Math.abs(Math.sin((x*0.6+y*0.8)/9+5*n)),14)*0.55,d=Math.hypot((x+0.5)/w-0.5,(y+0.5)/h-0.5)*2;
-    const ao=1-0.08*clamp01(1-(d-0.3)/0.25),g=0.99+0.01*valueNoise(seed+1,x,y,4,w/4,h/4);
+    const ao=1-0.12*clamp01(1-(d-0.3)/0.25),g=0.99+0.01*valueNoise(seed+1,x,y,4,w/4,h/4);
     put(px,(y*w+x)*4,...base.map((c,i)=>(c+(vein[i]-c)*k)*ao*g));
   }
   return px;
@@ -517,15 +580,18 @@ export function daisTexels(seed=4){
 // DS6: 낮 하늘은 지평선 아이보리 → 위 연금, 아침·저녁도 같은 금빛 계열(파란 하늘 없음).
 // V6C: 밤도 아이보리→샴페인 계열(조금 깊은 샴페인 + 발광·별). DS6 밤 남색과 저녁 금색이 18~20시에 섞여 회갈색 안개·갈색 바닥이 되던 구간을 없앴다.
 // 반구광을 해보다 상대적으로 키워 그림자가 연하다. 해 세기는 낮 1.8(DS6 2.4).
+// V7T: 베이지 안개·샴페인 하늘이 화면 전체를 누렇게 띄웠다 → 모든 시각 위 흰색 → 아래(지평선·안개) 아주 옅은 아이보리(R-B ≤ 8), 땅 반사도 옅은 회백색.
+// 해·달 빛은 거의 흰색(따뜻함은 아침·저녁에만 조금). 밤은 같은 흰 계열을 조금 낮춘다(밤 판정·발광·별 값은 그대로).
+// V7T2: 키 라이트(해) 세기를 올리고(낮 1.8 → 2.6, 아침·저녁 1.4 → 2.0) 반구광은 조금 낮춰(낮 2.4 → 2.0) 금 면의 밝은 면·짙은 면 대비가 기본 각도에서 보이게. 하늘·안개 색은 V7T 그대로.
 const SKY_KEYS=[
-  [0,'#E4CFA4','#F4EBD9','#E2D3B6','#FFE4B8',0.9,2.5,1,1],
-  [5,'#E4CFA4','#F4EBD9','#E2D3B6','#FFE4B8',0.9,2.5,1,1],
-  [6.5,'#EBD8AE','#F9F1E2','#E8DCC4','#FFE6C2',1.4,2.4,0.25,0],
-  [9,CHAMPAGNE,IVORY_1,'#EDE3CF','#FFF6E6',1.8,2.4,0,0],
-  [16,CHAMPAGNE,IVORY_1,'#EDE3CF','#FFF6E6',1.8,2.4,0,0],
-  [18,'#ECD5A6','#F8EEDB','#E6D8BC','#FFD9A0',1.4,2.5,0.4,0],
-  [20,'#E4CFA4','#F4EBD9','#E2D3B6','#FFE4B8',0.9,2.5,1,1],
-  [24,'#E4CFA4','#F4EBD9','#E2D3B6','#FFE4B8',0.9,2.5,1,1],
+  [0,'#F5F4F1','#F0EEE9','#E5E3DE','#FFF6E8',0.9,2.5,1,1],
+  [5,'#F5F4F1','#F0EEE9','#E5E3DE','#FFF6E8',0.9,2.5,1,1],
+  [6.5,'#FFFFFF','#FAF8F2','#EEECE7','#FFF5E4',2.0,2.1,0.25,0],
+  [9,'#FFFFFF',IVORY_1,'#EEECE7','#FFFCF6',2.6,2.0,0,0],
+  [16,'#FFFFFF',IVORY_1,'#EEECE7','#FFFCF6',2.6,2.0,0,0],
+  [18,'#FFFEFB','#F8F5EE','#EAE7E1','#FFF4E3',2.0,2.2,0.4,0],
+  [20,'#F5F4F1','#F0EEE9','#E5E3DE','#FFF6E8',0.9,2.5,1,1],
+  [24,'#F5F4F1','#F0EEE9','#E5E3DE','#FFF6E8',0.9,2.5,1,1],
 ];
 const norm3=v=>{const l=Math.hypot(...v)||1;return v.map(x=>x/l);};
 const MOON=norm3([-0.5,0.55,0.45]);
@@ -555,16 +621,19 @@ export function starField(n=STAR_COUNT){
 // V6C: DS6은 하늘·땅을 그대로 비춰 거의 고른 베이지라 금속 벽돌이 한 가지 평면색(황토)이 됐다. 지금은 "작은 스튜디오"(대비가 있는 반사):
 // 카메라가 위에서 내려다보므로 벽돌 앞면은 수평선 아래 6~36°를 비춘다 → 그 자리가 가장 밝은 띠(band). 수평선 바로 둘레는 샴페인으로 살짝 낮추고,
 // 위는 아이보리(12~28°에 둘째 띠), 아래 50° 밑으로는 gold-shadow 쪽 그늘. 시각은 색만 조금(하늘 아래색 20%) 바꾸고 대비는 그대로, 해 자리에 밝은 점.
-export const ENV_STUDIO=Object.freeze({top:'#FFFBF0',band:'#FFFFFF',horizon:CHAMPAGNE,floor:'#C9A86E',deep:TOWER_GOLD.shadow});
+// V7T(지휘소 탑 화법): 짙은 갈색 반사 띠(floor #C9A86E → deep gold-shadow)가 금을 똥색으로 만들었다 → 밝은 흰색 위주 + 좁은 따뜻한 빛 띠(수평선 ±5°).
+// 가장 어두운 곳(바닥 쪽)도 옅은 회백색(휘도 ≥ 215, 중성)이라 금속 금은 늘 밝은 금이고, 대비는 벽돌 질감의 흰 반사띠·하이라이트와 해가 만든다.
+export const ENV_STUDIO=Object.freeze({top:'#FFFFFF',band:'#FFFFFF',horizon:'#F4F3F0',warm:'#FFE9B8',floor:'#E2E1DE'});
 export function envTexels(sky){
-  const [w,h]=TEX.env,px=new Uint8Array(w*h*4),S=ENV_STUDIO,[top,band,horizon,floor,deep]=[S.top,S.band,S.horizon,S.floor,S.deep].map(rgbOf);
+  const [w,h]=TEX.env,px=new Uint8Array(w*h*4),S=ENV_STUDIO,[top,band,horizon,warm,floor]=[S.top,S.band,S.horizon,S.warm,S.floor].map(rgbOf);
   const tint=rgbOf(sky.bottom).map(v=>0.8+0.2*v),sun=rgbOf(sky.sun.color),[dx,dy,dz]=sky.sun.dir;
   const su=Math.atan2(dz,dx)/(2*Math.PI)+0.5,sv=Math.asin(Math.max(-1,Math.min(1,dy)))/Math.PI+0.5,glow=Math.min(1,sky.sun.intensity/2.6);
   const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t),deg=Math.PI/180,bandAt=(e,a,b)=>smooth(clamp01((e-a)/(4*deg)))*smooth(clamp01((b-e)/(4*deg)));
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
     const v=(y+0.5)/h,u=(x+0.5)/w,e=(v-0.5)*Math.PI;
-    let c=e>=0?mix(horizon,top,smooth(clamp01(e/(40*deg)))):mix(mix(horizon,floor,smooth(clamp01((-e-36*deg)/(14*deg)))),deep,smooth(clamp01((-e-50*deg)/(35*deg))));
+    let c=e>=0?mix(horizon,top,smooth(clamp01(e/(40*deg)))):mix(horizon,floor,smooth(clamp01((-e-36*deg)/(20*deg))));
     c=mix(c,band,Math.max(bandAt(e,-36*deg,-6*deg),0.8*bandAt(e,12*deg,28*deg)));
+    c=mix(c,warm,0.8*Math.exp(-((e/(5*deg))**2)));
     const du=Math.min(Math.abs(u-su),1-Math.abs(u-su)),d2=(du*2)**2+(v-sv)**2,spot=glow*Math.exp(-d2/0.004);
     put(px,(y*w+x)*4,...c.map((g,i)=>g*tint[i]+sun[i]*spot));
   }

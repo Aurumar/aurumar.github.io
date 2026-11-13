@@ -9,11 +9,11 @@ export const MAX_NODES=1500,MAX_LINKS=3000,MAX_LINKS_PER_NODE=3;
 // 과목 코드(K·M·E·H·S·C) → 표시 이름·기본색. 기본색은 life-model DEFAULT_SUBJECTS와 같은 값(DS2: 영어 주황, 시험 ds2가 같은지 본다).
 export const SUBJECT_INFO=Object.freeze({
   K:Object.freeze({name:'국어',color:'#8E6BC4'}),M:Object.freeze({name:'수학',color:'#A6714E'}),E:Object.freeze({name:'영어',color:'#D9823B'}),
-  H:Object.freeze({name:'한국사',color:'#5BA66B'}),S:Object.freeze({name:'사회',color:'#D4B33C'}),C:Object.freeze({name:'과학',color:'#4F86C6'}),
+  H:Object.freeze({name:'한국사',color:'#5BA66B'}),S:Object.freeze({name:'사회',color:'#EBC84E'}),C:Object.freeze({name:'과학',color:'#4F86C6'}),
 });
 // DS2: 과목 코드 ↔ 과목 id(life-model STUDY_CODE_BY_SUBJECT의 기본 과목). 소유자가 설정에서 바꾼 색 = 저장된 SUBJECT_DEF.color. 이 파일은 life-model을 불러오지 않으므로 저장본 목록을 받아 읽는다.
 // styles.css --lb-subj-* 토큰 값(.universe-subj-* 클래스가 칠하는 색). 과목 색이 이 값과 같을 때만 클래스로 그리고, 다르면 SVG fill·stroke 속성으로 그린다(시험 ds2가 CSS와 같은지 본다).
-export const SUBJECT_TOKEN_COLORS=Object.freeze({K:'#8E6BC4',M:'#A6714E',E:'#D9534F',H:'#5BA66B',S:'#D4B33C',C:'#4F86C6'});
+export const SUBJECT_TOKEN_COLORS=Object.freeze({K:'#8E6BC4',M:'#A6714E',E:'#D9534F',H:'#5BA66B',S:'#EBC84E',C:'#4F86C6'});   // V7C: 사회 노랑 밝게(life-model·styles.css와 같은 값)
 export const SUBJECT_ID_OF_CODE=Object.freeze({K:'kor',M:'math',E:'eng',H:'hist',S:'soc',C:'sci'});
 // subjects = 저장된 과목 정의(SUBJECT_DEF data 목록, 숨김 포함). 저장본이 없거나 값이 틀린 과목은 기본색.
 export function universeColors(subjects=[]){

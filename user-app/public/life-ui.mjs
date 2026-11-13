@@ -11,6 +11,7 @@ import {DAILY_CHARS,dailyCharOf,dailyLineText,todayMinutes as studyTodayMinutes,
 import {OVERLAP_NOTICE,TIMER_OVERLAP_NOTICE} from './study-rebase.mjs';
 import {sameContent} from './life-rebase.mjs';   // FIX71: 성취표 칸 얹기(습관 벽돌 기준 비교)
 import {renderLive,liveRecordMin,liveElapsedMin,liveSettings,REST_SPLIT_MS} from './study-live.mjs';
+import {dailyCharStrip} from './study-live.mjs';   // V7A: 오늘의 캐릭터 13단계 띠 + 눌러서 미리보기
 import {dayRoomCard,CELEBRATED_KEY} from './study-room.mjs';
 import {brickCells} from './study-room.mjs';   // DS1: 오늘 벽돌 칸(공부방 기둥과 같은 금 벽돌 스프라이트)
 import {examLineText,daySummary,barsText,ddayChips,ddayChipsNode,planOf,dayPlanLink,writePlanMarks,BLOCK_TEXT} from './life-plan.mjs';
@@ -19,7 +20,10 @@ import {LOG_LIMIT_CODE,LOG_LIMIT_TEXT} from './fin-ledger.mjs';   // OPS1A: LOG_
 import {HABIT_KINDS,HABIT_AREAS,DAY_TYPES,MAX_NAME,MAX_NOTE,SUBJECT_COLOR_KEYS,HABIT_HINTS,
   kstDate,diaryOpenDate,shiftDay,dateKeyOK,dayNumber,hhmmFromIso,timeOK,targetTimeOK,lifeIdOK,
   brickOf,sumBricks,entryDone,nearestExam,lifeDefs,weekCount,studyCodeOf,sessionIdFor,timerSessionId,timerTagFrom,subjectOfSession,emptyDay,
-  SUBJECT_PALETTE,NEW_SUBJECT_COLOR,subjectColor,defaultSubjectColor,parseSubjectHex,nearSubjectPairs,habitPinned,habitState,MISSED_ENTRY,HABIT_UNPIN_ORDER} from './life-model.mjs';
+  SUBJECT_PALETTE,NEW_SUBJECT_COLOR,subjectColor,defaultSubjectColor,parseSubjectHex,nearSubjectPairs,habitPinned,habitState,MISSED_ENTRY,HABIT_UNPIN_ORDER,validateLifeData,DEFAULT_HABITS} from './life-model.mjs';
+import {LIFE_CLEAR_TYPES,LIFE_CLEAR_KIND,emptyLifeRecord,lifeRecordEmpty,lifeRecordOf,lifeRecordSummary,lifeClearDate,lifeClearCheckDate} from './life-model.mjs';   // V7D2: 기록별 비우기
+import {emptyStudyDay,studyDayEmpty} from './study-model.mjs';
+import {emptyHltDay,hltDayEmpty} from './hlt-model.mjs';
 
 export const LIFE_ERROR_TEXT=Object.freeze({
   INVALID_LIFE_MINUTES:'분은 1~1440의 정수로 넣어 주세요.',STUDY_OFF:'공부 기능이 꺼져 있습니다. 설정에서 켜세요.',
@@ -152,17 +156,19 @@ export async function prepareLife(ctx,st,gone=()=>false){
   st.today=kstDate(ctx.now());
   const box=ctx.cardDraftBox?.()??null;
   if(!st.flow||st.boxRef!==box){st.boxRef=box;st.ports=createLifePorts(ctx);st.flow=new LifeFlow(st.ports);}
-  const [flowState,dates]=await Promise.all([st.flow.state(st.today),st.flow.draftDates()]);
+  let [flowState,dates]=await Promise.all([st.flow.state(st.today),st.flow.draftDates()]);
   let studyCard=null;
   try{const s=await studyFlow(ctx);if(s)studyCard=(await s.st.flow.state(st.today));}catch{studyCard=null;}
   let diary;try{diary=await diaryEntryState(ctx,st);}catch{diary={open:false};}   // FIX49B: 문이 닫혀 있으면 {open:false}(입구 0, 옛 칸 그대로)
   if(gone())return st;
   // OPS1A: 성취표가 지난 날 칸도 초안에만 둔다(앱이 autoStack을 켰을 때) → 쌓지 않은 지난 날 카드를 모두 세고 쌓는다(pendingAll). 성취표는 그 초안 카드를 바로 보인다(draftCards).
   let draftCards={},draftStates={};   // FIX71: draftStates = 그 초안의 base·바꾼 칸(성취표가 쌓인 카드 위에 칸 단위로 얹는다). draftCards는 그대로(자동 쌓기 key)
+  // V7D1: 새 시작 기준 전 날짜의 초안은 쌓기 대상·성취표에서 빼고 "새 시작 전 초안"(freshDrafts)으로만 센다(지우지 않음).
+  const before=d=>Boolean(ctx.freshBefore?.(d)),freshDrafts=dates.filter(before);dates=dates.filter(d=>!before(d));
   if(ctx.autoStack){try{for(const d of dates)if(d!==st.today){const s=await st.flow.state(d);if(s?.status==='LOCAL_DRAFT'){draftCards[d]=s.card;draftStates[d]=s;}}}catch{draftCards={};draftStates={};}}
   if(gone())return st;
   st.flowState=flowState;st.studyCard=studyCard;st.diary=diary;
-  st.pending=dates.filter(d=>d<st.today).slice(-3);st.pendingAll=dates.filter(d=>d<st.today);st.draftCards=draftCards;st.draftStates=draftStates;
+  st.pending=dates.filter(d=>d<st.today).slice(-3);st.pendingAll=dates.filter(d=>d<st.today);st.draftCards=draftCards;st.draftStates=draftStates;st.freshDrafts=freshDrafts;
   currentTimer(st,ctx.storage??globalThis.localStorage);
   return st;
 }
@@ -242,7 +248,7 @@ export function renderLifeToday(root,ctx,st){
   const healthText=ctx.healthLine?.(date)??null;   // FIX45 (AUD1 #9): 수면·걸음 한 줄(건강 모듈이 꺼져 있으면 없다)
   let healthNode=null;if(healthText){healthNode=el('p',healthText,'life-health-line');healthNode.id='today-health';}
   const napNode=renderNapLine(ctx,st,h,date);   // V6B: 수면·걸음 줄 아래 낮잠(건강 모듈이 켜졌을 때만)
-  add(out,add(el('div',null,'life-head'),add(el('div',null,'life-head-main'),el('span','TODAY','eyebrow'),el('h2',dateLabel(date),'panel-title'),title?.node,examLine),add(el('div',null,'life-head-side'),xpSlot,chips)),
+  add(out,add(el('div',null,'life-head'),add(el('div',null,'life-head-main'),el('span','TODAY','eyebrow'),el('h2',dateLabel(date),'panel-title'),title?.node,examLine),add(el('div',null,'life-head-side'),xpSlot,chips,ctx.clearMenu?.('LIFE_DAY',date)??null)),   /* V7D2: 쌓은 오늘 카드의 ⋯ 메뉴 */
     summaryLine(ctx,h,{life,ach,date,study:whole.study??null}),healthNode,napNode,todayCharNode(ctx,st,h,whole,date));
   // 1-1) S1A: 집중 타이머가 돌면 맨 위에 작은 STUDY LIVE 카드(펼치면 덮개). 채우는 것은 아래 공부 벽돌 칸이 한다(타이머 동작이 그곳에 있다).
   const liveSlot=el('div',null,'live-slot');add(out,liveSlot);
@@ -406,20 +412,16 @@ function todayCharNode(ctx,st,h,whole,date){
   if(!ctx.study?.())return null;   // 공부 모듈이 꺼져 있으면 없다
   const {el,add,button}=h,t=studyTodayMinutes({study:whole.study??null,date,draftCard:st.studyCard?.card??null,timer:st.timer,nowIso:String(ctx.now())});
   const d=dailyCharOf(t.minutes),life=stageOf(lifetimeMinutes(whole.study??null)).stage,art=Boolean(ctx.avatarArt??AVATAR_ART_READY);
-  const go=button(null,()=>openDailySheet(h,d,art),'today-char');go.dataset.navOnly='1';go.setAttribute('aria-haspopup','dialog');go.setAttribute('aria-label',TODAY_CHAR_TEXT.tag+' '+dailyLineText(d)+' · 13단계 보기');go.id='today-char';
+  const go=button(null,()=>openDailySheet(ctx,h,d,t,art),'today-char');go.dataset.navOnly='1';go.setAttribute('aria-haspopup','dialog');go.setAttribute('aria-label',TODAY_CHAR_TEXT.tag+' '+dailyLineText(d)+' · 13단계 보기');go.id='today-char';
   if(art){const img=el('img',null,'today-char-fig');img.alt='';img.setAttribute('aria-hidden','true');img.src=d.file;img.addEventListener('error',()=>{img.hidden=true;});add(go,img);}
   add(go,add(el('span',null,'today-char-text'),el('span',TODAY_CHAR_TEXT.tag,'today-char-tag'),el('strong',dailyLineText(d)+(t.timerMin>0?' · 진행 중 +'+stageHm(t.timerMin)+' 포함':''),'today-char-line'),
     el('span',TODAY_CHAR_TEXT.life+' '+life.no+' · '+life.name,'today-char-life')),el('span','13단계 ›','today-char-more'));
   return go;
 }
-function openDailySheet(h,d,art){
-  const {el,add}=h,list=el('ol',null,'dc-strip today-char-strip');
-  for(const c of DAILY_CHARS){
-    const state=c.h<d.h?'done':c.h===d.h?'now':'todo',frame=el('span',null,'dc-frame');
-    if(art){const img=el('img',null,'dc-fig');img.alt='';img.setAttribute('aria-hidden','true');img.loading='lazy';img.src=c.file;img.addEventListener('error',()=>{img.hidden=true;});frame.append(img);}
-    const li=add(el('li',null,'dc-cell '+state),frame,el('span',c.h+'h','dc-h'),el('span',c.label,'dc-name'));li.setAttribute('aria-current',state==='now'?'step':'false');list.append(li);
-  }
-  return sheet(TODAY_CHAR_TEXT.sheet,add(el('div',null,'today-char-sheet'),el('p',TODAY_CHAR_TEXT.sub,'muted small'),el('p',dailyLineText(d),'dc-next'),list));
+// V7A: 시트 안 띠 = 타이머·상태 화면과 같은 dailyCharStrip(칸을 누르면 큰 그림 미리보기, 잠긴 단계 포함). 썸네일은 보일 때만 요청.
+function openDailySheet(ctx,h,d,t,art){
+  const {el,add}=h,strip=dailyCharStrip(ctx.document??globalThis.document,{useArt:art,cls:'today-char-strip',title:TODAY_CHAR_TEXT.tag,sub:null});strip.paint(t.minutes*60000);
+  return sheet(TODAY_CHAR_TEXT.sheet,add(el('div',null,'today-char-sheet'),el('p',TODAY_CHAR_TEXT.sub,'muted small'),el('p',dailyLineText(d),'dc-next'),strip.node));
 }
 // V6B 낮잠 줄: "낮잠: 안 잠" / 잤으면 분·시작 시각. [낮잠 잤음] → 15·30·60분·직접 + 시작 시각(선택) → 건강 카드 낮잠으로 바로 쌓는다(ctx.nap, 앱이 넘김).
 // FIX68 (MAN3 M1): 저장(또는 임시 입력)에 들어간 칸은 "저장하지 않은 입력"이 아니다. 앱의 사라진 입력 검사(app.mjs saRaw·data-edit-init)가 보는 처음 값을 지금 값으로 맞춘다.
@@ -873,6 +875,81 @@ export function openEditor(ctx,st){
   },'primary');
   open();
 }
+// ---- V7B 습관 고르기 시트(성취표 머리 "습관 고르기", 소유자 2026-11-11) ----
+// 기본 습관(기상·취침 포함)까지 모든 습관을 빼고(끄기) 다시 켤 수 있다. 이름 고치기·순서 바꾸기·새 습관 추가도 여기서 한다.
+// 저장 = 기존 HABIT_DEF 칸 그대로: 빼기 = hidden:true(기존 "보관(숨김)" 칸), 다시 켜기 = hidden:false, 이름 = name, 순서 = order(편집 시트와 같은 collectRows 규칙). 새 칸·새 종류 0.
+// 빼도 지난 하루 카드(LIFE_DAY)는 그대로라 다시 켜면 지난 기록이 그대로 보인다. 뺀 습관은 숨긴 습관과 같아 성취표·오늘 칩·경험치·연속 기록에서 빠진다(lifeDefs → !hidden).
+// 시트 안의 고르기는 이 시트의 작업본(초안)만 바꾼다(쓰기 0). [저장] 1번 = 바뀐 습관마다 HABIT_DEF 1개(습관 하나 고르기 = 연산 1).
+// 저장된 습관이 하나도 없으면(기본값 상태) 첫 저장 때 기본 습관 모두를 함께 쓴다(하나만 쓰면 나머지 기본 습관이 사라진다, FIX37B H37-Q1 규칙 그대로) — 시트가 미리 알린다.
+// 두 기기: 기준(bases) = 시트를 연 때 값. 다른 기기가 그 사이 다른 습관이나 같은 습관의 다른 칸을 바꿨으면 saveDefinitions가 칸 단위로 합친다(DSFIX D1). 같은 칸을 다르게 바꿨으면 쓰지 않고 알린다.
+export const PICK_TEXT=Object.freeze({open:'습관 고르기',title:'습관 고르기',on:n=>'켜 둔 습관 '+n+'개',off:n=>'꺼 둔 습관 '+n+'개',
+  hide:'빼기',show:'다시 켜기',add:'추가',newName:'새 습관 이름',save:'저장',
+  lead:'빼도 지난 기록은 지워지지 않아요 · 다시 켜면 그대로 보여요 · 뺀 습관은 성취표·오늘 칩·경험치·연속 기록에서 빠져요.',
+  onNone:'켜 둔 습관이 없어요.',offNone:'꺼 둔 습관이 없어요.',
+  first:n=>'아직 저장한 습관이 없어요 · 처음 저장할 때 기본 습관 '+n+'개를 함께 저장해요(한 번만).',
+  changed:n=>'바뀐 습관 '+n+'개 · 저장을 눌러야 반영돼요',none:'바뀐 것이 없어 저장하지 않았어요.',saved:n=>n+'건을 저장했어요.'});
+// 작업본: 지금 보이는 습관 정의 복사본(과목·시험 일정은 그대로 두어 저장 대상이 아니다).
+export function habitPickWork(life){
+  const defs=lifeDefs(life);
+  return {defs,work:{habits:defs.habits.map(x=>structuredClone(x)),subjects:defs.subjects.map(x=>structuredClone(x)),exams:structuredClone(defs.exams)}};
+}
+// 켜 둔 습관 안에서 한 칸 위·아래로(꺼 둔 습관은 건너뛴다). 움직였으면 true.
+export function pickMove(habits,id,d){
+  const i=habits.findIndex(x=>x.id===id);if(i<0||habits[i].hidden)return false;
+  let j=i+d;while(j>=0&&j<habits.length&&habits[j].hidden)j+=d;
+  if(j<0||j>=habits.length)return false;
+  [habits[i],habits[j]]=[habits[j],habits[i]];return true;
+}
+export function openHabitPicker(ctx,st){
+  const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,hint,input,select}=h;
+  const life=ctx.getWhole().life??{habits:[],days:[],subjects:[],exams:null},{defs,work}=habitPickWork(life),bases=definitionBases(life,defs);
+  const body=el('div',null,'life-editor hb-picker'),err=el('p',null,'notice error hb-pick-error'),note=el('p',DEFS_SEALED_TEXT,'notice hb-pick-note');err.hidden=true;note.hidden=true;
+  const showErr=code=>{err.textContent=lifeErrorText(code);err.hidden=false;};
+  const rowsNow=()=>collectRows(work,life,defs);
+  let dlg=null;const memo={};
+  const save=()=>{
+    let rows;
+    try{rows=rowsNow();for(const r of rows)validateLifeData(r.type,r.id,r.data);}catch(x){showErr(x?.code);return;}
+    if(!rows.length){st.message=PICK_TEXT.none;st.error=false;dlg?.close?.();void ctx.rerender();return;}
+    dlg?.close?.();
+    void ctx.perform(async()=>{
+      st.message=null;st.error=false;let sealed=false;
+      try{const n=await saveDefinitions(ctx,rows,'습관 고르기',memo,bases);sealed=memo.sealed>0;st.message=sealed?DEFS_SEALED_TEXT:n?PICK_TEXT.saved(n):PICK_TEXT.none;}
+      catch(x){st.message=lifeErrorText(x?.code);st.error=true;}
+      await prepareLife(ctx,st);await ctx.rerender();
+      if(sealed&&!ctx.locked?.()){note.hidden=false;open();}   // FIX38와 같이: 임시 저장은 성공이 아니다. 고른 내용이 든 시트를 다시 연다
+    });
+  };
+  const draw=()=>{
+    body.replaceChildren();
+    const on=work.habits.filter(x=>!x.hidden),off=work.habits.filter(x=>x.hidden);
+    let n=0;try{n=rowsNow().length;}catch{/* 이름이 비면 저장 때 알린다 */}
+    add(body,add(el('div',null,'buttons'),button(PICK_TEXT.save,save,'primary hb-pick-save')),hint(PICK_TEXT.lead),
+      defs.usingDefaults.habits?el('p',PICK_TEXT.first(DEFAULT_HABITS.length),'notice hb-pick-first'):null,n?el('p',PICK_TEXT.changed(n),'muted small hb-pick-changed'):null,note,err);
+    const onBox=add(el('div',null,'hb-pick-list hb-pick-on'),el('h3',PICK_TEXT.on(on.length),'life-edit-sub'));
+    for(const x of on){
+      const name=input(x.name,{maxlength:String(MAX_NAME),'aria-label':x.name+' 이름'});name.addEventListener('input',()=>{x.name=name.value;});name.addEventListener('change',()=>draw());
+      const row=add(el('div',null,'life-edit-row hb-pick-row'),name,el('span',KIND_TEXT[x.kind],'life-badge'),
+        button('▲',()=>{if(pickMove(work.habits,x.id,-1))draw();},'secondary hb-pick-up'),button('▼',()=>{if(pickMove(work.habits,x.id,1))draw();},'secondary hb-pick-down'),
+        button(PICK_TEXT.hide,()=>{x.hidden=true;err.hidden=true;draw();},'secondary hb-pick-hide'));
+      row.dataset.habit=x.id;add(onBox,row);
+    }
+    if(!on.length)add(onBox,hint(PICK_TEXT.onNone));
+    const offBox=add(el('div',null,'hb-pick-list hb-pick-off'),el('h3',PICK_TEXT.off(off.length),'life-edit-sub'));
+    for(const x of off){const row=add(el('div',null,'life-edit-row hb-pick-row'),el('span',x.name,'hb-pick-name'),button(PICK_TEXT.show,()=>{x.hidden=false;err.hidden=true;draw();},'secondary hb-pick-show'));row.dataset.habit=x.id;add(offBox,row);}
+    if(!off.length)add(offBox,hint(PICK_TEXT.offNone));
+    // 새 습관 = 편집 시트의 자유 추가와 같은 칸(이름 · 종류 · 목표)
+    const nn=input('',{maxlength:String(MAX_NAME),placeholder:PICK_TEXT.newName,'aria-label':PICK_TEXT.newName}),kind=select(NEW_HABIT_KINDS,'CHECK'),goal=input('',{placeholder:'목표(시각 HH:MM · 분 · 주 횟수)','aria-label':'새 습관 목표',maxlength:'5'});kind.setAttribute('aria-label','새 습관 종류');
+    add(body,onBox,offBox,el('h3','새 습관','life-edit-sub'),add(el('div',null,'life-edit-row life-edit-new hb-pick-new'),nn,kind,goal,button(PICK_TEXT.add,()=>{
+      const name=nn.value.trim();if(!name){showErr('INVALID_LIFE_TEXT');return;}
+      const t=newHabitTarget(kind.value,goal.value);if(!t){showErr('INVALID_HABIT_TARGET');return;}
+      work.habits.push({id:'h-'+ctx.uid().slice(0,12),name,kind:kind.value,target:t,difficulty:'AUTO',hidden:false,order:work.habits.length,area:'BODY'});err.hidden=true;draw();
+    },'primary hb-pick-add')));
+  };
+  const open=()=>{dlg=sheet(PICK_TEXT.title,body);};
+  draw();open();
+  return {body,work,save,draw};
+}
 // ---- DS2 과목 색 설정(설정 → 공부 → 과목 색, V5 2.4) ----
 // 저장 = 기존 SUBJECT_DEF.color 칸(기기 간 동기화되는 과목 기록). 칸·종류를 더하지 않으므로 r52 이전 빌드도 그대로 받는다.
 // 고르기·직접 입력은 이 화면의 초안(st.colors)에만 모이고 "색 저장"을 눌러야 쓴다. 저장 범위는 편집 화면과 같은 collectRows 규칙이다
@@ -1035,7 +1112,8 @@ export function renderHabitBoard(root,ctx,st,{actionDefs=[],actionDays={},action
   const step=b.mode==='MONTH'?(n=>{const [y,m]=b.anchor.split('-').map(Number),x=new Date(Date.UTC(y,m-1+n,1));return x.toISOString().slice(0,10);}):(n=>shiftDay(b.anchor,7*n));
   const seg=add(el('div',null,'segment lb-segment hb-seg'),...[['WEEK',BOARD_TEXT.week],['MONTH',BOARD_TEXT.month]].map(([k,t])=>button(t,()=>{b.mode=k;void ctx.rerender();},b.mode===k?'selected':'secondary')));
   const range=b.mode==='MONTH'?dates[0].slice(0,4)+'년 '+Number(dates[0].slice(5,7))+'월':dateLabel(dates[0])+' ~ '+dateLabel(dates[6]);
-  add(sec,add(el('div',null,'hb-head'),el('h2',BOARD_TEXT.title,'panel-title'),button(BOARD_TEXT.add,()=>openEditor(ctx,st),'primary hb-add')),
+  // V7B: "습관 고르기"(넣고 빼기·이름·순서) 시트를 성취표 머리에 둔다. 자세한 목표·난이도·고정은 기존 편집 시트 그대로
+  add(sec,add(el('div',null,'hb-head'),el('h2',BOARD_TEXT.title,'panel-title'),add(el('div',null,'buttons hb-head-actions'),button(PICK_TEXT.open,()=>openHabitPicker(ctx,st),'secondary hb-pick'),button(BOARD_TEXT.add,()=>openEditor(ctx,st),'primary hb-add'))),
     add(el('div',null,'hb-nav'),seg,button('◀',go(step(-1)),'secondary'),el('strong',range,'hb-range'),button('▶',go(step(1)),'secondary'),b.anchor!==today?button('오늘',go(today),'secondary'):null));
   const ach=achieve({life:whole.life??null,study:whole.study??null,fin:whole.fin??null,today,money:ctx.money?.(today)??null}),wk=ach.currentWeek?.habitBricks??0;   // 벽돌 수는 쌓은 기록 기준(오늘 화면 XP와 같음)
   add(sec,el('p',BOARD_TEXT.bricks(wk,ach.habitBricks??0),'hb-bricks'),hint(BOARD_TEXT.brickRule));
@@ -1052,7 +1130,9 @@ export function renderHabitBoard(root,ctx,st,{actionDefs=[],actionDays={},action
     for(const c of r.cells){
       const cell=el('button',STATE_MARK[c.state],'hb-cell hb-'+c.state+(c.date===today?' hb-today':''));cell.type='button';cell.dataset.state=c.state;cell.dataset.date=c.date;
       cell.setAttribute('aria-label',r.name+' '+dateLabel(c.date)+' '+BOARD_TEXT[c.state]);
-      if(c.future)cell.disabled=true;else pressable(cell,()=>openBoardCell(ctx,st,r,c.date,{act,recordAction,openActionPast}),()=>{b.open=r.id;void ctx.rerender();});
+      const fresh=Boolean(ctx.freshBefore?.(c.date));   // V7D1: 새 시작 기준 전 날짜 칸은 누를 수 없다(읽기 전용)
+      if(fresh){cell.classList.add('hb-fresh');cell.setAttribute('aria-label',r.name+' '+dateLabel(c.date)+' '+(ctx.freshText?.badge??'새 시작 전 기록 · 읽기 전용'));}
+      if(c.future||fresh)cell.disabled=true;else pressable(cell,()=>openBoardCell(ctx,st,r,c.date,{act,recordAction,openActionPast}),()=>{b.open=r.id;void ctx.rerender();});
       add(tr,add(el('td'),cell));
     }
     const rate=r.week?r.week.count+'/'+r.week.target+'회':r.rate===null?'—':r.rate+'%';
@@ -1092,25 +1172,197 @@ export function renderPastDays(root,ctx,st){
   const row=(t,d)=>add(el('div',null,'row'),add(el('div',null,'row-main'),el('strong',t),d?hint(d):null));
   const life=ctx.getWhole().life??{habits:[],days:[],subjects:[],exams:null},defs=lifeDefs(life),today=kstDate(ctx.now());
   st.pastDate??=shiftDay(today,-1);
-  const date=st.pastDate,day=life.days.find(d=>d.date===date)?.data??null;
+  // V7D1: 새 시작 기준 전 날짜는 필터 전 원본(ctx.getRawWhole)에서 읽기만 한다(일기·그날의 방 줄 없음 = 편집·쌓기 단추 없음).
+  const before=Boolean(ctx.freshBefore?.(st.pastDate)),rawLife=before?ctx.getRawWhole?.()?.life??null:null;
+  const date=st.pastDate,day=(before?rawLife?.days??[]:life.days).find(d=>d.date===date)?.data??null;
   const nameOf=id=>life.habits.find(x=>x.id===id)?.data.name??defs.habits.find(x=>x.id===id)?.name??id;
   const kindOf=id=>(life.habits.find(x=>x.id===id)?.data??defs.habits.find(x=>x.id===id))?.kind??'CHECK';
   const go=d=>()=>{if(!dateKeyOK(d)){st.message='날짜는 YYYY-MM-DD 형식이어야 합니다.';void ctx.rerender();return;}st.pastDate=d;void ctx.rerender();};
   const dateIn=input(date,{inputmode:'numeric',placeholder:'YYYY-MM-DD',maxlength:'10','aria-label':'보고 싶은 날짜'});
   const sec=add(el('section',null,'panel life-past'),el('h2','지난 오늘 카드','panel-title'),hint('쌓은 하루 카드를 날짜별로 봅니다. 읽기만 하며 기록하지 않아요.'),
     add(el('div',null,'buttons'),button('◀ 전날',go(shiftDay(date,-1))),dateIn,button('이동',()=>go(dateIn.value.trim())()),button('▶ 다음날',go(shiftDay(date,1))),button('어제',go(shiftDay(today,-1)))));
+  if(before)add(sec,el('p',ctx.freshText?.badge??'새 시작 전 기록 · 읽기 전용','notice fresh-badge'));
   if(!day)add(sec,hint(date+' 에 쌓은 카드가 없습니다.'));
   else{
     const ids=Object.keys(day.habits);
-    add(sec,el('strong',dateLabel(date)+' · '+DAY_TYPE_TEXT[day.dayType]));
+    add(sec,add(el('div',null,'rc-line'),el('strong',dateLabel(date)+' · '+DAY_TYPE_TEXT[day.dayType]),before?null:ctx.clearMenu?.('LIFE_DAY',date)??null));   // V7D2: 그날 카드 ⋯ 메뉴
     for(const id of ids){const e=day.habits[id],k=kindOf(id);add(sec,row(nameOf(id)+(life.habits.find(x=>x.id===id)?.data.hidden?' (숨김)':''),k==='TIME'?(e.at??'했음'):k==='DURATION'?(e.minutes??0)+'분':k==='COUNT'?(e.count??0)+'회':'했음'));}
     if(!ids.length)add(sec,hint('습관 기록이 없습니다.'));
     add(sec,row('기분',day.mood===null?'기록 없음':MOODS.find(m=>m[0]===day.mood)[1]+' '+MOODS.find(m=>m[0]===day.mood)[2]),day.note?row('한 줄',day.note):null);
   }
-  add(sec,diaryDayRow(ctx,date));   // FIX49B: 그날 일기 줄(점수·칩, 글은 눌러야 보임). 문이 닫혀 있고 일기도 없으면 없음
-  add(sec,dayRoomCard(ctx,date));   // S1B "그날의 방": 그날 공부 카드 + 그날까지의 평생 분(읽기만, 진행 중 타이머 없음)
+  if(!before){
+    add(sec,diaryDayRow(ctx,date));   // FIX49B: 그날 일기 줄(점수·칩, 글은 눌러야 보임). 문이 닫혀 있고 일기도 없으면 없음
+    add(sec,dayRoomCard(ctx,date));   // S1B "그날의 방": 그날 공부 카드 + 그날까지의 평생 분(읽기만, 진행 중 타이머 없음)
+    add(sec,ctx.clearDay?.(date)??null);   // V7D2: 하루 상세의 "이 날 비우기"(값 있는 기록만, 가계부 없음)
+  }
   root.append(sec);
   return sec;
+}
+// ---- V7D2 기록별 "비우기" (설계 V7D 4절 안 A0, 소유자 "기록별 수정 및 삭제를 할 수 있게") ----
+// 비우기 = 그 기록을 기존 스키마의 빈 값으로 저장(1건 = 연산 1, 새 칸·새 종류·지움 표시 없음 → 옛 빌드도 받는다). 이전 값은 이력에 남는다.
+// 가계부(FIN_*)는 대상이 아니다(무효화 그대로). 하루 전체 = 그날 값이 있는 LIFE_DAY·PLAN_DAY·STUDY_DAY·HLT_DAY·DIARY_DAY 중 체크한 것(가계부 없음).
+// 절차(4.2): 확인 시트(지울 것·연산 수·남는 연산) → 빨간 "N개 비우기" → 8초 되돌리기 창 동안 보내지 않음(되돌리면·화면을 떠나면·앱을 닫으면 연산 0) → 보낸다.
+// 충돌(4.3): 보내기 직전 최신 기록을 다시 읽어 heads가 확인 때와 다르면 비우지 않고 최신 내용으로 시트를 다시 연다. 쓰기는 expectedHeads(서버 STALE_HEADS도 같게).
+// 오프라인·쓰기 권한 없음이면 단추를 막는다. 임시 저장(초안)으로 만들지 않는다(초안 승인 때 rebase가 지운 값을 되살릴 수 있음, 4.2-5).
+export const CLEAR_TYPES=Object.freeze([...LIFE_CLEAR_TYPES,'STUDY_DAY','HLT_DAY']);
+export const DAY_CLEAR_TYPES=Object.freeze(['LIFE_DAY','PLAN_DAY','STUDY_DAY','HLT_DAY','DIARY_DAY']);
+export const CLEAR_UNDO_MS=8000;
+export const CLEAR_TEXT=Object.freeze({
+  menu:'이 기록 비우기',day:'이 날 비우기',title:'이 기록 비우기',dayTitle:'이 날 비우기',
+  lead:'비우면 이 기록이 빈 값으로 저장돼요 · 기록 1건 = 저장 1번 · 이전 값은 이력에 남아 되살릴 수 있어요',
+  dayLead:'값이 있는 기록만 보여요 · 가계부는 비우지 않아요 · 체크한 기록 1건 = 저장 1번',
+  go:n=>n+'개 비우기',cancel:'취소',ops:(n,left)=>'저장 '+n+'번'+(left===null?' · 남은 저장 횟수 확인 불가':' · 비운 뒤 남는 저장 횟수 '+Math.max(0,left-n).toLocaleString('en-US')),   // 화면 낱말: "저장 횟수"(fin-ledger opBudgetNotice와 같은 말)
+  snack:n=>n+'개 비우기 · 8초 뒤에 보내요',undo:'되돌리기',
+  undone:'되돌렸어요 · 아무것도 보내지 않았어요(저장 0번)',left:'화면을 떠나 비우지 않았어요 · 아무것도 보내지 않았어요(저장 0번)',
+  busy:'다른 저장이 진행 중이라 비우지 않았어요 · 아무것도 보내지 않았어요 · 다시 눌러 주세요',waiting:'앞의 비우기가 아직 되돌리기를 기다리고 있어요',
+  done:n=>n+'개 비웠어요 · 이력에서 이전 값으로 되살릴 수 있어요',
+  stale:'다른 기기에서 바뀌어 비우지 않았어요 · 최신 내용을 확인하고 다시 골라 주세요',
+  pending:'아직 안 쌓은 입력이 있어 비울 수 없어요 · 먼저 쌓거나 버려 주세요',pendingNow:'아직 안 쌓은 입력이 생겨 비우지 않았어요(저장 0번) · 먼저 쌓거나 버려 주세요',
+  OFFLINE:'오프라인이라 비울 수 없어요 · 연결된 뒤 다시 해 주세요(임시 저장으로 만들지 않아요)',
+  READ_ONLY:'지금은 쓰기 권한이 없어 비울 수 없어요 · 저장 준비가 된 뒤 다시 해 주세요(임시 저장으로 만들지 않아요)',
+  restore:'이 값으로 되살리기',restoreAsk:'이 이전 값으로 되살릴까요? (저장 1번)',restored:'이전 값으로 되살렸어요',
+});
+const CLEAR_KIND=Object.freeze({...LIFE_CLEAR_KIND,STUDY_DAY:'공부 기록',HLT_DAY:'건강 기록'});
+export function emptyRecord(type,id,data){
+  if(type==='STUDY_DAY')return emptyStudyDay(data);
+  if(type==='HLT_DAY')return emptyHltDay(data);
+  return emptyLifeRecord(type,id,data);
+}
+export function recordEmpty(type,data){return type==='STUDY_DAY'?studyDayEmpty(data):type==='HLT_DAY'?hltDayEmpty(data):lifeRecordEmpty(type,data);}
+// 금고 기록 하나(쌓인 값, 초안 아님). whole = 앱이 읽은 기록(새 시작 필터 뒤). 없으면 null.
+export function recordOf(whole,type,id){
+  const pick=list=>(Array.isArray(list)?list:[]).find(x=>x.date===id)??null;
+  const r=LIFE_CLEAR_TYPES.includes(type)?lifeRecordOf(whole?.life,type,id):type==='STUDY_DAY'?pick(whole?.study?.days):type==='HLT_DAY'?pick(whole?.hlt?.days):null;
+  return r?{type,id,data:r.data,heads:[...(r.heads??[])]}:null;
+}
+const clearDate=(type,id,data)=>LIFE_CLEAR_TYPES.includes(type)?lifeClearDate(type,id,data):id;
+const clearCheckDate=(type,id,data)=>LIFE_CLEAR_TYPES.includes(type)?lifeClearCheckDate(type,id,data):id;   // 새 시작 판정 날짜(주 기록 = 그 주 일요일, life-model)
+// 내용 글은 싣지 않는다(개수·글자 수만).
+function clearSummary(type,d){
+  const n=a=>Array.isArray(a)?a.length:0;
+  if(type==='STUDY_DAY')return '세션 '+n(d.sessions)+' · 오답 '+n(d.mistakes)+' · 복습 '+n(d.reviews);
+  if(type==='HLT_DAY')return '항목 '+n(d.items)+'개';
+  return lifeRecordSummary(type,d);
+}
+// 비울 수 있는 대상(값이 있는 쌓인 기록). one = {type,id} 또는 date(하루 전체).
+export function clearTargets(whole,{type=null,id=null,date=null}={}){
+  const list=date?DAY_CLEAR_TYPES.map(t=>recordOf(whole,t,date)):[CLEAR_TYPES.includes(type)?recordOf(whole,type,id):null];
+  return list.filter(r=>r&&!recordEmpty(r.type,r.data)).map(r=>({...r,date:clearDate(r.type,r.id,r.data),kind:CLEAR_KIND[r.type],summary:clearSummary(r.type,r.data)}));
+}
+const sameHeads=(a,b)=>JSON.stringify([...(a??[])].sort())===JSON.stringify([...(b??[])].sort());
+// 이력의 이전 판으로 되살릴 값. 일기·리뷰는 이력 값에 글이 없어(D49 4.4) 되살릴 수 없다(null). 공부·건강은 confirmCount를 지금 값+1로.
+export function restoreData(type,histData,cur){
+  if(!CLEAR_TYPES.includes(type)||type==='DIARY_DAY'||type==='WEEK_REVIEW'||!histData||recordEmpty(type,histData))return null;
+  if(type==='STUDY_DAY'||type==='HLT_DAY')return cur?{...structuredClone(histData),confirmCount:cur.data.confirmCount+1}:null;
+  return structuredClone(histData);
+}
+// deps(앱이 넘긴다): doc, getWhole()(쌓인 기록), writable()→null|'OFFLINE'|'READ_ONLY', pending(type,id)→쌓지 않은 입력이 있나, opsLeft()→남은 연산|null,
+// prepare()(동기화·쓰기 준비, 실패면 던짐), write(type,id,data,heads)(초안 없이 1건 쓰기), after()(다시 읽기), say(text,error), rerender(), perform(fn), before(date)(새 시작 전),
+// sheet(title,body), host()(스낵바를 붙일 곳), timers {set,clear}, undoMs, confirm(text).
+export function createRecordClear(deps){
+  const d={undoMs:CLEAR_UNDO_MS,timers:{set:(f,ms)=>globalThis.setTimeout(f,ms),clear:id=>globalThis.clearTimeout(id)},sheet,...deps};
+  const doc=d.doc??globalThis.document,{el,add,button}=maker(doc);
+  let wait=null;   // {targets,timer,snack}
+  const drop=n=>{if(!n)return;n.hidden=true;if(typeof n.remove==='function')n.remove();else if(n.rcHost?.children)n.rcHost.children=n.rcHost.children.filter(x=>x!==n);};
+  const blocked=()=>{try{return d.writable?.()??null;}catch{return 'READ_ONLY';}};
+  const usable=t=>CLEAR_TYPES.includes(t.type)&&!d.before?.(clearCheckDate(t.type,t.id,t.data));
+  // 확인 시트. mode = 'ONE' | 'DAY'. stale = 최신 내용으로 다시 연 것.
+  function open(targets,{mode='ONE',date=null,stale=false}={}){
+    const body=el('div',null,'rc-sheet'),why=blocked(),left=(()=>{try{const b=d.opsLeft?.();return Number.isSafeInteger(b)?b:null;}catch{return null;}})();
+    add(body,stale?el('p',CLEAR_TEXT.stale,'notice error rc-stale'):null,el('p',mode==='DAY'?CLEAR_TEXT.dayLead:CLEAR_TEXT.lead,'muted small rc-lead'));
+    const rows=[],list=el('div',null,'rc-list');
+    for(const t of targets){
+      const held=Boolean(d.pending?.(t.type,t.id)),row=el('label',null,'rc-row'+(held?' held':'')),box=el('input');box.type='checkbox';box.checked=!held;box.disabled=held||mode!=='DAY';
+      box.setAttribute('aria-label',t.kind+' '+t.date+' 비우기');
+      add(row,box,add(el('span',null,'rc-what'),el('strong',t.kind,'rc-kind'),el('span',(t.date??'')+' · '+t.summary,'muted small rc-sum')),held?el('span',CLEAR_TEXT.pending,'notice rc-held'):null);
+      rows.push({t,box,held});add(list,row);
+    }
+    const ops=el('p',null,'rc-ops'),note=why?el('p',CLEAR_TEXT[why]??CLEAR_TEXT.READ_ONLY,'notice error rc-blocked'):null;
+    const chosen=()=>rows.filter(r=>r.box.checked&&!r.held).map(r=>r.t);
+    let dlg=null;
+    const go=button('',()=>{const list=chosen();if(!list.length||blocked())return;dlg?.close?.();start(list);},'rc-danger');
+    const paint=()=>{const n=chosen().length;ops.textContent=CLEAR_TEXT.ops(n,left);go.textContent=CLEAR_TEXT.go(n);go.disabled=n===0||Boolean(why)||Boolean(wait);};
+    for(const r of rows)r.box.addEventListener('change',paint);
+    paint();
+    add(body,list,ops,note,wait?el('p',CLEAR_TEXT.waiting,'notice rc-waiting'):null,add(el('div',null,'buttons rc-actions'),button(CLEAR_TEXT.cancel,()=>dlg?.close?.(),'secondary rc-cancel'),go));
+    dlg=d.sheet(mode==='DAY'?CLEAR_TEXT.dayTitle+(date?' · '+date:''):CLEAR_TEXT.title,body);
+    return {dlg,body,go,rows};
+  }
+  function start(targets){
+    if(wait){d.say?.(CLEAR_TEXT.waiting,true);return null;}
+    const snack=el('div',null,'rc-snack');snack.setAttribute('role','status');snack.dataset.freshKeep='1';
+    const undo=button(CLEAR_TEXT.undo,()=>cancel('UNDO'),'secondary rc-undo');undo.dataset.navOnly='1';
+    add(snack,el('span',CLEAR_TEXT.snack(targets.length),'rc-snack-text'),undo);
+    const host=d.host?.()??doc.body;if(host){snack.rcHost=host;host.append(snack);}
+    wait={targets:targets.map(t=>({type:t.type,id:t.id,date:t.date,kind:t.kind,heads:[...t.heads]})),snack,timer:d.timers.set(()=>fire(),d.undoMs)};
+    return wait;
+  }
+  function cancel(reason='UNDO'){
+    if(!wait)return false;
+    const w=wait;wait=null;d.timers.clear(w.timer);drop(w.snack);
+    d.say?.(reason==='UNDO'?CLEAR_TEXT.undone:CLEAR_TEXT.left,false);
+    return true;
+  }
+  // 8초가 지났다: 이때 처음으로 보낸다. perform이 다른 일로 바쁘면 보내지 않는다.
+  async function fire(){
+    if(!wait)return {status:'NONE'};
+    const w=wait;wait=null;d.timers.clear(w.timer);drop(w.snack);
+    let ran=false,out={status:'SKIPPED'};
+    await d.perform(async()=>{ran=true;out=await send(w.targets);});
+    if(!ran)d.say?.(CLEAR_TEXT.busy,true);
+    return out;
+  }
+  async function send(targets){
+    const why=blocked();if(why){d.say?.(CLEAR_TEXT[why]??CLEAR_TEXT.READ_ONLY,true);return {status:'BLOCKED',code:why,written:0};}
+    await d.prepare();   // 동기화 + 쓰기 준비(못 하면 던진다 → 앱 fail). 그 뒤 최신 기록으로 다시 견준다
+    if(targets.some(t=>d.pending?.(t.type,t.id))){d.say?.(CLEAR_TEXT.pendingNow,true);return {status:'PENDING',written:0};}
+    const now=d.getWhole(),cur=targets.map(t=>recordOf(now,t.type,t.id));
+    const stale=()=>{const latest=targets.flatMap(t=>clearTargets(d.getWhole(),{type:t.type,id:t.id}));d.say?.(CLEAR_TEXT.stale,true);if(latest.length)open(latest,{mode:targets.length>1?'DAY':'ONE',date:targets[0]?.date??null,stale:true});};
+    if(cur.some((c,i)=>!c||!sameHeads(c.heads,targets[i].heads))){stale();return {status:'STALE',written:0};}
+    let written=0;
+    for(const [i,t] of targets.entries()){
+      try{await d.write(t.type,t.id,emptyRecord(t.type,t.id,cur[i].data),cur[i].heads);written++;}
+      catch(e){if(e?.code==='STALE_HEADS'){try{await d.after?.();}catch{/* 안내가 먼저다 */}stale();return {status:'STALE',written};}throw e;}
+    }
+    try{await d.after?.();}catch{/* 쓰기는 끝났다 */}
+    d.say?.(CLEAR_TEXT.done(written),false);await d.rerender?.();
+    return {status:'DONE',written};
+  }
+  // 카드 ⋯ 메뉴. 값이 있는 쌓인 기록이고 새 시작 뒤 날짜일 때만(아니면 null = 그리지 않음).
+  function menu(type,id){
+    const t=clearTargets(d.getWhole(),{type,id})[0]??null;if(!t||!usable(t))return null;
+    const wrap=el('div',null,'rc-menu'),list=el('div',null,'rc-menu-list');list.hidden=true;wrap.dataset.freshKeep='1';
+    const more=button('⋯',()=>{list.hidden=!list.hidden;more.setAttribute('aria-expanded',String(!list.hidden));},'lb-btn-text rc-more');more.dataset.navOnly='1';
+    more.setAttribute('aria-label',t.kind+' 더보기');more.setAttribute('aria-haspopup','true');more.setAttribute('aria-expanded','false');
+    const item=button(CLEAR_TEXT.menu,()=>{list.hidden=true;more.setAttribute('aria-expanded','false');open(clearTargets(d.getWhole(),{type,id}));},'lb-btn-text rc-menu-item');item.dataset.navOnly='1';
+    add(wrap,more,add(list,item));return wrap;
+  }
+  // 하루 전체 단추(달력·하루 상세). 값이 있는 기록이 없거나 새 시작 전 날짜면 null.
+  function dayButton(date,{before:pre=null}={}){
+    if(d.before?.(date)||!clearTargets(d.getWhole(),{date}).length)return null;
+    const b=button(CLEAR_TEXT.day,()=>{pre?.();open(clearTargets(d.getWhole(),{date}),{mode:'DAY',date});},'secondary rc-day');b.dataset.navOnly='1';b.dataset.date=date;
+    return b;
+  }
+  // 이력 줄의 "이 값으로 되살리기"(1연산). 지금 기록이 빈 값이고 그 줄이 이전 값일 때만.
+  function restoreButton(row){
+    const type=row?.type,id=row?.value?.entityId,data=row?.value?.data;
+    if(!CLEAR_TYPES.includes(type)||typeof id!=='string')return null;
+    const cur=recordOf(d.getWhole(),type,id);if(!cur||!recordEmpty(type,cur.data)||!usable(cur))return null;
+    if(!restoreData(type,data,cur))return null;
+    const b=button(CLEAR_TEXT.restore,()=>{
+      if(!(d.confirm?.(CLEAR_TEXT.restoreAsk)??true))return;
+      void d.perform(async()=>{
+        const why=blocked();if(why){d.say?.(CLEAR_TEXT[why]??CLEAR_TEXT.READ_ONLY,true);return;}
+        await d.prepare();
+        const now=recordOf(d.getWhole(),type,id);if(!now||!sameHeads(now.heads,cur.heads)){d.say?.(CLEAR_TEXT.stale,true);await d.rerender?.();return;}
+        await d.write(type,id,restoreData(type,data,now),now.heads,'이전 값으로 되살리기');
+        try{await d.after?.();}catch{/* 쓰기는 끝났다 */}
+        d.say?.(CLEAR_TEXT.restored,false);await d.rerender?.();
+      });
+    },'secondary rc-restore');
+    return b;
+  }
+  return {menu,dayButton,restoreButton,open,start,cancel,fire,send,waiting:()=>wait};
 }
 export {lifeIdOK,targetTimeOK,subjectOfSession,emptyDay,dayNumber};
 export {createPlanDrafts} from './life-flow.mjs';   // OPS1A: 앱이 계획 초안(PLAN_DAY 묶기)을 만들 때 쓴다(앱은 이 모듈만 불러온다)

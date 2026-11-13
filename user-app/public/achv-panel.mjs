@@ -23,15 +23,16 @@ const maker=doc=>{
 
 // 장부 읽기·쓰기. 저장소가 막혀 있으면 이번 실행 동안만(st에 보관).
 // HUNT36 H36-Q1: 저장이 실패하면 읽기가 옛 장부를 돌려줄 수 있다. 메모리 장부를 함께 보고 합쳐서, 이미 알린 달성을 다시 알리지 않는다.
+// V7D1: st.seenKey가 있으면 그 장부를 쓴다(앱이 새 시작 기준선의 새 장부 키를 넘긴다. 옛 장부 lb.achv.seen.v1은 지우지 않고 그대로 둔다).
 function readSeen(storage,st){
   let stored=null;
-  try{const raw=storage?.getItem(ACHV_SEEN_KEY);if(raw!==null&&raw!==undefined)stored=parseSeen(raw);}catch{/* 이번 실행 동안만 */}
+  try{const raw=storage?.getItem(st.seenKey??ACHV_SEEN_KEY);if(raw!==null&&raw!==undefined)stored=parseSeen(raw);}catch{/* 이번 실행 동안만 */}
   const mem=st.seenMemory??null;
   return stored&&mem?{...stored,...mem}:stored??mem;
 }
 function writeSeen(storage,st,next){
   st.seenMemory=next;
-  try{storage?.setItem(ACHV_SEEN_KEY,JSON.stringify(next));}catch{/* 이번 실행 동안만 */}
+  try{storage?.setItem(st.seenKey??ACHV_SEEN_KEY,JSON.stringify(next));}catch{/* 이번 실행 동안만 */}
 }
 // 새 달성을 장부에 넣고 알림을 돌려준다: {note(문구, 없으면 null),count(새 달성 수),quiet(첫 실행처럼 모션 없이 보일 문구면 참)}. 같은 달성은 다시 알리지 않는다.
 export function settleAchv(list,today,storage,st){

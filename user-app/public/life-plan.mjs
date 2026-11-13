@@ -12,12 +12,19 @@ export const VIEWS=Object.freeze([['DAY','오늘'],['WEEK','주'],['MONTH','월'
 export const VIEW_CHIPS=Object.freeze([['DAY','오늘'],['WEEK','주'],['MONTH','월'],['FAR','멀리']]),FAR_VIEWS=Object.freeze(['YEAR','CSAT']);
 export const VIEW_KEY='lb.plan.view',TIMER_KEY='lb.life.timer';
 export const PHASES=Object.freeze(['기본기','실력','실전','파이널']);
-export const BLOCK_TEXT=Object.freeze({M:'오전',A:'오후',E:'저녁',N:'밤'});
-export const STUDY_HOURS_PER_DAY=8,MAX_GRID_WEEKS=160,GRID_COLS=14,NO_SUBJECT_COLOR='#C9A227';
+// V7B (소유자 2026-11-11): 화면의 시간대는 3개(오전 = 아침~점심, 오후 = 점심~저녁, 저녁 = 저녁~자기 전). 저장값 집합(life-model PLAN_BLOCKS M·A·E·N)과 검사기는 그대로다.
+// 이미 저장된 "밤"(N) 줄은 값을 바꾸지 않고 저녁 칸에 묶어 보인다(shownBlock, 연산 0). 새로 쓰는 줄은 SHOWN_BLOCKS 값만 쓴다(옛 빌드 검사기도 받는 값).
+export const SHOWN_BLOCKS=Object.freeze(['M','A','E']);
+export const shownBlock=b=>b==='N'?'E':b;
+export const BLOCK_TEXT=Object.freeze({M:'오전',A:'오후',E:'저녁',N:'저녁'});
+export const BLOCK_HINT=Object.freeze({M:'아침~점심',A:'점심~저녁',E:'저녁~자기 전'});
+// 시간대 색(styles.css .lb-slot-M·A·E와 같은 값, 겨자·황토·갈색 없음). 과목 색과 헷갈리지 않게 칩에는 점 대신 아이콘(해 뜸·해·달)을 붙인다.
+export const BLOCK_COLOR=Object.freeze({M:'#5AA9E6',A:'#F08A5D',E:'#6C5CE7'});
+export const STUDY_HOURS_PER_DAY=8,MAX_GRID_WEEKS=160,GRID_COLS=14,NO_SUBJECT_COLOR='#E3BE4C';   // V7C: 황토 #C9A227 → 밝은 금
 const WEEKDAY=['일','월','화','수','목','금','토'];
 export const PLAN_ERROR_TEXT=Object.freeze({
   INVALID_PLAN_DAY:'하루 계획 모양이 올바르지 않습니다.',INVALID_PLAN_ITEM:'계획 줄이 올바르지 않습니다(과목이 있어야 하고 같은 줄이 두 번 들어갈 수 없습니다).',
-  INVALID_PLAN_BRICKS:'벽돌은 0.5장 단위로 0.5~'+MAX_PLAN_BRICKS+'장입니다.',INVALID_PLAN_BLOCK:'시간대를 오전·오후·저녁·밤 중에서 고르세요.',
+  INVALID_PLAN_BRICKS:'벽돌은 0.5장 단위로 0.5~'+MAX_PLAN_BRICKS+'장입니다.',INVALID_PLAN_BLOCK:'시간대를 오전·오후·저녁 중에서 고르세요.',
   PLAN_ITEM_LIMIT:'하루 계획은 '+MAX_PLAN_ITEMS+'줄까지입니다.',PLAN_CARD_TOO_LARGE:'하루 계획이 너무 큽니다(8KB). 줄을 줄여 주세요.',
   INVALID_LIFE_TEXT:'할 일은 1~'+MAX_PLAN_TITLE+'자로 적어 주세요.',APP_ENTITY_LIMIT:'개수 한도에 닿았습니다.',
   STALE_HEADS:'다른 기기에서 먼저 바뀌어 합치지 못했습니다. 입력은 그대로 있습니다. 다시 저장해 주세요.',
@@ -127,7 +134,7 @@ export function capacity(exams,today,ach){
 // ---------- 하루 계획 (PLAN_DAY) ----------
 export const planRow=(life,date)=>(life?.plans??[]).find(p=>p.date===date)??null;
 export const planOf=(life,date)=>planRow(life,date)?.data??null;
-const blockIndex=b=>PLAN_BLOCKS.indexOf(b);
+const blockIndex=b=>SHOWN_BLOCKS.indexOf(shownBlock(b));   // V7B: 옛 밤 줄은 저녁 줄과 같은 자리(줄 순서대로)
 export const sortedItems=items=>items.map((x,i)=>({x,i})).sort((a,b)=>blockIndex(a.x.block)-blockIndex(b.x.block)||a.i-b.i).map(o=>o.x);
 export const planSum=items=>items.reduce((s,x)=>s+x.bricks,0);
 // 어제 계획 복사: 줄을 새 id로 복사해 초안만 만든다(저장하지 않는다). newId는 호출자가 준다(난수는 여기서 만들지 않는다).
@@ -199,8 +206,8 @@ export const PLAN_LINK_KEY='lb.plan.link',PLAN_LINK_DAYS=60;
 export const ITEM_STATE_TEXT=Object.freeze({NONE:'안 함',PIECE:'조각',DONE:'완료'});
 export const NEW_ITEM_BRICKS=1;
 export const oldTarget=x=>typeof x?.bricks==='number'&&x.bricks!==NEW_ITEM_BRICKS?x.bricks:null;   // 예전에 사람이 정한 목표 장수(새 줄 = 1은 표시하지 않음)
-// 세션 시각(KST)의 시간대: 05~11시 오전, 12~17시 오후, 18~21시 저녁, 22~04시 밤(plan-today blockOfNow와 같은 규칙).
-export function blockOfIso(iso){const h=Number(hhmmFromIso(iso).slice(0,2));return h>=22||h<5?'N':h<12?'M':h<18?'A':'E';}
+// 세션 시각(KST)의 시간대: 05~11시 오전, 12~17시 오후, 18~04시 저녁(plan-today blockOfNow와 같은 규칙). V7B: 예전 밤(22~04시)은 저녁(= 저녁~자기 전)이다.
+export function blockOfIso(iso){const h=Number(hhmmFromIso(iso).slice(0,2));return h>=18||h<5?'E':h<12?'M':'A';}
 const AT_LAST='￿';
 // 그 날 공부 세션(완료, 분 0~1440). draft = 아직 쌓지 않은 그 날 공부 카드(있으면 그 날 기록 대신, previewAchieve와 같은 규칙). 시각 순(시각 없으면 뒤), 같은 시각은 id 순.
 export function daySessions(study,date,draft=null){
@@ -220,7 +227,7 @@ export function linkPlan(items,sessions,{links={},done=[]}={}){
     const mine=list.filter(x=>x.subjectId===s.subjectId);
     if(!mine.length){link.set(s.id,null);outside.push({...s,bricks:b.bricks,pieces:b.pieces});continue;}
     const at=s.at?blockOfIso(s.at):null;
-    const pick=mine.find(x=>x.id===links[s.id])??mine.find(x=>x.block===at&&!full(rows.get(x.id)))??mine.find(x=>!full(rows.get(x.id)))??mine.find(x=>x.block===at)??mine[0];
+    const pick=mine.find(x=>x.id===links[s.id])??mine.find(x=>shownBlock(x.block)===at&&!full(rows.get(x.id)))??mine.find(x=>!full(rows.get(x.id)))??mine.find(x=>shownBlock(x.block)===at)??mine[0];
     const r=rows.get(pick.id);r.minutes+=s.minutes;r.bricks+=b.bricks;r.pieces+=b.pieces;r.sessions.push(s.id);link.set(s.id,pick.id);
   }
   let doneN=0;
@@ -465,12 +472,12 @@ function dayView(h,ctx,st,ctxData){
   // P1B: 앱이 ctx.todayPlan을 넘겨 주면 오늘 화면과 같은 "오늘 계획" 카드(plan-today.mjs의 같은 함수)를 그린다. 줄이 곧 계획 vs 실제라 아래 표는 그리지 않는다. 못 받으면 아래 옛 보기.
   const card=ctx.todayPlan?.({date,today})??null;
   if(card){h.add(out,card,h.add(h.el('div',null,'button-row'),h.button('계획 편집',()=>openPlanEditor(ctx,st,date),'secondary')));return out;}
-  const blocksUsed=[...new Set(sum.items.map(x=>x.block))];
+  const blocksUsed=[...new Set(sum.items.map(x=>shownBlock(x.block)))];
   h.add(out,h.el('h3','계획 · '+(blocksUsed.length?blocksUsed.map(b=>BLOCK_TEXT[b]).join('·'):'-')+' / 합 '+barsText(sum.planned)));   // V6F: 약자 대신 한글 시간대
   if(!sum.items.length)h.add(out,h.el('p','이 날의 계획이 없습니다. "계획 편집"에서 줄을 추가하세요.','muted small'));
   const status=itemStatuses(sum.items,sum.actual,timer);
-  for(const b of PLAN_BLOCKS){
-    const rows=sum.items.filter(x=>x.block===b);if(!rows.length)continue;
+  for(const b of SHOWN_BLOCKS){
+    const rows=sum.items.filter(x=>shownBlock(x.block)===b);if(!rows.length)continue;
     const g=h.add(h.el('div',null,'plan-block'),h.el('span',BLOCK_TEXT[b],'plan-block-name'));
     for(const x of rows){
       const stt=status.get(x.id),r=h.el('div',null,'plan-row');r.dataset.itemId=x.id;
@@ -625,7 +632,9 @@ function openDaySheet(ctx,st,data,date){
   let dlg=null;
   // P1C: 그 날 일정(시험은 위 문장에 이미 있어 뺀다)과 "+ 일정". 시트를 닫고 앱의 일정 시트를 연다.
   h.add(body,scheduleBox(h,ctx,st,{...data,exams:null},date,date,{addDate:date,withDate:false,before:()=>dlg?.close?.()}));
-  h.add(body,h.add(h.el('div',null,'button-row'),h.button('이 날 계획 편집',()=>{dlg?.close?.();openPlanEditor(ctx,st,date);},'primary')));
+  // V7D2: 새 시작 전 날짜는 "이 날 계획 편집" 대신 읽기 전용 한 줄. 아니면 "이 날 비우기"(값 있는 기록만, 가계부 없음)도 함께.
+  if(ctx.freshBefore?.(date))h.add(body,h.el('p',ctx.freshText?.lock??'새 시작 전 기록이라 읽기만 할 수 있어','notice fresh-lock-note'));
+  else h.add(body,h.add(h.el('div',null,'button-row'),h.button('이 날 계획 편집',()=>{dlg?.close?.();openPlanEditor(ctx,st,date);},'primary'),ctx.clearDay?.(date,{before:()=>dlg?.close?.()})??null));
   dlg=ctx.sheet?.(dateLabel(date),body)??null;
   return body;
 }
@@ -749,7 +758,8 @@ function openPlanEditor(ctx,st,date,{seed=[],onSaved=null}={}){
       sub.addEventListener('change',()=>{x.subjectId=sub.value;autoSave();});
       const title=el('input');title.type='text';title.value=x.title;title.setAttribute('maxlength',String(MAX_PLAN_TITLE));title.setAttribute('aria-label','세부내용');title.setAttribute('placeholder','세부내용');
       title.addEventListener('input',()=>{x.title=title.value;});title.addEventListener('change',()=>autoSave());
-      const block=select(PLAN_BLOCKS.map(b=>[b,BLOCK_TEXT[b]]),x.block,'시간대');block.addEventListener('change',()=>{x.block=block.value;autoSave();});   // V6F: 약자 없이 한글만
+      // V6F: 약자 없이 한글만. V7B: 고르는 값은 3개, 옛 밤 줄은 저녁으로 보이고 시간대를 바꾸지 않으면 저장값(N)을 그대로 둔다.
+      const block=select(SHOWN_BLOCKS.map(b=>[b,BLOCK_TEXT[b]+' ('+BLOCK_HINT[b]+')']),shownBlock(x.block),'시간대');block.addEventListener('change',()=>{if(block.value!==shownBlock(x.block))x.block=block.value;autoSave();});
       const old=oldTarget(x);
       add(rows,add(el('div',null,'plan-edit-row'),sub,title,block,old!==null?el('span','예전 목표 '+barsText(old),'muted small plan-old-target'):null,button('삭제',()=>{draft.splice(i,1);draw();autoSave();},'secondary')));
     });

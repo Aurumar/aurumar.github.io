@@ -8,14 +8,31 @@
 import {lifeDefs,kstDate,shiftDay,hhmmFromIso,validateLifeData,SUBJECT_COLOR_KEYS,PLAN_BLOCKS,MAX_PLAN_TITLE} from './life-model.mjs';
 import {achieve,previewAchieve} from './life-achieve.mjs';
 import {timerElapsedMin,liveTick} from './study-stage.mjs';
-import {planOf,daySummary,copyPlan,savePlanDay,planErrorText,PLAN_NOTICE_TEXT,barsText,dateLabel,BLOCK_TEXT,NO_SUBJECT_COLOR,blockOfIso,daySessions,linkPlan,readPlanMarks,writePlanMarks,itemStateText,oldTarget,NEW_ITEM_BRICKS} from './life-plan.mjs';
+import {planOf,daySummary,copyPlan,savePlanDay,planErrorText,PLAN_NOTICE_TEXT,barsText,dateLabel,BLOCK_TEXT,BLOCK_HINT,SHOWN_BLOCKS,shownBlock,NO_SUBJECT_COLOR,blockOfIso,daySessions,linkPlan,readPlanMarks,writePlanMarks,itemStateText,oldTarget,NEW_ITEM_BRICKS} from './life-plan.mjs';
 
-// V6F: 화면에는 약자(M·L·D·N / M·A·E·N)를 쓰지 않고 한글 시간대만(오전·오후·저녁·밤). 저장값은 M·A·E·N 그대로.
+// V6F: 화면에는 약자(M·L·D·N / M·A·E·N)를 쓰지 않고 한글 시간대만. 저장값은 M·A·E·N 그대로.
+// V7B: 화면 시간대는 오전·오후·저녁 3개. 옛 밤(N) 줄은 저녁으로 보인다(life-plan shownBlock).
 export const BLOCK_SHORT=BLOCK_TEXT;
 export const blockLabel=b=>BLOCK_TEXT[b];
+// V7B: 시간대 아이콘(오전 해 뜸 · 오후 해 · 저녁 달). 색은 currentColor라 styles.css .lb-slot-M·A·E가 정한다(인라인 style 없음).
+export function slotIcon(svg,b){
+  const s=svg('svg',{class:'lb-slot-ico',width:12,height:12,viewBox:'0 0 12 12','aria-hidden':'true'}),k=shownBlock(b),line={stroke:'currentColor','stroke-width':1.2,'stroke-linecap':'round',fill:'none'};
+  if(k==='M')s.append(svg('path',{d:'M2.6 9a3.4 3.4 0 0 1 6.8 0z',fill:'currentColor'}),svg('path',{d:'M1 10.6h10M6 1.6v1.8M2.3 4.1l1.2 1.2M9.7 4.1 8.5 5.3',...line}));
+  else if(k==='A')s.append(svg('circle',{cx:6,cy:6,r:2.5,fill:'currentColor'}),svg('path',{d:'M6 .9v1.5M6 9.6v1.5M.9 6h1.5M9.6 6h1.5M2.4 2.4l1 1M8.6 8.6l1 1M2.4 9.6l1-1M8.6 3.4l1-1',...line}));
+  else s.append(svg('path',{d:'M8.2 1.3A4.9 4.9 0 1 0 10.9 8.7 3.9 3.9 0 1 1 8.2 1.3z',fill:'currentColor'}));
+  return s;
+}
+// 시간대 칩 하나(단추 글자는 시간대 이름만, 아이콘은 글자 뒤에 붙이고 CSS order로 앞에 보인다) + 칩 아래 작은 설명. on = 고름(그 색 바탕), 아니면 흰 바탕 + 그 색 아이콘.
+export function slotChip(h,b,on,onClick,cls=''){
+  const n=h.button(BLOCK_TEXT[b],onClick,'lb-chip lb-slot lb-slot-'+b+(cls?' '+cls:'')+(on?' selected':''));
+  n.setAttribute('aria-pressed',String(on));n.dataset.block=b;n.title=BLOCK_TEXT[b]+' · '+BLOCK_HINT[b];n.append(slotIcon(h.svg,b));
+  return h.add(h.el('span',null,'lb-slot-wrap'),n,h.el('small',BLOCK_HINT[b],'lb-slot-hint'));
+}
+// 시간대 이름 글자 + 아이콘(줄 머리·격자 머리). 글자는 그 노드 자신의 글자다.
+export const slotLabel=(h,b,cls)=>h.add(h.el('span',BLOCK_TEXT[b],cls+' lb-slot lb-slot-'+shownBlock(b)),slotIcon(h.svg,b));
 
 // ---------- 계산(시계·저장소·DOM 없음) ----------
-// 지금 시각(KST)으로 시간대를 미리 고른다: 05~11시 오전, 12~17시 오후, 18~21시 저녁, 22~04시 밤(세션 연결과 같은 규칙).
+// 지금 시각(KST)으로 시간대를 미리 고른다: 05~11시 오전, 12~17시 오후, 18~04시 저녁(세션 연결과 같은 규칙, V7B).
 export const blockOfNow=blockOfIso;
 // 세부내용은 PLAN_DAY에서 1~40자 필수라, 비우면 과목 이름을 넣는다(저장 형식 그대로).
 export const titleOr=(title,subjectName)=>{const t=String(title??'').trim();return t||[...String(subjectName)].slice(0,MAX_PLAN_TITLE).join('');};
@@ -99,7 +116,8 @@ const SHARED=createTodayPlanState();
 export function openChipSheet(ctx,{date,item=null,block=null,onPut,onDelete=null}){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button}=h;
   const defs=lifeDefs(ctx.getWhole().life??null),subjects=defs.subjects.filter(s=>!s.hidden||s.id===item?.subjectId),nameOf=id=>subjects.find(s=>s.id===id)?.name??'기타';
-  const pick={subjectId:item&&subjects.some(s=>s.id===item.subjectId)?item.subjectId:null,block:item?.block??(PLAN_BLOCKS.includes(block)?block:blockOfNow(ctx.now()))};
+  // V7B: 고르는 값은 오전·오후·저녁. 옛 밤 줄을 고칠 때는 저녁이 골라져 보이고, 시간대를 바꾸지 않으면 저장값(N)을 그대로 둔다(아래 put).
+  const pick={subjectId:item&&subjects.some(s=>s.id===item.subjectId)?item.subjectId:null,block:item?.block?shownBlock(item.block):PLAN_BLOCKS.includes(block)?shownBlock(block):blockOfNow(ctx.now())};
   const body=el('div',null,'pt-sheet'),err=el('p',null,'notice error pt-sheet-error'),note=el('p',null,'notice pt-sheet-note');err.hidden=true;note.hidden=true;
   const showErr=text=>{err.textContent=text;err.hidden=false;};
   const what=el('input');what.type='text';what.value=item&&item.title!==nameOf(item.subjectId)?item.title:'';
@@ -114,7 +132,7 @@ export function openChipSheet(ctx,{date,item=null,block=null,onPut,onDelete=null
       b.setAttribute('aria-pressed',String(on));b.dataset.subjectId=s.id;if(!key)b.append(h.dot(s.color));b.append(el('span',s.name));subjRow.append(b);
     }
     if(!subjects.length)subjRow.append(el('p','보이는 과목이 없습니다. 오늘 탭의 습관 편집에서 과목을 추가하세요.','muted small'));
-    blockRow.replaceChildren(...PLAN_BLOCKS.map(b=>chipBtn(blockLabel(b),pick.block===b,()=>{pick.block=b;})));
+    blockRow.replaceChildren(...SHOWN_BLOCKS.map(b=>slotChip(h,b,pick.block===b,()=>{pick.block=b;err.hidden=true;draw();},'pt-slot')));
   };
   draw();
   let dlg=null;
@@ -123,7 +141,7 @@ export function openChipSheet(ctx,{date,item=null,block=null,onPut,onDelete=null
   const reopen=text=>{note.textContent=text;note.hidden=false;dlg=ctx.sheet?.(title,body)??null;};
   const put=()=>{
     if(!pick.subjectId){showErr('과목을 고르세요.');return;}
-    const next={id:item?.id??'p'+ctx.uid().slice(0,10),subjectId:pick.subjectId,title:titleOr(what.value,nameOf(pick.subjectId)),bricks:item?.bricks??NEW_ITEM_BRICKS,block:pick.block};
+    const next={id:item?.id??'p'+ctx.uid().slice(0,10),subjectId:pick.subjectId,title:titleOr(what.value,nameOf(pick.subjectId)),bricks:item?.bricks??NEW_ITEM_BRICKS,block:item&&shownBlock(item.block)===pick.block?item.block:pick.block};
     const code=onPut(next,close,reopen);if(code)showErr(planErrorText(code));
   };
   const old=oldTarget(item);
@@ -144,7 +162,15 @@ function meter(h,got,bricks,label){
 }
 // opts: date(그릴 날), today, focus(life-ui 포트: timer()·start(subjectId,itemId)·finish()·cancel()·message(), 없으면 [▶ 집중] 없음), draft(쌓지 않은 오늘 공부 카드),
 // focusMessage(포트의 담기 결과 문구를 카드에 보일지 — 계획 탭처럼 오늘 화면 문구가 안 보이는 곳), state(저장 결과 문구).
-export function renderTodayPlan(ctx,{date=null,today=null,focus=null,draft=null,focusMessage=false,state=SHARED}={}){
+// V7D2: 그린 뒤 한 곳에서 — 새 시작 전 날짜면 읽기 전용 + 한 줄, 아니면 쌓은 하루 계획의 ⋯ 메뉴(머리 줄 끝).
+export function renderTodayPlan(ctx,o={}){
+  const out=drawTodayPlan(ctx,o),d=out.dataset.date;
+  if(ctx.freshLock?.(out,d))return out;
+  const menu=ctx.clearMenu?.('PLAN_DAY',d)??null,head=out.children?.[0];
+  if(menu&&head)head.append(menu);
+  return out;
+}
+function drawTodayPlan(ctx,{date=null,today=null,focus=null,draft=null,focusMessage=false,state=SHARED}={}){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button}=h,whole=ctx.getWhole(),life=whole.life??null;
   const day=today??kstDate(ctx.now()),d=date??day,timer=focus?.timer?.()??null,store=ctx.storage??globalThis.localStorage;
   const m=todayPlanModel({life,study:whole.study??null,date:d,today:day,timer,draft,marks:readPlanMarks(store,d)});
@@ -176,7 +202,7 @@ export function renderTodayPlan(ctx,{date=null,today=null,focus=null,draft=null,
     const tag=button(null,sheetFor({id:r.id,subjectId:r.subjectId,title:r.title,bricks:r.bricks,block:r.block}),'pt-tag'+(r.got>0||r.manual?'':' dashed'));
     tag.setAttribute('aria-label',r.name+' 계획 고치기');tag.append(h.dot(r.color),el('span',r.name));
     // V6A: 미터 = 벽돌 1장(완료 기준)까지 채움. 글자 = 안 함 / 조각 / 완료 n장. 예전에 정한 목표 장수는 보조 글자로만.
-    add(row,el('span',blockLabel(r.block),'pt-block'),tag,r.showTitle?el('span',r.title,'pt-what'):el('span',null,'pt-what'),
+    add(row,slotLabel(h,r.block,'pt-block'),tag,r.showTitle?el('span',r.title,'pt-what'):el('span',null,'pt-what'),
       meter(h,r.manual?1:r.got,1,r.name+' '+r.text),el('span',r.text,'pt-status '+r.kind),r.doing?(()=>{const t=el('span','⏱','pt-doing');t.setAttribute('aria-label','이 줄 타이머 진행 중');t.title='이 줄 타이머 진행 중';return t;})():null,
       r.oldTarget!==null?el('span','예전 목표 '+barsText(r.oldTarget),'muted small pt-old'):null);
     if(!m.future){   // 손 완료 표시(기본은 자동). 이 기기 화면 설정에만 적는다. V6F: 글자는 ✓ 하나(폭이 줄마다 같게), 켜짐은 색·aria로.

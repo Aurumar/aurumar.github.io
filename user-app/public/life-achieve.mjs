@@ -39,7 +39,7 @@ export const STREAK_STEP=7,STREAK_MAX_MULT10=20;
 export const AREAS=Object.freeze(['BODY','HEAD','MONEY','HEART']);
 export const RECENT_MAX=5;
 const MORNING_IDS=Object.freeze(['hb-wake','hb-sun','hb-breakfast']),COMMUTE_IDS=Object.freeze(['hb-in','hb-out']);
-const STUDY_ROUTINE_BRICKS=2,MAX_SPAN_DAYS=4000,UNKNOWN_COLOR='#C9A227';
+const STUDY_ROUTINE_BRICKS=2,MAX_SPAN_DAYS=4000,UNKNOWN_COLOR='#E3BE4C';   // V7C: 황토 #C9A227 → 밝은 금
 // 퀘스트·보너스 벽돌 (Q1A, 설계 Q1D §4·§6). 새 XP·보너스는 QUEST_EPOCH(첫 배포 주 월요일) 이후 날짜에만 붙고, 그 전 날짜의 XP는 그대로다. 업적 판정(life-achv)은 전체 기록을 본다.
 // 보너스 벽돌은 week.bonus·bonusTotal에만 있다. bricks·value·목표·아바타·상태 내보내기·공부 제안에 섞지 않는다.
 export const QUEST_EPOCH='2026-11-09';

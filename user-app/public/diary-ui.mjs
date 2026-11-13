@@ -193,7 +193,7 @@ export function renderDiaryEntry(ctx,st,{open}){
   const label=d.status==='NONE'?'쓰기':d.status==='LOCAL_DRAFT'?'이어서 쓰기':'고치기';
   // FIX52C (Codex R4): 기본 입구는 누를 때 일기 날짜를 다시 계산한다(03:59에 그린 화면을 04:01에 눌러도 새 날짜). 날짜를 적은 입구(지난 초안 열기)는 그 날짜 그대로.
   const go=button(label,()=>open(diaryDateOf(ctx.now()).date),'primary diary-open');go.dataset.navOnly='1';go.setAttribute('aria-label',(d.late?'어제':'오늘')+' 일기 '+label);
-  add(out,add(el('div',null,'diary-entry-head'),el('h3',d.late?'어제 일기':'오늘 일기'),go),
+  add(out,add(el('div',null,'diary-entry-head'),el('h3',d.late?'어제 일기':'오늘 일기'),go,ctx.clearMenu?.('DIARY_DAY',d.date)??null),   // V7D2: 저장한 일기 ⋯ 메뉴
     el('p',d.status==='NONE'?DIARY_TEXT.none:d.status==='LOCAL_DRAFT'?DIARY_TEXT.draft:diarySummaryText(d.card),'muted small diary-entry-state'));
   const prev=yesterdayOf(life,d.date);
   if(prev?.tomorrow?.trim())add(out,el('p','어제 정한 한 가지: '+prev.tomorrow,'diary-entry-tomorrow'));
@@ -315,6 +315,7 @@ export async function openDiarySheet(ctx,st,date,opts={}){
     add(el('label',null,'diary-field diary-tomorrow-field'),el('span','내일 한 가지 (선택)','diary-label'),tomorrow),el('p',DIARY_TEXT.privacy,'muted small diary-privacy'),el('p',DIARY_TEXT.sync,'muted small'));
   add(body,state,st.diaryPorts?.persistent===false?el('p',DIARY_TEXT.noBox,'notice error'):null,add(el('div',null,'diary-cols'),rate,write),add(el('div',null,'diary-actions diary-actions-wide'),saveWide),err,pastDiaries(ctx,{el,add,button},life,date));
   paint();paintCount();state.textContent=stateText();
+  ctx.freshLock?.(body,date);   // V7D2: 새 시작 전 날짜의 일기는 읽기 전용 + 한 줄(지금까지는 저장 때 거절만)
   dlg=sheet(dateText(date)+' 일기',body);
   dlg.className=String(dlg.className??'')+' diary-sheet';setStep(1);
   return dlg;
@@ -349,6 +350,7 @@ export function diaryDayRow(ctx,date){
   const h=maker(ctx.document??globalThis.document);
   if(!d)return h.add(h.el('div',null,'row diary-day-row'),h.add(h.el('div',null,'row-main'),h.el('strong','일기'),h.el('p','이날 저장한 일기가 없습니다.','muted small')));
   const row=diaryRow(h,date,d,'일기');row.className='row diary-row diary-day-row';
+  const menu=ctx.clearMenu?.('DIARY_DAY',date)??null;if(menu)row.append(menu);   // V7D2: 그날 일기 ⋯ 메뉴
   return row;
 }
 export {emptyDiary};

@@ -9,6 +9,8 @@ import {universeData} from './universe-view.mjs';
 import {todayEffectStrip} from './study-live.mjs';   // DS5: 오늘 효과 5단계 띠(작게 보기와 같은 함수)
 import {avatarFxLayer} from './study-room.mjs';   // AV5: 오늘 상태 효과 층
 import {DAILY_CHARS,dailyCharOf,dailyLineText} from './study-stage.mjs';   // AV8: 오늘의 캐릭터 13단계 띠
+import {dailyCharStrip} from './study-live.mjs';   // V7A: 타이머와 같은 13단계 띠 + 눌러서 미리보기(AV5 효과 띠 대신)
+import {dailyStepsOf,dailyNextText} from './study-stage.mjs';   // V7A: "다음 캐릭터까지 h:mm · 이름"
 
 const NS='http://www.w3.org/2000/svg';
 const MAX_STAR_MARKS=12;
@@ -67,8 +69,10 @@ function fxFront({s},useArt){
 // AV5: 그림이 있으면 옛 효과 class(색 바꾸는 필터·입자·오라)를 달지 않는다. 그림 위에는 avatarFxLayer(오늘 상태 6단계 효과 층)만 얹는다(같은 옷 그대로). 자리표시 그림은 예전 class 그대로.
 const fxClass=(level,useArt)=>'st-stage st-lv-'+level+(useArt?' st-stage-art':(level>=2?' st-glint':'')+(level>=3?' st-particles':'')+(level>=4?' st-aura-on':'')+(level>=5?' st-full':''));
 
+// V7A: 링 한 바퀴 = 오늘의 캐릭터 마지막 단계(12h). 예전 AV5 기준(FULL_EFFECT_MIN 6h)은 study-stage에 그대로 있다.
+const FULL_CHAR_MIN=DAILY_CHARS[DAILY_CHARS.length-1].h*60;
 function todayRing({s},minutes){
-  const size=72,stroke=8,r=(size-stroke)/2,c=2*Math.PI*r,mid=size/2,part=Math.min(1,minutes/FULL_EFFECT_MIN);
+  const size=72,stroke=8,r=(size-stroke)/2,c=2*Math.PI*r,mid=size/2,part=Math.min(1,minutes/FULL_CHAR_MIN);
   const svg=s('svg',{class:'lb-ring st-ring',width:size,height:size,viewBox:'0 0 '+size+' '+size,role:'img','aria-label':'오늘 누적 '+hmText(minutes)});
   const text=s('text',{class:'lb-ring-text',x:mid,y:mid});text.textContent=clockText(minutes);
   svg.append(s('circle',{class:'lb-ring-track',cx:mid,cy:mid,r,'stroke-width':stroke}));
@@ -76,8 +80,11 @@ function todayRing({s},minutes){
   svg.append(text);
   return svg;
 }
-const nextEffectText=fx=>fx.next?'다음 효과까지 '+hmText(fx.toNextMin)+' · '+fx.next.label:'오늘 효과 최고 단계 · '+fx.label;
-const todayBadge=fx=>'오늘 상태 · '+fx.label;   // AV5: "평생 등급"과 헷갈리지 않게 이름표를 단다
+const nextEffectText=fx=>fx.next?'다음 효과까지 '+hmText(fx.toNextMin)+' · '+fx.next.label:'오늘 효과 최고 단계 · '+fx.label;   // AV5(V7A부터 화면에서 안 씀)
+const todayBadge=fx=>'오늘 상태 · '+fx.label;   // AV5(V7A부터 화면에서 안 씀)
+// V7A: 배지·한 줄 = 오늘의 캐릭터. "평생 등급"과 헷갈리지 않게 이름표를 단다.
+const charBadge=minutes=>{const d=dailyCharOf(minutes);return '오늘의 캐릭터 · '+d.h+'h '+d.label;};
+const charNextText=minutes=>dailyNextText(dailyStepsOf(minutes*60000));
 
 // "어디까지 왔나" 문구(AV4C). 수치는 progressOf에서 오고 여기서는 글자만 만든다. today = KST 날짜.
 export function progressLines(p,today){
@@ -177,37 +184,9 @@ function ladderCard(h,proj){
   return out;
 }
 
-// AV8: "오늘의 캐릭터 13단계" 띠(0h~12h). 새 그림 파일 없이 STUDY LIVE와 같은 dc_hNN.webp를 작게 쓴다. 지금 단계 금 테두리 · 지나온 단계 밝게 · 남은 단계 흐리게(CSS).
-// 썸네일은 칸이 화면에 보일 때만 그림을 요청한다(IntersectionObserver가 없으면 자리표시만, 요청 0). 못 불러오면 그 칸만 자리표시로 바꾼다. 저장 0.
-// V6F (지시서 7): 숫자로 보이는 "오늘 n분"은 담은 세션만(cardMin), 진행 중 타이머 분은 따로 "진행 중 +n분". 그림·효과 단계는 지금까지(담은 분 + 진행 중) 그대로 보여 준다(STUDY LIVE와 같다).
+// AV8 → V7A: "오늘의 캐릭터 13단계" 띠는 study-live의 dailyCharStrip(타이머와 같은 함수, 칸을 누르면 미리보기)을 쓴다. 썸네일은 보일 때만 요청(관찰자가 없으면 요청 0).
+// V6F (지시서 7): 숫자로 보이는 "오늘 n분"은 담은 세션만(cardMin), 진행 중 타이머 분은 따로 "진행 중 +n분". 그림·캐릭터 단계는 지금까지(담은 분 + 진행 중) 그대로 보여 준다(STUDY LIVE와 같다).
 export const todayText=t=>'오늘 '+hmText(t.cardMin??t.minutes)+(t.timerMin>0?' · 진행 중 +'+hmText(t.timerMin):'');
-function dailyStrip(h,doc,minutes,useArt){
-  const {el,add}=h,list=el('ol',null,'dc-strip');list.setAttribute('aria-label','오늘의 캐릭터 '+DAILY_CHARS.length+'단계');
-  const frames=[],cells=DAILY_CHARS.map(c=>{
-    const frame=el('span',null,'dc-frame');frames.push(frame);frame.append(el('span',null,'dc-ph'));
-    const li=add(el('li',null,'dc-cell'),frame,el('span',c.h+'h','dc-h'),el('span',c.label,'dc-name'));li.title=c.h+'h · '+c.label;add(list,li);return {c,li};
-  });
-  const IO=useArt?doc.defaultView?.IntersectionObserver:null;
-  const picture=c=>{const img=el('img',null,'dc-fig');img.alt='';img.setAttribute('aria-hidden','true');img.loading='lazy';img.decoding='async';img.src=c.file;img.addEventListener('error',()=>{img.hidden=true;});return img;};   // 자리표시(dc-ph)는 그림 밑에 그대로 있어서 오류면 그림만 숨기면 된다
-  // 관찰은 첫 그리기가 끝난 다음 틱에 시작한다(첫 화면을 늦추지 않고, B65 줄의 관찰자와 섞이지 않게). 그 전에는 그림 요청 0.
-  const arm=()=>{
-    if(!IO||list.isConnected===false)return;
-    const watch=new IO(es=>{for(const e of es)if(e.isIntersecting){watch.unobserve(e.target);const i=frames.indexOf(e.target);if(i>=0)e.target.append(picture(DAILY_CHARS[i]));}});
-    frames.forEach(f=>watch.observe(f));
-  };
-  if(IO){const id=globalThis.setTimeout(arm,0);id?.unref?.();}
-  const line=el('p',null,'dc-next');
-  let key=null;
-  const paint=min=>{
-    const d=dailyCharOf(min),k=d.h+'|'+d.toNextMin;if(k===key)return d;key=k;
-    cells.forEach(({c,li})=>{const st=c.h<d.h?'done':c.h===d.h?'now':'todo';li.className='dc-cell '+st;li.setAttribute('aria-current',st==='now'?'step':'false');li.setAttribute('aria-label',c.h+'h '+c.label+(st==='todo'?' · 아직 잠김':st==='now'?' · 지금':''));});
-    line.textContent=dailyLineText(d);
-    return d;
-  };
-  paint(minutes);
-  const node=add(el('section',null,'panel dc-today'),add(el('div',null,'ds5-head'),el('strong','오늘의 캐릭터(하루)','ds5-title'),el('span','오늘 공부한 시간만큼 매일 0h부터 변해요','ds5-sub')),list,line);
-  return {node,paint};
-}
 
 function door(h,word,sub,onClick){
   const {el,add}=h,b=add(el('button',null,'secondary st-door'),el('span',word,'eyebrow'),el('strong',sub));
@@ -241,29 +220,29 @@ export function renderStatusView(root,ctx){
   const out=el('section',null,'st-page');out.id='status-page';
   add(out,add(el('div',null,'st-head'),el('span','나의 상태','eyebrow'),el('span','누적 '+(proj.minutes>=60?hoursText(proj.minutes):hmText(proj.minutes)),'muted small st-total')));
 
-  // 1) 아바타: 뒤 효과(오라) · 등급 그림 · 앞 효과(입자) + 등급·오늘 효과 배지, 바로 아래 "어디까지 왔나"(AV4C)
+  // 1) 아바타: 평생 등급 그림 + 등급·오늘의 캐릭터 배지, 바로 아래 "어디까지 왔나"(AV4C)
+  // V7A (2026-11-11 소유자): 그림 위에 오늘 효과(땀·김·연기·불꽃·오라 = AV5 효과 층, 자리표시의 반짝·입자·오라 class)를 덧그리지 않는다. 무대는 언제나 1단계 class(효과 없음).
   // FIX31 (D7): 그림을 한 번 못 불러오면 이 화면은 자리표시로 바꾼다: 붙들고 있는 figure, 무대 클래스, 효과 viewBox까지. 그 뒤 단계가 바뀌어도 자리표시로 그린다.
+  const STILL=1;
   let today=read(nowIso),art=today.fx.art,artOn=useArt,figure,back=fxBack(h,useArt),front=fxFront(h,useArt),stage=null;
   const artFailed=(img,ph)=>{
     if(figure!==img)return;   // 이미 바뀐 옛 그림의 늦은 오류
     figure=ph;if(!artOn)return;
-    artOn=false;stage.className=fxClass(today.fx.level,false);
+    artOn=false;stage.className=fxClass(STILL,false);
     const b=fxBack(h,false),f=fxFront(h,false);back.replaceWith?.(b);front.replaceWith?.(f);back=b;front=f;
-    avFx.node.hidden=true;   // AV5: 효과 층 기준점은 실제 그림 자리라 자리표시에는 얹지 않는다
     gallery.artOff();
   };
   const gallery=stageGallery(h,doc,out,prog,date,useArt);
   const figureOf=a=>figureNode(h,proj.stage.no,a,artOn,artFailed);
   figure=figureOf(art);
-  const avFx=avatarFxLayer(doc,{level:today.fx.level,grade:proj.stage.no});avFx.node.hidden=!useArt;   // AV5: 오늘 상태 효과 층(STUDY LIVE·미리보기 격자와 같은 함수)
-  stage=add(el('div',null,fxClass(today.fx.level,useArt)),back,figure,front,avFx.node);
-  const badgeToday=el('span',todayBadge(today.fx),'st-badge st-badge-today');
+  stage=add(el('div',null,fxClass(STILL,useArt)),back,figure,front);
+  const badgeToday=el('span',charBadge(today.minutes),'st-badge st-badge-today');
   const money=moneyOf(ctx,date);
   const avatar=add(el('section',null,'panel st-avatar'),titleRow(h,ctx,whole,date,money),stage,el('span','평생 등급 · '+proj.stage.name,'st-badge st-badge-stage'),badgeToday,useArt?null:el('p','자리표시 그림입니다 · 등급 그림은 준비 중이에요','muted small st-art-note'),progressBlock(h,prog,date,gallery.row));
 
-  // 2) 오늘 시간: 링·오늘 누적·다음 효과까지 (타이머가 돌면 "지금 - 시작"으로 다시 계산)
+  // 2) 오늘 시간: 링·오늘 누적·다음 캐릭터까지 (타이머가 돌면 "지금 - 시작"으로 다시 계산)
   const ringSlot=add(el('div',null,'st-ring-slot'),todayRing(h,today.minutes));
-  const todayLine=el('strong',todayText(today),'st-today-time'),nextLine=el('span',nextEffectText(today.fx),'muted small st-today-next');
+  const todayLine=el('strong',todayText(today),'st-today-time'),nextLine=el('span',charNextText(today.minutes),'muted small st-today-next');
   const noteLine=el('span',ctx.timer?'진행 중 타이머 포함':'아직 쌓지 않은 임시 입력도 오늘 시간에 들어가요','muted small st-today-note');
   // B6: PC 집중 측정에서 담을 수 있는 분(앱이 계산해 넘긴다). 오늘 시간·효과에는 더하지 않고 흐린 글씨로만 보인다.
   const focusMin=Number.isInteger(ctx.focusExtraMin)&&ctx.focusExtraMin>0?ctx.focusExtraMin:0;
@@ -271,13 +250,12 @@ export function renderStatusView(root,ctx){
   const go=ctx.openStudy?el('button',ctx.timer?'집중 화면 보기':'공부 시작','primary st-today-go'):null;
   if(go){go.type='button';go.dataset.navOnly='1';go.addEventListener('click',()=>ctx.openStudy());}
   const todayCard=add(el('section',null,'panel st-today'),ringSlot,add(el('div',null,'st-today-text'),todayLine,nextLine,noteLine,focusLine),go);
-  // DS5: B65 미리보기 바로 옆(넓은 화면)·아래(좁은 화면) = 오른쪽 칸 맨 위. 상태 화면은 글자 칸만(썸네일 장면은 작게 보기에서), 분 단위로 다시 그린다
-  const effects=todayEffectStrip(doc,{grade:proj.stage.no,thumbs:false,cls:'panel st-effects'});effects.paint(today.minutes*60000);
+  // V7A: 오른쪽 칸 맨 위(B65 미리보기 바로 옆·좁은 화면은 아래) = 오늘의 캐릭터 13단계 띠(타이머와 같은 함수, 칸을 누르면 미리보기). AV5 "오늘 상태" 글자 띠는 화면에서 뺐다(todayEffectStrip 코드는 그대로).
+  const daily=dailyCharStrip(doc,{useArt:Boolean(useArt),cls:'panel st-chars',title:'오늘의 캐릭터(하루)'});daily.paint(today.minutes*60000);
 
   // 3) 금 장신구·전체 단계  4) 탑·우주 입구
   const doors=add(el('div',null,'st-doors'),door(h,'탑',towerSub(whole,date,money),ctx.openTower),door(h,'우주',universeSub(whole,nowIso),ctx.openUniverse));
-  const daily=dailyStrip(h,doc,today.minutes,useArt);   // AV8: 오늘 효과 띠 바로 아래(오른쪽 칸 둘째)
-  add(out,add(el('div',null,'st-body'),avatar,add(el('div',null,'st-side'),effects.node,daily.node,todayCard,ladderCard(h,proj),doors)));
+  add(out,add(el('div',null,'st-body'),avatar,add(el('div',null,'st-side'),daily.node,todayCard,ladderCard(h,proj),doors)));
 
   const paint=()=>{
     const iso=String(ctx.now());
@@ -286,10 +264,8 @@ export function renderStatusView(root,ctx){
     if(next.minutes===today.minutes)return;
     today=next;
     ringSlot.replaceChildren(todayRing(h,today.minutes));
-    todayLine.textContent=todayText(today);nextLine.textContent=nextEffectText(today.fx);badgeToday.textContent=todayBadge(today.fx);
-    stage.className=fxClass(today.fx.level,artOn);avFx.paint(today.fx.level,proj.stage.no);   // AV5
-    effects.paint(today.minutes*60000);   // DS5
-    daily.paint(today.minutes);   // AV8
+    todayLine.textContent=todayText(today);nextLine.textContent=charNextText(today.minutes);badgeToday.textContent=charBadge(today.minutes);   // V7A
+    daily.paint(today.minutes*60000);   // V7A: 13단계 띠(무대 class는 효과 없는 1단계 그대로)
     if(today.fx.art!==art){art=today.fx.art;const fresh=figureOf(art);figure.replaceWith?.(fresh);figure=fresh;}
   };
   const stop=liveTick(out,doc,paint);
