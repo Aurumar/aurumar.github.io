@@ -24,6 +24,7 @@ export const FRESH_TEXT=Object.freeze({
   open:'새 시작 전 기록 보기',
   draft:'새 시작 전 임시 입력',   // 화면 낱말 규칙(FIX45: "초안" 대신 "임시 입력")
   lock:'새 시작 전 기록이라 읽기만 할 수 있어',   // V7D2: 날짜 이동으로 기준 전 날짜를 고른 화면의 한 줄
+  sealedHeld:'새 시작 전 기록이라 쌓지 않아요',   // FIX73 (H71-3): 임시 저장 목록의 기준 전 줄(승인 단추 숨김, 임시 저장은 지우지 않음)
 });
 // V7D2 (V7D1 UNKNOWN): 날짜 이동 화면(계획 주·월·일, 일기, 건강·공부)이 기준 전 날짜를 보이면 그 화면의 입력칸·단추를 읽기 전용으로 바꾸고 한 줄을 보인다.
 // 지금까지는 저장 때 freshGuard가 거절만 했다. 날짜 이동 단추처럼 남길 노드는 dataset.freshKeep='1'(그 아래 전부) 또는 dataset.navOnly='1'로 표시한다.
@@ -150,7 +151,14 @@ export function freshWriteBlock(path,body,start=FRESH_START){
   return null;
 }
 // 임시 저장(봉인) 초안 목록 줄(draft-list의 entity {type,id})이 기준 전 기록인지. id가 날짜가 아닌 종류(모의고사 결과)는 알 수 없어 거짓.
-export const draftBeforeFresh=(d,start=FRESH_START)=>Boolean(d?.entity)&&isBeforeFreshStart({type:d.entity.type,id:d.entity.id},start);
+// FIX73 (H71-3): 목록 줄이 이미 가진 것만으로 본다(draft-list 경계 FIX49-P10: 새 칸·값 없음). entity(주간 리뷰·목표·모의고사·칭호) 또는 body(건강·공부 카드 초안, id = 날짜).
+// 모의고사는 일정 밖 시험(id = 'x'+응시일, 검사기 규칙)만 응시일(takenOn)을 안다. 일정 시험(id = 시험 id)·오늘 카드·계획·일기 줄은 목록에 날짜가 없어 거짓(알 수 없음 = 예전과 같음).
+const sealedRecordOf=d=>{
+  const e=d?.entity??(d?.type==='ENTITY'&&d.body?{type:d.body.entityType,id:d.body.entityId}:null);if(!e)return null;
+  const taken=e.type==='EXAM_RESULT'&&typeof e.id==='string'&&e.id.startsWith('x')?e.id.slice(1):null;
+  return {type:e.type,id:e.id,data:taken?{takenOn:taken}:null};
+};
+export const draftBeforeFresh=(d,start=FRESH_START)=>{const r=sealedRecordOf(d);return Boolean(r)&&isBeforeFreshStart(r,start);};
 
 // 업적 알림 장부 키: 기준선이 있으면 새 장부(옛 장부는 지우지 않고 그대로 둔다). 새 장부는 첫 실행처럼 지금 달성을 조용히 넣는다.
 export const freshSeenKey=(base,start=FRESH_START)=>start?base+'@'+start:base;

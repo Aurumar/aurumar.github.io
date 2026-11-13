@@ -12,6 +12,7 @@ import {legacyAreaNode} from './life-areas.mjs';
 import {moneyFacts} from './life-money-facts.mjs';
 import {FRESH_START,FRESH_TEXT,FRESH_READ_ONLY,freshView,freshWriteBlock,dateBeforeFresh,freshSeenKey,beforeFreshList,renderFreshManage,beforeFreshBody} from './fresh-start.mjs';
 import {freshLockView} from './fresh-start.mjs';   // V7D2: 기준 전 날짜 화면 읽기 전용
+import {draftBeforeFresh} from './fresh-start.mjs';   // FIX73 (H71-3): 임시 저장 목록의 기준 전 줄
 const mdBackend=globalThis.LIFE_BRICK_MD_BACKEND??null;
 if(mdBackend&&mdBackend.format!=='LB_MD_UI_BACKEND_1')throw new Error('MD_BACKEND_PROFILE');
 let mdProfile=!!mdBackend,mdReady=false,mdSurface=null,mdRole='NONE',mdUnlockState=null,mdCaps=new Set(),mdProduct=null,mdUnlocked=false,mdDraftReady=false;
@@ -141,8 +142,12 @@ const sealedApplyButton=d=>d.conflict==='SEALED_CONFLICT'&&sealedChoice.has(d.dr
 // 승인하고 쌓기·다시 보기는 같은 승인 길(draft-commit)이다. 응답이 고르기면 바뀔 칸을 이 화면에 보인다.
 const approveDraft=d=>perform(async()=>{const x=await api('/api/md/draft-commit',{draftId:d.draftId,confirmed:true});sealedNote(d.draftId,x);if(x.status==='SEALED_MAYBE_APPLIED'){await refresh();status(SEALED_MAYBE_APPLIED_TEXT);return;}if(x.choose===true)sealedChoice.set(d.draftId,x.draftFields);else sealedChoice.delete(d.draftId);if(x.status==='SEALED_CONFLICT'||x.status==='ALREADY_APPLIED'){await refresh();status(x.status==='SEALED_CONFLICT'?sealedRowText({draftId:d.draftId,conflict:'SEALED_CONFLICT'}):SEALED_SAME_DONE_TEXT,x.status==='SEALED_CONFLICT');return;}lastSave={status:'REMOTE_COMMITTED_AND_LOCAL_CONFIRMED',at:Date.now()};await refresh();status(SAVE_TEXT.VERIFIED+' · 임시 저장을 쌓았습니다 (서버 버전 v'+x.remoteVersion+')');});
 const sealedAgainButton=d=>sealedRecheck(d)?button('다시 확인하고 쌓기',()=>approveDraft(d)):null;   // 고르기 표시를 잊은 화면(새 화면)의 충돌 줄: 승인 응답을 다시 받아 고르기를 다시 불러온다
+// FIX73 (H71-3): 새 시작 전 기록의 임시 저장 줄은 한 줄 안내 + 승인 단추(승인하고 쌓기·그대로 적용·다시 확인하고 쌓기) 숨김. 임시 저장은 지우지 않는다(폐기 단추는 그대로).
+// 이미 쌓인 줄(SERVER_COMMITTED)의 정리 단추는 새로 쓰지 않으므로 그대로 둔다. 판정은 draft-list의 날짜 키(fresh, 모의고사는 takenOn).
+const sealedFreshHeld=d=>d.status!=='SERVER_COMMITTED'&&draftBeforeFresh(d,FRESH_START);
+const sealedDiscardButton=d=>d.status==='LOCAL_DRAFT'?button('임시 저장 폐기',()=>{if(globalThis.confirm('이 기기의 임시 저장을 폐기할까요? 쌓인 기록에는 영향이 없습니다.'))void perform(async()=>{await api('/api/md/draft-discard',{draftId:d.draftId,confirmed:true});await refresh();status('임시 저장을 폐기했습니다.');});}):null;
 function renderDraftsPanel(){const p=section('이 기기에 임시 저장된 기록','임시 저장은 쌓인 기록 · 이력 · 진행 · 탑에 들어가지 않습니다. 연결하고 저장 준비를 마친 뒤 하나씩 승인하면 일반 저장 경로로 쌓습니다.'),list=el('div');p.id='drafts-panel';add(p,list);
- void api('/api/md/draft-list',{}).then(r=>{list.replaceChildren(...(r.drafts.length?r.drafts.map(d=>row((recordsMod?.sealedDraftLabel?.(d)||DRAFT_TYPE_TEXT[d.type]||d.type)+' · '+d.createdAt.replace('T',' ').slice(0,16),(d.conflict?sealedRowText(d)+sealedChoiceText(d)+sealedCurrentText(d):PRODUCT_TEXT[d.status]||'처리하지 못했어요')+' · 문의 코드 ▾\u2060'+(d.conflict||d.status)+'\u2060',add(el('div',null,'buttons'),sealedApplyButton(d),sealedAgainButton(d),d.conflict==='SEALED_MAYBE_APPLIED'||d.conflict==='SEALED_CONFLICT'?null:button(d.status==='SERVER_COMMITTED'?'쌓인 것 확인 · 임시 저장 정리':'승인하고 쌓기',()=>approveDraft(d)),d.status==='LOCAL_DRAFT'?button('임시 저장 폐기',()=>{if(globalThis.confirm('이 기기의 임시 저장을 폐기할까요? 쌓인 기록에는 영향이 없습니다.'))void perform(async()=>{await api('/api/md/draft-discard',{draftId:d.draftId,confirmed:true});await refresh();status('임시 저장을 폐기했습니다.');});}):null))):[empty('임시 저장된 기록이 없습니다.')]));}).catch(e=>list.replaceChildren(empty('임시 저장 목록을 읽지 못했어요'+' · 문의 코드 ▾\u2060'+(e.code||'HOLD')+'\u2060')));return p;}
+ void api('/api/md/draft-list',{}).then(r=>{list.replaceChildren(...(r.drafts.length?r.drafts.map(d=>{const held=sealedFreshHeld(d);return row((recordsMod?.sealedDraftLabel?.(d)||DRAFT_TYPE_TEXT[d.type]||d.type)+' · '+d.createdAt.replace('T',' ').slice(0,16),(held?FRESH_TEXT.sealedHeld:d.conflict?sealedRowText(d)+sealedChoiceText(d)+sealedCurrentText(d):PRODUCT_TEXT[d.status]||'처리하지 못했어요')+' · 문의 코드 ▾\u2060'+(d.conflict||d.status)+'\u2060',held?add(el('div',null,'buttons'),sealedDiscardButton(d)):add(el('div',null,'buttons'),sealedApplyButton(d),sealedAgainButton(d),d.conflict==='SEALED_MAYBE_APPLIED'||d.conflict==='SEALED_CONFLICT'?null:button(d.status==='SERVER_COMMITTED'?'쌓인 것 확인 · 임시 저장 정리':'승인하고 쌓기',()=>approveDraft(d)),sealedDiscardButton(d)));}):[empty('임시 저장된 기록이 없습니다.')]));}).catch(e=>list.replaceChildren(empty('임시 저장 목록을 읽지 못했어요'+' · 문의 코드 ▾\u2060'+(e.code||'HOLD')+'\u2060')));return p;}
 // S1: 다른 창의 "이 기기에서 로그아웃"으로 이 창이 닫혔을 때(새로고침 없음, 입력은 화면에 남음).
 const SIGNED_OUT_ELSEWHERE_TEXT='다른 창에서 이 기기 로그아웃을 해서 이 창도 잠갔습니다 · 입력 중인 내용은 화면에 남아 있지만 저장되지 않았습니다 · 연결 · 장치에서 다시 로그인하세요.';
 // S1c (H7-01): 로그아웃으로 금고가 닫히면(다른 창의 로그아웃, 또는 이 창의 로그아웃이 금고를 닫은 뒤 보류됨) 이미 그린 확정 기록 화면을 가리고
@@ -469,6 +474,14 @@ function pcWidgetLock(){
  widgetFile.busy=widgetFile.busy.then(async()=>{try{if(stateExportMod.widgetSwitch('on',globalThis.localStorage))await api(stateExportMod.WIDGET_FILE_ROUTE,stateExportMod.widgetLockedStatus({now:new Date().toISOString(),device:stateExportMod.widgetDevice(globalThis.localStorage)}));}catch{/* 위젯 파일만 갱신되지 않는다 */}});
 }
 setInterval(()=>{try{if(widgetFile.last&&kstDay(4)!==widgetFile.last.diary_day)void pcWidget('day');}catch{/* 다음 확인 때 */}},60000);
+// FIX73 (H71-5): 앱을 연 뒤 첫 화면 투영(새 시작 필터 뒤 whole)이 끝나면 LIFE_STATE를 1번 다시 써서 예전에 쓴 파일의 기준 전 숫자를 지운다.
+// 자동 내보내기 동의(D4 토글)가 켜진 PC 앱에서만(exportStateAuto가 표면·토글을 본다). 쌓은 뒤와 같은 자동 내보내기 함수, 금고 쓰기(연산) 0. 실패는 화면을 막지 않는다.
+let stateOpenDone=false;
+function stateOpenExport(){
+ if(stateOpenDone||!stateExportMod||!whole||mdSignedOut)return Promise.resolve(null);
+ stateOpenDone=true;
+ return stateExportMod.exportStateAuto({surface:mdSurface,views:stateViews,now:()=>new Date().toISOString(),storage:globalThis.localStorage,send:stateSend}).catch(()=>null);
+}
 // ---- 비서 결과 보기(B47): 더보기 아래 영역 하나. PC 앱(APP_SHELL)에서만 host가 고정한 폴더의 보고를 읽고(읽기 전용), 글은 textContent로만 넣는다.
 let aiGateMod=null;
 const aiReports=body=>api('/api/assistant-reports',body);
@@ -617,7 +630,8 @@ const afterEntity=async(type,id)=>{await hltReload();if(type==='PLAN_DAY')native
 const clearWritable=()=>{if(globalThis.navigator?.onLine===false)return 'OFFLINE';if(mdSignedOut)return 'READ_ONLY';if(!mdProfile)return null;if(mdRole!=='OWNER'||!mdUnlocked)return 'READ_ONLY';return mdReady||mdAutoOK()?null:'READ_ONLY';};
 // 아직 안 쌓은 입력(이 기기 초안)이 있는 기록은 비우지 않는다(비운 뒤 그 초안이 다시 쌓이면 값이 되살아남).
 const clearPending=(type,id)=>type==='PLAN_DAY'?Boolean(planDrafts?.dates?.().includes(id)):type==='HLT_DAY'?hltPendingDates().includes(id)||(hltSt?.date===id&&hltSt?.flowState?.status==='LOCAL_DRAFT'):
-  type==='LIFE_DAY'?Boolean(lifeSt&&((lifeSt.today===id&&lifeSt.flowState?.status==='LOCAL_DRAFT')||(lifeSt.pendingAll??[]).includes(id))):type==='STUDY_DAY'?Boolean((lifeSt?.today===id&&lifeSt.studyCard?.status==='LOCAL_DRAFT')||(studySt?.date===id&&studySt?.flowState?.status==='LOCAL_DRAFT')):false;
+  type==='LIFE_DAY'?Boolean(lifeSt&&((lifeSt.today===id&&lifeSt.flowState?.status==='LOCAL_DRAFT')||(lifeSt.pendingAll??[]).includes(id))):type==='STUDY_DAY'?Boolean((lifeSt?.today===id&&lifeSt.studyCard?.status==='LOCAL_DRAFT')||(studySt?.date===id&&studySt?.flowState?.status==='LOCAL_DRAFT')):
+  type==='DIARY_DAY'?Boolean(lifeSt?.diary?.open&&((lifeSt.diary.date===id&&lifeSt.diary.status==='LOCAL_DRAFT')||(lifeSt.diary.drafts??[]).includes(id))):false;   // FIX73 (H71-1): 일기 초안도 같은 방식
 let recordClear=null;
 function recordClearNow(){
   if(!recordClear&&typeof lifeUi?.createRecordClear==='function')recordClear=lifeUi.createRecordClear({doc:document,getWhole:()=>whole,writable:clearWritable,pending:clearPending,opsLeft:()=>{const b=finOps();return b.known?b.remaining:null;},
@@ -695,7 +709,7 @@ async function entity(type,id,data,heads=[],reason='사용자 편집',confirmed=
 async function refresh(){return timed(refreshTimings,'refresh',refreshCore);}
 // B14 (R1-01): 읽은 값은 모든 읽기가 끝나고 세대가 그대로일 때만 today·whole·changes에 넣는다. 읽는 도중 잠겼으면(signedOutLock이 이미 비움) 아무것도 넣지 않고
 // 남은 읽기도 하지 않는다. 뒤 읽기가 예외로 끝나도 앞서 받은 응답은 메모리에 남지 않는다.
-async function refreshCore(){const lockSeq=mdSignedOutSeq;if(mdProfile){mdApply(await api('/api/md/status',{}));}const first=$('workspace').hidden;const [readToday,readWhole]=await Promise.all([api('/api/today'),api('/api/whole-life')]);if(lockSeq!==mdSignedOutSeq)return;const readChanges=(await api('/api/history')).changes;if(lockSeq!==mdSignedOutSeq)return;const {today:nextToday,whole:nextWhole,changes:nextChanges}=typeof freshRead==='function'?freshRead(readToday,readWhole,readChanges):{today:readToday,whole:readWhole,changes:readChanges};today=nextToday;whole=nextWhole;changes=nextChanges;if(typeof withActionDays==='function')withActionDays();mdSignedOut=false;calendarDate??=whole.localDate;problem=null;$('setup').hidden=true;$('workspace').hidden=false;$('navigation').hidden=false;$('save-exit').hidden=false;if(mdHost){mdPanel.remove();mdHost.hidden=true;}$('session-state').textContent=sessionLabel();if(typeof pcWidget==='function')void pcWidget();if(typeof nativeWidget==='function')nativeWidget();await render();if(first)window.scrollTo(0,0);}
+async function refreshCore(){const lockSeq=mdSignedOutSeq;if(mdProfile){mdApply(await api('/api/md/status',{}));}const first=$('workspace').hidden;const [readToday,readWhole]=await Promise.all([api('/api/today'),api('/api/whole-life')]);if(lockSeq!==mdSignedOutSeq)return;const readChanges=(await api('/api/history')).changes;if(lockSeq!==mdSignedOutSeq)return;const {today:nextToday,whole:nextWhole,changes:nextChanges}=typeof freshRead==='function'?freshRead(readToday,readWhole,readChanges):{today:readToday,whole:readWhole,changes:readChanges};today=nextToday;whole=nextWhole;changes=nextChanges;if(typeof withActionDays==='function')withActionDays();mdSignedOut=false;calendarDate??=whole.localDate;problem=null;$('setup').hidden=true;$('workspace').hidden=false;$('navigation').hidden=false;$('save-exit').hidden=false;if(mdHost){mdPanel.remove();mdHost.hidden=true;}$('session-state').textContent=sessionLabel();if(typeof pcWidget==='function')void pcWidget();if(typeof nativeWidget==='function')nativeWidget();await render();if(typeof stateOpenExport==='function')void stateOpenExport();if(first)window.scrollTo(0,0);}
 function sessionLabel(){if(!mdProfile)return '이 PC · 잠금해제됨';if(mdRole==='FOLLOWER')return mdSurface==='BROWSER'?'읽기 전용 탭':'읽기 전용 창';return mdReady?'기록 가능 · 바로 동기화':mdAutoOK()?'기록 가능 · 저장할 때 자동 동기화':mdDraftReady?'이 기기에 임시 저장만 가능':'읽기 전용';}
 async function sessionStream(){streamController=new AbortController();try{const response=await fetch('/api/session-stream',{headers:{Authorization:'Bearer '+capability},cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer',signal:streamController.signal});if(!response.ok)throw new Error('stream');const reader=response.body.getReader();while(!(await reader.read()).done){}if(!ended)throw new Error('closed');}catch{if(!ended){ended=true;status('앱 연결이 종료되었습니다. LIFE BRICK 앱을 다시 여세요.',true);lock(false);}}}
 function setup(state){if(state.profile==='LBOS_SEQUENTIAL_OWNER_APP_1'){mdProfile=true;mdSurface=state.surface;setupMD(state);return;}setupState=state.state;if($('storage-label'))$('storage-label').textContent='이 PC에 암호화 저장';if($('sync-label'))$('sync-label').textContent='클라우드 연결 없음';if(state.state==='RECOVERY_ONLY'){$('setup').hidden=false;$('setup-heading').textContent='검증된 복원본 만들기';$('setup-form').hidden=true;add($('setup'),button('백업에서 복원…',showRecovery,'primary'));$('save-exit').hidden=false;$('session-state').textContent='복구 전용 · 현재 저장소를 열지 않음';status('RECOVER_LIFE_BRICK.cmd · 기존 저장소를 교체하지 않습니다.');return;}add($('setup'),button('백업에서 복원…',showRecovery));$('setup').hidden=false;const fresh=state.state==='SETUP';$('setup-heading').textContent=fresh?'이 PC에서 시작하기':'내 저장소 잠금해제';$('setup-submit').textContent=fresh?'새 저장소 만들기':'잠금해제';$('new-only').hidden=!fresh;$('recovery-only').hidden=!fresh;$('recovery-secret').required=fresh;$('seed-titles').replaceChildren();for(const seed of state.seeds||[]){const input=field($('seed-titles'),seed.actionId,'text',seed.title);input.required=true;input.maxLength=100;input.dataset.actionId=seed.actionId;}status(fresh?'잠금해제와 복구용 비밀문구는 서로 다르게 정해 안전하게 보관하세요.':'기존 기록을 열려면 잠금해제 비밀문구를 입력하세요.');}
@@ -1230,16 +1244,16 @@ function editFinTxn(t,prefill=null){
   const date=field(grid,'날짜','date',d.date);date.max=whole.localDate;date.required=true;
   const kind=field(grid,'종류','select',d.kind,Object.entries(FIN_KIND_TEXT));
   const amount=field(grid,'금액 (원, 정수)','text',d.amount);amount.inputMode='numeric';amount.required=true;if(prefill?.kind)amount.autofocus=true;
+  const instBox=finInstallBox(grid,d.installments,()=>amount.value),inst=instBox.input;amount.addEventListener('input',instBox.sync);   // FIX74
   const accounts=fin.accounts.filter(a=>a.data.active||a.id===d.accountId||a.id===d.toAccountId).map(a=>[a.id,a.data.name+' · '+FIN_ACCOUNT_TEXT[a.data.type]+(a.data.active?'':' (비활성)')]);
   const account=field(grid,'계정','select',d.accountId,accounts),to=field(grid,'받는 계정 (이체만)','select',d.toAccountId??'',[['','받는 계정 선택'],...accounts]);
   const category=field(grid,'분류','select','',[]);
   const merchant=field(grid,'가맹점 (선택)','text',d.merchant);merchant.maxLength=120;
   // FIX44 (AUD1 #7): 평소 안 쓰는 칸은 접는다. 값이 하나라도 있으면(수정·미리 채움) 펼친 채로 연다.
-  const more=add(el('details',null,'fin-more'),el('summary','더 적기 · 세부 분류, 태그, 할부, 외화, 메모')),moreGrid=el('div',null,'field-grid');add(more,moreGrid);add(root,more);
+  const more=add(el('details',null,'fin-more'),el('summary','더 적기 · 세부 분류, 태그, 외화, 메모')),moreGrid=el('div',null,'field-grid');add(more,moreGrid);add(root,more);
   more.open=Boolean(d.subcategory||d.tags.length||d.installments||d.original||d.memo);
   const sub=field(moreGrid,'세부 분류 (선택)','text',d.subcategory);sub.maxLength=40;
   const tags=field(moreGrid,'태그 (쉼표로 구분, 선택)','text',d.tags.join(', '));
-  const inst=field(moreGrid,'할부 개월 (일시불 0)','text',String(d.installments));inst.inputMode='numeric';
   const currency=field(moreGrid,'외화 통화 (예: USD, 선택)','text',d.original?.currency??'');currency.maxLength=3;
   const original=field(moreGrid,'외화 원금 (예: 22.00, 선택)','text',d.original?.amount??'');original.inputMode='decimal';
   const memo=field(more,'메모 (선택)','textarea',d.memo);memo.maxLength=1000;
@@ -1249,15 +1263,18 @@ function editFinTxn(t,prefill=null){
   for(const n of [merchant,memo])n.addEventListener('input',billSync);kind.addEventListener('change',billSync);
   const ask=t?null:sameExpenseAsk(root);   // FIX67 (M-01): 새 거래만(고치기는 묻지 않음)
   let wanted=d.category;
+  const keepInst=Boolean(t&&d.installments),instSync=()=>instBox.show(kind.value==='EXPENSE'&&(keepInst||fin.accounts.find(a=>a.id===account.value)?.data.type==='CARD'));
+  account.addEventListener('change',instSync);
   const sync=()=>{
    const k=kind.value,table=k==='INCOME'?fin.labels.income:k==='TRANSFER'||k==='PREPAID_LOAD'?null:fin.labels.expense,cur=wanted??category.value;wanted=null;
    const opts=table?Object.entries(table):[['','분류 없음 (소비 아님)']];
    category.replaceChildren(...opts.map(([v,l])=>{const o=el('option',l);o.value=v;return o;}));
    category.value=table&&Object.hasOwn(table,cur)?cur:opts[0][0];category.disabled=!table;
-   to.parentElement.hidden=k!=='TRANSFER';inst.parentElement.hidden=k!=='EXPENSE';
+   to.parentElement.hidden=k!=='TRANSFER';instSync();
   };
   kind.addEventListener('change',sync);sync();
   return async()=>{
+   instSync();
    const data=buildTxn({date:date.value,kind:kind.value,amount:amount.value,accountId:account.value,toAccountId:to.value,category:category.value,subcategory:sub.value,merchant:merchant.value,memo:memo.value,tags:tags.value,installments:kind.value==='EXPENSE'?inst.value:'',currency:currency.value,originalAmount:original.value},{labels:fin.labels,accounts:fin.accounts,localDate:whole.localDate,old:t?.data??null});
    if(ask?.(data))return {ask:true};
    const r=await entity('FIN_TXN',t?.id??entityId(),data,t?.heads??[],t?'가계부 거래 수정':'가계부 거래 입력');
@@ -1266,6 +1283,25 @@ function editFinTxn(t,prefill=null){
    return r;
   };
  },t?'수정 저장':'거래 저장');
+}
+// FIX74: 할부 고르기 상자(거래 입력·빠른 지출 공용). 금액 바로 아래, 카드 계정 + 지출일 때만 보인다. input.value = buildTxn에 넘길 개월 글자. show(false)는 감추고 일시불(0)로 되돌린다.
+// 거래 입력에서 이미 할부 값이 있는 거래를 고칠 때(keepInst)는 계정 종류와 관계없이 보여 준다(감춰서 0으로 덮지 않는다).
+// 2개월 이상이면 한 달 약 금액 한 줄(표시만, 저장은 지금처럼 원거래 1건). 검사·오류 문구는 buildTxn 그대로(직접 입력 61 → INVALID_FIN_INSTALLMENTS).
+function finInstallBox(parent,months,amountOf){
+ const box=el('div',null,'field-grid wide fin-inst');add(parent,box);
+ const presets=[0,2,3,4,5,6,7,8,9,10,11,12,18,24],start=Number(months)||0;
+ const pick=field(box,'할부','select',presets.includes(start)?String(start):'CUSTOM',[...presets.map(n=>[String(n),n?n+'개월':'일시불']),['CUSTOM','직접 입력']]);
+ const input=field(box,'할부 개월 직접 입력 (0~60)','text',String(start));input.inputMode='numeric';
+ const line=el('p',null,'muted small wide fin-inst-line');add(box,line);
+ const sync=()=>{
+  if(pick.value!=='CUSTOM')input.value=pick.value;
+  input.parentElement.hidden=pick.value!=='CUSTOM';
+  const k=/^\d{1,2}$/.test(String(input.value).trim())?Number(input.value):0,won=String(amountOf()??'').replace(/[\s,]/g,'').replace(/원$/,'');
+  line.hidden=box.hidden||k<2||k>60;
+  line.textContent=line.hidden?'':/^[1-9]\d{0,13}$/.test(won)?'총 '+formatWon(won)+' · 한 달 약 '+formatWon((BigInt(won)+BigInt(k)/2n)/BigInt(k))+' × '+k+'개월(원거래 1건으로 저장)':'금액을 넣으면 한 달 약 금액을 보여 줍니다 · '+k+'개월(원거래 1건으로 저장)';
+ };
+ pick.addEventListener('change',sync);input.addEventListener('input',sync);sync();
+ return {input,sync,show(on){if(!on)pick.value='0';box.hidden=!on;sync();}};
 }
 function voidFinTxn(t){
  modal('거래 무효화',root=>{
@@ -1813,7 +1849,8 @@ function openQuickExpense(fin){
   if(!usable.length){add(root,empty('활성 계정이 없습니다. "계정"에서 먼저 계정을 추가하세요.'));return ()=>{throw finError('INVALID_FIN_ACCOUNT_REF');};}
   let amount='',category=q.lastCategory&&Object.hasOwn(fin.labels.expense,q.lastCategory)?q.lastCategory:'FOOD',merchant='';
   const display=el('div',null,'keypad-amount');display.setAttribute('role','status');display.setAttribute('aria-live','polite');
-  const show=()=>{display.textContent=amount===''?'0원':formatWon(amount);display.dataset.empty=String(amount==='');};
+  let instBox=null;   // FIX74: 아래 계정 칸 뒤에 만든다(금액이 바뀌면 한 달 약 금액 줄도 다시 쓴다)
+  const show=()=>{display.textContent=amount===''?'0원':formatWon(amount);display.dataset.empty=String(amount==='');instBox?.sync();};
   add(root,display);
   const pad=el('div',null,'keypad'),limitNote=el('p',null,'small fin-bad');limitNote.setAttribute('role','status');limitNote.hidden=true;
   const press=k=>()=>{
@@ -1850,13 +1887,18 @@ function openQuickExpense(fin){
   const accounts=usable.map(a=>[a.id,a.data.name+' · '+FIN_ACCOUNT_TEXT[a.data.type]]);
   const fallback=q.lastAccountId&&usable.some(a=>a.id===q.lastAccountId)?q.lastAccountId:usable[0].id;
   const account=field(root,'계정','select',fallback,accounts);
-  add(root,hint('날짜는 오늘('+openedDay+'), 종류는 지출로 저장합니다. 할부·외화·메모가 필요하면 "거래" 화면의 거래 입력을 쓰세요.'));
+  // FIX74: 고른 계정이 카드일 때만 할부 고르기 상자(기본 일시불). 활성 카드 계정이 하나도 없으면 상자를 만들지 않는다.
+  const isCard=()=>usable.find(a=>a.id===account.value)?.data.type==='CARD';
+  if(usable.some(a=>a.data.type==='CARD'))instBox=finInstallBox(root,0,()=>amount);
+  const instSync=()=>instBox?.show(isCard());account.addEventListener('change',instSync);instSync();
+  add(root,hint('날짜는 오늘('+openedDay+'), 종류는 지출로 저장합니다. 외화·메모가 필요하면 "거래" 화면의 거래 입력을 쓰세요.'));
   const ask=sameExpenseAsk(root);
   paint();
   return async()=>{
    const day=kstToday();whole.localDate=day;   // 캐시된 '오늘'을 저장 순간의 실제 날짜로 맞춘 뒤 쓴다(저장 뒤 refresh()가 서버 값으로 다시 채운다)
+   instSync();
    const data=buildTxn({date:whole.localDate,kind:'EXPENSE',amount,accountId:account.value,toAccountId:'',category,subcategory:'',
-    merchant:merchantInput.value,memo:'',tags:'',installments:'',currency:'',originalAmount:''},
+    merchant:merchantInput.value,memo:'',tags:'',installments:isCard()?instBox.input.value:'',currency:'',originalAmount:''},
     {labels:fin.labels,accounts:fin.accounts,localDate:whole.localDate,old:null});
    if(ask(data))return {ask:true};   // FIX67 (M-01)
    const before=vaultState(fin);

@@ -1216,6 +1216,7 @@ export const CLEAR_TEXT=Object.freeze({
   undone:'되돌렸어요 · 아무것도 보내지 않았어요(저장 0번)',left:'화면을 떠나 비우지 않았어요 · 아무것도 보내지 않았어요(저장 0번)',
   busy:'다른 저장이 진행 중이라 비우지 않았어요 · 아무것도 보내지 않았어요 · 다시 눌러 주세요',waiting:'앞의 비우기가 아직 되돌리기를 기다리고 있어요',
   done:n=>n+'개 비웠어요 · 이력에서 이전 값으로 되살릴 수 있어요',
+  partial:n=>n+'개 비웠고 나머지는 못 비웠어요 · 남은 기록은 보내지 않았어요 · 연결을 확인하고 다시 골라 주세요',   // FIX73 (H71-4)
   stale:'다른 기기에서 바뀌어 비우지 않았어요 · 최신 내용을 확인하고 다시 골라 주세요',
   pending:'아직 안 쌓은 입력이 있어 비울 수 없어요 · 먼저 쌓거나 버려 주세요',pendingNow:'아직 안 쌓은 입력이 생겨 비우지 않았어요(저장 0번) · 먼저 쌓거나 버려 주세요',
   OFFLINE:'오프라인이라 비울 수 없어요 · 연결된 뒤 다시 해 주세요(임시 저장으로 만들지 않아요)',
@@ -1322,7 +1323,12 @@ export function createRecordClear(deps){
     let written=0;
     for(const [i,t] of targets.entries()){
       try{await d.write(t.type,t.id,emptyRecord(t.type,t.id,cur[i].data),cur[i].heads);written++;}
-      catch(e){if(e?.code==='STALE_HEADS'){try{await d.after?.();}catch{/* 안내가 먼저다 */}stale();return {status:'STALE',written};}throw e;}
+      catch(e){if(e?.code==='STALE_HEADS'){try{await d.after?.();}catch{/* 안내가 먼저다 */}stale();return {status:'STALE',written};}
+        // FIX73 (H71-4): STALE 아닌 오류(연결 끊김 등). 이미 비운 것이 있으면 다시 읽어 화면을 금고에 맞추고 몇 개만 비웠는지 알린다. 남은 것은 보내지 않는다.
+        if(!written)throw e;
+        try{await d.after?.();}catch{/* 안내가 먼저다 */}
+        d.say?.(CLEAR_TEXT.partial(written),true);await d.rerender?.();
+        return {status:'PARTIAL',written,code:e?.code??null};}
     }
     try{await d.after?.();}catch{/* 쓰기는 끝났다 */}
     d.say?.(CLEAR_TEXT.done(written),false);await d.rerender?.();

@@ -2,7 +2,7 @@
 // 이 모듈은 어떤 기록도 쓰지 않고 시계·난수·저장소·네트워크를 쓰지 않는다. 같은 입력이면 어느 기기에서나 같은 결과다.
 // 입력의 날짜별 LIFE_DAY는 최신 카드 하나뿐이다(이력 revision을 세지 않는다). 공부 세션은 COMPLETED만 센다.
 // 설계: AUTOPILOT\tasks\B42_ACHIEVE_TOWER.md(숫자 최우선), ADDENDUM A2·A7.
-import {brickOf,entryDone,lifeDefs,dayNumber,shiftDay,subjectOfSession,habitPinned,habitState,DEFAULT_DAILY_GOAL_BRICKS,HABIT_EPOCH} from './life-model.mjs';
+import {brickOf,entryDone,lifeDefs,dayNumber,shiftDay,subjectOfSession,habitPinned,habitState,DEFAULT_DAILY_GOAL_BRICKS,HABIT_EPOCH,lifeRecordEmpty} from './life-model.mjs';
 // V6B 습관 벽돌·행동 경험치 (통제탑 V6B A4). 쌓인 기록에서 다시 계산하는 투영이라 완료를 되돌리면(완료→못함·지움) 경험치·벽돌도 같이 사라진다(이중 지급 없음).
 // 습관 벽돌 1장 = 그날 고정한 매일 습관(숨김·복구·주 단위 목표 제외)과 켜 둔 기본 행동(몸 돌보기 등, 코어 행동 기록)이 모두 "완료"(일부·못함·기록 없음은 아님).
 // 공부 벽돌(bricks·value·목표·업적·아바타)과 섞지 않는다: days[i].habitBrick, week.habitBricks, habitBricks에만 있다. 탑 줄눈 색은 HABIT_BRICK_JOINT(V6C가 그린다).
@@ -120,7 +120,8 @@ function compute(life,study,today,money=null){
   const oldest=shiftDay(today,-MAX_SPAN_DAYS);
   const inRange=d=>d<=today&&d>=oldest;
   const cards=new Map(),studyDays=new Map();
-  for(const d of life?.days??[])if(inRange(d.date))cards.set(d.date,d.data);
+  // FIX73B (H71-2, 통제탑 2026-11-13): 빈 오늘 카드(비운 카드와 같은 값)는 없는 카드로 본다 → 보스 XP·층·목표 램프·hasRecords 0. 연속은 습관 기준이라 그대로.
+  for(const d of life?.days??[])if(inRange(d.date)&&!lifeRecordEmpty('LIFE_DAY',d.data))cards.set(d.date,d.data);
   for(const d of study?.days??[])if(inRange(d.date))studyDays.set(d.date,d.data);
   let first=today;
   for(const d of cards.keys())if(d<first)first=d;

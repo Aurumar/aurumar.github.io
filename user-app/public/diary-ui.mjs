@@ -170,11 +170,12 @@ export function ensureDiaryFlow(ctx,st){
   return st.diaryFlow;
 }
 // 입구 상태. 문이 닫혀 있으면 {open:false}(화면은 옛 칸 그대로). pending = 이 기기에만 있는 다른 날짜 초안(오래된 순, 최대 3).
+// FIX73 (H71-1): drafts = 이 기기 일기 초안의 모든 날짜(자르지 않음). 앱 비우기가 그 날 일기를 고를 수 없게 막을 때 쓴다(오늘 카드 pendingAll과 같은 방식).
 export async function diaryEntryState(ctx,st){
   if(!diaryDoorOpen(ctx))return {open:false};
   const flow=ensureDiaryFlow(ctx,st),{date,today,late}=diaryDateOf(ctx.now());
   const [s,dates]=await Promise.all([flow.state(date),flow.draftDates()]);
-  return {open:true,date,today,late,status:s.status,card:s.card,pending:dates.filter(d=>d!==date).slice(-3)};
+  return {open:true,date,today,late,status:s.status,card:s.card,pending:dates.filter(d=>d!==date).slice(-3),drafts:[...dates]};
 }
 
 function maker(doc){
