@@ -84,7 +84,7 @@
   --lb-vault-gold-hi:#FFF8DF;--lb-vault-gold:#F0CF6E;--lb-vault-gold-deep:#E8C45A;--lb-vault-gold-shadow:#E3BE4C;--lb-vault-ivory:#F3F1EC;--lb-vault-over-line:#B8433A;
   /* 옛 변수 이름(F13 달력 등이 쓰던 것) → 토큰. DSFIX H1: 옛 --gold-deep(진한 글자색)은 DS1 금 --gold-deep(DS7 이후 #D4A83A)을 덮어 금속 금을 검게 칠했다 → 옛 자리는 --lb-ink-1을 직접 쓴다 */
   --ivory:var(--lb-bg);--cream:var(--lb-surface-solid);--cream-2:var(--lb-surface-tint);--gold-bright:var(--lb-gold-bright);--gold-mid:var(--lb-gold-3);--gold-line:var(--lb-line);--gold-line-soft:var(--lb-line-soft);--muted:var(--lb-ink-3);--line:var(--lb-line);
-  --cal-chip-bg:var(--lb-gold-soft);--cal-chip-bar:var(--lb-gold-2);--cal-chip-text:var(--lb-ink-2);--cal-chip-deadline-bg:var(--lb-gold-1);--cal-chip-deadline-bar:var(--lb-gold-3);--cal-chip-deadline-text:var(--lb-ink-1);--cal-sun:var(--lb-bad);--cal-sun-num:var(--lb-bad);--cal-sat:var(--lb-chart-2);--cal-today-ring:var(--lb-gold-3);--cal-today-tint:var(--lb-gold-1);
+  --cal-chip-bg:var(--lb-gold-soft);--cal-chip-bar:var(--lb-gold-2);--cal-chip-text:var(--lb-ink-2);--cal-chip-deadline-bg:var(--lb-gold-1);--cal-chip-deadline-bar:var(--lb-gold-3);--cal-chip-deadline-text:var(--lb-ink-1);--cal-sun:var(--lb-bad);--cal-sun-num:var(--lb-bad);--cal-sat:var(--lb-chart-2);--cal-today-ring:var(--lb-gold-3);--cal-today-tint:var(--lb-gold-1);--cal-today-fill:#F3D98A;--cal-today-edge:#E8C45A;
   --cal-serif:"Palatino Linotype","Book Antiqua",Palatino,Georgia,"Noto Serif KR","Noto Serif CJK KR","AppleMyungjo",Batang,serif;
   font-family:var(--lb-font);color:var(--lb-ink-2);background:var(--lb-bg);line-height:1.6;font-size:var(--lb-body);
 }
@@ -352,17 +352,54 @@ progress::-moz-progress-bar{background:var(--lb-gold-grad);border-radius:var(--l
 .calendar-day-name:nth-child(7){color:var(--cal-sun)}
 .calendar-cell{padding:9px;min-height:115px;overflow:hidden;background:var(--lb-surface-2);border-right:1px solid var(--lb-line-soft);border-bottom:1px solid var(--lb-line-soft)}
 .calendar-cell.dim{background:var(--lb-surface-tint)}
-.calendar-cell.today{background:var(--lb-gold-soft)}
+/* CAL1C: 오늘 = 아주 옅은 금 칸(--lb-gold-soft) + 숫자 뒤 꽉 찬 금 동그라미(지름 32px) + 검정 800 숫자 + "오늘" 글자(Windows 달력처럼). 칸 전체 채움·2px 테두리는 없앰.
+   동그라미 채움 = 샴페인 금속(--lb-metal, V7E 명도 ≥70%) + 둘레 1.5px 금 선(--cal-today-edge, 통제탑 결정 2 (B)) */
+.calendar-cell.today{background:var(--lb-gold-soft);position:relative}
 .calendar-number{font-family:var(--cal-serif);font-weight:400;font-variant-numeric:lining-nums tabular-nums;color:var(--muted);font-size:16px;margin:0 0 8px;display:flex;align-items:center;justify-content:center;width:100%;min-width:24px}
-.calendar-cell.today .calendar-number{width:32px;height:32px;min-width:32px;margin:0 auto 8px;border-radius:50%;border:1px solid var(--cal-today-ring);background:var(--cal-today-tint);color:var(--lb-ink-1);font-weight:700}
+.calendar-cell.today .calendar-number{width:32px;height:32px;min-width:32px;margin:0 auto 8px;border-radius:50%;border:0;background:var(--lb-metal);box-shadow:inset 0 0 0 1.5px var(--cal-today-edge);color:var(--lb-ink-1);font-weight:800}
+/* CAL1C: 앞 빈칸(dim)의 지난달 날짜 = 흐린 회색 숫자(토요일 파랑 규칙보다 앞섬) */
+.calendar-grid:not(.date-popup-grid) .calendar-cell.dim:not(.today) .calendar-number.calendar-other{color:var(--lb-ink-4);opacity:.45}
 .calendar-grid .calendar-cell:nth-child(7n):not(.today) .calendar-number{color:var(--cal-sun-num)}
+/* CAL1: 토요일 숫자 파랑(월 격자만, 날짜 고르기 팝업은 그대로). 오늘은 주말이어도 검정 */
+.calendar-grid:not(.date-popup-grid) .calendar-cell:nth-child(7n+6):not(.today) .calendar-number{color:var(--cal-sat)}
+/* CAL1: 오늘 칸 왼쪽 위 "오늘"(검정 글자), 지난 날 칸은 숫자·내용 흐리게(일정 단추는 그대로 눌림) */
+.calendar-cell .calendar-today-badge{position:absolute;top:5px;left:6px;font-family:var(--lb-font);font-size:11px;font-weight:700;line-height:1;letter-spacing:.02em;color:var(--lb-ink-1)}
+.calendar-cell[data-past]>*{opacity:.55}
+.calendar-cell[data-past] .calendar-event:hover,.calendar-cell[data-past] .calendar-event:focus-visible{opacity:1}
+@media(max-width:700px){.calendar-cell .calendar-today-badge{position:static;display:block;text-align:center;font-size:10px;margin:1px 0 2px}}
+/* CAL1: 달력 위 "오늘 · M월 D일 요일" 한 줄(툴바 맨 아래 줄), 7일·하루 보기 날짜 머리 "M월 D일 (요일)" + 오늘 머리 금빛 */
+.calendar-today-line{flex-basis:100%;margin:2px 0 0;display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:var(--lb-caption);font-weight:600;color:var(--lb-ink-1)}
+.calendar-today-line .calendar-today-badge{background:var(--cal-today-fill);box-shadow:inset 0 0 0 2px var(--cal-today-edge);border-radius:var(--lb-r-full);padding:3px 10px;font-weight:700;color:var(--lb-ink-1)}
+h3.date-group{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+h3.date-group .date-group-wd{color:var(--lb-ink-3)}
+h3.date-group .date-group-wd.sat{color:var(--cal-sat)}
+h3.date-group .date-group-wd.sun{color:var(--cal-sun)}
+h3.date-group.today{background:var(--lb-gold-soft);border-radius:var(--lb-r-1);padding:8px 12px;color:var(--lb-ink-1)}
+h3.date-group.today .date-group-wd{color:var(--lb-ink-1)}
+h3.date-group .calendar-today-badge{font-size:11px;font-weight:700;line-height:1;color:var(--lb-ink-1);background:var(--lb-surface-solid);border-radius:var(--lb-r-full);padding:3px 8px}
 .calendar-event{width:100%;text-align:left;line-height:1.45;margin:3px 0;overflow-wrap:anywhere;font-family:var(--lb-font);background:var(--cal-chip-bg);color:var(--cal-chip-text);border:0;border-left:2px solid var(--cal-chip-bar);border-radius:var(--lb-s-1);font-weight:500;font-size:11px;padding:4px 6px 4px 5px;box-shadow:none}
 .calendar-event:hover{background:var(--lb-gold-1)}
 .calendar-event.DEADLINE{background:var(--cal-chip-deadline-bg);color:var(--cal-chip-deadline-text);border-left-color:var(--cal-chip-deadline-bar)}
 .calendar-event.REVIEW,.calendar-event.APPOINTMENT{background:var(--cal-chip-bg);color:var(--cal-chip-text);border-left-color:var(--cal-chip-bar)}
-.calendar-title{text-align:center;margin:2px 0 10px;display:flex;align-items:baseline;justify-content:center;flex-wrap:wrap;gap:1px}
-.calendar-title .cal-title-num{font-family:var(--cal-serif);font-weight:400;font-size:24px;font-variant-numeric:lining-nums tabular-nums;color:var(--lb-ink-1)}
-.calendar-title .cal-title-unit{font-family:"Segoe UI","Malgun Gothic",sans-serif;font-size:var(--lb-caption);font-weight:500;color:var(--muted);letter-spacing:.01em;margin-right:2px}
+/* CAL1C: 달력 제목 = 앱 본문 글꼴(--lb-font: Pretendard, 없으면 맑은 고딕) 한 가지·700·21px, 숫자·단위 같은 크기·같은 기준선(한 줄 글자, 띄어쓰기 보임), 숫자 너비 고정 */
+.calendar-title{text-align:center;margin:2px 0 10px;display:block;font-family:var(--lb-font);font-size:21px;font-weight:700;line-height:1.3;letter-spacing:-.01em;font-variant-numeric:tabular-nums;color:var(--lb-ink-1)}
+.calendar-title .cal-title-num{font-family:var(--lb-font);font-weight:700;font-size:21px;font-variant-numeric:tabular-nums;color:var(--lb-ink-1)}
+.calendar-title .cal-title-unit{font-family:var(--lb-font);font-weight:700;font-size:21px;font-variant-numeric:tabular-nums;color:var(--lb-ink-1)}
+/* CAL1C: 7일 보기 = 가로 7칸 한 줄 격자(월~일). 칸 머리 = 요일 + 날짜 숫자(오늘은 숫자 뒤 금 동그라미), 일정은 월 보기와 같은 칩(한 줄 말줄임), 칸 빈 곳을 누르면 하루 보기 */
+.calendar-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-left:1px solid var(--lb-line-soft);border-top:1px solid var(--lb-line-soft);border-radius:var(--lb-r-1);overflow:hidden}
+.calendar-week-day{display:flex;flex-direction:column;gap:3px;min-width:0;min-height:180px;padding:8px 6px;background:var(--lb-surface-2);border-right:1px solid var(--lb-line-soft);border-bottom:1px solid var(--lb-line-soft);cursor:pointer;position:relative}
+.calendar-week-day.today{background:var(--lb-gold-soft)}
+.calendar-week-day[data-past]>*{opacity:.55}
+.calendar-week-day[data-past] .calendar-event:hover,.calendar-week-day[data-past] .calendar-event:focus-visible{opacity:1}
+.calendar-week h3.date-group{display:grid;justify-items:center;gap:2px;margin:0 0 4px;padding:0;font-size:12px;line-height:1.2;background:none;border-radius:0}
+.calendar-week h3.date-group .calendar-today-badge{order:-1;background:none;padding:0;font-size:11px}
+.calendar-week .date-group-num{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;font-family:var(--lb-font);font-size:16px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--lb-ink-1)}
+.calendar-week .date-group-num.sat{color:var(--cal-sat)}
+.calendar-week .date-group-num.sun{color:var(--cal-sun-num)}
+.calendar-week h3.date-group.today .date-group-num{background:var(--lb-metal);box-shadow:inset 0 0 0 1.5px var(--cal-today-edge);color:var(--lb-ink-1);font-weight:800}
+.calendar-week .calendar-event{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;min-height:0;padding:3px 4px}
+.calendar-week .hint{margin:2px 0 0;font-size:10px;line-height:1.3;text-align:center;color:var(--lb-ink-4)}
+@media(max-width:700px){.calendar-week-day{min-height:130px;padding:6px 2px}.calendar-week .date-group-num{width:28px;height:28px;font-size:14px}.calendar-week .calendar-event{font-size:10px;padding:2px 3px}}
 .date-group{margin:18px 0}
 .date-group h3{font-size:var(--lb-caption);color:var(--lb-ink-3);border-bottom:1px solid var(--lb-line-soft);padding-bottom:9px}
 @media(min-width:701px){.calendar-cell{padding:13px 11px}}
@@ -374,16 +411,17 @@ progress::-moz-progress-bar{background:var(--lb-gold-grad);border-radius:var(--l
 .date-field button{flex-shrink:0}
 .date-popup{position:absolute;top:100%;left:0;z-index:50;margin-top:4px;background:var(--lb-surface-solid);border:1px solid var(--lb-line);border-radius:var(--lb-r-2);box-shadow:var(--lb-shadow-2);padding:10px;width:min(300px,90vw)}
 .date-popup-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
-.date-popup-head strong{display:inline-flex;align-items:baseline;gap:1px;font-size:13px;color:var(--lb-ink-1)}
-.date-popup-head strong .y,.date-popup-head strong .m{font-family:var(--cal-serif);font-size:18px;font-weight:400;font-variant-numeric:lining-nums tabular-nums}
-.date-popup-head strong .u{font-family:"Segoe UI","Malgun Gothic",sans-serif;font-size:12px;font-weight:500;color:var(--muted);letter-spacing:.01em;margin-right:2px}
+/* CAL1C: 날짜 고르기 제목도 달력 제목과 같은 규칙(본문 글꼴 한 가지·700·숫자 너비 고정, 숫자·단위 같은 크기·기준선) */
+.date-popup-head strong{display:inline-block;font-family:var(--lb-font);font-size:18px;font-weight:700;line-height:1.3;color:var(--lb-ink-1)}
+.date-popup-head strong .y,.date-popup-head strong .m{font-family:var(--lb-font);font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+.date-popup-head strong .u{font-family:var(--lb-font);font-size:18px;font-weight:700}
 .date-popup-head button{border:1px solid var(--lb-line);background:var(--lb-surface-solid);color:var(--ink-900);border-radius:var(--lb-r-full);width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:15px;box-shadow:none}
 .date-popup-head button:hover{background:var(--cal-today-tint)}
 .date-popup-grid{border:none}
 .date-popup-grid .calendar-day-name{padding:6px;font-size:13px}
 .date-popup-grid button.calendar-cell{width:36px;height:36px;min-width:36px;min-height:36px;max-width:36px;max-height:36px;aspect-ratio:1/1;box-sizing:border-box;flex:none;justify-self:center;margin:2px auto;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;font-weight:400;font-variant-numeric:lining-nums tabular-nums;font-size:17px;text-align:center;background:none;border:none;color:var(--lb-ink-1);box-shadow:none}
 .date-popup-grid button.calendar-cell:hover{background:var(--cal-today-tint)}
-.date-popup-grid button.calendar-cell.today{border:1px solid var(--cal-today-ring);background:var(--cal-today-tint);font-weight:400;color:var(--lb-ink-1)}
+.date-popup-grid button.calendar-cell.today{border:none;background:var(--lb-metal);box-shadow:inset 0 0 0 1.5px var(--cal-today-edge);font-weight:800;color:var(--lb-ink-1)}
 .date-popup-grid button.calendar-cell.selected{background:var(--lb-metal);color:var(--lb-on-gold);font-weight:700;border-color:var(--lb-metal-line);box-shadow:var(--lb-metal-edge)}
 .date-popup-grid button.calendar-cell:nth-child(7n):not(.today):not(.selected){color:var(--cal-sun-num)}
 .date-popup-grid .calendar-cell.dim{min-height:36px;visibility:hidden;background:none}
@@ -1251,7 +1289,7 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .plan-card h3{margin:0}
 .plan-csat{display:grid;gap:var(--lb-s-3);min-width:0}
 .plan-nav{display:flex;align-items:center;gap:var(--lb-s-2)}
-.plan-nav-label{flex:1 1 auto;text-align:center;min-width:0}
+.plan-nav-label{flex:1 1 auto;text-align:center;min-width:0;font-family:var(--lb-font);font-size:20px;font-weight:700;line-height:1.3;font-variant-numeric:tabular-nums;color:var(--lb-ink-1)}   /* CAL1C: 계획 화면 제목도 달력 제목과 같은 글꼴 규칙 */
 .plan-nav button{min-height:40px;padding-inline:12px}
 .plan-block{display:grid;gap:4px}
 .plan-block-name{font-size:12px;font-weight:700;color:var(--lb-ink-3)}
@@ -1283,10 +1321,23 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .plan-day-cell.plan-heat-3{background:var(--lb-heat-3)}
 .plan-day-cell.plan-heat-4{background:var(--lb-heat-4);color:var(--lb-ink-1);box-shadow:inset 0 0 0 1px var(--lb-metal-line)}   /* V7E: 4단은 금 선으로 3단과 구분, 글자 검정 */
 .plan-day-cell.has-plan{box-shadow:inset 0 -3px 0 var(--lb-gold-2)}
-.plan-day-cell.today{outline:2px solid var(--lb-gold-3);outline-offset:-1px}
 .plan-day-cell.exam{border:2px solid var(--lb-ink-1)}
 .plan-cal-num{font-size:12px;font-weight:700}
 .plan-cal-exam{font-size:10px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* CAL1B: 계획 '월' 날짜 달력도 CAL1과 같은 오늘(금빛 채움 + 2px 안쪽 테두리 + 왼쪽 위 "오늘" + 검정 800 숫자), 지난 날 흐리게(누르기·포커스 때 1), 토 파랑·일 빨강(오늘은 검정) */
+.plan-cal-head.sat{color:var(--cal-sat)}
+.plan-cal-head.sun{color:var(--cal-sun)}
+.plan-day-cell.sat:not(.today) .plan-cal-num{color:var(--cal-sat)}
+.plan-day-cell.sun:not(.today) .plan-cal-num{color:var(--cal-sun-num)}
+.plan-day-cell.today{background:var(--lb-gold-soft);box-shadow:none}
+.plan-day-cell.today.has-plan{box-shadow:inset 0 -3px 0 var(--lb-gold-2)}
+.plan-day-cell.today .plan-cal-num{color:var(--lb-ink-1);font-weight:800;display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--lb-metal);box-shadow:inset 0 0 0 1.5px var(--cal-today-edge);font-variant-numeric:tabular-nums}
+.plan-cal-blank{display:grid;align-content:start;min-width:0;min-height:52px;padding:4px;border-radius:var(--lb-r-1)}
+.plan-cal-other{font-size:12px;font-weight:700;color:var(--lb-ink-4);opacity:.45}
+.plan-day-cell .calendar-today-badge,.pw-dayhead .calendar-today-badge{font-size:11px;font-weight:700;line-height:1;letter-spacing:.02em;color:var(--lb-ink-1);white-space:nowrap}
+.plan-day-cell[data-past]>*{opacity:.55}
+.plan-day-cell[data-past]:is(:hover,:focus-visible,:active)>*{opacity:1}
+.plan-today-line{margin:0}
 .plan-dots{display:block;height:8px}
 .plan-wk-bg{fill:var(--lb-gold-2);fill-opacity:.1}
 .plan-wk.ph1 .plan-wk-bg{fill-opacity:.22}
@@ -1390,12 +1441,20 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .pw-grid{display:grid;grid-template-columns:22px repeat(7,minmax(0,1fr));gap:3px;align-items:stretch;min-width:0}
 .pw-dayhead{display:grid;justify-items:center;padding:2px 0;border-radius:var(--lb-r-1);font-size:11px;line-height:1.2;color:var(--lb-ink-3)}
 .pw-dayhead strong{font-size:12px;color:var(--lb-ink-1)}
-.pw-dayhead.today{background:var(--lb-gold-soft)}
+.pw-dayhead.today{background:var(--lb-gold-soft);padding:3px 2px}
+.pw-dayhead.today strong,.pw-dayhead.today small{color:var(--lb-ink-1);font-weight:800}
+.pw-dayhead.today small{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--lb-metal);box-shadow:inset 0 0 0 1.5px var(--cal-today-edge);font-variant-numeric:tabular-nums}
+.pw-dayhead .calendar-today-badge{order:-1;justify-self:start;padding-left:2px}
+.pw-dayhead.sat:not(.today) strong,.pw-dayhead.sat:not(.today) small{color:var(--cal-sat)}
+.pw-dayhead.sun:not(.today) strong,.pw-dayhead.sun:not(.today) small{color:var(--cal-sun-num)}
+.pw-dayhead[data-past]>*{opacity:.55}
 .pw-dayhead.changed small::after{content:" •";color:var(--ink-900)}
 .pw-block{display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--lb-ink-3);white-space:nowrap;letter-spacing:-0.04em}
 .pw-cell{display:grid;gap:2px;align-content:start;min-width:0;min-height:44px;padding:2px;border-radius:var(--lb-r-1);border:1px solid var(--lb-line-soft);background:var(--lb-surface-solid)}
-.pw-cell.today{border-color:var(--lb-gold-2)}
+.pw-cell.today{border-color:var(--cal-today-edge);background:var(--lb-gold-soft)}
 .pw-cell.past{background:var(--lb-surface-2)}
+.pw-cell[data-past]>*{opacity:.55}
+.pw-cell[data-past]:is(:hover,:focus-within)>*,.pw-cell[data-past]>:active{opacity:1}
 .pw-item{display:block;width:100%;min-width:0;min-height:22px;padding:0;border:0;border-radius:var(--lb-r-1);background:transparent;box-shadow:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
 .pw-item-svg{display:block;width:100%;height:auto;max-width:100%;max-height:26px}
 .pw-total-bar{display:block;width:100%;height:6px;max-width:100%}

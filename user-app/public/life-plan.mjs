@@ -68,6 +68,8 @@ export const PLAN_NOTICE_TEXT=Object.freeze({
 const sunday0=date=>new Date(date+'T12:00:00Z').getUTCDay();
 export const mondayOf=date=>shiftDay(date,-((sunday0(date)+6)%7));
 export const dateLabel=d=>{const dt=new Date(d+'T12:00:00Z');return (dt.getUTCMonth()+1)+'월 '+dt.getUTCDate()+'일 ('+WEEKDAY[dt.getUTCDay()]+')';};
+// CAL1B: 계획 화면 맨 위 "오늘 · 11월 13일 금요일"(CAL1 달력 툴바의 한 줄과 같은 글·클래스).
+export const todayLineText=d=>' · '+Number(d.slice(5,7))+'월 '+Number(d.slice(8,10))+'일 '+WEEKDAY[sunday0(d)]+'요일';
 const short=d=>Number(d.slice(5,7))+'/'+Number(d.slice(8,10));
 // a~b(양끝 포함)에 든 요일 w(0=일)의 날 수.
 export function countWeekday(a,b,w){
@@ -565,12 +567,16 @@ function dateGrid(h,ctx,st,data,ym){
   const eventDays=new Map();for(const e of ctx.planCal?.events??[])eventDays.set(e.date,(eventDays.get(e.date)??0)+1);
   const weeks=weekIndex(ach);
   const grid=h.el('div',null,'plan-cal');
-  for(const w of ['월','화','수','목','금','토','일'])grid.append(h.el('span',w,'plan-cal-head'));
-  for(let i=0;i<lead;i++)grid.append(h.el('span',null,'plan-cal-blank'));
+  for(const w of ['월','화','수','목','금','토','일'])grid.append(h.el('span',w,'plan-cal-head'+(w==='토'?' sat':w==='일'?' sun':'')));
+  // CAL1C: 앞 빈칸(칸 수 그대로)에 지난달 날짜를 흐린 회색 숫자로(Windows 달력처럼, 누르지 않음·오늘·지난 날 표시 없음)
+  for(let i=0;i<lead;i++){const blank=h.el('span',null,'plan-cal-blank'),num=h.el('span',String(Number(shiftDay(first,i-lead).slice(8,10))),'plan-cal-other');num.setAttribute('aria-hidden','true');blank.append(num);grid.append(blank);}
+  // CAL1B: 오늘 칸 = "오늘"·aria-current, 지난 날 = data-past(흐리게), 토·일 칸 = sat·sun(숫자 색). CAL1C: 오늘 = 옅은 금 칸 + 숫자 뒤 금 동그라미(CSS).
   for(let d=1;d<=n;d++){
-    const date=ym+'-'+String(d).padStart(2,'0'),act=actualOf(weeks,date),ex=examDays.get(date)??[],hasPlan=Boolean(planOf(life,date)?.items.length),evs=eventDays.get(date)??0,outs=ctx.planCal?.outer?.on(date).length??0;
-    const b=h.button(null,()=>{openDaySheet(ctx,st,data,date);},'plan-day-cell plan-heat-'+heatLevel(act.total,ach.goalBricks)+(date===today?' today':'')+(ex.length?' exam':'')+(hasPlan?' has-plan':''));
+    const date=ym+'-'+String(d).padStart(2,'0'),act=actualOf(weeks,date),ex=examDays.get(date)??[],hasPlan=Boolean(planOf(life,date)?.items.length),evs=eventDays.get(date)??0,outs=ctx.planCal?.outer?.on(date).length??0,wd=sunday0(date);
+    const b=h.button(null,()=>{openDaySheet(ctx,st,data,date);},'plan-day-cell plan-heat-'+heatLevel(act.total,ach.goalBricks)+(date===today?' today':'')+(ex.length?' exam':'')+(hasPlan?' has-plan':'')+(wd===6?' sat':wd===0?' sun':''));
     b.dataset.date=date;b.setAttribute('aria-label',dateLabel(date)+' 벽돌 '+barsText(act.total)+(ex.length?' · '+ex.join(', '):'')+(evs?' · 일정 '+evs+'개':'')+(outs?' · 바깥 일정 '+outs+'개':'')+(hasPlan?' · 계획 있음':''));
+    if(date===today){b.setAttribute('aria-current','date');b.append(h.el('span','오늘','calendar-today-badge'));}
+    else if(date<today)b.setAttribute('data-past','');
     b.append(h.el('span',String(d),'plan-cal-num'));
     const subs=[...act.bySubject.keys()].slice(0,3);
     if(subs.length){const dots=h.svg('svg',{class:'plan-dots',viewBox:'0 0 30 8',width:'100%','aria-hidden':'true'});subs.forEach((id,k)=>dots.append(h.svg('circle',{cx:5+k*10,cy:4,r:3.5,fill:subjectOf(subjects,id).color})));b.append(dots);}
@@ -821,6 +827,8 @@ export function renderPlan(root,ctx,st){
   const data={life,study:whole.study??null,ach,today,exams:defs.exams,subjects:subjectMap(defs)};
   followPlanToday(st,today);   // FIX53C (HW1)
   const out=add(el('section',null,'panel plan-panel'),add(el('div',null,'plan-head'),el('span','PLAN','eyebrow'),el('h2','계획표','panel-title')));out.id='life-plan';
+  // CAL1B: 맨 위(제목 바로 아래, 보기 칩 위) "오늘 · M월 D일 요일" 한 줄. 모든 보기에 한 번만.
+  add(out,add(el('p',null,'calendar-today-line plan-today-line'),el('span','오늘','calendar-today-badge'),el('span',todayLineText(today),'calendar-today-date')));
   add(out,...viewChips(h,ctx,st,today),examLine(h,ctx,st,defs.exams,today));
   // FIX46B: 모의고사 결과(life-quest가 그린다, 앱이 넘겨 준다). 쓰기 문이 닫혀 있으면 안내 한 줄만.
   add(out,ctx.examResults?.({exams:defs.exams,today,report:(text,error,notices)=>{st.message=text;st.error=error;st.notices=notices;}})??null);

@@ -217,11 +217,16 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
 
   const grid=el('div',null,'pw-grid');grid.setAttribute('role','grid');grid.setAttribute('aria-label',short(monday)+' 주 계획, 칸 = 그 날 그 시간대');
   grid.append(el('span',null,'pw-corner'));
-  for(const d of m.days){const c=add(el('span',null,'pw-dayhead'+(d.isToday?' today':'')+(d.changed?' changed':'')),el('strong',d.weekday),el('small',String(Number(d.date.slice(8,10)))));c.dataset.date=d.date;grid.append(c);}
+  // CAL1B: 오늘 머리·열 = CAL1과 같은 금빛 채움·"오늘"(머리 셋째 자식, CSS order로 맨 위)·aria-current, 지난 날 = data-past(흐리게), 토·일 머리 = sat·sun(글자 색).
+  for(const d of m.days){
+    const c=add(el('span',null,'pw-dayhead'+(d.isToday?' today':'')+(d.changed?' changed':'')+(d.weekday==='토'?' sat':d.weekday==='일'?' sun':'')),el('strong',d.weekday),el('small',String(Number(d.date.slice(8,10)))));c.dataset.date=d.date;
+    if(d.isToday){c.setAttribute('aria-current','date');c.append(el('span','오늘','calendar-today-badge'));}else if(d.past)c.setAttribute('data-past','');
+    grid.append(c);
+  }
   SHOWN_BLOCKS.forEach((b,bi)=>{
     const lab=slotLabel(h,b,'pw-block');lab.title=blockLabel(b);grid.append(lab);   // V7B: 시간대 이름 + 아이콘(시간대 색)
     for(const d of m.days){
-      const rows=d.cells[bi],cell=el('div',null,'pw-cell'+(d.isToday?' today':'')+(d.past?' past':'')+(rows.length?'':' empty'));cell.dataset.date=d.date;cell.dataset.block=b;
+      const rows=d.cells[bi],cell=el('div',null,'pw-cell'+(d.isToday?' today':'')+(d.past?' past':'')+(rows.length?'':' empty'));cell.dataset.date=d.date;cell.dataset.block=b;if(d.past)cell.setAttribute('data-past','');
       for(const r of rows.slice(0,CELL_SHOW))cell.append(itemNode(h,r,{onTap:w.pick?tap(d.date,b):sheetFor(d.date,b,r),onLong:sheetFor(d.date,b,r)}));
       if(rows.length>CELL_SHOW){const more=button('+'+(rows.length-CELL_SHOW),listFor(d.date,b,rows),'pw-more');more.setAttribute('aria-label','숨은 줄 '+(rows.length-CELL_SHOW)+'개');cell.append(more);}
       const plus=button('+',tap(d.date,b),'pw-add');plus.setAttribute('aria-label',dateLabel(d.date)+' '+blockLabel(b)+(w.pick?' · '+nameOf(w.pick)+' 넣기':' · 줄 넣기'));cell.append(plus);
