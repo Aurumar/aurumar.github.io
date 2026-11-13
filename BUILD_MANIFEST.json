@@ -699,8 +699,8 @@
     },
     {
       "path": "user-app/public/life-tower.mjs",
-      "sourceSha256": "2d29e620f02e271e870299745a2c2992aa841114d913abb3944cf97477592a2f",
-      "outputSha256": "2d29e620f02e271e870299745a2c2992aa841114d913abb3944cf97477592a2f",
+      "sourceSha256": "bb996035773886115a7a5a048521ed2d58b3af7b85a50076f65b014b1a325927",
+      "outputSha256": "bb996035773886115a7a5a048521ed2d58b3af7b85a50076f65b014b1a325927",
       "dependencies": [
         "user-app/public/life-achieve.mjs",
         "user-app/public/life-model.mjs",
@@ -1150,8 +1150,8 @@
     },
     {
       "path": "user-app/public/tower-3d.mjs",
-      "sourceSha256": "91e5373d2b023748cc41ee93625389f25bfec5254ca5d63b15c4b754682e4336",
-      "outputSha256": "91e5373d2b023748cc41ee93625389f25bfec5254ca5d63b15c4b754682e4336",
+      "sourceSha256": "5267e68073ab6eaedc1aeef193d3727a78d001daefa0c38e7c07927bf616bc4d",
+      "outputSha256": "5267e68073ab6eaedc1aeef193d3727a78d001daefa0c38e7c07927bf616bc4d",
       "dependencies": [
         "user-app/public/three.module.js",
         "user-app/public/tower-3d-layout.mjs"
@@ -1479,8 +1479,8 @@
     },
     {
       "path": "user-app/public/tower-3d-layout.mjs",
-      "sourceSha256": "c7b8ab8dde9707d91ef2fcd43ee30f2b23073639123c926bccc66a76511d2512",
-      "outputSha256": "c7b8ab8dde9707d91ef2fcd43ee30f2b23073639123c926bccc66a76511d2512",
+      "sourceSha256": "6d862d7645ec8b589a7367d9901b9eab7d9d34b717de767b95cb5af702f297ec",
+      "outputSha256": "6d862d7645ec8b589a7367d9901b9eab7d9d34b717de767b95cb5af702f297ec",
       "dependencies": [],
       "transforms": []
     },
@@ -1574,8 +1574,8 @@
     {
       "path": "styles.css",
       "sourcePath": "user-app/public/styles.css",
-      "sourceSha256": "6039836595f28313c3d8084bb047be41d33cad94b9b90e7beed631a856b77590",
-      "outputSha256": "6039836595f28313c3d8084bb047be41d33cad94b9b90e7beed631a856b77590"
+      "sourceSha256": "885797f8b81d61ea61688913ac25e70e91d98f465d548a483c07f20a1e637970",
+      "outputSha256": "885797f8b81d61ea61688913ac25e70e91d98f465d548a483c07f20a1e637970"
     },
     {
       "path": "public-config.json",
@@ -1826,20 +1826,20 @@
     {
       "path": "favicon-16.png",
       "sourcePath": "user-app/public/favicon-16.png",
-      "sourceSha256": "325c3a1de03fe337d14b31a4add92679a6da24c851c7694064cc849823c80c28",
-      "outputSha256": "325c3a1de03fe337d14b31a4add92679a6da24c851c7694064cc849823c80c28"
+      "sourceSha256": "9daa88871b8ddb02baebfd80ae457d30f2aaecf8c26cb081dc84192f8630e9ce",
+      "outputSha256": "9daa88871b8ddb02baebfd80ae457d30f2aaecf8c26cb081dc84192f8630e9ce"
     },
     {
       "path": "favicon-32.png",
       "sourcePath": "user-app/public/favicon-32.png",
-      "sourceSha256": "98dc6170e6e08426351fe0d218a91809aa3150dbf3ca508ea70499b16897ed27",
-      "outputSha256": "98dc6170e6e08426351fe0d218a91809aa3150dbf3ca508ea70499b16897ed27"
+      "sourceSha256": "20b7a2d1acc056c8c4ae340765711ad1ba98dd5361e75524fbddea91be5babe6",
+      "outputSha256": "20b7a2d1acc056c8c4ae340765711ad1ba98dd5361e75524fbddea91be5babe6"
     },
     {
       "path": "favicon-48.png",
       "sourcePath": "user-app/public/favicon-48.png",
-      "sourceSha256": "eaf2baac227ad9c99eff4b585d2e17c271d9bcb01548db11c8fdf5a722010c26",
-      "outputSha256": "eaf2baac227ad9c99eff4b585d2e17c271d9bcb01548db11c8fdf5a722010c26"
+      "sourceSha256": "4555c4b03f4a007d56650eaabfab0c165f76526a6892fd5309d47b46f31e7415",
+      "outputSha256": "4555c4b03f4a007d56650eaabfab0c165f76526a6892fd5309d47b46f31e7415"
     }
   ]
 }

@@ -19,8 +19,17 @@
   /* 금 3단 (V7C: 1 = 옅은 금 면, 2 = 밝은 금 선·채움, 3 = 가장 진한 금 선·링. 글자에는 쓰지 않는다) */
   --lb-gold-1:#FAEAB7;--lb-gold-2:#E8C45A;--lb-gold-3:#E3BE4C;
   --lb-gold-soft:#FFF8DF;--lb-gold-bright:#F0CF6E;
-  --lb-gold-grad:linear-gradient(160deg,#F6E3A1 0%,#EED27A 50%,#E8C45A 100%);
-  --lb-gold-grad-hover:linear-gradient(160deg,#FFF8DF 0%,#F6E3A1 45%,#EED27A 100%);
+  /* V7E 금속 금빛 (통제탑 2026-11-13, 소유자 "연한 건 금색인데 진한 건 여전히 갈색"): 단색 금(#E8C45A)·아이보리→진한 금 2단은 명도 낮은 끝이 머스터드로 읽힌다.
+     넓은 면(24px 이상: 활성 탭·주요 단추·활성 메뉴·칩 채움)은 밝은 하이라이트가 낀 샴페인 금속 4단 + 위 1px 흰 안쪽 하이라이트 + 1px 금 선 + 아주 옅은 바깥 그림자, 글자 검정.
+     면의 모든 색 멈춤은 명도 ≥70%(진한 끝 <60% 금지), 진한 금은 1px 선(--lb-metal-line)만. 안 바꾸기 = 아래 두 줄(면·hover)만 바꾼다:
+     A 샴페인 금속(지금) #FFF6DA 0 · #F6E2A2 45 · #EFD27E 55 · #F9EBC0 100 / B 화이트 골드 #FFF9E8 → #F3E3B0 → #FBF1D3 / C 옐로 골드 #FFF1C4 → #F0D27A → #F7E2A2 */
+  --lb-metal:linear-gradient(180deg,#FFF6DA 0%,#F6E2A2 45%,#EFD27E 55%,#F9EBC0 100%);
+  --lb-metal-hover:linear-gradient(180deg,#FFFAEA 0%,#F9E9B6 45%,#F3DA92 55%,#FBF0CE 100%);
+  --lb-metal-line:#E3C46A;
+  --lb-metal-edge:inset 0 0 0 1px var(--lb-metal-line),inset 0 2px 0 rgba(255,255,255,.9),0 1px 2px rgba(0,0,0,.06);
+  --lb-metal-lift:inset 0 2px 0 rgba(255,255,255,.9),0 1px 2px rgba(0,0,0,.06);   /* 금 선을 border로 따로 그리는 면용(고리 없이 하이라이트·그림자만) */
+  --lb-gold-grad:var(--lb-metal);
+  --lb-gold-grad-hover:var(--lb-metal-hover);
   --lb-gold-border:linear-gradient(145deg,rgba(232,196,90,.62) 0%,rgba(255,248,223,.5) 45%,rgba(227,190,76,.40) 100%);
   --lb-gold-glow:0 6px 18px rgba(232,196,90,.32);
   /* 잉크 4단: 제목 / 본문 / 보조 / 비활성 (V7C: 중성 검정·회색) */
@@ -52,10 +61,13 @@
   /* 영역 4: 몸·머리·돈·마음 */
   --lb-area-body:#5BA66B;--lb-area-head:#4F86C6;--lb-area-money:#E8C45A;--lb-area-heart:#C4709A;
   /* 히트맵 (V7C: 진할수록 밝은 금이 짙어지되 황토까지 내려가지 않는다) */
-  --lb-heat-0:#F3F1EC;--lb-heat-1:#FBEFC9;--lb-heat-2:#F6E3A1;--lb-heat-3:#EED27A;--lb-heat-4:#E3BE4C;--lb-heat-neg:#CBBCDF;--lb-heat-unk:#F2D9C4;--lb-heat-none:#FBF8F1;
+  /* V7E: 달력 칸(24px 이상 면)도 명도 ≥70% — 3단 #EED27A(70.6%) → #F2D98C, 4단 #E3BE4C(59%) → #EED27A. 4단은 칸 쪽에서 금 선을 더해 구분한다 */
+  --lb-heat-0:#F3F1EC;--lb-heat-1:#FBEFC9;--lb-heat-2:#F6E3A1;--lb-heat-3:#F2D98C;--lb-heat-4:#EED27A;--lb-heat-neg:#CBBCDF;--lb-heat-unk:#F2D9C4;--lb-heat-none:#FBF8F1;
   /* 가계부 그래프 (fin-charts·renderFinSankey가 쓰는 .c0~.c14 등). V7C: 황토 0번 → 짙은 회색, 갈색 5·9번 → 주홍·자주 회색, 11번 올리브는 초록 쪽으로, 나머지·없음은 중성 회색 */
   --lb-chart-0:#3A3A3A;--lb-chart-1:#2E6B57;--lb-chart-2:#2F6185;--lb-chart-3:#5E4091;--lb-chart-4:#9C3B3B;--lb-chart-5:#C2410C;--lb-chart-6:#1E6A72;--lb-chart-7:#7B3D6D;--lb-chart-8:#8E3A5E;--lb-chart-9:#6E5A7E;--lb-chart-10:#5A5F66;--lb-chart-11:#6B7A3A;--lb-chart-12:#3F6B2E;--lb-chart-13:#4C5A94;--lb-chart-14:#5F6B2C;
   --lb-chart-rest:#767676;--lb-chart-income:#2F6B45;--lb-chart-none:#C8C8C8;--lb-chart-bar:#F0CF6E;--lb-chart-line:#1E1E1E;--lb-chart-cum:#6B4A9A;--lb-chart-stroke:#FFFFFF;--lb-chart-label:#FFFFFF;
+  /* V7E 빈 탑 2.5D(받침·바닥·1층 예상도): 3D와 같은 검은 대리석·흰 대리석·아이보리 반투명 유리·샴페인 선 */
+  --lb-marble-black:#2A2826;--lb-marble-black-top:#3A3835;--lb-marble-black-side:#1F1E1C;--lb-marble-white:#FAF9F6;--lb-plan-glass:#F3EEE2;--lb-plan-line:#D9C48A;
   /* 금고 금괴 */
   --lb-vault-today:#FFF8DF;--lb-vault-future:#F0CF6E;--lb-vault-past:#FAEAB7;--lb-vault-spent:#F3F1EC;--lb-vault-spent-line:#E6E1D6;--lb-vault-over:#C27A62;
   /* DS1 금빛 V5 (설계 LIFE_BRICK_GOLD_REDESIGN_V5 §2.7): 아이보리 3 · 잉크 3 · 금 4 · 상태 2 + 금속 공식 하나(버튼·벽돌·링 채움 공통) */
@@ -65,8 +77,9 @@
   --ink-900:#1E1E1E;--ink-600:#5B5B5B;--ink-400:#8A8A8A;
   --gold-hi:#FFF8DF;--gold:#F0CF6E;--gold-deep:#E8C45A;--gold-shadow:#E3BE4C;
   --danger:#B8433A;--ok:#4C8A5C;
-  --gold-metal:linear-gradient(135deg,var(--gold-hi) 0%,var(--gold) 38%,var(--gold-deep) 72%,var(--gold-shadow) 100%);
-  --gold-metal-edge:inset 0 1px 0 rgba(255,248,223,.9),0 2px 0 var(--gold-shadow);
+  /* V7E: 단추 금속 공식 = 위 샴페인 금속(--lb-metal). 옛 135° 4단은 끝(#E8C45A·#E3BE4C, 명도 59~63%)이 넓은 면에서 갈색으로 읽혔다. 아래 2px 진한 금 테 → 1px 금 선 + 위 흰 하이라이트 */
+  --gold-metal:var(--lb-metal);
+  --gold-metal-edge:var(--lb-metal-edge);
   /* 금고 카드 3층 (DS3, V5 설계 2.5): 금속 3단 + 그림자·쓴 몫 아이보리 음각·초과 테두리. 금고 카드(30절)만 쓴다 — DS1 병합 뒤 DS1 변수로 바꿀 자리 */
   --lb-vault-gold-hi:#FFF8DF;--lb-vault-gold:#F0CF6E;--lb-vault-gold-deep:#E8C45A;--lb-vault-gold-shadow:#E3BE4C;--lb-vault-ivory:#F3F1EC;--lb-vault-over-line:#B8433A;
   /* 옛 변수 이름(F13 달력 등이 쓰던 것) → 토큰. DSFIX H1: 옛 --gold-deep(진한 글자색)은 DS1 금 --gold-deep(DS7 이후 #D4A83A)을 덮어 금속 금을 검게 칠했다 → 옛 자리는 --lb-ink-1을 직접 쓴다 */
@@ -96,7 +109,7 @@ button,#page-title{word-break:keep-all}
 
 /* ===== 3. 버튼 — DS1 (V5 §2.1) 종류 셋: primary = 금속 채움(--gold-metal) / secondary = 금 테두리 / text(lb-btn-text) = 글자. ghost는 옛 이름 ===== */
 button{border:1px solid transparent;border-radius:var(--lb-r-1);padding:9px 16px;background:var(--gold-metal);color:var(--ink-900);cursor:pointer;font-weight:700;line-height:1.5;box-shadow:var(--gold-metal-edge);transition:transform .12s ease,box-shadow .15s ease,background-color .15s ease,border-color .15s ease}
-button:hover{background:var(--gold-metal);box-shadow:var(--gold-metal-edge),var(--lb-gold-glow)}
+button:hover{background:var(--lb-metal-hover);box-shadow:var(--gold-metal-edge)}
 button:active{transform:scale(.97)}
 button.secondary,button.icon-button{background:var(--ivory-0);color:var(--ink-900);border-color:var(--gold-deep);box-shadow:none;font-weight:600}
 button.secondary:hover,button.icon-button:hover{background:var(--ivory-1);border-color:var(--gold)}
@@ -128,7 +141,7 @@ label.inline{display:flex;align-items:center;gap:8px;margin:8px 0}
 nav{display:grid;gap:5px}
 nav button{background:none;border:1px solid transparent;border-radius:var(--lb-r-2);text-align:left;color:var(--lb-ink-3);padding:10px 12px;display:flex;align-items:center;gap:12px;font-weight:600;box-shadow:none}
 nav button:hover{background:var(--lb-gold-soft)}
-nav button.active{color:var(--lb-ink-1);background:var(--lb-gold-1);border-color:var(--lb-line);font-weight:800;box-shadow:inset 3px 0 0 var(--lb-gold-2)}
+nav button.active{color:var(--lb-ink-1);background:var(--lb-metal);border-color:var(--lb-metal-line);font-weight:800;box-shadow:inset 3px 0 0 var(--lb-metal-line),var(--lb-metal-edge)}   /* V7E: 단색 옅은 금 → 금속 면 */
 nav .nav-symbol{display:inline-block;width:20px;text-align:center;font-size:16px}
 nav .nav-en{font-size:9px;letter-spacing:.07em;margin-left:auto;color:var(--lb-ink-3)}
 .nav-phone{display:none!important}
@@ -329,7 +342,7 @@ progress::-moz-progress-bar{background:var(--lb-gold-grad);border-radius:var(--l
 .segment{display:flex;border:1px solid var(--lb-line);border-radius:var(--lb-r-full);overflow:hidden;background:var(--lb-surface)}
 .segment button{border:none;border-radius:0;background:transparent;color:var(--lb-ink-3);font-size:13px;font-weight:600;box-shadow:none}
 .segment button:hover{background:var(--lb-gold-soft)}
-.segment button.selected{background:var(--lb-gold-1);color:var(--lb-ink-1);font-weight:800}
+.segment button.selected{background:var(--lb-metal);color:var(--lb-ink-1);font-weight:800;box-shadow:var(--lb-metal-edge)}
 .lb-segment{display:inline-flex;max-width:100%;overflow-x:auto;margin:0 0 18px;padding:3px;gap:2px;box-shadow:var(--lb-shadow-1)}
 .lb-segment button{flex:0 0 auto;min-width:64px;padding:7px 16px;border-radius:var(--lb-r-full)}
 .calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-left:1px solid var(--lb-line-soft);border-top:1px solid var(--lb-line-soft);border-radius:var(--lb-r-1);overflow:hidden}
@@ -371,7 +384,7 @@ progress::-moz-progress-bar{background:var(--lb-gold-grad);border-radius:var(--l
 .date-popup-grid button.calendar-cell{width:36px;height:36px;min-width:36px;min-height:36px;max-width:36px;max-height:36px;aspect-ratio:1/1;box-sizing:border-box;flex:none;justify-self:center;margin:2px auto;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;font-weight:400;font-variant-numeric:lining-nums tabular-nums;font-size:17px;text-align:center;background:none;border:none;color:var(--lb-ink-1);box-shadow:none}
 .date-popup-grid button.calendar-cell:hover{background:var(--cal-today-tint)}
 .date-popup-grid button.calendar-cell.today{border:1px solid var(--cal-today-ring);background:var(--cal-today-tint);font-weight:400;color:var(--lb-ink-1)}
-.date-popup-grid button.calendar-cell.selected{background:var(--lb-gold-2);color:var(--lb-on-gold);font-weight:700;border-color:var(--lb-gold-2)}
+.date-popup-grid button.calendar-cell.selected{background:var(--lb-metal);color:var(--lb-on-gold);font-weight:700;border-color:var(--lb-metal-line);box-shadow:var(--lb-metal-edge)}
 .date-popup-grid button.calendar-cell:nth-child(7n):not(.today):not(.selected){color:var(--cal-sun-num)}
 .date-popup-grid .calendar-cell.dim{min-height:36px;visibility:hidden;background:none}
 .date-popup-actions{display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--lb-line-soft);padding-top:8px;margin-top:10px}
@@ -412,7 +425,7 @@ progress::-moz-progress-bar{background:var(--lb-gold-grad);border-radius:var(--l
 .house-scene{width:290px;height:205px;position:relative;margin:5px auto 0;display:flex;align-items:flex-end;justify-content:center;padding-bottom:24px}
 .house-ground{position:absolute;bottom:15px;width:270px;height:32px;background:var(--lb-gold-1);border-radius:50%}
 .house-body{position:relative;z-index:1;width:198px;background:linear-gradient(175deg,var(--lb-surface-solid) 0%,var(--lb-gold-soft) 100%);border:2px solid var(--lb-gold-1);border-radius:2px;padding:9px;display:grid;grid-template-columns:repeat(8,1fr);gap:3px;box-shadow:13px 8px 0 var(--lb-gold-soft)}
-.house-roof{position:absolute;bottom:153px;width:220px;height:44px;background:linear-gradient(180deg,var(--lb-gold-2) 0%,var(--lb-gold-3) 100%);clip-path:polygon(50% 0,100% 100%,0 100%);z-index:1}
+.house-roof{position:absolute;bottom:153px;width:220px;height:44px;background:var(--lb-metal);clip-path:polygon(50% 0,100% 100%,0 100%);z-index:1}
 .brick{height:15px;border-radius:2px;background:var(--lb-heat-0);border:1px solid var(--lb-line)}
 .brick.filled{background:var(--lb-gold-grad);border-color:var(--lb-gold-3)}
 .brick.milestone-brick{background:var(--lb-gold-3);border-color:var(--lb-gold-3)}
@@ -508,13 +521,15 @@ dialog[open]{animation:lb-rise .22s ease-out}
 .lb-chip:not([class*="lb-chip-"]){--lb-chip-label:var(--lb-on-gold)}
 /* V7C: 고른 과목·영역 칩 = 그 색을 옅게 깐 면 + 검은 글자 + 그 색 테(흰 글자는 중간 밝기 과목색 위에서 대비 2.9~4.2라 미달). 직접 고른 색 칩은 금 면 + 검은 글자 */
 .lb-chip-custom{--lb-chip-label:var(--lb-on-gold)}
-.lb-chip:is(.lb-chip-kor,.lb-chip-math,.lb-chip-eng,.lb-chip-hist,.lb-chip-sci,.lb-chip-bio,.lb-chip-body,.lb-chip-head,.lb-chip-heart):is(.selected,[aria-pressed=true]){background:var(--lb-surface-solid);background:color-mix(in srgb,var(--lb-chip-color) 22%,var(--lb-surface-solid));color:var(--lb-ink-1);box-shadow:inset 0 0 0 1px var(--lb-chip-color)}
-.lb-chip:is(.lb-chip-kor,.lb-chip-math,.lb-chip-eng,.lb-chip-hist,.lb-chip-sci,.lb-chip-bio,.lb-chip-body,.lb-chip-head,.lb-chip-heart):is(.selected,[aria-pressed=true])::before{background:var(--lb-chip-color)}
+/* V7E: 금 칩(기본·돈·직접 고른 색)을 고르면 단색 금 대신 금속 면 + 1px 금 선, 사회(노랑, 명도 61%)는 다른 과목처럼 옅게 깐 면 */
+.lb-chip:is(:not([class*="lb-chip-"]),.lb-chip-money,.lb-chip-custom):not(.lb-slot):is(.selected,[aria-pressed=true]){background:var(--lb-metal);border-color:var(--lb-metal-line);box-shadow:var(--lb-metal-edge)}
+.lb-chip:is(.lb-chip-kor,.lb-chip-math,.lb-chip-eng,.lb-chip-hist,.lb-chip-soc,.lb-chip-sci,.lb-chip-bio,.lb-chip-body,.lb-chip-head,.lb-chip-heart):is(.selected,[aria-pressed=true]){background:var(--lb-surface-solid);background:color-mix(in srgb,var(--lb-chip-color) 22%,var(--lb-surface-solid));color:var(--lb-ink-1);box-shadow:inset 0 0 0 1px var(--lb-chip-color)}
+.lb-chip:is(.lb-chip-kor,.lb-chip-math,.lb-chip-eng,.lb-chip-hist,.lb-chip-soc,.lb-chip-sci,.lb-chip-bio,.lb-chip-body,.lb-chip-head,.lb-chip-heart):is(.selected,[aria-pressed=true])::before{background:var(--lb-chip-color)}
 .lb-toggle{display:inline-flex;align-items:center;gap:10px;margin:0;min-height:44px;font-size:14px;font-weight:600;cursor:pointer}
 .lb-toggle input{position:absolute;opacity:0;width:1px;height:1px}
 .lb-toggle-track{position:relative;flex:0 0 auto;width:42px;height:24px;border-radius:var(--lb-r-full);background:var(--lb-heat-0);border:1px solid var(--lb-line);transition:background-color .15s ease}
 .lb-toggle-track::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--lb-surface-solid);box-shadow:var(--lb-shadow-1);transition:transform .15s ease}
-.lb-toggle input:checked+.lb-toggle-track{background:var(--lb-gold-grad);border-color:var(--lb-gold-3)}
+.lb-toggle input:checked+.lb-toggle-track{background:var(--lb-gold-grad);border-color:var(--lb-metal-line)}
 .lb-toggle input:checked+.lb-toggle-track::after{transform:translateX(18px)}
 .lb-toggle input:focus-visible+.lb-toggle-track{outline:2px solid var(--lb-gold-3);outline-offset:2px}
 .lb-xp{display:grid;gap:4px}
@@ -537,7 +552,7 @@ dialog[open]{animation:lb-rise .22s ease-out}
 /* ===== 12. 가계부 그래프 — 색은 토큰만, 로직은 fin-charts 그대로 ===== */
 .fin-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 16px}
 .fin-tabs button{padding:7px 13px;font-size:13px}
-.fin-tabs button.active{background:var(--lb-gold-grad);color:var(--lb-on-gold);border-color:var(--lb-gold-3);box-shadow:var(--lb-gold-glow)}
+.fin-tabs button.active{background:var(--lb-gold-grad);color:var(--lb-on-gold);border-color:var(--lb-metal-line);box-shadow:var(--lb-metal-edge)}
 .fin-toolbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 14px;margin:0 0 10px}
 .fin-toolbar label{margin:0;font-size:var(--lb-caption)}
 .fin-toolbar label:not(.inline){display:flex;flex-direction:column;gap:4px}
@@ -788,7 +803,7 @@ button.fin-quick-need{background:transparent;color:var(--lb-ink-3)}
 .quick-block h3{margin:0 0 6px}
 .quick-row{display:flex;flex-wrap:wrap;gap:6px}
 .quick-pick{font-size:13px;padding:8px 12px;min-height:44px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.quick-pick.active{background:var(--lb-gold-grad);color:var(--lb-on-gold);border-color:var(--lb-gold-3)}
+.quick-pick.active{background:var(--lb-gold-grad);color:var(--lb-on-gold);border-color:var(--lb-metal-line);box-shadow:var(--lb-metal-edge)}
 .fin-more{margin-top:6px;border-top:1px solid var(--lb-line);padding-top:4px}
 .fin-more>summary{cursor:pointer;min-height:48px;display:flex;align-items:center;font-size:14px;font-weight:700;color:var(--lb-ink-1)}
 .fin-more[open]>summary{margin-bottom:8px}
@@ -813,7 +828,7 @@ button.fin-quick-need{background:transparent;color:var(--lb-ink-3)}
   .rail-label,.rail-bottom{display:none}
   nav{position:fixed;left:0;right:0;bottom:0;z-index:5;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:2px;background:var(--lb-surface-2);-webkit-backdrop-filter:var(--lb-blur);backdrop-filter:var(--lb-blur);border-top:1px solid var(--lb-line);padding:4px 4px calc(4px + env(safe-area-inset-bottom));box-shadow:var(--lb-shadow-2)}
   nav button.nav-item{flex-direction:column;justify-content:center;gap:1px;min-height:54px;padding:6px 2px;font-size:11px;text-align:center;min-width:0;border-radius:var(--lb-r-1)}
-  nav button.active{box-shadow:inset 0 2px 0 var(--lb-gold-2)}
+  nav button.active{box-shadow:inset 0 2px 0 var(--lb-metal-line),var(--lb-metal-edge)}
   nav .nav-symbol{font-size:18px;width:auto}
   nav .nav-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
   nav .nav-en{display:none}
@@ -1165,6 +1180,17 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .tower-gem{fill:var(--lb-surface-solid);stroke:var(--lb-gold-3);stroke-width:.7}
 .tower-scaffold{stroke:var(--lb-gold-3);stroke-width:1;fill:none}
 .tower-label{font-size:8px;font-weight:700;fill:var(--lb-ink-3);text-anchor:end}
+/* V7E 빈 집 2.5D: 흰 대리석 바닥 · 검은 대리석 받침 + 금 테 · 1층 예상도(아이보리 반투명 유리 + 샴페인 점선) */
+.tower-scroll-empty{padding:var(--lb-s-3) 0}
+.tower-svg-empty{max-width:520px}
+.tower-ground{fill:var(--lb-marble-white);stroke:var(--lb-line);stroke-width:.6}
+.tower-plinth{fill:var(--lb-marble-black);stroke:none}
+.tower-plinth-top{fill:var(--lb-marble-black-top)}
+.tower-plinth-side{fill:var(--lb-marble-black-side)}
+.tower-plinth-rim{stroke:var(--lb-gold-2);stroke-width:1.2;stroke-linecap:round}
+.tower-plan{fill:var(--lb-plan-glass);fill-opacity:.55;stroke:var(--lb-plan-line);stroke-width:.8}
+.tower-plan-top{fill-opacity:.35}
+.tower-plan-line{stroke:var(--lb-plan-line);stroke-width:.6;fill:none}
 .tower-gold-1{stop-color:var(--lb-gold-bright)}
 .tower-gold-2{stop-color:var(--lb-gold-2)}
 .tower-gold-3{stop-color:var(--lb-gold-3)}
@@ -1217,8 +1243,8 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .plan-exam-name{font-size:12px;font-weight:700;color:var(--lb-ink-1);overflow-wrap:anywhere}
 .plan-exam-dday{font-size:18px;font-weight:800;color:var(--lb-ink-1);font-variant-numeric:tabular-nums}
 .plan-exam .muted{font-size:11px}
-.plan-exam.nearest{border-color:var(--lb-gold-2);background:var(--lb-gold-soft);box-shadow:var(--lb-gold-glow)}
-.plan-exam.csat{background:var(--lb-gold-grad);border-color:var(--lb-gold-3)}
+.plan-exam.nearest{border-color:var(--lb-metal-line);background:var(--lb-gold-soft);box-shadow:var(--lb-metal-edge)}
+.plan-exam.csat{background:var(--lb-gold-grad);border-color:var(--lb-metal-line);box-shadow:var(--lb-metal-edge)}
 .plan-exam.csat .muted{color:var(--lb-ink-2)}
 .plan-exam.ended{opacity:.5}
 .plan-card{display:grid;gap:var(--lb-s-2);padding:var(--lb-s-3);border-radius:var(--lb-r-2);border:1px solid var(--lb-line-soft);background:var(--lb-surface-2);min-width:0}
@@ -1255,7 +1281,7 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .plan-day-cell.plan-heat-1{background:var(--lb-heat-1)}
 .plan-day-cell.plan-heat-2{background:var(--lb-heat-2)}
 .plan-day-cell.plan-heat-3{background:var(--lb-heat-3)}
-.plan-day-cell.plan-heat-4{background:var(--lb-heat-4);color:var(--lb-surface-solid)}
+.plan-day-cell.plan-heat-4{background:var(--lb-heat-4);color:var(--lb-ink-1);box-shadow:inset 0 0 0 1px var(--lb-metal-line)}   /* V7E: 4단은 금 선으로 3단과 구분, 글자 검정 */
 .plan-day-cell.has-plan{box-shadow:inset 0 -3px 0 var(--lb-gold-2)}
 .plan-day-cell.today{outline:2px solid var(--lb-gold-3);outline-offset:-1px}
 .plan-day-cell.exam{border:2px solid var(--lb-ink-1)}
@@ -1356,7 +1382,7 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 /* ===== 17-2. 주간 계획 격자·계획 탭 머리 (P1A, plan-week·life-plan): 새 색 없음 — 토큰만. 계획 = 과목 색 테두리(SVG stroke 속성), 실제 = 금 채움 ===== */
 .plan-far .lb-chip{min-height:36px}
 .plan-exam-wrap{display:grid;gap:var(--lb-s-2);min-width:0}
-.plan-exam-line{justify-self:start;max-width:100%;min-height:36px;padding:4px 14px;border-radius:var(--lb-r-full);border:1px solid var(--lb-gold-2);background:var(--lb-gold-soft);color:var(--lb-ink-1);font-size:13px;font-weight:700;box-shadow:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plan-exam-line{justify-self:start;max-width:100%;min-height:36px;padding:4px 14px;border-radius:var(--lb-r-full);border:1px solid var(--lb-metal-line);background:var(--lb-metal);color:var(--lb-ink-1);font-size:13px;font-weight:700;box-shadow:var(--lb-metal-edge);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .plan-exam-line[aria-expanded="true"]{background:var(--lb-surface-2)}
 #view-content:has(>.plan-panel)>.plan-more{grid-column:1/-1}
 .plan-more>summary{min-height:40px;line-height:40px;cursor:pointer;font-weight:700;color:var(--lb-ink-2)}
@@ -1407,7 +1433,7 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .pm-cell.plan-heat-1{background:var(--lb-heat-1)}
 .pm-cell.plan-heat-2{background:var(--lb-heat-2)}
 .pm-cell.plan-heat-3{background:var(--lb-heat-3)}
-.pm-cell.plan-heat-4{background:var(--lb-heat-4);color:var(--lb-surface-solid)}
+.pm-cell.plan-heat-4{background:var(--lb-heat-4);color:var(--lb-ink-1);box-shadow:inset 0 0 0 1px var(--lb-metal-line)}
 .pm-cell.planned{border:2px solid var(--lb-gold-3)}
 .pm-cell.plan-heat-3.planned,.pm-cell.plan-heat-4.planned{border-color:var(--lb-ink-1)}
 .pm-total{display:flex;align-items:center;justify-content:center;min-width:0;font-size:11px;font-weight:700;color:var(--lb-ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -1465,7 +1491,7 @@ button.life-color-link{flex:0 0 auto;min-height:44px;padding:6px 8px;border:0;ba
 .lb-dday-chip{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:3px 12px;border:1px solid var(--lb-line);border-radius:var(--lb-r-full);background:var(--lb-surface-2);white-space:nowrap;font-variant-numeric:tabular-nums}
 .lb-dday-label{font-size:11px;font-weight:600;color:var(--lb-ink-3)}
 .lb-dday-value{font-size:13px;font-weight:600;color:var(--ink-600)}
-.lb-dday-chip.main{min-height:40px;padding:4px 14px;border:2px solid var(--lb-gold-2);background:var(--lb-gold-soft)}
+.lb-dday-chip.main{min-height:40px;padding:4px 14px;border:1px solid var(--lb-metal-line);background:var(--lb-metal);box-shadow:var(--lb-metal-lift)}   /* V7E: 2px 진한 금 테 → 금속 면 + 1px 금 선 */
 .lb-dday-chip.main .lb-dday-value{font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--lb-ink-1)}
 button.plan-exam-line.has-chips{padding:2px;border:0;background:transparent;box-shadow:none;overflow:visible;white-space:normal;min-height:44px}
 button.plan-exam-line.has-chips[aria-expanded="true"]{background:transparent}
@@ -1484,8 +1510,8 @@ button.plan-exam-line.has-chips[aria-expanded="true"]{background:transparent}
 .hb-wd,.hb-dn{display:block;font-variant-numeric:tabular-nums}
 button.hb-name{display:block;width:100%;min-height:44px;padding:4px 6px;border:0;background:transparent;box-shadow:none;text-align:left;font-weight:700;color:var(--lb-ink-1);overflow-wrap:anywhere}
 button.hb-cell{width:36px;height:36px;min-height:36px;padding:0;border:1px solid var(--lb-line);border-radius:var(--lb-r-1);background:var(--lb-surface-solid);box-shadow:none;color:var(--lb-ink-1);font-size:14px;line-height:1}
-button.hb-cell.hb-done{background:var(--lb-gold-2);border-color:var(--lb-gold-3);color:var(--lb-ink-1)}
-button.hb-cell.hb-part{background:linear-gradient(to top,var(--lb-gold-2) 50%,var(--lb-surface-solid) 50%);border-color:var(--lb-gold-3);color:var(--lb-ink-1)}
+button.hb-cell.hb-done{background:var(--lb-metal);border-color:var(--lb-metal-line);color:var(--lb-ink-1);box-shadow:var(--lb-metal-edge)}   /* V7E: 단색 금 → 금속 면 */
+button.hb-cell.hb-part{background:linear-gradient(to top,var(--lb-heat-3) 50%,var(--lb-surface-solid) 50%);border-color:var(--lb-metal-line);color:var(--lb-ink-1)}
 button.hb-cell.hb-miss{background:var(--lb-surface-tint);box-shadow:inset 0 2px 3px var(--lb-line);color:var(--lb-ink-3)}
 button.hb-cell.hb-none{background:var(--lb-surface-2)}
 button.hb-cell.hb-today{outline:2px solid var(--lb-gold-2);outline-offset:1px}
@@ -1674,7 +1700,7 @@ button.life-color-link{margin-left:6px;padding-left:10px;border-left:1px solid v
 .st-badge{position:absolute;top:var(--lb-s-2);max-width:calc(50% - var(--lb-s-3));padding:3px 10px;border-radius:var(--lb-r-full);font-size:var(--lb-caption);font-weight:700;line-height:1.4;overflow-wrap:anywhere}
 .st-badge-stage{left:var(--lb-s-2);background:var(--lb-surface-solid);border:1px solid var(--lb-gold-2);color:var(--lb-ink-1)}
 .st-badge-today{right:var(--lb-s-2);background:var(--lb-gold-soft);border:1px solid var(--lb-line);color:var(--lb-ink-3)}
-.st-glint~.st-badge-today{background:var(--lb-gold-2);border-color:var(--lb-gold-3);color:var(--lb-on-gold)}
+.st-glint~.st-badge-today{background:var(--lb-metal);border-color:var(--lb-metal-line);color:var(--lb-on-gold)}   /* V7E: 단색 금 → 금속 면 */
 .st-art-note{margin:0;text-align:center}
 .st-av-body{fill:var(--lb-gold-soft);stroke:var(--lb-gold-3);stroke-width:1.5}
 .st-av-head{fill:var(--lb-surface-solid);stroke:var(--lb-gold-3);stroke-width:1.5}
@@ -1744,7 +1770,7 @@ button.st-gal-thumb.now{border-color:var(--lb-gold-3);outline:2px solid var(--lb
 .st-gal-no{position:absolute;top:2px;left:2px;min-width:18px;padding:0 3px;border-radius:var(--lb-r-1);background:var(--lb-surface-solid);color:var(--lb-ink-1);font-size:11px;font-weight:700;line-height:1.5;text-align:center}
 .st-gal-tags{position:absolute;right:2px;bottom:2px;left:2px;display:flex;flex-wrap:wrap;justify-content:center;gap:2px}
 .st-gal-tag{padding:0 4px;border-radius:var(--lb-r-1);background:var(--lb-surface-solid);border:1px solid var(--lb-line-soft);color:var(--lb-ink-2);font-size:10px;font-weight:700;line-height:1.5;overflow-wrap:anywhere}
-.st-gal-tag-next,.st-gal-tag-final{background:var(--lb-gold-2);border-color:var(--lb-gold-3);color:var(--lb-on-gold)}
+.st-gal-tag-next,.st-gal-tag-final{background:var(--lb-metal);border-color:var(--lb-metal-line);color:var(--lb-on-gold)}
 .st-gal-box{width:min(440px,calc(100vw - 24px))}
 .st-gal-inner{display:grid;gap:var(--lb-s-2);padding:var(--lb-s-3);min-width:0}
 .st-gal-head{display:flex;justify-content:space-between;align-items:center;gap:var(--lb-s-3);min-width:0}
@@ -1915,7 +1941,7 @@ dialog.live-dlg::backdrop{background:var(--lb-bg)}
 .room-front .room-new{animation:room-fade .6s ease-out both}
 .room-bricks .room-new{transform-box:fill-box;animation:room-drop .6s ease-out both}
 .room-cheer{position:absolute;left:50%;bottom:18%;z-index:3;transform:translateX(-50%);margin:0;padding:4px 12px;border:1px solid var(--lb-gold-2);border-radius:var(--lb-r-full);background:var(--lb-surface-solid);color:var(--lb-ink-1);max-width:calc(100% - 16px);font-size:13px;font-weight:800;text-align:center;overflow-wrap:anywhere;box-shadow:var(--lb-gold-glow)}
-.room-cheer.gold{background:var(--lb-gold-2);color:var(--lb-on-gold)}
+.room-cheer.gold{background:var(--lb-metal);border-color:var(--lb-metal-line);color:var(--lb-on-gold)}   /* V7E: 약 30px 높이 면 → 금속 면 */
 .room-cheer[hidden]{display:none}
 .room-window-pane{fill:var(--lb-ink-1);stroke:var(--lb-gold-3);stroke-width:2}
 .room-wing-mullion{fill:none;stroke:var(--lb-gold-3);stroke-width:2}
@@ -2232,7 +2258,7 @@ button.life-stack-btn:hover,button.life-habit-btn:hover,.life-habit .life-chip-r
 @keyframes av5-twinkle{0%{opacity:1}100%{opacity:.35}}
 .av5-tags{position:absolute;left:6px;right:6px;bottom:6px;z-index:3;display:flex;flex-wrap:wrap;gap:4px;pointer-events:none}
 .av5-tag{padding:2px 8px;border:1px solid var(--gold-deep);border-radius:var(--lb-r-full);background:var(--ivory-0);color:var(--ink-900);font-size:11px;font-weight:700;line-height:1.5}
-.av5-tag-today{background:var(--gold)}
+.av5-tag-today{background:var(--lb-metal);border-color:var(--lb-metal-line)}   /* V7E: 단색 금(명도 69%) → 금속 면 */
 .ds5-thumb{position:relative}
 .ds5-lock{display:none;position:absolute;top:4px;right:4px;z-index:2}
 .ds5-cell.todo .ds5-lock{display:block}

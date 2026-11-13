@@ -47,9 +47,11 @@ function blueprintLines(bp,ink,bg){
   for(const r of bp.rows){const hx=r.sx/2,hz=r.sz/2,y0=r.y-r.sy/2;rect(y0,hx,hz);for(const [x,z] of [[-hx,-hz],[hx,-hz],[hx,hz],[-hx,hz]])line([x,y0,z],[x,y0+r.sy,z]);}
   const hx=COLS/2+0.15,hz=DEPTH/2+0.15;rect(bp.top,hx,hz);
   for(const b of bp.boundaries)rect(b.y,hx+0.6,hz+0.6);
-  const apex=[0,bp.top+bp.cone.h,0],h=bp.cone.r/Math.SQRT2;
-  for(const [x,z] of [[-h,-h],[h,-h],[h,h],[-h,h]])line([x,bp.top,z],apex);
-  line(apex,[0,apex[1]+2,0]);
+  if(bp.cone){   // V7E: 빈 집의 1층 예상도는 완공 지붕 선이 없다
+    const apex=[0,bp.top+bp.cone.h,0],h=bp.cone.r/Math.SQRT2;
+    for(const [x,z] of [[-h,-h],[h,-h],[h,h],[-h,h]])line([x,bp.top,z],apex);
+    line(apex,[0,apex[1]+2,0]);
+  }
   const a=new Color(ink),b=new Color(bg),c=new Color(),col=new Float32Array(seg.length);
   for(let i=0;i<seg.length;i+=3){c.copy(a).lerp(b,blueprintFade(seg[i+1],bp));col.set([c.r,c.g,c.b],i);}
   const g=new BufferGeometry();g.setAttribute('position',new BufferAttribute(new Float32Array(seg),3));g.setAttribute('color',new BufferAttribute(col,3));return g;
@@ -78,7 +80,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   const why=quality3d({cores:win.navigator?.hardwareConcurrency,memoryGb:win.navigator?.deviceMemory,instances:data.total});
   if(why!=='OK'){setMode('svg',why);return null;}
   const canvas=doc.createElement('canvas');
-  canvas.className='tower-3d-canvas';canvas.tabIndex=0;canvas.setAttribute('role','application');canvas.setAttribute('aria-label','3D 나의 집 '+data.floors.length+'층. 좌우 화살표로 돌리고 위아래 화살표로 층을 고르고 Enter로 그 주를 봅니다');
+  canvas.className='tower-3d-canvas';canvas.tabIndex=0;canvas.setAttribute('role','application');canvas.setAttribute('aria-label','3D 나의 집 '+data.floors.length+'층'+(data.empty?' · 받침과 1층 예상도':'')+'. 좌우 화살표로 돌리고 위아래 화살표로 층을 고르고 Enter로 그 주를 봅니다');
   const gl=canvas.getContext('webgl2',{alpha:true,antialias:true,depth:true,stencil:false,premultipliedAlpha:true,powerPreference:'default'});
   if(!gl){setMode('svg','NO_WEBGL2');return null;}
   const hint=doc.createElement('p');hint.className='muted small tower-3d-hint';hint.textContent='끌어서 돌리고 위아래로 옮깁니다 · 휠이나 두 손가락으로 확대 · 모퉁이 탑을 누르면 그 영역을 봅니다';
@@ -348,7 +350,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
     for(const m of [brickMat,halfMat,goldMat,todayMat,trimMat,craneMat,ornMat]){m.envMap=T.env?env:null;m.needsUpdate=true;}
     for(const m of [roofMat,daisMat,daisSideMat]){m.envMap=T.env?env:null;m.needsUpdate=true;}   // V7T: 금 지붕·광택 대리석 단상도 같은 스튜디오를 비춘다
     for(const m of [coreMat,mortarMat,frameMat]){m.envMap=T.env?env:null;m.needsUpdate=true;}   // V7T2: 샴페인 금 구조벽·빈 칸 판·금 뼈대(처마·기둥·문·현판·검은 대리석 받침)
-    if(bpFaces)bpFaces.visible=name!=='LOW';
+    if(bpFaces)bpFaces.visible=name!=='LOW'||Boolean(bp.empty);   // V7E: 빈 집의 1층 예상도(아이보리 반투명)는 LOW 등급에서도 보인다(상자 1개)
     stars.visible=T.stars&&sky.stars>0.02;
     if(dust)dust.visible=T.dust;
     if(burst)burst.visible=T.dust;
@@ -532,7 +534,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
     const k=e.key;let used=true;
     if(k==='ArrowLeft')cam.theta-=KEY_ROTATE;
     else if(k==='ArrowRight')cam.theta+=KEY_ROTATE;
-    else if(k==='ArrowUp'||k==='ArrowDown'){const f=Math.max(0,Math.min(data.floors.length-1,selected+(k==='ArrowUp'?1:-1)));select(f);cam.y=data.hits[f].y;}
+    else if((k==='ArrowUp'||k==='ArrowDown')&&data.floors.length){const f=Math.max(0,Math.min(data.floors.length-1,selected+(k==='ArrowUp'?1:-1)));select(f);cam.y=data.hits[f].y;}
     else if(k==='+'||k==='=')cam.dist*=KEY_ZOOM;
     else if(k==='-')cam.dist/=KEY_ZOOM;
     else if(k==='Enter'||k===' ')open(selected);

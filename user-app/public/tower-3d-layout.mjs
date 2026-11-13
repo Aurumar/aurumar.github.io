@@ -139,13 +139,15 @@ function cornerTower(area,level){
 
 // 층 높이는 2.5D 탑과 같은 규칙: 그 주에 가장 높은 날에 맞추되 최소 3줄, 최대 16줄.
 // T2B: 기록이 있으면 1층은 기단(FOUND_H) 위에서 시작한다. 두 번째 인자 없이 부르면 부품은 기단뿐이다.
+// V7E 빈 집(기록 0 = 0층, 새 시작 기준선 뒤 등): 이번 주 빈 층을 세우지 않는다(층·벽돌·줄눈·바닥판 0). 대신 땅에 받침(EMPTY_BASE, 화면이 검은 대리석 + 윗모서리 금 테로 그린다)만 놓고,
+// 그 위 1층 자리는 blueprint가 아이보리 반투명 예상도로 그린다. 기록 기반 부품(parts·found)은 그대로라 기록이 생기면 기존 기단(문·머릿돌)으로 바뀐다.
 export function towerScene(ach,{seasons=null,titleTier=null}={}){
-  const parts=houseParts(ach,seasons),found=parts.FOUNDATION?FOUND_H:0,titleColor=TITLE_FLAG_COLORS[titleTier]??null;
+  const parts=houseParts(ach,seasons),found=parts.FOUNDATION?FOUND_H:0,titleColor=TITLE_FLAG_COLORS[titleTier]??null,empty=!ach.hasRecords;
   const xpOf=new Map(ach.days.map(d=>[d.date,d.habitXp]));
   const floors=[],bricks=[],mortar=[],cores=[],slabs=[],windows=[],hits=[],bands=[],rails=[],lamps=[],spire=[],particles=[],bonus=[],towerRoofs=[];
   const slab=(y,floor)=>slabs.push(box(0,y+SLAB_H/2,0,COLS+SLAB_OUT*2,SLAB_H,DEPTH+SLAB_OUT*2,{floor}));
   let base=found,todayTop=null,todayX=0;
-  ach.weeks.forEach((w,f)=>{
+  (empty?[]:ach.weeks).forEach((w,f)=>{
     const rows=Math.max(MIN_ROWS,Math.ceil(Math.max(0,...w.days.map(dayHeight)))),floorY=base+SLAB_H,h=rows*ROW_H,top=floorY+h,mid=floorY+h/2;
     floors.push({index:w.index,monday:w.monday,current:w.current,base,rows,top,week:w});
     slab(base,f);
@@ -176,9 +178,9 @@ export function towerScene(ach,{seasons=null,titleTier=null}={}){
     for(let k=0;k<nb;k++)bonus.push(box(BONUS_X,floorY+(k+0.5)*cell,BRICK_Z,BONUS_W,cell-Math.min(BRICK_GAP,cell*0.2),BRICK_D,{floor:f,k,color:BONUS_COLORS[k%2]}));
     base=top;
   });
-  const roof=base;
-  slab(roof,-1);
-  const height=roof+SLAB_H;
+  const roof=empty?FOUND_H:base;   // V7E: 빈 집은 받침 윗면이 1층 자리
+  if(!empty)slab(roof,-1);
+  const height=empty?FOUND_H:roof+SLAB_H;
   // 연속일 = 위에서부터 7일당 한 층을 감싸는 빛 띠. 배수가 높을수록 밝다.
   const span=Math.min(floors.length,Math.ceil(ach.streak.days/7)),glow=0.45+0.55*Math.max(0,Math.min(1,(ach.streak.mult10-10)/10));
   for(let k=0;k<span;k++){
@@ -200,6 +202,8 @@ export function towerScene(ach,{seasons=null,titleTier=null}={}){
     for(const sx of [-1,1])stone.push(box(sx*0.8,0.3+0.42,fz+0.04,0.2,0.84,0.12,{color:KIT.frame,...tag}));
     stone.push(box(0,1.08,fz+0.04,1.8,0.18,0.12,{color:KIT.frame,...tag}),box(0,1.1,fz+0.08,0.24,0.26,0.14,{color:KIT.frame,...tag}),box(0,0.08,HALF_D+1.5,1.8,0.16,0.6,{color:KIT.step,...tag,base:true}));
   }
+  // V7E 빈 집 받침: 기단과 같은 크기·자리의 받침과 계단 판(base = 검은 대리석 + 금 테). 문·머릿돌은 첫 기록부터.
+  if(empty){const tag={part:'EMPTY_BASE',base:true};stone.push(box(0,FOUND_H/2,0,COLS+1.6,FOUND_H,DEPTH+1.6,{color:KIT.plinth,...tag}),box(0,0.15,0,COLS+2.4,0.3,DEPTH+2.4,{color:KIT.step,...tag}));}
   // 시즌 마감: 그 시즌 꼭대기 바닥판 높이에 돌림띠(데이터 벽돌을 가리지 않는다), 앞 현판(시험 이름), 은·금이면 모서리 장식, 보스면 깃발, 그 시즌 층마다 왼쪽 벽에 아치 창틀·덧문.
   for(const s of seasons??[]){
     if(!parts.SEASON_TRIM.includes(s.k))continue;
@@ -277,7 +281,7 @@ export function towerScene(ach,{seasons=null,titleTier=null}={}){
     for(let i=0;i<n;i++){const a=i*0.618034%1,b=i*0.754878%1;particles.push({x:todayX+(a-0.5)*BRICK_W,z:BRICK_Z+(b-0.5)*BRICK_D,from:height+3+a*2,to:todayTop,delay:(MOTION_SECONDS-FALL_SECONDS)*i/n});}
   }
   const list={floors,bricks,mortar,cores,slabs,windows,hits,bands,rails,lamps,spire,particles,stone,plain,glass,ornaments,flowers,crowns,flames,crane,crest,bonus,towerRoofs};
-  return {...list,towers,height,roof,found,parts,cone,labels,flagTop,counts:Object.fromEntries(Object.entries(list).map(([k,v])=>[k,v.length])),total:Object.entries(list).reduce((s,[k,v])=>s+(k==='floors'?0:v.length),0)};
+  return {...list,towers,height,roof,found,parts,cone,labels,flagTop,empty,counts:Object.fromEntries(Object.entries(list).map(([k,v])=>[k,v.length])),total:Object.entries(list).reduce((s,[k,v])=>s+(k==='floors'?0:v.length),0)};
 }
 // V6C 줄눈 선(그리기 전용, towerScene 결과·개수는 그대로): 벽돌이 쌓인 칸(층·요일)마다 벽돌 뒤·줄눈 판 앞에 얇은 판 하나 → 벽돌 사이 틈으로 gold-shadow 가는 선이 보인다.
 // V6B 습관 벽돌을 얻은 날(week.days[col].habitBrick)은 색만 다르다(JOINT.habit). 공부 벽돌이 없는 습관 날은 그 칸 바닥에 얇은 띠(habitSill)만.
@@ -377,7 +381,9 @@ export const pulseAt=t=>t<0||t>=PULSE_SECONDS?0:Math.sin(Math.PI*t/PULSE_SECONDS
 
 // ---------- T2B 완공 예상도(반투명 청사진): 매일 바뀌는 투영일 뿐 저장하지 않는다 ----------
 // 남은 주 = 이번 주 월요일 → 완공 시험이 든 주 월요일(seasons의 weeksLeft). 예상 층 높이 = 최근 4층 평균, 4층 미만이면 최소 높이(3줄 + 바닥판). 완공 뒤·일정 없음이면 null.
+// V7E 빈 집: 일정과 상관없이 받침 위 1층 자리 한 칸(최소 층 높이). 완공 지붕·시즌 경계는 없다(cone null).
 export function blueprint(scene,seasons){
+  if(scene.empty){const floorH=MIN_ROWS*ROW_H+SLAB_H,roof=scene.roof;return {remaining:1,floorH,roof,top:roof+floorH+SLAB_H,floors:1,rows:[box(0,roof+floorH/2,0,COLS+SLAB_OUT*2,floorH,DEPTH+SLAB_OUT*2,{i:0})],boundaries:[],cone:null,empty:true};}
   const end=seasons?.at(-1);
   if(!end||end.passed||!scene.floors.length)return null;
   const recent=scene.floors.slice(-4),floorH=recent.length>=4?recent.reduce((s,f)=>s+f.top-f.base,0)/4:MIN_ROWS*ROW_H+SLAB_H;
@@ -388,7 +394,7 @@ export function blueprint(scene,seasons){
 }
 // 집 전체의 꼭대기(카메라 범위): 지금 집(크레인·완공 지붕·칭호 깃발 포함)과 예상도 지붕 중 높은 쪽.
 export function houseTop(scene,bp=null){
-  return Math.max(scene.height+(scene.parts?.CRANE?CRANE_UP+2:0)+(scene.parts?.ROOF_DONE?CONE_H+2.5:0),scene.flagTop??0,scene.badgeTop??0,...(scene.towers??[]).map(t=>t.roofTop),bp?bp.top+CONE_H+0.5:0);
+  return Math.max(scene.height+(scene.parts?.CRANE?CRANE_UP+2:0)+(scene.parts?.ROOF_DONE?CONE_H+2.5:0),scene.flagTop??0,scene.badgeTop??0,...(scene.towers??[]).map(t=>t.roofTop),bp?bp.top+(bp.cone?CONE_H:0)+0.5:0);
 }
 // DS6 상표 태양 바퀴(원 + 살 8개, 단순 도형): 지금 집 꼭대기 가운데에 작게, 앞(+z)을 본다. 첨탑·칭호 깃대·완공 깃대가 있으면 그 위, 기둥이 받친다. 그림자를 드리우지 않는다.
 export const SUN_WHEEL=Object.freeze({r:0.42,tube:0.045,spokes:8,spoke:0.05,post:0.06,lift:0.5});
@@ -469,7 +475,7 @@ export function initialCamera(scene,aspect){
 }
 // FIX38 "집 앞": 큰 집은 맨 위와 땅이 한 화면에 들어갈 수 없다(52주 집 높이 70~210). 큰 집의 첫 화면은 모퉁이 탑과 현판이 보이는 땅쪽이고, "이번 주"는 맨 위(initialCamera)다.
 export const gateCamera=(scene,aspect)=>frameTowers(Math.max(GATE_VIEW_H,towerPeak(scene)),aspect);
-export const startView=scene=>isTallHouse(scene)?'gate':'week';
+export const startView=scene=>scene.empty?'whole':isTallHouse(scene)?'gate':'week';   // V7E: 빈 집은 "집 전체"(고각)로 시작 — 받침·흰 대리석 바닥·1층 예상도가 한 화면에
 // 오늘 벽돌은 앱을 켤 때마다 다시 날아오고(메모리 기억) 맨 위에 놓인다. 집 앞을 볼 큰 집이면 맨 위에서 보여 준 뒤 집 앞으로 내려온다. 손대면 그 자리에 멈춘다.
 export const flyFirst=(scene,flights,view=null)=>flights>0&&isTallHouse(scene)&&(view??'gate')==='gate';
 export const SETTLE_SECONDS=1.2;

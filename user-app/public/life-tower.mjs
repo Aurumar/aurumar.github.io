@@ -141,6 +141,31 @@ export function buildTowerSvg(doc,weeks,{onFloor=null,view={}}={}){
   const redraw=v=>{const next=floorWindow(layout,v);if(next.from===drawn.from&&next.to===drawn.to)return false;drawn=next;drawRange(s,layout,group,drawn,onFloor);return true;};
   return {svg,group,layout,redraw,drawn:()=>drawn};
 }
+// V7E 빈 집(0층) 2.5D: 3D 대체 화면도 빈 칸이 아니게 — 바닥(흰 대리석 원판)·받침(검은 대리석 + 윗모서리 금 테)·1층 예상도(아이보리 반투명 + 샴페인 점선). 탑과 같은 등각 단위.
+export const EMPTY_PLAN_LABEL='1층 예정';
+const PLINTH_Z=2.4,PLINTH_OUT=0.4,GROUND_OUT=0.9,PLAN_Z=SLAB+MIN_ROWS;
+export function buildEmptyTowerSvg(doc){
+  const s=svgMaker(doc),z0=PLINTH_Z,z1=PLINTH_Z+PLAN_Z,ground=PAD_TOP+z1*H,lo=-GROUND_OUT,xr=COLS+GROUND_OUT,yr=DEPTH+GROUND_OUT;
+  const at=(x,y,z)=>[LEFT+(x-y)*A,ground+(x+y)*B-z*H];
+  const minX=at(lo,yr,0)[0]-DRAW_MARGIN,maxX=at(xr,lo,0)[0]+DRAW_MARGIN,height=at(xr,yr,0)[1]+PAD_BOTTOM;
+  const poly=(pts,cls)=>s('polygon',{points:pointsOf(pts),class:cls});
+  const box=(x0,y0,x1,y1,za,zb,cls)=>[   // 보이는 세 면: 앞(y1)·오른쪽(x1)·위(zb)
+    poly([at(x0,y1,za),at(x1,y1,za),at(x1,y1,zb),at(x0,y1,zb)],cls+' '+cls+'-front'),
+    poly([at(x1,y0,za),at(x1,y1,za),at(x1,y1,zb),at(x1,y0,zb)],cls+' '+cls+'-side'),
+    poly([at(x0,y0,zb),at(x1,y0,zb),at(x1,y1,zb),at(x0,y1,zb)],cls+' '+cls+'-top')];
+  const svg=s('svg',{class:'tower-svg tower-svg-empty',viewBox:minX.toFixed(1)+' 0 '+(maxX-minX).toFixed(1)+' '+height.toFixed(1),width:'100%',role:'img','aria-label':'빈 집: 받침과 1층 예상도'});
+  const g=s('g',{class:'tower-empty-house'});
+  const p=PLINTH_OUT;
+  g.append(poly([at(lo,lo,0),at(xr,lo,0),at(xr,yr,0),at(lo,yr,0)],'tower-ground'),...box(-p,-p,COLS+p,DEPTH+p,0,z0,'tower-plinth'));
+  // 금 테: 받침 윗모서리 보이는 세 변
+  for(const [a,b] of [[[-p,DEPTH+p],[COLS+p,DEPTH+p]],[[COLS+p,DEPTH+p],[COLS+p,-p]],[[-p,-p],[-p,DEPTH+p]],[[-p,-p],[COLS+p,-p]]]){const [x1,y1]=at(a[0],a[1],z0),[x2,y2]=at(b[0],b[1],z0);g.append(s('line',{class:'tower-plinth-rim',x1,y1,x2,y2}));}
+  // 1층 예상도: 반투명 유리 뒤로 비치는 뒤 모서리 세 줄(점선) → 반투명 세 면(점선 테)
+  for(const [a,b] of [[[0,0,z0],[0,0,z1]],[[0,0,z0],[COLS,0,z0]],[[0,0,z0],[0,DEPTH,z0]]]){const [x1,y1]=at(...a),[x2,y2]=at(...b);g.append(s('line',{class:'tower-plan-line',x1,y1,x2,y2,'stroke-dasharray':'3 3'}));}
+  for(const n of box(0,0,COLS,DEPTH,z0,z1,'tower-plan')){n.setAttribute('stroke-dasharray','3 3');g.append(n);}
+  const [lx,ly]=at(0,DEPTH,z0+PLAN_Z/2),label=s('text',{class:'tower-label tower-plan-label',x:lx-5,y:ly});label.textContent=EMPTY_PLAN_LABEL;g.append(label);
+  svg.append(g);
+  return svg;
+}
 
 function maker(doc){
   const el=(tag,text,cls)=>{const n=doc.createElement(tag);if(text!==undefined&&text!==null)n.textContent=String(text);if(cls)n.className=cls;return n;};
@@ -319,7 +344,18 @@ export function renderTower(root,ctx,st){
   if(line)add(out,el('p',line,'tower-house-line'));
   if(ach.hasRecords)add(out,el('p',brickTotalText(ach.weeks)+' · 보너스 ✦'+ach.bonusTotal.toLocaleString('en-US'),'tower-bonus-total muted small'));   // Q1B: 나란히만 보인다(합친 숫자 없음). FIX49C: 작은 벽돌 무게 포함
   if(week.bridgeHeavy)add(out,el('p',BRIDGE_NOTICE,'notice tower-bridge'));
-  if(!ach.hasRecords)add(out,el('p',EMPTY_TEXT,'tower-empty'));
+  // T2A: 3D 하늘·해는 지금 KST 시각(시, 소수)으로 정한다. 배치 계산은 시계를 쓰지 않으므로 여기서 넘긴다.
+  const kst=new Date(Date.parse(ctx.now())+KST_HOUR_MS),hour=kst.getUTCHours()+kst.getUTCMinutes()/60;
+  if(!ach.hasRecords){
+    add(out,el('p',EMPTY_TEXT,'tower-empty'));
+    // V7E (2026-11-13 소유자 "3D가 사라지고 2D에 아무것도 안 보인다"): 0층이어도 받침·바닥·1층 예상도를 3D로, 3D가 안 되면 같은 그림을 2.5D로 보인다(빈 칸 없음).
+    // SVG를 만들 수 없는 가짜 문서(R36)에서는 안내 줄만.
+    if(typeof doc.createElementNS==='function'){
+      const scroller=add(el('div',null,'tower-scroll tower-scroll-empty'),buildEmptyTowerSvg(doc)),slot=el('div',null,'tower-3d-slot');slot.hidden=true;
+      add(out,slot,scroller);
+      mountTower3dLater({doc,slot,scroller,titleTier:null,titleName:null,badges:null,onArea:a=>openAreaSheet(doc,a,ach.levels[a],ach,ctx),ach,st,seasons:[],onFloor:null,hour});
+    }
+  }
   else{
     const open=w=>ctx.sheet?.(w.index+'층 · '+w.monday+' 주',floorDetail(doc,w,ctx.kit));
     const scroller=el('div',null,'tower-scroll');scroller.tabIndex=0;scroller.setAttribute('aria-label','탑 보기, 위아래로 움직입니다');
@@ -335,10 +371,8 @@ export function renderTower(root,ctx,st){
     if(seasons.length)add(out,seasonList(h,seasons));
     const badges=houseBadges(ach,seasons),openArea=a=>openAreaSheet(doc,a,ach.levels[a],ach,ctx);
     add(out,badgeList(h,badges));
-    // 3D 탑(B44A): SVG를 먼저 그려 두고, WebGL2가 있으면 3D가 첫 장면을 그린 뒤에만 SVG를 숨긴다. 실패하면 SVG 그대로(같은 데이터).
-    // T2A: 3D 하늘·해는 지금 KST 시각(시, 소수)으로 정한다. 배치 계산은 시계를 쓰지 않으므로 여기서 넘긴다. T2B: 시즌도 여기서 계산해 넘긴다.
-    const kst=new Date(Date.parse(ctx.now())+KST_HOUR_MS),hour=kst.getUTCHours()+kst.getUTCMinutes()/60;
-    if(globalThis.WebGL2RenderingContext)import('./tower-3d.mjs').then(m=>{if(scroller.isConnected)m.mountTower3d({doc,slot,fallback:scroller,titleTier:title?.tier??null,titleName:title?.node?.textContent||null,badges,onArea:openArea,ach,st,seasons,onFloor:open,hour});}).catch(()=>{slot.dataset.mode='svg';slot.dataset.reason='IMPORT_FAILED';});
+    // T2B: 시즌도 여기서 계산해 넘긴다.
+    mountTower3dLater({doc,slot,scroller,titleTier:title?.tier??null,titleName:title?.node?.textContent||null,badges,onArea:openArea,ach,st,seasons,onFloor:open,hour});
   }
   const levels=el('div',null,'tower-levels');
   for(const a of AREAS){
@@ -353,4 +387,8 @@ export function renderTower(root,ctx,st){
   ctx.achvPanel?.(out,{doc,ach,today,life:whole.life??null,money,st,kit:ctx.kit,storage:ctx.storage,sheet:ctx.sheet,ctx});   // Q1A: 업적·칭호 패널 자리(앱이 넘긴다, 시험에서는 없음). Q1B: 시트·내 퀘스트 저장용 ctx
   root.append(out);
   return out;
+}
+// 3D 탑(B44A): SVG를 먼저 그려 두고, WebGL2가 있으면 3D가 첫 장면을 그린 뒤에만 SVG를 숨긴다. 실패하면 SVG 그대로(같은 데이터). V7E: 빈 집도 같은 길.
+function mountTower3dLater({doc,slot,scroller,...opts}){
+  if(globalThis.WebGL2RenderingContext)import('./tower-3d.mjs').then(m=>{if(scroller.isConnected)m.mountTower3d({doc,slot,fallback:scroller,...opts});}).catch(()=>{slot.dataset.mode='svg';slot.dataset.reason='IMPORT_FAILED';});
 }
