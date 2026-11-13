@@ -561,7 +561,8 @@ function monthView(h,ctx,st,data){
   h.add(out,...(table?[table]:dateGrid(h,ctx,st,data,ym)));
   return out;
 }
-function dateGrid(h,ctx,st,data,ym){
+// CAL2: o = {pick(날짜): 칸을 누르면 그날 요약 시트 대신 이것을 부른다(오늘 탭 달력), selected: 고른 날(selected·aria-pressed), tail: 뒤 빈칸에 다음 달 흐린 날짜}. 없으면 계획 탭 그대로.
+function dateGrid(h,ctx,st,data,ym,o={}){
   const {life,ach,today,exams,subjects}=data,first=ym+'-01',n=daysInMonth(ym),lead=(sunday0(first)+6)%7;
   const examDays=new Map();for(const x of exams.items){examDays.set(x.date,[...(examDays.get(x.date)??[]),x.name]);}
   const eventDays=new Map();for(const e of ctx.planCal?.events??[])eventDays.set(e.date,(eventDays.get(e.date)??0)+1);
@@ -573,8 +574,8 @@ function dateGrid(h,ctx,st,data,ym){
   // CAL1B: 오늘 칸 = "오늘"·aria-current, 지난 날 = data-past(흐리게), 토·일 칸 = sat·sun(숫자 색). CAL1C: 오늘 = 옅은 금 칸 + 숫자 뒤 금 동그라미(CSS).
   for(let d=1;d<=n;d++){
     const date=ym+'-'+String(d).padStart(2,'0'),act=actualOf(weeks,date),ex=examDays.get(date)??[],hasPlan=Boolean(planOf(life,date)?.items.length),evs=eventDays.get(date)??0,outs=ctx.planCal?.outer?.on(date).length??0,wd=sunday0(date);
-    const b=h.button(null,()=>{openDaySheet(ctx,st,data,date);},'plan-day-cell plan-heat-'+heatLevel(act.total,ach.goalBricks)+(date===today?' today':'')+(ex.length?' exam':'')+(hasPlan?' has-plan':'')+(wd===6?' sat':wd===0?' sun':''));
-    b.dataset.date=date;b.setAttribute('aria-label',dateLabel(date)+' 벽돌 '+barsText(act.total)+(ex.length?' · '+ex.join(', '):'')+(evs?' · 일정 '+evs+'개':'')+(outs?' · 바깥 일정 '+outs+'개':'')+(hasPlan?' · 계획 있음':''));
+    const b=h.button(null,()=>{if(o.pick)o.pick(date);else openDaySheet(ctx,st,data,date);},'plan-day-cell plan-heat-'+heatLevel(act.total,ach.goalBricks)+(date===today?' today':'')+(ex.length?' exam':'')+(hasPlan?' has-plan':'')+(wd===6?' sat':wd===0?' sun':'')+(o.pick&&o.selected===date?' selected':''));
+    b.dataset.date=date;if(o.pick)b.setAttribute('aria-pressed',String(o.selected===date));b.setAttribute('aria-label',dateLabel(date)+' 벽돌 '+barsText(act.total)+(ex.length?' · '+ex.join(', '):'')+(evs?' · 일정 '+evs+'개':'')+(outs?' · 바깥 일정 '+outs+'개':'')+(hasPlan?' · 계획 있음':''));
     if(date===today){b.setAttribute('aria-current','date');b.append(h.el('span','오늘','calendar-today-badge'));}
     else if(date<today)b.setAttribute('data-past','');
     b.append(h.el('span',String(d),'plan-cal-num'));
@@ -585,7 +586,14 @@ function dateGrid(h,ctx,st,data,ym){
     if(outs)b.append(h.el('span','○'+outs,'plan-cal-events ics-outer-mark'));
     grid.append(b);
   }
-  return [grid,h.el('p','날짜를 누르면 그날 요약이 열립니다 · 색이 진할수록 벽돌이 많고 점은 쌓은 과목입니다.','muted small')];
+  if(o.tail)for(let i=1;i<=(7-(lead+n)%7)%7;i++){const blank=h.el('span',null,'plan-cal-blank'),num=h.el('span',String(i),'plan-cal-other');num.setAttribute('aria-hidden','true');blank.append(num);grid.append(blank);}
+  return [grid,heatLegend(h.el),h.el('p',o.pick?'날짜를 누르면 아래 목록이 그날로 바뀝니다 · 칸 아래 막대가 진할수록 벽돌이 많고 점은 쌓은 과목입니다.':'날짜를 누르면 그날 요약이 열립니다 · 칸 아래 막대가 진할수록 벽돌이 많고 점은 쌓은 과목입니다.','muted small')];
+}
+// CAL2B: 공부량 범례 = 칸 아래 하늘색 막대 4단계(heatLevel 구간 그대로). 글 안내가 따로 있어 읽기 도구에는 숨긴다. el = (태그, 글, 클래스).
+export function heatLegend(el){
+  const p=el('p',null,'plan-heat-legend');p.setAttribute('aria-hidden','true');
+  p.append(el('span','벽돌 적음',null));for(let i=1;i<=4;i++)p.append(el('span',null,'plan-heat-sw l'+i));p.append(el('span','많음',null));
+  return p;
 }
 // ----- 일정 줄 (P1C: '달력' 화면을 계획 탭에 합침): 앱이 읽어 준 일정(ctx.planCal)과 시험을 보여 주기만 한다. 일정 추가·고치기는 앱의 일정 시트(planCal.add·open) ------
 // 앱이 이 보기를 그리기 전에 읽을 범위(/api/calendar-view 요청 그대로). 먼 보기(연·수능까지)는 읽지 않는다.
@@ -643,6 +651,110 @@ function openDaySheet(ctx,st,data,date){
   else h.add(body,h.add(h.el('div',null,'button-row'),h.button('이 날 계획 편집',()=>{dlg?.close?.();openPlanEditor(ctx,st,date);},'primary'),ctx.clearDay?.(date,{before:()=>dlg?.close?.()})??null));
   dlg=ctx.sheet?.(dateLabel(date),body)??null;
   return body;
+}
+
+// ----- CAL2: 오늘 탭 맨 위 달력 (이번 주 띠 · 고른 날 계획·일정 · 달력 펼치기) -----
+// 읽기만 한다: 계획 줄(life.plans), 줄 달성(linkPlan = 오늘 카드·주 격자와 같은 규칙), 앱이 읽어 준 일정(ctx.homeCal.read = /api/calendar-view 결과, 읽는 중이면 null), 바깥 .ics(ctx.homeCal.outer).
+// 이 기기에 적는 것은 달력 펼침 여부(lb.home.cal '1'/'0', 화면 설정) 하나. "계획 추가"는 계획 편집 시트(openPlanEditor), "일정 추가"는 앱의 일정 시트(ctx.homeCal.add)를 연다(새 쓰기 경로 없음).
+// st.date = 고른 날(null = 오늘을 따라감: 자정이 지나면 오늘 칸·목록이 새 날로). ‹ ›는 고른 날을 7일씩 옮기고, "오늘로"는 고른 날·펼친 달을 비운다. st.month = 펼친 달력에서 ◀▶로 옮긴 달(null = 고른 날의 달).
+export const HOME_CAL_KEY='lb.home.cal';
+export const HOME_CAL_TEXT=Object.freeze({open:'달력 펼치기 ▾',close:'달력 접기 ▴',empty:'이날 계획·일정 없음',addPlan:'계획 추가',addEvent:'일정 추가',toToday:'오늘로',failed:'일정을 불러오지 못했습니다 · 계획만 보입니다.'});
+export function createHomeCalState(storage=null){
+  let open=false;try{open=storage?.getItem(HOME_CAL_KEY)==='1';}catch{/* 저장소가 막혀 있으면 접힘 */}
+  return {date:null,month:null,open};
+}
+// 주 머리 글자(CAL1C 7일 제목과 같은 규칙): 같은 해·달이면 앞만 연·월, 달·해가 넘어가면 뒤에도.
+export function weekRangeText(monday){
+  const end=shiftDay(monday,6),[fy,fm,fd]=monday.split('-').map(Number),[ty,tm,td]=end.split('-').map(Number);
+  return fy+'년 '+fm+'월 '+fd+'일 – '+(fy!==ty?ty+'년 ':'')+(fy!==ty||fm!==tm?tm+'월 ':'')+td+'일';
+}
+// 띠 7칸(월~일). plans = 그날 계획 줄 수, events = 이 기기 일정 + 바깥 일정 수. 날짜 범위(0000-01-01 ~ 9999-12-31) 밖 칸은 date null.
+export function homeWeek(life,events,outer,monday,today,selected){
+  return Array.from({length:7},(_,k)=>{
+    const date=shiftDay(monday,k);if(!dateKeyOK(date))return {date:null};
+    const dow=sunday0(date);
+    return {date,dow,wd:WEEKDAY[dow],day:Number(date.slice(8,10)),plans:planOf(life,date)?.items?.length??0,events:(events??[]).filter(e=>e.date===date).length+(outer?.on(date)?.length??0),isToday:date===today,past:date<today,selected:date===selected};
+  });
+}
+// 칸 아래 점(최대 3개, 계획 = 금 · 일정 = 회색, 둘 다 있으면 둘 다 한 개 이상) + 합이 3보다 많으면 숫자.
+export function homeDots(plans,events){
+  const p=events>0?Math.min(plans,2):Math.min(plans,3),e=Math.min(events,3-p);
+  return {kinds:[...Array(p).fill('plan'),...Array(e).fill('event')],count:plans+events>3?plans+events:null};
+}
+// 고른 날의 일정 줄: 종일(시각 없음)이 위, 그다음 시각 순, 같은 시각이면 이 기기 일정 먼저, 그다음 들어온 순서.
+export function homeDayEvents(events,outerItems,date){
+  const rows=[];
+  for(const e of events??[])if(e.date===date)rows.push({time:!e.allDay&&e.time?e.time:'',title:e.title,event:e,outer:null});
+  for(const o of outerItems??[])rows.push({time:o.time||'',title:o.title,event:null,outer:o});
+  return rows.map((r,i)=>({...r,i})).sort((a,b)=>Number(Boolean(a.time))-Number(Boolean(b.time))||(a.time<b.time?-1:a.time>b.time?1:0)||Number(!a.event)-Number(!b.event)||a.i-b.i).map(({i,...r})=>r);
+}
+// 고른 날의 계획 줄(시간대 순): 과목 · 시간대 · 세부내용 · 상태(안 함 · 조각 · 완료 n장, 오지 않은 날은 "계획"). 머리 = "계획 n개 중 m개 달성"(오늘까지) / "계획 n개"(뒤 날).
+export function homeDayPlans(life,study,date,today,{storage=null,draft=null}={}){
+  const subjects=subjectMap(lifeDefs(life)),items=sortedItems(planOf(life,date)?.items??[]),future=date>today;
+  const link=linkPlan(items,daySessions(study,date,todayDraft(draft,date,today)),readPlanMarks(storage,date));
+  const rows=items.map(x=>{const r=link.rows.get(x.id),s=subjects.get(x.subjectId)??null;return {id:x.id,subjectId:x.subjectId,name:s?.name??'기타',title:x.title,showTitle:x.title!==(s?.name??''),block:shownBlock(x.block),kind:future?'plan':r.state.toLowerCase(),text:itemStateText(r,future)};});
+  return {rows,future,total:link.total,done:link.done,head:!rows.length?null:future?'계획 '+rows.length+'개':'계획 '+link.total+'개 중 '+link.done+'개 달성'};
+}
+export function renderHomeCal(root,ctx,st){
+  const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,svg}=h;
+  const whole=ctx.getWhole(),life=whole.life??null,study=whole.study??null,today=kstDate(ctx.now()),hc=ctx.homeCal??null,outer=hc?.outer??null,storage=ctx.storage??null;
+  if(st.date!==null&&(!dateKeyOK(st.date)||st.date===today))st.date=null;
+  const date=st.date??today,m0=mondayOf(date),monday=dateKeyOK(m0)?m0:date,rerender=()=>void ctx.rerender();
+  const pick=d=>{if(!dateKeyOK(d))return;st.date=d===today?null:d;st.month=null;rerender();};
+  const defs=lifeDefs(life),subjects=subjectMap(defs),weekCal=hc?.read?.({mode:'7_DAY',date:monday})??null;
+  const out=el('section',null,'panel home-cal');out.id='home-cal';
+  // 머리: ‹ 2026년 11월 9일 – 15일 › (오늘이 아니면 "오늘로")
+  const range=el('strong',weekRangeText(monday),'hc-range');range.setAttribute('role','heading');range.setAttribute('aria-level','2');
+  const prev=button('‹',()=>pick(shiftDay(date,-7)),'secondary hc-step'),next=button('›',()=>pick(shiftDay(date,7)),'secondary hc-step');prev.setAttribute('aria-label','지난주');next.setAttribute('aria-label','다음 주');
+  add(out,add(el('div',null,'hc-nav'),prev,range,next,st.date!==null||st.month!==null?button(HOME_CAL_TEXT.toToday,()=>{st.date=null;st.month=null;rerender();},'secondary hc-today'):null));
+  // 이번 주 띠: 칸 = 요일 · 날짜 숫자(오늘 = 금속 동그라미 + "오늘") · 점. 누르면 그 날짜 목록.
+  const strip=el('div',null,'hc-week');strip.setAttribute('role','group');strip.setAttribute('aria-label',weekRangeText(monday));
+  for(const d of homeWeek(life,weekCal?.events,outer,monday,today,date)){
+    if(!d.date){strip.append(el('span',null,'hc-day hc-blank'));continue;}
+    const b=button(null,()=>pick(d.date),'hc-day'+(d.isToday?' today':'')+(d.selected?' selected':'')+(d.dow===6?' sat':d.dow===0?' sun':''));
+    b.dataset.date=d.date;b.setAttribute('aria-pressed',String(d.selected));b.setAttribute('aria-label',dateLabel(d.date)+(d.isToday?' · 오늘':'')+' · 계획 '+d.plans+'개 · 일정 '+d.events+'개');
+    if(d.isToday)b.setAttribute('aria-current','date');else if(d.past)b.setAttribute('data-past','');
+    const dots=el('span',null,'hc-dots'),dm=homeDots(d.plans,d.events);dots.setAttribute('aria-hidden','true');
+    if(dm.kinds.length){const s=svg('svg',{class:'hc-dot-row',viewBox:'0 0 '+(dm.kinds.length*8-2)+' 6',width:dm.kinds.length*8-2,height:6});dm.kinds.forEach((k,i)=>s.append(svg('circle',{class:'hc-dot '+k,cx:3+i*8,cy:3,r:3})));dots.append(s);}
+    if(dm.count!==null)dots.append(el('span',String(dm.count),'hc-dot-n'));
+    add(b,el('span',d.wd,'hc-wd'),el('span',String(d.day),'hc-num'),d.isToday?el('span','오늘','calendar-today-badge'):null,dots);
+    strip.append(b);
+  }
+  const toggle=button(st.open?HOME_CAL_TEXT.close:HOME_CAL_TEXT.open,()=>{st.open=!st.open;try{storage?.setItem(HOME_CAL_KEY,st.open?'1':'0');}catch{/* 기억 실패는 무시 */}rerender();},'secondary hc-toggle');
+  toggle.setAttribute('aria-expanded',String(Boolean(st.open)));
+  add(out,strip,toggle);
+  // 달력 펼치기: 계획 탭 날짜 달력(dateGrid)과 같은 칸·같은 코드, 월요일 시작, 앞뒤 달 흐린 날짜. 칸을 누르면 그 날짜 목록.
+  if(st.open){
+    const ym=typeof st.month==='string'&&/^\d{4}-\d{2}$/.test(st.month)?st.month:date.slice(0,7),moveMonth=n=>{const m=shiftMonth(ym,n);if(!/^\d{4}-\d{2}$/.test(m))return;st.month=m;rerender();};
+    const monthCal=hc?.read?.({mode:'MONTH',date:ym+'-01'})??null,data={life,study,ach:achieve({life,study,today}),today,exams:defs.exams,subjects};
+    add(out,add(el('div',null,'hc-month'),navRow(h,ym.slice(0,4)+'년 '+Number(ym.slice(5,7))+'월',()=>moveMonth(-1),()=>moveMonth(1),null,'',true),...dateGrid(h,{...ctx,planCal:{events:monthCal?.events??[],failed:Boolean(monthCal?.failed),outer}},st,data,ym,{pick,selected:date,tail:true})));
+  }
+  // 고른 날: 머리 "11월 13일 (금)" · 일정(종일 위, 시각 순, 바깥 .ics는 흐린 칩) · 계획 줄 · 비었으면 한 줄 · 추가 단추(기존 시트).
+  const list=el('div',null,'hc-list'),head=add(el('h3',null,'hc-date'),el('span',dateLabel(date),'hc-date-text'),date===today?el('span','오늘','calendar-today-badge'):null);
+  if(date===today)head.setAttribute('aria-current','date');
+  add(list,head);
+  const evs=homeDayEvents(weekCal?.events,outer?.on(date)??[],date),plans=homeDayPlans(life,study,date,today,{storage,draft:studyDraftOf(ctx,today)});
+  if(weekCal?.failed)add(list,el('p',HOME_CAL_TEXT.failed,'muted small hc-failed'));
+  if(evs.length){
+    const g=add(el('div',null,'hc-group hc-events'),el('h4','일정 '+evs.length+'개','hc-sub'));
+    for(const x of evs){
+      if(x.event){const r=button(null,()=>hc.open(x.event),'plan-sched-row hc-event');r.dataset.date=date;r.dataset.kind=x.event.kind;add(g,add(r,el('span',x.time||'종일','plan-sched-when'),el('span',x.title,'plan-sched-title')));}
+      else{const chip=outer.chip(x.outer);chip.textContent=x.title;add(g,add(el('div',null,'hc-outer-row'),el('span',x.time||'종일','plan-sched-when'),chip));}   // 시각은 앱 일정 줄과 같은 자리(칩 글자 = 제목, 누르면 바깥 일정 시트 그대로)
+    }
+    add(list,g);
+  }
+  if(plans.rows.length){
+    const g=add(el('div',null,'hc-group hc-plans'),el('h4',plans.head,'hc-sub'));
+    for(const r of plans.rows){const row=add(el('div',null,'plan-row hc-plan-row'),tag(h,subjects,r.subjectId),el('span',BLOCK_TEXT[r.block],'hc-block'),el('span',r.showTitle?r.title:'','plan-title'),el('span',r.text,'plan-status '+r.kind));row.dataset.itemId=r.id;g.append(row);}
+    add(list,g);
+  }
+  if(!evs.length&&!plans.rows.length)add(list,el('p',HOME_CAL_TEXT.empty,'hc-empty'));
+  const locked=Boolean(ctx.freshBefore?.(date));   // V7D2: 새 시작 전 날짜는 계획을 고치지 않는다(읽기 전용 한 줄)
+  if(locked)add(list,el('p',ctx.freshText?.lock??'새 시작 전 기록이라 읽기만 할 수 있어','notice fresh-lock-note'));
+  add(list,add(el('div',null,'button-row hc-add'),locked?null:button(HOME_CAL_TEXT.addPlan,()=>openPlanEditor(ctx,st,date),'secondary hc-add-plan'),hc?.add?button(HOME_CAL_TEXT.addEvent,()=>hc.add(date),'secondary hc-add-event'):null));
+  add(out,list);
+  root.append(out);
+  return out;
 }
 
 // ----- 연 보기 -----

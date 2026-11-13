@@ -362,8 +362,8 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "9e59746e58b0e42801d501a5226022f84b75d9e065f9ba80ff246e090f78cda1",
-      "outputSha256": "9e59746e58b0e42801d501a5226022f84b75d9e065f9ba80ff246e090f78cda1",
+      "sourceSha256": "57473ddcba23c5b03fff521698c92feee074b945c0aaf3662ef53585079493a8",
+      "outputSha256": "57473ddcba23c5b03fff521698c92feee074b945c0aaf3662ef53585079493a8",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs",
@@ -746,8 +746,8 @@
     },
     {
       "path": "user-app/public/life-plan.mjs",
-      "sourceSha256": "a9e58cabae77db430f11f250a417fbaae48f1e1180d14cb9c63a4d497f285f95",
-      "outputSha256": "a9e58cabae77db430f11f250a417fbaae48f1e1180d14cb9c63a4d497f285f95",
+      "sourceSha256": "534fc1ea4f4c9586c8b9abcccf4b2488496977432224dcd30ba8ac7ac6447de3",
+      "outputSha256": "534fc1ea4f4c9586c8b9abcccf4b2488496977432224dcd30ba8ac7ac6447de3",
       "dependencies": [
         "user-app/public/life-achieve.mjs",
         "user-app/public/life-rebase.mjs",
@@ -943,8 +943,8 @@
     },
     {
       "path": "user-app/public/plan-month.mjs",
-      "sourceSha256": "1457a04b761690c23c624cba16a3deb955d7ccdb9fe6c4e2a4aa8775ebca967e",
-      "outputSha256": "1457a04b761690c23c624cba16a3deb955d7ccdb9fe6c4e2a4aa8775ebca967e",
+      "sourceSha256": "ecd0dbc2ee2c10e15fd449e36d98ce828bd3253a3cff3d21828aa677e9a24f2f",
+      "outputSha256": "ecd0dbc2ee2c10e15fd449e36d98ce828bd3253a3cff3d21828aa677e9a24f2f",
       "dependencies": [
         "user-app/public/life-model.mjs",
         "user-app/public/life-plan.mjs"
@@ -1586,8 +1586,8 @@
     {
       "path": "styles.css",
       "sourcePath": "user-app/public/styles.css",
-      "sourceSha256": "6b7720f17bc0e051cb8d53fb391e7d690c6145f93363c8a506b2fe8565f196d1",
-      "outputSha256": "6b7720f17bc0e051cb8d53fb391e7d690c6145f93363c8a506b2fe8565f196d1"
+      "sourceSha256": "bf3927bcb56716f5b493fa6446ce86682a61276425f475971ea0e175ac51b511",
+      "outputSha256": "bf3927bcb56716f5b493fa6446ce86682a61276425f475971ea0e175ac51b511"
     },
     {
       "path": "public-config.json",

@@ -3,7 +3,7 @@
 // 칸 색 = 그 주(이 달에 든 날만) 그 과목의 실제 벽돌, 칸 테두리 = 계획이 있던 칸. 월 경계 주는 이 달에 든 날만 세어서 두 달의 칸을 더하면 그 주 실제와 같다(겹치거나 빠지는 날 0).
 // 보기만 한다: 쓰기 0(일정 추가·고치기는 앱의 일정 시트, 계획 넣기는 주 보기). "목표 달성 주" 한 줄(FIX46C)은 앱이 ctx.monthGoals로 넘겨 주면 머리 아래에 붙는다(과목 주간 목표 계산은 life-quest). 새 기록 종류·필드 0.
 import {shiftDay} from './life-model.mjs';
-import {actualOf,planOf,mondayOf,daysInMonth,heatLevel,barsText,scheduleBox,maker,NO_SUBJECT_COLOR,planItemsDone,itemsDoneText,goalVsText} from './life-plan.mjs';
+import {actualOf,planOf,mondayOf,daysInMonth,heatLevel,heatLegend,barsText,scheduleBox,maker,NO_SUBJECT_COLOR,planItemsDone,itemsDoneText,goalVsText} from './life-plan.mjs';
 
 export const MONTH_SCHEDULE_SHOW=12;
 const short=d=>Number(d.slice(5,7))+'/'+Number(d.slice(8,10));
@@ -67,7 +67,7 @@ export function renderMonth(ctx,st,{data,ym,dateGrid,goWeek,items=null}){
   add(out,ctx.monthGoals?.({ym,ach:data.ach,today:data.today})??null);   // FIX46C: "목표 달성 주 n / m" 한 줄(life-quest가 그린다, 앱이 넘겨 준다). 목표를 정한 주가 없으면 줄 없음
   if(dates)add(out,...dateGrid());
   else{
-    const grid=el('div',null,'pm-grid pm-cols-'+m.cols.length);grid.setAttribute('role','grid');grid.setAttribute('aria-label',Number(ym.slice(5))+'월 과목별 주차 벽돌, 색이 진할수록 많이 쌓은 주, 테두리는 계획이 있던 칸');
+    const grid=el('div',null,'pm-grid pm-cols-'+m.cols.length);grid.setAttribute('role','grid');grid.setAttribute('aria-label',Number(ym.slice(5))+'월 과목별 주차 벽돌, 칸 아래 막대가 진할수록 많이 쌓은 주, 테두리는 계획이 있던 칸');
     grid.append(el('span',null,'pm-corner'));
     for(const c of m.cols){const n=add(el('span',null,'pm-colhead'+(c.now?' now':'')+(c.edge?' edge':'')),el('strong',c.index+'주'),el('small',dayRange(c)));n.dataset.monday=c.monday;grid.append(n);}
     grid.append(el('span','합','pm-colhead pm-total-head'));
@@ -99,7 +99,7 @@ export function renderMonth(ctx,st,{data,ym,dateGrid,goWeek,items=null}){
       for(const c of m.cols)grid.append(el('span',c.actual>0?num(c.actual):null,'pm-total pm-col-total'));
       grid.append(el('span',totalText(m.actual,0),'pm-total pm-grand'));
     }
-    add(out,grid,el('p','진할수록 많이 쌓은 주 · 테두리 = 계획이 있던 칸 · 칸을 누르면 그 주로','muted small pm-hint'));
+    add(out,grid,heatLegend(el),el('p','칸 아래 막대가 진할수록 많이 쌓은 주 · 테두리 = 계획이 있던 칸 · 칸을 누르면 그 주로','muted small pm-hint'));
   }
   const thisMonth=data.today>=m.first&&data.today<=m.last;
   add(out,scheduleBox(h,ctx,st,data,m.first,m.last,{addDate:thisMonth?data.today:m.first,limit:MONTH_SCHEDULE_SHOW}));

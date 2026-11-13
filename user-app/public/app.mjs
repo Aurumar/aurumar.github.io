@@ -154,7 +154,7 @@ const SIGNED_OUT_ELSEWHERE_TEXT='다른 창에서 이 기기 로그아웃을 해
 // 확정 기록의 메모리 사본(today·whole·changes·일정·건강·공부)을 비운다. 편집 창과 카드 입력(drafts, 초안 상자의 미저장 입력)은 그대로 둔다(S1).
 // 다시 잠금해제해 refreshCore가 새로 읽을 때까지 render()는 아무 화면도 그리지 않고, 잠금해제·로그인 칸만 상태 줄 아래에 보인다.
 let mdSignedOut=false,mdSignedOutSeq=0;   // seq: 읽기 도중에 잠긴 refreshCore가 잠금을 되돌리지 않게
-function signedOutLock(){mdSignedOut=true;mdSignedOutSeq++;if(typeof nativeWidgetClear==='function')nativeWidgetClear();finImport=null;finStmt=null;suggestSt=null;if(typeof clearLeave==='function')clearLeave();/* V7D2: 잠기면 기다리던 비우기는 보내지 않는다 */today=null;whole=null;changes=[];wholeRaw=null;freshRows=[];calendarState=null;planCal=null;vaultFlash=null;if(typeof widgetFile!=='undefined')widgetFile.syncAt=null;if(typeof pcWidgetLock==='function')pcWidgetLock();if(typeof icsImportMod!=='undefined'&&icsImportMod)icsImportMod.clearOuter(icsOuterStore());for(const st of [hltSt,studySt])if(st){st.raw=null;st.flowState=null;}$('workspace').hidden=true;$('navigation').hidden=true;if(mdHost&&mdPanel){mdHost.append(mdPanel);mdHost.hidden=false;}$('session-state').textContent='잠김 · 다시 로그인하세요';}   // FIX55C1 (HS1): 위젯 파일의 마지막 동기화 시각도 비운다(다음 프로필에 남지 않게, 그 프로필의 동기화가 성공하면 새로 적힘)
+function signedOutLock(){mdSignedOut=true;mdSignedOutSeq++;if(typeof nativeWidgetClear==='function')nativeWidgetClear();finImport=null;finStmt=null;suggestSt=null;if(typeof clearLeave==='function')clearLeave();/* V7D2: 잠기면 기다리던 비우기는 보내지 않는다 */today=null;whole=null;changes=[];wholeRaw=null;freshRows=[];calendarState=null;planCal=null;if(typeof homeCalRead!=='undefined')homeCalRead.clear();/* CAL2: 오늘 탭 일정 사본 */vaultFlash=null;if(typeof widgetFile!=='undefined')widgetFile.syncAt=null;if(typeof pcWidgetLock==='function')pcWidgetLock();if(typeof icsImportMod!=='undefined'&&icsImportMod)icsImportMod.clearOuter(icsOuterStore());for(const st of [hltSt,studySt])if(st){st.raw=null;st.flowState=null;}$('workspace').hidden=true;$('navigation').hidden=true;if(mdHost&&mdPanel){mdHost.append(mdPanel);mdHost.hidden=false;}$('session-state').textContent='잠김 · 다시 로그인하세요';}   // FIX55C1 (HS1): 위젯 파일의 마지막 동기화 시각도 비운다(다음 프로필에 남지 않게, 그 프로필의 동기화가 성공하면 새로 적힘)
 // FIX37C (H37-S2): 잠금 때 공부 타이머 상태를 멈추고 비운다(lockLife, 저장소 쓰기 0), 화면 켜 두기를 놓고, 숨은 화면의 모달과 시트를 닫는다(모달이 남으면 뒤의 로그인 칸이 입력을 못 받는다). 편집 창(#editor)은 S1대로 그대로 둔다.
 const signedOutLockBase=signedOutLock;
 signedOutLock=function signedOutLock(){signedOutLockBase();lifeUi?.lockLife(lifeSt);chimeCtl?.wake.release();for(const d of document.querySelectorAll('#workspace dialog[open],dialog.lb-sheet[open]'))d.close();};
@@ -382,7 +382,7 @@ let statusView=null;
 import('./status-view.mjs').then(m=>{statusView=m;if(!$('workspace').hidden&&(view==='STATUS'||view==='SETTINGS'))void render();}).catch(()=>{statusView=null;});
 // ---- 계획 탭(B43): 일·주·월·연·수능까지 계획표. 보기만 하고, 쓰기는 계획 시트의 "저장" 버튼(PLAN_DAY 1개 = 연산 1)뿐이다.
 let lifePlan=null,planSt=null;
-import('./life-plan.mjs').then(m=>{lifePlan=m;planSt=m.createPlanState(globalThis.localStorage);if(!$('workspace').hidden&&view==='PLANS')void render();}).catch(()=>{lifePlan=null;});
+import('./life-plan.mjs').then(m=>{lifePlan=m;planSt=m.createPlanState(globalThis.localStorage);if(!$('workspace').hidden&&['PLANS','HOME'].includes(view))void render();}).catch(()=>{lifePlan=null;});
 // ---- Fold 네이티브 다리(B44B): window.LifeBrickNative가 있을 때만 동작(PC·iPad·브라우저에서는 nativeBr.available()가 거짓이라 아무것도 안 함).
 // 결제 알림 → 지출 초안은 보여주기만 하고(연산 0), 가계부 거래는 사용자가 거래 입력의 "저장"을 눌러야 만들어진다. 이 기기 설정(알림 토글 등)은 native-bridge.mjs 안에서만 저장한다.
 let nativeUi=null,nativeBr=null,nativeLife=null,nativeSeen=-1;
@@ -542,6 +542,11 @@ const planMonthOn=()=>Boolean(planMonthMod&&lifePlan&&planSt&&uiKit);
 const planCalKey=()=>{const q=lifePlan.eventQuery(planSt,new Date().toISOString());return q?{q,key:q.mode+q.date}:null;};
 function loadPlanCal(){const want=planCalKey();if(!want){planCal=null;return;}if(planCal?.key===want.key&&planCal.whole===whole)return;const seen=whole,seq=mdSignedOutSeq;if(planCalBusy?.key===want.key&&planCalBusy.seen===seen)return;const busy=planCalBusy={key:want.key,seen};void api('/api/calendar-view',want.q).catch(()=>({events:[],failed:true})).then(cal=>{if(planCalBusy===busy)planCalBusy=null;if(seq!==mdSignedOutSeq||mdSignedOut||planCalKey()?.key!==want.key)return;planCal={...cal,key:want.key,whole:seen};if(view==='PLANS')void render();});}
 const planCalCtx=()=>planMonthOn()&&planCal&&planCal.key===planCalKey()?.key?{events:planCal.events,failed:Boolean(planCal.failed),add:date=>{calendarDate=date;editEvent(null);},open:openCalendarItem,outer:typeof icsOuterView==='function'?icsOuterView():null}:null;
+// ---- 오늘 탭 맨 위 달력(CAL2, life-plan renderHomeCal): 이번 주 띠 · 고른 날 계획·일정 · 달력 펼치기. 읽기만 한다(새 기록·쓰기 경로 없음, 추가 단추는 기존 계획 편집·일정 시트).
+// 일정은 /api/calendar-view(읽기만)로 주(7_DAY)·펼친 달(MONTH) 범위를 읽어 범위마다 기억하고, 기록을 다시 읽으면(whole이 바뀜) 다시 읽는다. 그리기를 막지 않는다(읽는 동안은 계획만, 끝나면 오늘 화면이면 한 번 더 그림).
+let homeCalSt=null;const homeCalRead=new Map();
+function homeCalEvents(q){const key=q.mode+q.date,c=homeCalRead.get(key);if(c?.whole===whole)return c.cal;if(c?.busy!==whole){const seen=whole,seq=mdSignedOutSeq;homeCalRead.set(key,{cal:c?.cal??null,busy:seen});void api('/api/calendar-view',q).catch(()=>({events:[],failed:true})).then(cal=>{if(seq!==mdSignedOutSeq||mdSignedOut||homeCalRead.get(key)?.busy!==seen)return;if(homeCalRead.size>8)homeCalRead.clear();homeCalRead.set(key,{cal,whole:seen});if(view==='HOME'&&!$('workspace').hidden)void render();});}return c?.cal??null;}
+function homeCal(root){if(!lifePlan||!uiKit)return;const ctx={...lifeCtx(),sheet:towerSheet,homeCal:{read:homeCalEvents,add:date=>{calendarDate=date;editEvent(null);},open:openCalendarItem,outer:typeof icsOuterView==='function'?icsOuterView():null}};homeCalSt??=lifePlan.createHomeCalState(ctx.storage);lifePlan.renderHomeCal(root,ctx,homeCalSt);}
 const todayPlan=o=>planTodayMod&&uiKit?planTodayMod.renderTodayPlan({...lifeCtx(),sheet:towerSheet},o.focus!==undefined?o:{...o,focusMessage:true,focus:lifeUi&&lifeSt&&studyOn()?lifeUi.focusPort(lifeCtx(),lifeSt):null,draft:lifeSt?.today===o.date&&lifeSt.studyCard?.status==='LOCAL_DRAFT'?lifeSt.studyCard.card:null}):null;
 const focusExtraMin=()=>focusOn()?focusMod.claimableMin(focusSt,{card:lifeSt?.studyCard?.card??null,timer:lifeSt?.timer??null,nowIso:new Date().toISOString()}):0;
 // ---- 카드 초안 상자(B3c): 초안 저널이 없는 표면(브라우저)에서 건강·공부 카드 초안을 이 기기 IndexedDB에 암호문으로 둔다. scope=선택된 프로필의 accountId·vaultId.
@@ -865,6 +870,7 @@ function renderHome(root){
  if(alert)add(root,saveStateCard(state));
  add(root,cardDraftLine());
  nativeChip(root);
+ homeCal(root);   // CAL2: 달력 블록(이번 주 띠 · 고른 날 계획·일정) = 기존 카드 위
  add(root,weekReviewCard());   // FIX49D: 일요일 18시~월요일 "돌아보기" 카드(쓰기 문이 열렸을 때만, 글 없음)
  if(lifeUi&&lifeSt?.flowState)lifeUi.renderLifeToday(root,lifeCtx(),lifeSt);
  else{const nextPanel=add(el('section',null,'panel next-panel'),add(el('div',null,'next-head'),el('h2','지금 할 한 가지','panel-title'),el('span',whole.localDate,'eyebrow')));nextPanel.id='next-action';
