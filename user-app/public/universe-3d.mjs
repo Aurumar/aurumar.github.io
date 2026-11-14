@@ -1,15 +1,22 @@
 // 3D 지식 우주 그리기 (B49). 좌표·상태·링크는 universe-layout.mjs가 계산하고 여기서는 WebGL로 그리기만 한다. 읽기만 하고 어떤 기록도 쓰지 않는다.
 // 이미지·텍스처·글자 텍스처 없이 색과 재질만 쓴다(CSP img-src 'none'): 과목 이름은 화면 아래 범례(DOM)가 맡는다. 인라인 style 없음: 캔버스 크기는 styles.css가 정하고 setSize(...,false)로 style을 건드리지 않는다.
 // 실패(WebGL2 없음·저사양·첫 장면 오류·컨텍스트 손실·프레임 너무 느림)면 3D를 치우고 fallback(SVG 우주)을 다시 보인다. 같은 데이터다.
-import {WebGLRenderer,Scene,PerspectiveCamera,SphereGeometry,BufferGeometry,BufferAttribute,LineSegments,LineBasicMaterial,MeshBasicMaterial,InstancedMesh,Mesh,Object3D,Color,Raycaster,Vector2} from './three.module.js';
-import {quality3d,framesTooSlow,FOV,GOLD} from './tower-3d-layout.mjs';
+// V8W7: 과목마다 행성(금속 재질 구체 + 금 고리, 오답이 많을수록 크다)을 군집 가운데에 그리고, 행성도 누를 수 있다(onPlanet). 예시 우주(data.example)는 금 톤 선·"예시" 표지를 더한다.
+import {WebGLRenderer,Scene,PerspectiveCamera,SphereGeometry,TorusGeometry,BufferGeometry,BufferAttribute,LineSegments,LineBasicMaterial,MeshBasicMaterial,MeshStandardMaterial,HemisphereLight,DirectionalLight,InstancedMesh,Mesh,Object3D,Color,Raycaster,Vector2} from './three.module.js';
+import {quality3d,framesTooSlow,FOV,GOLD,TOWER_GOLD} from './tower-3d-layout.mjs';
 
 const RED='#D9534F',WHITE='#FFFFFF',NODE_R=0.3,GLOW_R=0.42,HALO_LATE=0.66,HALO_GLOW=0.95,HIT_R=0.8,TAP_PX=8,TAP_MS=500,ROTATE_PER_PX=0.008,ZOOM_PER_WHEEL=0.0012,KEY_ROTATE=0.2,KEY_ZOOM=0.9,SPIN_PER_SECOND=0.12,MAX_PHI=1.25;
+// 행성 반지름 = 군집 반지름 × 0.36(군집 반지름이 오답 수의 세제곱근으로 커지므로 행성도 함께 커진다). 고리 = 행성의 1.7배, 기울기 0.45.
+export const PLANET_SCALE=0.36,PLANET_RING=1.7,PLANET_TILT=0.45,PLANET_MATERIAL=Object.freeze({metalness:0.45,roughness:0.32,emissiveIntensity:0.16});
+export const planetRadius=c=>Math.round(c.radius*PLANET_SCALE*1e4)/1e4;
+export const planetsOf=data=>data.clusters.filter(c=>c.count>0);
 let active=null;
 
 const tanHalf=()=>Math.tan(FOV/2*Math.PI/180);
 const fitDist=(bound,aspect)=>bound/Math.sin(Math.atan(tanHalf()*Math.min(1,Math.max(0.3,aspect))))*1.05;
-export function universeCamera(bound,aspect){return {theta:0.5,phi:0.45,dist:fitDist(bound,aspect)};}
+// V8W7: 군집 고리는 납작해서(세로 폭이 작다) 가로로 넓은 캔버스(가로/세로 ≥ 1.2)에서는 처음 거리를 0.78배까지 당긴다. 단 경계 구가 가로로 잘리지 않는 거리(sideFit)보다 가깝게는 가지 않는다.
+const sideFit=(bound,aspect)=>bound/Math.sin(Math.atan(tanHalf()*aspect))*1.05;
+export function universeCamera(bound,aspect){const fit=fitDist(bound,aspect);return {theta:0.5,phi:0.45,dist:aspect>=1.2?Math.max(fit*0.78,sideFit(bound,aspect)):fit};}
 export function clampUniverseCamera(cam,bound,aspect){
   const fit=fitDist(bound,aspect);
   cam.dist=Math.max(bound*0.35,Math.min(fit*1.6,cam.dist));
@@ -21,17 +28,21 @@ export function universePosition(cam){
   return {x:Math.sin(cam.theta)*flat,y:Math.sin(cam.phi)*cam.dist,z:Math.cos(cam.theta)*flat};
 }
 
-export function mountUniverse3d({doc,slot,fallback,data,onNode=null,st=null}){
+export function mountUniverse3d({doc,slot,fallback,data,onNode=null,onPlanet=null,st=null}){
   active?.dispose();
   const win=doc.defaultView;
   const setMode=(mode,why)=>{slot.dataset.mode=mode;slot.dataset.reason=why;};
   const why=quality3d({cores:win.navigator?.hardwareConcurrency,memoryGb:win.navigator?.deviceMemory,instances:data.nodes.length+data.links.length});
   if(why!=='OK'){setMode('svg',why);return null;}
   const canvas=doc.createElement('canvas');
-  canvas.className='universe-3d-canvas';canvas.tabIndex=0;canvas.setAttribute('role','application');canvas.setAttribute('aria-label','3D 지식 우주, 별 '+data.nodes.length+'개. 화살표로 돌리고 플러스 마이너스로 확대합니다. 같은 내용을 2D 그림으로도 볼 수 있습니다');
+  const planets=planetsOf(data),example=Boolean(data.example);
+  canvas.className='universe-3d-canvas'+(example?' universe-example-canvas':'');canvas.tabIndex=0;canvas.setAttribute('role','application');
+  canvas.setAttribute('aria-label',(example?'3D 예시 우주, ':'3D 지식 우주, ')+'행성 '+planets.length+'개 별 '+data.nodes.length+'개. 화살표로 돌리고 플러스 마이너스로 확대합니다. 같은 내용을 2D 그림으로도 볼 수 있습니다');
   const gl=canvas.getContext('webgl2',{alpha:true,antialias:true,depth:true,stencil:false,premultipliedAlpha:true,powerPreference:'default'});
   if(!gl){setMode('svg','NO_WEBGL2');return null;}
-  const hint=doc.createElement('p');hint.className='muted small universe-3d-hint';hint.textContent='끌어서 돌리고 · 휠이나 두 손가락으로 확대 · 별을 누르면 자세히 봅니다';
+  const hint=doc.createElement('p');hint.className='muted small universe-3d-hint';hint.textContent='끌어서 돌리고 · 휠이나 두 손가락으로 확대 · 행성이나 별을 누르면 '+(example?'설명을 봅니다':'자세히 봅니다');
+  // 예시 우주는 캔버스 왼쪽 위에 "예시" 표지를 겹쳐 둔다(실제 우주와 헷갈리지 않게).
+  const tag=example?doc.createElement('p'):null;if(tag){tag.className='universe-example-tag';tag.textContent='예시';}
   let disposed=false,raf=0,renderer=null,started=0,lastT=0,prevT=0,dragging=false,frames=0;
   const deltas=[],owned=[],pointers=new Map();
   const reduced=Boolean(win.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
@@ -43,7 +54,7 @@ export function mountUniverse3d({doc,slot,fallback,data,onNode=null,st=null}){
     canvas.removeEventListener('webglcontextlost',onLost);doc.removeEventListener('visibilitychange',onVisible);
     for(const o of owned)o.dispose();
     renderer?.dispose();if(!gl.isContextLost())renderer?.forceContextLoss();
-    canvas.remove();hint.remove();
+    canvas.remove();hint.remove();tag?.remove();
   };
   const toFallback=reason=>{dispose();fallback.hidden=false;slot.hidden=true;setMode('svg',reason);};
   const onLost=()=>toFallback('CONTEXT_LOST');
@@ -74,11 +85,26 @@ export function mountUniverse3d({doc,slot,fallback,data,onNode=null,st=null}){
     const pos=new Float32Array(data.links.length*6);
     data.links.forEach((l,i)=>{const a=data.nodes[l.a],b=data.nodes[l.b];pos.set([a.x,a.y,a.z,b.x,b.y,b.z],i*6);});
     const geo=own(new BufferGeometry());geo.setAttribute('position',new BufferAttribute(pos,3));
-    const lines=new LineSegments(geo,own(new LineBasicMaterial({color:0xcccccc,transparent:true,opacity:0.22})));lines.frustumCulled=false;scene.add(lines);
+    const lines=new LineSegments(geo,own(new LineBasicMaterial(example?{color:TOWER_GOLD.mid,transparent:true,opacity:0.55}:{color:0xcccccc,transparent:true,opacity:0.22})));lines.frustumCulled=false;scene.add(lines);
+  }
+  // 행성: 군집(과목)마다 금속 구체 1개 + 얇은 금 고리 1개(오답이 있는 과목만). 조명은 행성에만 듣는다(별은 MeshBasicMaterial). 반구광 + 왼쪽 위 키 라이트 2개.
+  if(planets.length){
+    const body=own(new MeshStandardMaterial({color:0xffffff,...PLANET_MATERIAL,emissive:TOWER_GOLD.hi}));
+    const globe=new InstancedMesh(ball,body,planets.length);globe.frustumCulled=false;own(globe);
+    planets.forEach((c,i)=>{place(globe,i,c,planetRadius(c));globe.setColorAt(i,tint.set(c.color));});
+    globe.instanceMatrix.needsUpdate=true;globe.instanceColor.needsUpdate=true;scene.add(globe);
+    const hoop=own(new TorusGeometry(1,0.035,6,48)),hoopMat=own(new MeshStandardMaterial({color:TOWER_GOLD.mid,metalness:0.6,roughness:0.3,emissive:TOWER_GOLD.light,emissiveIntensity:0.25}));
+    const rings=new InstancedMesh(hoop,hoopMat,planets.length);rings.frustumCulled=false;own(rings);
+    planets.forEach((c,i)=>{const s=planetRadius(c)*PLANET_RING;dummy.position.set(c.x,c.y,c.z);dummy.rotation.set(Math.PI/2-PLANET_TILT,0,(c.index%2?1:-1)*PLANET_TILT*0.5);dummy.scale.set(s,s,s);dummy.updateMatrix();rings.setMatrixAt(i,dummy.matrix);});
+    dummy.rotation.set(0,0,0);rings.instanceMatrix.needsUpdate=true;scene.add(rings);
+    const sun=new DirectionalLight(0xffffff,2.2);sun.position.set(-1,1.6,1.2);
+    scene.add(new HemisphereLight(0xfff8e8,0xe8d9b0,1.6),sun);
   }
   // 누르기용 보이지 않는 구체(그리지 않고 광선 검사만 한다). 손가락으로 누르기 쉽게 별보다 크다.
   const hitMesh=new InstancedMesh(ball,own(new MeshBasicMaterial()),Math.max(1,data.nodes.length));hitMesh.visible=false;own(hitMesh);
   data.nodes.forEach((n,i)=>place(hitMesh,i,n,HIT_R));hitMesh.updateMatrixWorld();
+  const planetHit=new InstancedMesh(ball,own(new MeshBasicMaterial()),Math.max(1,planets.length));planetHit.visible=false;own(planetHit);
+  planets.forEach((c,i)=>place(planetHit,i,c,Math.max(HIT_R,planetRadius(c)*1.15)));planetHit.count=planets.length;planetHit.updateMatrixWorld();
   const picked=new Mesh(ball,own(new MeshBasicMaterial({color:GOLD,wireframe:true})));picked.visible=false;scene.add(picked);
 
   const aspect=()=>{const w=canvas.clientWidth||1,h=canvas.clientHeight||1;return w/h;};
@@ -118,12 +144,18 @@ export function mountUniverse3d({doc,slot,fallback,data,onNode=null,st=null}){
   const pick=(x,y)=>{
     const rect=canvas.getBoundingClientRect(),ray=new Raycaster();
     ray.setFromCamera(new Vector2((x-rect.left)/rect.width*2-1,-((y-rect.top)/rect.height)*2+1),camera);
-    const hit=ray.intersectObject(hitMesh,false)[0];
-    return hit?hit.instanceId:null;
+    // 별과 행성 중 카메라에 더 가까운 쪽을 고른다.
+    const star=data.nodes.length?ray.intersectObject(hitMesh,false)[0]:null,world=planets.length?ray.intersectObject(planetHit,false)[0]:null;
+    if(world&&(!star||world.distance<star.distance))return {planet:planets[world.instanceId]};
+    return star?{node:star.instanceId}:null;
   };
   const select=i=>{
     const n=data.nodes[i];picked.position.set(n.x,n.y,n.z);picked.scale.set(HIT_R*0.6,HIT_R*0.6,HIT_R*0.6);picked.visible=true;
     slot.dataset.selected=n.id;invalidate();
+  };
+  const selectPlanet=c=>{
+    const s=planetRadius(c)*1.25;picked.position.set(c.x,c.y,c.z);picked.scale.set(s,s,s);picked.visible=true;
+    slot.dataset.selected='planet-'+c.code;invalidate();
   };
   let down=null,pinch=0;
   canvas.addEventListener('pointerdown',e=>{
@@ -147,7 +179,7 @@ export function mountUniverse3d({doc,slot,fallback,data,onNode=null,st=null}){
   });
   const release=e=>{
     pointers.delete(e.pointerId);if(!pointers.size){dragging=false;prevT=0;}
-    if(e.type==='pointerup'&&down&&down.moved<TAP_PX&&e.timeStamp-down.at<TAP_MS&&pointers.size===0){const i=pick(e.clientX,e.clientY);if(i!==null){select(i);onNode?.(data.nodes[i]);}}
+    if(e.type==='pointerup'&&down&&down.moved<TAP_PX&&e.timeStamp-down.at<TAP_MS&&pointers.size===0){const p=pick(e.clientX,e.clientY);if(p?.planet){selectPlanet(p.planet);onPlanet?.(p.planet);}else if(p){select(p.node);onNode?.(data.nodes[p.node]);}}
     down=null;pinch=0;
     invalidate();
   };
@@ -165,7 +197,7 @@ export function mountUniverse3d({doc,slot,fallback,data,onNode=null,st=null}){
     if(used){e.preventDefault();invalidate();}
   });
 
-  slot.replaceChildren(canvas,hint);
+  slot.replaceChildren(...(tag?[tag]:[]),canvas,hint);
   active=handle;
   slot.hidden=false;
   observer=new win.ResizeObserver(()=>{resize();invalidate();});observer.observe(canvas);

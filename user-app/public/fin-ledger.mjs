@@ -10,6 +10,9 @@ export const FIN_ERROR_TEXT=Object.freeze({
   INVALID_FIN_TXN:'날짜 또는 거래 종류가 올바르지 않습니다. 날짜는 실제 있는 날(예: 2026-10-29)이어야 합니다.',
   INVALID_FIN_AMOUNT:'금액은 1원 이상의 정수로 입력하세요(원 단위, 최대 14자리, 소수·음수 불가).',
   INVALID_FIN_ACCOUNT_REF:'계정을 선택하세요.',
+  INVALID_FIN_OPENING:'기초잔액은 원 단위 정수(갚을 돈은 -), 기준일은 실제 있는 날로 입력하세요.',
+  FUTURE_FIN_OPENING_REJECTED:'기초잔액 기준일은 오늘보다 뒤일 수 없습니다.',
+  FIN_OPENING_INCOMPLETE:'기초잔액과 기준일을 함께 넣거나 둘 다 비우세요.',
   INVALID_FIN_TAGS:'태그는 쉼표로 구분해 10개까지, 각 30자 이하로 쓰고 같은 태그를 두 번 쓰지 마세요.',
   INVALID_FIN_INSTALLMENTS:'할부 개월 수는 0부터 60 사이의 정수로 입력하세요(일시불은 0).',
   INVALID_FIN_ASSET_REF:'연결된 보유품 정보가 올바르지 않습니다.',
@@ -143,12 +146,55 @@ export function shownMerchant(line,mask){
 }
 
 // ---------- 입력 양식 → 저장 자료(서버 fin-model.mjs와 같은 규칙) ----------
+// DEFR2 (MG01): openingAmount·openingDate 둘 다 넣으면 opening 키, 둘 다 비우면 키 없음(모름), 하나만은 거절.
+// 두 입력이 아예 없으면(화면 밖 호출) 옛 opening을 그대로 둔다.
 export function buildAccount(input,old=null){
   const name=String(input.name??'').trim(),issuer=String(input.issuer??'').trim(),note=String(input.note??'');
   need(name,'FIN_NAME_REQUIRED');need(len(name)<=60&&len(issuer)<=40&&len(note)<=500,'INVALID_FIN_TEXT');
   const type=old?old.type:input.type;
   need(['CARD','CASH','BANK','EPAY','LOAN','OTHER'].includes(type),'INVALID_FIN_ACCOUNT');
-  return {name,type,issuer,active:old?(input.active??old.active)===true:true,note};
+  const data={name,type,issuer,active:old?(input.active??old.active)===true:true,note};
+  const opening=input.openingAmount===undefined&&input.openingDate===undefined?old?.opening??null:buildOpening(input.openingAmount,input.openingDate);
+  return opening?{...data,opening:{...opening}}:data;
+}
+// 기초잔액 입력: 쉼표·공백·끝의 "원"을 지운 원 단위 정수(0·음수 가능).
+export function parseSignedWonInput(s){
+  const t=String(s??'').replace(/[\s,]/g,'').replace(/원$/,'');
+  need(/^(0|-?[1-9]\d{0,13})$/.test(t),'INVALID_FIN_OPENING');
+  return t;
+}
+function buildOpening(amount,date){
+  const a=String(amount??'').trim(),d=String(date??'').trim();
+  if(!a&&!d)return null;
+  need(a&&d,'FIN_OPENING_INCOMPLETE');need(dateOK(d),'INVALID_FIN_OPENING');
+  return {amount:parseSignedWonInput(a),date:d};
+}
+// DEFR2 (MG01): 계정 잔액 = 기초잔액 + 기준일 다음 날부터의 그 계정 줄 합. 저장하지 않고 투영(finView의 lines·residuals)에서 계산한다.
+// 기초잔액은 기준일 거래까지 반영된 값으로 본다. 나가는 쪽(accountId): 수입은 +, 그 밖(지출·환불·이체·선불 충전)은 −실제 금액
+// (환불은 실제 금액이 음수라 +가 된다). 받는 쪽(toAccountId, 이체·선불 충전): +. 무효 거래와 거래가 대신한 원천 행은 lines에 이미 없다.
+// 기준일 뒤에 실제 금액 모름 줄이 있거나, 기준일 해 이후의 미배분 잔액(날짜 없음)이 있으면 모름(0으로 가정하지 않음).
+export const OPENING_EMPTY_TEXT='기초잔액을 넣으면 잔액이 보여요';
+export function accountBalance(account,lines,residuals=[]){
+  const o=account?.data?.opening??null;
+  if(!o)return {status:'NO_OPENING',value:null,opening:null,change:null,reasons:[]};
+  const id=account.id,reasons=[];let change=0n;
+  for(const l of lines??[]){
+    if(l.date<=o.date)continue;
+    const from=l.accountId===id,to=l.toAccountId===id;
+    if(!from&&!to)continue;
+    if(l.net===null){if(!reasons.includes('UNKNOWN_LINES'))reasons.push('UNKNOWN_LINES');continue;}
+    const n=big(l.net);
+    if(from)change+=l.kind==='INCOME'?n:-n;
+    if(to)change+=n;
+  }
+  if((residuals??[]).some(r=>r.accountId===id&&r.chunk.slice(9)>=o.date.slice(0,4)))reasons.push('RESIDUAL');
+  if(reasons.length)return {status:'MISSING',value:null,opening:{...o},change:null,reasons};
+  return {status:'OK',value:BigInt(o.amount)+change,opening:{...o},change,reasons:[]};
+}
+export function accountBalanceText(b){
+  if(b.status==='NO_OPENING')return OPENING_EMPTY_TEXT;
+  if(b.status==='MISSING')return '잔액 모름 · '+b.reasons.map(r=>r==='RESIDUAL'?'날짜 없는 미배분 잔액 있음':'실제 금액 모름 줄 있음').join(' · ');
+  return '잔액 '+formatWon(b.value)+' · 기준일 '+b.opening.date+' 다음 날부터 반영';
 }
 // FIX67 (M-09): 직접 입력에서 가맹점·메모가 카드대금 문형이고 종류가 지출이면 힌트 한 줄(막지 않음). 명세서 대조의 '소비 아님' 문형 중 카드대금 쪽만(자동이체·카드결제는 일반 지출에도 쓰여 뺐다).
 export const CARD_BILL=/카드\s*대금|카드\s*값|결제\s*대금|대금\s*결제/;
@@ -461,7 +507,9 @@ const shapeOK=(v,keys)=>!!v&&Object.getPrototypeOf(v)===Object.prototype&&Object
 const textOK=(v,max,empty=true)=>typeof v==='string'&&v.isWellFormed()&&[...v].length<=max&&(empty||v.trim().length>0);
 // fin-model.mjs validateAccount과 같은 조건.
 function accountProblem(d){
-  if(!shapeOK(d,['name','type','issuer','active','note']))return '계정 형식';
+  const keys=['name','type','issuer','active','note'],opening=!!d&&typeof d==='object'&&Object.hasOwn(d,'opening');
+  if(!shapeOK(d,opening?[...keys,'opening']:keys))return '계정 형식';
+  if(opening&&!(shapeOK(d.opening,['amount','date'])&&typeof d.opening.amount==='string'&&SIGNED.test(d.opening.amount)&&dateOK(d.opening.date)))return '기초잔액 형식';
   if(!textOK(d.name,60,false)||!textOK(d.issuer,40)||!textOK(d.note,500))return '계정 글자 수 또는 글자 형식';
   if(!['CARD','CASH','BANK','EPAY','LOAN','OTHER'].includes(d.type)||typeof d.active!=='boolean')return '계정 종류 또는 사용 여부';
   return null;

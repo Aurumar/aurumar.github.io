@@ -246,9 +246,13 @@ export function vaultCashFromSnapshot(finance){
 export function vaultHorizon(today,months){
   const y=Number(today.slice(0,4)),m=Number(today.slice(5,7)),d=Number(today.slice(8,10));
   const total=(y*12+(m-1))+months,ny=Math.floor(total/12),nm=total%12+1;
-  const last=new Date(Date.UTC(ny,nm,0)).getUTCDate();
-  return ny+'-'+pad(nm)+'-'+pad(Math.min(d,last));
+  // DEFR1 (GPT 9차 R4-01): 연도도 4자리로 채운다('1-02-01'은 '0002-01-01'보다 뒤로 정렬된다). Date.UTC는 0~99년을 1900년대로 바꾸므로
+  // 그 달 길이는 2000년을 더한 해로 잰다(400년 주기라 윤년 여부가 같다).
+  const last=new Date(Date.UTC(ny<100?ny+2000:ny,nm,0)).getUTCDate();
+  return String(ny).padStart(4,'0')+'-'+pad(nm)+'-'+pad(Math.min(d,last));
 }
+// DEFR1 (GPT 9차 R4-02): 9999년 끝을 넘는 기간 끝(10000-01-01)은 글자 비교로는 '9999-…'보다 앞에 온다. 기간 끝 비교는 숫자로 한다.
+const dayKey=s=>{const [y,m,d]=s.split('-').map(Number);return (y*100+m)*100+d;};
 export const VAULT_MAX_MONTHS=120;
 // 달력에 있는 날짜(YYYY-MM-DD)인지. '2026-11-99'·'2026-02-30'처럼 문자열 모양만 맞는 날짜는 거절한다(문자열 비교 전에 검사).
 export function vaultDateOK(v){
@@ -261,7 +265,7 @@ export function vaultDateOK(v){
 export function vaultMonths({mode,months,untilDate,today}){
   if(mode==='NEXT_INCOME'){
     if(!vaultDateOK(untilDate)||untilDate<=today)return null;
-    for(let n=1;n<=VAULT_MAX_MONTHS;n++)if(vaultHorizon(today,n)>=untilDate)return n;
+    for(let n=1;n<=VAULT_MAX_MONTHS;n++)if(dayKey(vaultHorizon(today,n))>=dayKey(untilDate))return n;
     return null;
   }
   const n=Number(months);
@@ -302,7 +306,7 @@ export function vaultPlan({cash,reserve,mode='MONTHS',months=null,untilDate=null
     const v=vaultWon(inc.amount);
     if(inc.date&&!vaultDateOK(inc.date)){missing.push('INCOME_DATE_INVALID');continue;}
     if(v===null||!inc.date){missing.push('INCOME:'+(inc.date??'?'));continue;}
-    if(horizon!==null&&inc.date>=today&&inc.date<horizon){incomeTotal+=v;counted.push({...inc,won:v});}
+    if(horizon!==null&&inc.date>=today&&dayKey(inc.date)<dayKey(horizon)){incomeTotal+=v;counted.push({...inc,won:v});}
     else if(horizon!==null)skipped.push({...inc,won:v});
   }
   const odOn=Boolean(overdraft?.enabled);
@@ -400,9 +404,12 @@ export function liveNetCash(prep,finances,today){
   // "스냅샷 뒤에 쓴 돈을 스냅샷 날짜로 적으면" date<since 기준으로는 영원히 반영되지 않는다 — 지금 내 돈이
   // 실제보다 많아 보이는 위험한 방향이었다. 당일을 포함하는 보수적인 방향으로 바꾼다. 대가: 스냅샷을 만들기
   // 전에 이미 그날 지출을 기록해 뒀다면 그 지출이 한 번 더 빠질 수 있다(적어 보이는 방향 — 허용).
+  // DEFR2 (MG04 안 B): 재정 기록에 sameDayReflected:true(입력 때 "오늘 거래가 이 잔액에 이미 반영됐나요? 예")가 있으면 기준일 당일 거래는
+  // 이미 잔액에 들어 있으므로 빼고 다음 날부터 더한다. 키가 없거나 false면 위 F11E1B 그대로(당일 포함).
+  const reflected=snap.sameDayReflected===true;
   let spentAfter=0n,incomeAfter=0n,unknownLines=false;
   for(const l of prep.lines){
-    if(l.date<since||l.date>today)continue;
+    if(l.date<since||l.date>today||reflected&&l.date===since)continue;
     if(l.kind==='EXPENSE'||l.kind==='REFUND'){
       if(l.net===null){unknownLines=true;continue;}
       spentAfter+=l.net;   // REFUND는 net이 이미 음수라 더하면 그대로 차감된다(aggregate()의 consumption과 같은 규칙).
@@ -416,7 +423,8 @@ export function liveNetCash(prep,finances,today){
   if(reasons.length)return {status:'MISSING',value:null,base:null,spentAfter:null,incomeAfter:null,since,reasons};
   const digits=snap.minorUnitDigits??0;
   const base=sumDecimalWhole(cashAmts,digits)-sumDecimalWhole(minusAmts,digits)-sumDecimalWhole(cardAmts,digits);
-  return {status:'OK',value:base-spentAfter+incomeAfter,base,spentAfter,incomeAfter,since,reasons:[]};
+  const out={status:'OK',value:base-spentAfter+incomeAfter,base,spentAfter,incomeAfter,since,reasons:[]};
+  return reflected?{...out,sameDayReflected:true}:out;
 }
 
 // 금괴 더미 배치. s = budgetStatus() 결과를 그대로 받는다(다시 집계하지 않는다).

@@ -72,7 +72,11 @@ export function validateData(type,id,d){
       shiftDate(d.date,(r.count-1)*r.interval*(r.frequency==='WEEKLY'?7:1));
     }
   }else if(type==='FINANCE'){
-    shape(d,['snapshotDate','currency','minorUnitDigits','cashAccounts','debts','restrictedAssets','monthlyFixedCosts','upcomingPayments','incomeItems','notes']);
+    // DEFR2 (MG04 안 B, 소유자 승인 2026-11-14): 선택 키 sameDayReflected(true = 기준일 거래가 이 잔액에 이미 반영됨 → 다음 날 거래부터 더함).
+    // 키가 없으면 지금까지와 같다(기준일 당일 거래도 더함, F11E1B). 옛 앱은 이 키가 있는 기록을 거절한다 → 모든 기기를 같은 날 업데이트.
+    const keys=['snapshotDate','currency','minorUnitDigits','cashAccounts','debts','restrictedAssets','monthlyFixedCosts','upcomingPayments','incomeItems','notes'];
+    shape(d,d&&typeof d==='object'&&Object.hasOwn(d,'sameDayReflected')?[...keys,'sameDayReflected']:keys);
+    requireValue(!Object.hasOwn(d,'sameDayReflected')||bool(d.sameDayReflected),'INVALID_FINANCE_SNAPSHOT');
     requireValue(dateOK(d.snapshotDate)&&typeof d.currency==='string'&&/^[A-Z]{3}$/.test(d.currency)&&[0,2].includes(d.minorUnitDigits),'INVALID_FINANCE_SNAPSHOT');
     text(d.notes,4000);
     for(const field of ['cashAccounts','debts','restrictedAssets','monthlyFixedCosts','upcomingPayments','incomeItems']){

@@ -50,6 +50,12 @@ function completionTime(value) {
   return value;
 }
 
+// Day number (same scale as dateDay) of a validated doneAt in KST (UTC+9).
+function kstDayOf(doneAt) {
+  const minutes = Number(doneAt.slice(11, 13)) * 60 + Number(doneAt.slice(14, 16)) + 540;
+  return dateDay(doneAt.slice(0, 10), 'review.doneAt date') + Math.floor(minutes / 1440);
+}
+
 function subject(value) {
   requireValue(SUBJECTS.includes(value), 'subject');
   return value;
@@ -129,10 +135,19 @@ export function projectStudy(cards, baseDate) {
   }
 
   // Packet 2: snapshot-wide latest completion is a STUDY_DAY rule, not a V24 occurrence chain.
+  // B4b revive: a closed/graduated mistake (latest nextDue null) comes back when its reviewDue
+  // was set again: a later KST day than that latest review and not the untouched registration
+  // default (card date + 1 day). A non-null nextDue still wins as before.
   const dueToday = [], overdue = [];
   for (const mistake of uniqueMistakes) {
     const completed = latestCompleted.get(mistake.id);
-    const due = completed ? completed.nextDue : mistake.reviewDue;
+    let due = completed ? completed.nextDue : mistake.reviewDue;
+    if (completed && due === null && mistake.reviewDue !== null) {
+      const reviewDay = dateDay(mistake.reviewDue, 'mistake.reviewDue');
+      if (reviewDay > kstDayOf(completed.doneAt) && reviewDay !== dateDay(mistake.date, 'card.date') + 1) {
+        due = mistake.reviewDue;
+      }
+    }
     if (due === null || due > baseDate) continue;
     const row = { mistakeId: mistake.id, date: mistake.date, subject: mistake.subject,
       itemRef: mistake.itemRef, due };

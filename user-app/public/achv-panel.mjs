@@ -5,6 +5,7 @@ import {TITLES,achievements,titleOf,unlockedTitles,recentDone,nearDone,shownName
 import {todayQuestLine,myQuestOf,myQuestRows,saveMyQuest,titleVaultOn,pickTitle,DEFS_SEALED_TEXT,TITLE_DEVICE_NOTE} from './life-quest.mjs';
 import {MY_QUEST_ID,brickTotalText,DIARY_STREAK_PRIZES} from './life-achieve.mjs';
 import {HABIT_AREAS,MAX_NAME,weekCount} from './life-model.mjs';
+import {titleMedal} from './title-medal.mjs';   // V8W6 4: 칭호 메달
 
 const TIER_TEXT=Object.freeze({GOLD:'금',SILVER:'은',BRONZE:'동',HIDDEN:'숨김'});
 const AREA_TEXT=Object.freeze({BODY:'몸',HEAD:'머리',MONEY:'돈',HEART:'마음'});
@@ -18,7 +19,7 @@ const maker=doc=>{
   const el=(tag,text,cls)=>{const n=doc.createElement(tag);if(text!==undefined&&text!==null)n.textContent=String(text);if(cls)n.className=cls;return n;};
   const add=(p,...ns)=>{p.append(...ns.filter(Boolean));return p;};
   const button=(text,fn,cls='secondary')=>{const n=el('button',text,cls);n.type='button';n.addEventListener('click',fn);return n;};
-  return {el,add,button};
+  return {el,add,button,doc};
 };
 
 // 장부 읽기·쓰기. 저장소가 막혀 있으면 이번 실행 동안만(st에 보관).
@@ -194,7 +195,19 @@ export function saveTitleChoice(storage,st,id){
   }catch{/* 이번 실행 동안만 */}
 }
 export const currentTitle=({ach,life=null,money=null,storage=null,st={}})=>titleOf(viewOf(ach,life,money).list,readTitleChoice(storage,st,life));
-const titleChip=({el},t)=>{const n=el('span',t.name,'title-chip tier-'+t.tier.toLowerCase());n.setAttribute('aria-label','칭호 '+t.name+' ('+TIER_TEXT[t.tier]+')');return n;};
+// V8W6 4: 칩 앞에 그 칭호의 금 메달(코드로 그린 SVG). 메달에는 글자가 없어 칩의 글자(textContent)는 칭호 이름 그대로다. SVG를 못 만드는 문서면 글자만.
+const titleChip=({el,doc},t)=>{const n=el('span',t.name,'title-chip tier-'+t.tier.toLowerCase());n.setAttribute('aria-label','칭호 '+t.name+' ('+TIER_TEXT[t.tier]+')');const m=typeof n.prepend==='function'?titleMedal(doc,{achv:t.achv,tier:t.tier,name:t.name,size:18}):null;if(m){m.setAttribute('aria-hidden','true');n.prepend(m);}return n;};
+// V8W6 4: 칭호 메달 한 세트(풀린 것 금 메달, 잠긴 것 빗금·점선). 숨김 칭호는 풀리기 전 이름 대신 ???.
+export function medalSet(doc,list){
+  const {el,add}=maker(doc),byId=new Map(list.map(r=>[r.id,r])),grid=el('ul',null,'medal-set');
+  const open=PICKABLE.filter(t=>byId.get(t.achv)?.done).length;grid.setAttribute('aria-label','칭호 메달 '+open+' / '+PICKABLE.length);
+  for(const t of PICKABLE){
+    const r=byId.get(t.achv),done=Boolean(r?.done),name=!done&&r?.hidden?shownName(r):t.name;
+    const m=titleMedal(doc,{achv:t.achv,tier:t.tier,name,locked:!done,size:44});
+    add(grid,add(el('li',null,'medal-cell'+(done?' done':' locked')),m,el('span',name,'medal-name')));
+  }
+  return grid;
+}
 // 오늘 머리·탑 머리·상태 화면이 부른다(앱이 ctx.achvTitle로 넘긴다). 돌려주는 값 = {node,tier}, 칭호가 없으면 null. tier는 탑의 깃발 색에 쓴다.
 export function titleBadge(args){
   const t=currentTitle(args);
@@ -237,6 +250,7 @@ export function titleSheetBody(args,after=()=>{}){
     }
     add(body,add(el('details',null,'title-locked'),el('summary','잠긴 칭호 '+locked.length+'개'),rows));
   }
+  if(typeof doc.createElementNS==='function')add(body,add(el('details',null,'title-medals'),el('summary','칭호 메달 모음 · '+open.length+' / '+PICKABLE.length),medalSet(doc,list)));   // V8W6 4
   return body;
 }
 export function openTitleSheet(args){

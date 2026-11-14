@@ -107,3 +107,23 @@ export function layoutUniverse({cards,proj,colors=null}){
   const bound=r4(Math.max(1,...clusters.map(c=>Math.hypot(c.x,c.y,c.z)+c.radius)));
   return {baseDate:proj.baseDate??null,clusters,nodes,links:linkNodes(nodes),total,shown:nodes.length,capped,empty:nodes.length===0,counts,bound};
 }
+
+// V8W7 예시 우주: 오답이 하나도 없을 때만 화면이 보여 주는 보기용 우주. 고정된 가짜 오답 묶음을 실제와 같은 배치 계산(layoutUniverse)에 넣는다.
+// 화면에서만 쓰고 저장·동기화·집계(별 수·탑·업적)에 들어가지 않는다. id는 모두 'ex-', itemRef는 'EXAMPLE:'로 시작해 실제 기록과 섞이지 않는다.
+// 행성 = 과목(오답이 많을수록 크다), 별 = 오답 1개, 상태 3종(복습 예정·복습 늦음·기억함)이 모두 보이게 고른다. 색은 금 6단(과목 색 대신, 금·아이보리 톤).
+export const EXAMPLE_COUNTS=Object.freeze({K:12,M:9,E:6,H:3,S:4,C:7});
+// 금 6단은 V7C 금지 띠(겨자: 명도 58% 이하) 밖의 밝은 금만 쓴다(명도 59~72%).
+export const EXAMPLE_COLORS=Object.freeze({K:'#E3BE4C',M:'#E8C45A',E:'#DDB955',H:'#F0CF6E',S:'#F2D27A',C:'#E6C162'});
+export const EXAMPLE_PREFIX='ex-';
+const exampleState=i=>i%4===1?'glow':i%5===3?'late':'due';
+export function exampleUniverse(){
+  const mistakes=[],reviews=[],overdue=[];
+  for(const code of SUBJECTS)for(let i=0;i<EXAMPLE_COUNTS[code];i++){
+    const id=EXAMPLE_PREFIX+code+'-'+String(i).padStart(2,'0'),state=exampleState(i);
+    mistakes.push({id,subject:code,itemRef:'EXAMPLE:'+id,errorCode:code+'-EX'+(i%3),reviewDue:null});
+    if(state==='glow')reviews.push({id:EXAMPLE_PREFIX+'r-'+id,mistakeId:id,doneAt:'2000-01-01T00:00:00.000Z',result:'RECALLED',nextDue:null});
+    if(state==='late')overdue.push({mistakeId:id,due:null});
+  }
+  const data=layoutUniverse({cards:[{date:'2000-01-01',mistakes,reviews}],proj:{baseDate:null,overdue,dueToday:[],duplicates:[]},colors:EXAMPLE_COLORS});
+  return {...data,example:true};
+}

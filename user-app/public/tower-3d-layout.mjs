@@ -701,3 +701,29 @@ export function shadowBox(scene){
   const h=Math.max(houseTop(scene),4),r=Math.max(Math.hypot(HALF_W+1,h/2,HALF_D+1)+2,scene.parts?.FOUNDATION?14:0);   // 정원·나무(반지름 13.5)까지
   return {center:[0,h/2,0],radius:r};
 }
+
+// ---------- V8W6 배경·바닥 그림자·자동 회전 (설계 V8 W6 1·2) ----------
+// 1) "탑 부분이 흰 바탕으로 깨진 듯": V7T 하늘(위 #FFFFFF → 지평선 거의 흰색)·흰 대리석 땅이 화면을 흰 상자로 만들었고, 첫 장면 전에도 3D 칸(빈 캔버스)을 먼저 보였다.
+//    하늘 구(배경)만 지평선 아이보리(= 안개·하늘 아래색 그대로, V7T "베이지 안개 0" 유지) → 위로 금 그라데이션으로 바꾼다. 집·땅·안개·해·반구광 값(skyAt)은 그대로라 화면이 누렇게 뜨지 않는다.
+export const BACKDROP=Object.freeze({mid:'#F8EDD2',top:'#EAD6A2'});
+// 하늘 구 정점 높이(e = y / 반지름, -1~1) → 배경색. 지평선 이하 = 하늘 아래색(bottom, 안개와 같아 땅이 이음매 없이 녹는다), 위로 갈수록 금(약 27°에서 가장 진함).
+export function backdropAt(e,bottom=IVORY_1){
+  const u=e<=0?0:Math.min(1,e*2.2);
+  return u<0.5?mixHex(bottom,BACKDROP.mid,smooth(u/0.5)):mixHex(BACKDROP.mid,BACKDROP.top,smooth((u-0.5)/0.5));
+}
+// 반구광 땅 색: 금 쪽으로 조금(금속 면 아래쪽이 은은한 금빛). 채도는 낮게 둔다(반구광 채도 ≤ 10, V7T-4). 광원 수는 그대로 3개(MAX_LIGHTS).
+export const warmGround=hex=>mixHex(hex,BACKDROP.mid,0.5);
+// 바닥 그림자(접지 그림자): 그림자 지도가 꺼진 LOW 등급에서도 보이는 둥근 그림자. 알파만 쓰는 n×n 픽셀(가운데 진하고 가장자리 0). 색은 따뜻한 회색(갈색 아님).
+export const CONTACT_SHADOW=Object.freeze({color:'#9C958A',opacity:0.34,scale:1.35,size:64});
+export function shadowTexels(n=CONTACT_SHADOW.size){
+  const px=new Uint8Array(n*n*4);
+  for(let y=0;y<n;y++)for(let x=0;x<n;x++){
+    const d=Math.hypot((x+0.5)/n-0.5,(y+0.5)/n-0.5)*2,a=smooth(clamp01(1-d))**1.6,i=(y*n+x)*4;
+    px[i]=px[i+1]=px[i+2]=255;px[i+3]=Math.round(a*255);
+  }
+  return px;
+}
+// 2) 자동 회전: 누르기 전까지 약 40초에 한 바퀴(멈추는 시간 없음). 누르거나 끌면 멈추고 "다시 돌리기"로 다시 돈다. 움직임 줄이기면 돌지 않는다.
+// 한 프레임 각도 = 2π × dt / 40. 탭을 가렸다 돌아오는 등 긴 틈(dt > 0.1초)은 0.1초로 자른다(한 번에 휙 돌지 않게).
+export const SPIN_TURN_SECONDS=40,SPIN_MAX_STEP=0.1;
+export const spinStep=dt=>Number.isFinite(dt)&&dt>0?2*Math.PI*Math.min(dt,SPIN_MAX_STEP)/SPIN_TURN_SECONDS:0;

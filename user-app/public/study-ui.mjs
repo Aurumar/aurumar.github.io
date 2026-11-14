@@ -240,7 +240,7 @@ export function renderStudy(root,ctx,st){
     fs.status==='LOCAL_DRAFT'?'이 기기에만 있는 임시 입력 (아직 쌓기 전) · 임시 저장됨':fs.status==='CONFIRMED'?'쌓임 · 이 카드는 '+fs.latestConfirmCount+'번 쌓음':'아직 기록 없음';
   const dateIn=input(date,{inputmode:'numeric',placeholder:'YYYY-MM-DD',maxlength:'10'});
   const go=d=>()=>{if(!dateKeyOK(d)){st.message='날짜는 YYYY-MM-DD 형식이어야 합니다.';st.error=true;void ctx.rerender();return;}st.date=d;st.form=null;st.reviewForm=null;st.message=null;st.notices=[];void ctx.perform(async()=>{await prepareStudy(ctx,st);await ctx.rerender();});};
-  const nav=add(el('div',null,'buttons'),button('◀ 전날',()=>go(shiftDay(date,-1))()),dateIn,button('이동',()=>go(dateIn.value.trim())()),button('▶ 다음날',()=>go(shiftDay(date,1))()),button('오늘',()=>go(st.today)()));for(const n of [nav,rev])if(n.dataset)n.dataset.freshKeep='1';   // V7D2: 기준 전 날짜를 보면 날짜 이동·복습(오늘 카드에 기록)만 남기고 잠근다
+  const nav=add(el('div',null,'buttons day-nav'),button('◀ 전날',()=>go(shiftDay(date,-1))()),dateIn,button('이동',()=>go(dateIn.value.trim())()),button('▶ 다음날',()=>go(shiftDay(date,1))()),button('오늘',()=>go(st.today)()));for(const n of [nav,rev])if(n.dataset)n.dataset.freshKeep='1';   // V7D2: 기준 전 날짜를 보면 날짜 이동·복습(오늘 카드에 기록)만 남기고 잠근다
   add(head,nav,add(el('div',null,'rc-line'),el('p',chip,'study-chip'),ctx.clearMenu?.('STUDY_DAY',date)??null));   // V7D2: 쌓은 공부 카드 ⋯ 메뉴
   if(st.ports?.persistent===false)add(head,hint('이 환경에는 임시 저장 공간이 없어 임시 입력이 앱을 닫거나 새로고침하면 사라집니다. 쌓기 전에 닫지 마세요. (PC 앱에서는 임시 입력이 기기에 암호화되어 남습니다.)'));
   if(box){

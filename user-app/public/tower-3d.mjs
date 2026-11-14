@@ -9,7 +9,10 @@
 import {WebGLRenderer,Scene,PerspectiveCamera,HemisphereLight,DirectionalLight,PointLight,BoxGeometry,ConeGeometry,SphereGeometry,CircleGeometry,CylinderGeometry,TorusGeometry,ExtrudeGeometry,Shape,BufferGeometry,BufferAttribute,MeshStandardMaterial,MeshBasicMaterial,PointsMaterial,LineBasicMaterial,InstancedMesh,Mesh,Points,LineSegments,Group,Object3D,Color,Fog,DataTexture,RGBAFormat,UnsignedByteType,RepeatWrapping,LinearFilter,LinearMipmapLinearFilter,SRGBColorSpace,EquirectangularReflectionMapping,PMREMGenerator,PCFSoftShadowMap,BackSide,Raycaster,Vector2,Vector3} from './three.module.js';
 import {towerScene,quality3d,framesTooSlow,initialCamera,clampCamera,cameraPosition,FOV,GOLD,BRICK_W,BRICK_D,BRICK_GAP,ROW_H,TEX,WALL_TILE,brickTexels,wallTexels,groundTexels,envTexels,skyAt,starField,flyAt,flyFrom,dustAt,flashAt,shakeAt,autoRotateAt,AUTO_ROTATE_SECONDS,DUST_POINTS,DUST_SECONDS,FLASH_SECONDS,SHAKE_SECONDS,TIERS,START_TIER,nextTier,p50,p95,GROUND_R,SKY_R,fogRange,shadowBox,
   COLS,DEPTH,PHI,CRANE_UP,SPARKS,DONE_ROOF_DROP,blueprint,houseTop,wholeCamera,gateCamera,isTallHouse,startView,flyFirst,settleCamera,spinKeepsFront,WHOLE_VIEW_PAD,craneRows,completionAt,sparkAt,BONUS_SPARKS,BONUS_BURST_SECONDS,bonusFresh,bonusSparkAt,withBadges,houseLabels,towersToPulse,pulseAt,PULSE_SECONDS,
-  BRICK_MATERIALS,MORTAR_IVORY,brickTint,BLUEPRINT_STYLE,blueprintFade,DAIS,TOWER_GOLD,JOINT,jointRows,TOP_GLOW,topGlow,glowPulse,sunWheel,daisTexels,MARBLE,MORTAR_GLOW,CHAMPAGNE_WALL,BLACK_MARBLE,goldFrame,isGoldRow,isShadeFace,shadeWalls} from './tower-3d-layout.mjs';
+  BRICK_MATERIALS,MORTAR_IVORY,brickTint,BLUEPRINT_STYLE,blueprintFade,DAIS,TOWER_GOLD,JOINT,jointRows,TOP_GLOW,topGlow,glowPulse,sunWheel,daisTexels,MARBLE,MORTAR_GLOW,CHAMPAGNE_WALL,BLACK_MARBLE,goldFrame,isGoldRow,isShadeFace,shadeWalls,
+  backdropAt,warmGround,CONTACT_SHADOW,shadowTexels,spinStep} from './tower-3d-layout.mjs';
+// V8W6: 배경 = 지평선 아이보리 → 위 금 그라데이션(하늘 구, 안개는 V7T 그대로), 바닥 그림자(접지 원판), 반구광 땅 색을 은은한 금 반사로. 자동 회전은 40초에 한 바퀴, 손대면 멈추고 "다시 돌리기".
+// 3D 무대(슬롯)는 첫 장면을 그린 뒤에만 보인다(그 전에는 대체 화면 그대로): 첫 장면 전 빈 캔버스가 흰 상자로 보이지 않게.
 
 // V7T: 구조벽·바닥판 = 흰 대리석(베이지 #F1EADB·모래색 #E4D9C3 없음), 연속일 빛 띠 바탕 = 샴페인(갈색 #4A3F2E 없음), 먼지 = 흰 대리석 가루.
 // V7T2: 쌓인 층 구조벽 = 옅은 샴페인 금(금속), 바닥판 = 금 처마(goldFrame 묶음). SLAB은 완공 지붕 기본색으로만 남는다.
@@ -109,8 +112,8 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   const dispose=()=>{
     if(disposed)return;disposed=true;if(active===handle)active=null;
     if(raf)win.cancelAnimationFrame(raf);
-    observer?.disconnect();watcher?.disconnect();
-    canvas.removeEventListener('webglcontextlost',onLost);
+    observer?.disconnect();watcher?.disconnect();seer?.disconnect();
+    canvas.removeEventListener('webglcontextlost',onLost);doc.removeEventListener?.('visibilitychange',onVisible);
     for(const o of owned)o.dispose();
     renderer?.dispose();if(!gl.isContextLost())renderer?.forceContextLoss();
     views.remove();stage.remove();doneNote?.remove();hint.remove();status.remove();
@@ -118,7 +121,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   const toFallback=reason=>{dispose();fallback.hidden=false;slot.hidden=true;setMode('svg',reason);};
   const onLost=()=>toFallback('CONTEXT_LOST');
   const handle={dispose,canvas};
-  let observer=null,watcher=null;
+  let observer=null,watcher=null,seer=null;
   canvas.addEventListener('webglcontextlost',onLost);
   try{renderer=new WebGLRenderer({canvas,context:gl,antialias:true,alpha:true});}catch{toFallback('RENDERER_FAILED');return null;}
   renderer.setClearColor(new Color(sky.bottom),1);
@@ -275,8 +278,9 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   // 세상: 대리석 단상(윗면 y=0)·그 아래 아이보리 대지·하늘(카메라를 따라다니는 큰 구, 정점 색 그라데이션)·별·안개·반구광·세상에 고정된 해(밤에는 달)·V6C 꼭대기 작은 금빛 점광.
   const ground=new Mesh(own(new CircleGeometry(groundR,64)),own(new MeshStandardMaterial({map:groundTex,roughness:0.9,metalness:0})));ground.rotation.x=-Math.PI/2;ground.position.y=-DAIS.h;ground.receiveShadow=true;scene.add(ground);
   const dais=new Mesh(own(new CylinderGeometry(DAIS.r,DAIS.r+0.25,DAIS.h,96)),[daisSideMat,daisMat,daisSideMat]);dais.position.y=-DAIS.h/2;dais.receiveShadow=true;scene.add(dais);
-  const skyGeo=own(new SphereGeometry(SKY_R,32,16)),top=new Color(sky.top),bottom=new Color(sky.bottom),skyCol=new Float32Array(skyGeo.attributes.position.count*3);
-  for(let i=0;i<skyGeo.attributes.position.count;i++){const e=skyGeo.attributes.position.getY(i)/SKY_R,u=e<=0?0:Math.min(1,e*1.6);tint.copy(bottom).lerp(top,u*u*(3-2*u));skyCol.set([tint.r,tint.g,tint.b],i*3);}
+  // V8W6: 하늘 구 = 지평선 아이보리(sky.bottom, 안개와 같은 색) → 위로 금(backdropAt). 흰 상자 대신 아이보리→금 배경.
+  const skyGeo=own(new SphereGeometry(SKY_R,32,16)),skyCol=new Float32Array(skyGeo.attributes.position.count*3);
+  for(let i=0;i<skyGeo.attributes.position.count;i++){tint.set(backdropAt(skyGeo.attributes.position.getY(i)/SKY_R,sky.bottom));skyCol.set([tint.r,tint.g,tint.b],i*3);}
   skyGeo.setAttribute('color',new BufferAttribute(skyCol,3));
   const skyGroup=new Group(),skyMesh=new Mesh(skyGeo,own(new MeshBasicMaterial({vertexColors:true,side:BackSide,fog:false,depthWrite:false})));
   skyMesh.renderOrder=-1;skyMesh.frustumCulled=false;skyGroup.add(skyMesh);
@@ -284,7 +288,12 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   const stars=new Points(starGeo,own(new PointsMaterial({color:0xffffff,size:2,sizeAttenuation:false,fog:false,transparent:true,opacity:sky.stars,depthWrite:false})));
   stars.frustumCulled=false;stars.visible=false;skyGroup.add(stars);scene.add(skyGroup);
   scene.fog=new Fog(sky.bottom,fog.near,fog.far);
-  const hemi=new HemisphereLight(sky.hemi.sky,sky.hemi.ground,sky.hemi.intensity),sun=new DirectionalLight(sky.sun.color,sky.sun.intensity);
+  // V8W6 바닥 그림자: 단상 둘레 둥근 접지 그림자(알파 원판, 그림자 지도가 꺼진 LOW 등급에서도 보인다). 단상 아래 대지 위에 깔고 깊이를 쓰지 않는다.
+  const shadowN=CONTACT_SHADOW.size,shadowTex=own(new DataTexture(shadowTexels(shadowN),shadowN,shadowN,RGBAFormat,UnsignedByteType));shadowTex.magFilter=LinearFilter;shadowTex.minFilter=LinearFilter;shadowTex.needsUpdate=true;
+  // V8FIX H-01: three는 alphaMap의 G 채널을 읽는데 질감은 알파에만 흐림이 있어(RGB 255) 단단한 회색 원판이 됐다 → 흐림은 map의 알파로 준다(흰 RGB × 그림자 색 그대로).
+  const contact=new Mesh(own(new CircleGeometry(DAIS.r*CONTACT_SHADOW.scale,64)),own(new MeshBasicMaterial({color:CONTACT_SHADOW.color,map:shadowTex,alphaMap:shadowTex,transparent:true,opacity:CONTACT_SHADOW.opacity,depthWrite:false})));
+  contact.rotation.x=-Math.PI/2;contact.position.y=-DAIS.h+0.01;contact.renderOrder=0;scene.add(contact);
+  const hemi=new HemisphereLight(sky.hemi.sky,warmGround(sky.hemi.ground),sky.hemi.intensity),sun=new DirectionalLight(sky.sun.color,sky.sun.intensity);   // V8W6: 땅 색 = 금 바닥 반사(금속 면 아래쪽이 금빛)
   const sb=shadowBox(data),[dx,dy,dz]=sky.sun.dir;
   sun.target.position.set(...sb.center);sun.position.set(sb.center[0]+dx*sb.radius*2,sb.center[1]+dy*sb.radius*2,sb.center[2]+dz*sb.radius*2);
   Object.assign(sun.shadow.camera,{left:-sb.radius,right:sb.radius,top:sb.radius,bottom:-sb.radius,near:0.5,far:sb.radius*4});sun.shadow.camera.updateProjectionMatrix();
@@ -372,9 +381,20 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
     renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();tags?.setAttribute('viewBox','0 0 '+w+' '+h);
     if(!fitted){Object.assign(cam,viewCamera(firstView,w/h));fitted=true;if(st)st.cam3dFitted=true;}
   };
-  // 자동 회전: 손대기 전까지 천천히, 최대 20초. 움직임 줄이기면 돌지 않는다.
-  let spin=!reduced,spinFrom=null,settle=topFirst?{}:null;
-  const stopSpin=()=>{spin=false;settle=null;};
+  // 자동 회전(V8W6): 누르기 전까지 약 40초에 한 바퀴(spinStep). 누르거나 끌면 멈추고 "다시 돌리기" 단추가 보인다. 움직임 줄이기면 돌지 않고 단추도 없다(멈춘 그림).
+  let spin=!reduced,spinLast=null,settle=topFirst?{}:null;
+  const spinBtn=reduced?null:doc.createElement('button');
+  const paintSpin=()=>{if(!spinBtn)return;spinBtn.hidden=spin;slot.dataset.spin=spin?'on':'off';};
+  if(spinBtn){spinBtn.type='button';spinBtn.className='lb-chip tower-3d-spin';spinBtn.textContent='다시 돌리기';spinBtn.setAttribute('aria-label','3D 탑 다시 천천히 돌리기');spinBtn.addEventListener('click',()=>{spin=true;spinLast=null;paintSpin();invalidate();});views.append(spinBtn);}
+  slot.dataset.spin=spin?'on':'off';
+  const stopSpin=()=>{spin=false;spinLast=null;settle=null;paintSpin();};
+  paintSpin();
+  // 탭을 가렸다 돌아오면 다시 그린다(가려진 동안은 프레임을 요청하지 않는다).
+  const onVisible=()=>{if(doc.visibilityState==='visible'&&spin)invalidate();};
+  // V8FIX M-08: "우주"로 바꿔 숨은 캔버스(크기 0)나 스크롤로 화면 밖에 있는 캔버스는 돌지 않는다(우주 3D visible()과 같은 판정 + 화면 진입 관찰).
+  let onScreen=true;
+  const showing=()=>onScreen&&Boolean(canvas.clientWidth&&canvas.clientHeight)&&doc.visibilityState==='visible';
+  doc.addEventListener?.('visibilitychange',onVisible);
   const paintChips=key=>{for(const b of chips)b.setAttribute('aria-pressed',String(b.dataset.view===key));slot.dataset.view=key;};
   const setView=key=>{
     stopSpin();
@@ -394,9 +414,8 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
     const t=(now-started)/1000;
     let moving=false;
     if(spin){
-      spinFrom??=cam.theta;
-      if(doc.visibilityState!=='visible'||t>=AUTO_ROTATE_SECONDS||!spinKeepsFront(spinFrom,t))spin=false;
-      else{cam.theta=spinFrom+autoRotateAt(t);moving=true;}
+      if(!showing())spinLast=null;   // 가려진 동안(탭 숨김·숨은 칸·화면 밖)은 쉬고(onVisible·크기·화면 진입이 다시 깨운다), 돌아오면 그 자리부터 이어 돈다
+      else{if(spinLast!==null)cam.theta+=spinStep((now-spinLast)/1000);spinLast=now;moving=true;}
     }
     if(flying){
       let done=true;
@@ -549,8 +568,9 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   slot.dataset.completed=moment?(celebrate?'moment':'moment-still'):data.parts.ROOF_DONE?'done':'no';
   slot.replaceChildren(...[views,stage,doneNote,hint,status].filter(Boolean));
   active=handle;
-  slot.hidden=false;
+  // V8W6: 슬롯은 첫 장면을 그린 뒤(drawFrame frames===1)에만 보인다. 그 전에는 대체 화면(2.5D)이 그대로 보여 흰 빈 캔버스가 나오지 않는다.
   observer=new win.ResizeObserver(()=>{resize();invalidate();});observer.observe(canvas);
+  seer=win.IntersectionObserver?new win.IntersectionObserver(es=>{onScreen=es.at(-1)?.isIntersecting!==false;if(onScreen)invalidate();}):null;seer?.observe(canvas);
   // 화면이 다시 그려져 캔버스가 문서에서 빠지면 GPU 자원을 바로 돌려준다.
   watcher=new win.MutationObserver(()=>{if(!canvas.isConnected)dispose();});watcher.observe(doc.body,{childList:true,subtree:true});
   resize();invalidate();

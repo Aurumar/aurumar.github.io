@@ -46,8 +46,10 @@ export function rhythmSummary(days,habitProfiles,today){
       wakeCards:wakes.length,sleepCards:sleepTotals.length,mealCards:meals.length};
   };
   const habits=[...habitProfiles].sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0).map(p=>{
-    const hits=[];
-    for(const c of cards)for(const it of c.data.items)if(it.type==='habit'&&it.profileKey===p.key)hits.push({date:it.at===null?c.date:kstDate(it.at),count:it.count});
+    const all=[];
+    for(const c of cards)for(const it of c.data.items)if(it.type==='habit'&&it.profileKey===p.key)all.push({date:it.at===null?c.date:kstDate(it.at),count:it.count});
+    // DEFR1 (GPT 12차 H12-N04): 했다/안했다(CHECK)는 하루 1번 뜻이다. 두 기기가 같은 날 각각 확정해 항목이 둘이어도 그 날짜는 1로 센다(COUNT는 그대로 합한다).
+    const hits=p.mode==='CHECK'?[...new Map(all.map(h=>[h.date,h])).values()]:all;
     const s7=shiftDay(today,-6),s30=shiftDay(today,-29);
     const past=hits.filter(h=>h.date<=today).map(h=>h.date).sort();
     const sum=lo=>hits.filter(h=>h.date>=lo&&h.date<=today).reduce((s,h)=>s+h.count,0);

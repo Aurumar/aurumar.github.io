@@ -11,6 +11,7 @@ import {avatarFxLayer} from './study-room.mjs';   // AV5: 오늘 상태 효과 �
 import {DAILY_CHARS,dailyCharOf,dailyLineText} from './study-stage.mjs';   // AV8: 오늘의 캐릭터 13단계 띠
 import {dailyCharStrip} from './study-live.mjs';   // V7A: 타이머와 같은 13단계 띠 + 눌러서 미리보기(AV5 효과 띠 대신)
 import {dailyStepsOf,dailyNextText} from './study-stage.mjs';   // V7A: "다음 캐릭터까지 h:mm · 이름"
+import {buildingsOf,bricksOf,buildingSvg,nextBuildingText,buildingStateText} from './buildings.mjs';   // V8W6: 나만의 건물 수집
 
 const NS='http://www.w3.org/2000/svg';
 const MAX_STAR_MARKS=12;
@@ -206,6 +207,41 @@ function titleRow({el,add},ctx,whole,date,money){
   }catch{return null;}
 }
 function moneyOf(ctx,date){try{return ctx.money?.(date)??null;}catch{return null;}}
+
+// V8W6 3: 나만의 건물 수집. 쌓은 실제 벽돌 수(탑 입구와 같은 값)로 6채(오두막 → 성) 중 완성된 것을 모은다(저장 0, 새 기록 종류 0).
+// 위 = 고른 건물의 3D 모형(WebGL2가 있을 때, 첫 장면을 그린 뒤에만 보임) / 그 전·실패 때는 같은 부품의 2D 입면 그림. 아래 = 수집 목록 6칸(잠긴 건물은 빗금·점선 + "n장 남음").
+// SVG를 만들 수 없는 가짜 문서(시험)에서는 글자 줄만. 계산이 실패해도 상태 화면을 깨지 않게 칸을 비운다.
+function buildingPanel({el,add},doc,whole,date,money){
+  let s;
+  try{s=buildingsOf(bricksOf(achieve({life:whole.life??null,study:whole.study??null,fin:whole.fin??null,today:date,money})));}catch{return null;}
+  const svgOK=typeof doc.createElementNS==='function';
+  const out=add(el('section',null,'panel st-build'),add(el('div',null,'st-build-head'),el('strong','나의 건물'),el('span','수집 '+s.count+' / '+s.total+' · 벽돌 '+s.bricks.toLocaleString('en-US')+'장','muted small st-build-count')));
+  out.id='st-build';
+  let pick=(s.latest??s.list[0]).id;
+  const name=el('strong',null,'st-build-name'),state=el('span',null,'muted small st-build-state'),view=el('div',null,'st-build-view'),slot=el('div',null,'bd-3d-slot'),art=el('div',null,'bd-fallback');slot.hidden=true;
+  add(view,slot,art);
+  const bar=el('progress',null,'lb-xp-bar st-build-bar');bar.max=1000;bar.value=Math.round(s.part*1000);bar.setAttribute('aria-label',nextBuildingText(s)+' · '+Math.round(s.part*100)+'%');
+  const cards=[];
+  const paint=()=>{
+    const b=s.list.find(x=>x.id===pick);
+    name.textContent=b.no+'호 · '+b.name+(b.done?'':' · 예상도');state.textContent=b.line+' · '+buildingStateText(b);
+    for(const c of cards)c.setAttribute('aria-pressed',String(c.dataset.building===pick));
+    if(svgOK)art.replaceChildren(buildingSvg(doc,b.id,{locked:!b.done,cls:'bd-svg bd-big'}));
+    art.hidden=false;slot.hidden=true;
+    if(svgOK&&doc.defaultView?.WebGL2RenderingContext&&slot.isConnected!==false)import('./building-3d.mjs').then(m=>{if(art.isConnected&&pick===b.id)m.mountBuilding3d({doc,slot,fallback:art,id:b.id,locked:!b.done});}).catch(()=>{slot.dataset.mode='svg';slot.dataset.reason='IMPORT_FAILED';});
+  };
+  const list=el('ol',null,'st-build-list');list.setAttribute('aria-label','건물 수집 '+s.count+' / '+s.total);
+  for(const b of s.list){
+    const btn=el('button',null,'bd-card'+(b.done?' done':' locked'));btn.type='button';btn.dataset.navOnly='1';btn.dataset.building=b.id;
+    btn.setAttribute('aria-label',b.no+'호 '+b.name+' · '+buildingStateText(b));
+    add(btn,svgOK?buildingSvg(doc,b.id,{locked:!b.done,cls:'bd-svg bd-thumb'}):null,el('span',b.name,'bd-card-name'),el('span',b.done?'완성':b.left.toLocaleString('en-US')+'장 남음','bd-card-state'));
+    btn.addEventListener('click',()=>{pick=b.id;paint();});
+    cards.push(btn);add(list,add(el('li',null,'st-build-item'),btn));
+  }
+  add(out,view,add(el('div',null,'st-build-text'),name,state),add(el('div',null,'st-build-next'),el('span',nextBuildingText(s),'st-build-next-text'),bar),list);
+  out.paintBuilding=paint;
+  return out;
+}
 function universeSub(whole,nowIso){
   try{return '지식 우주 · 별 '+universeData(whole.study??null,nowIso).total.toLocaleString('en-US')+'개';}
   catch{return '지식 우주';}
@@ -256,6 +292,8 @@ export function renderStatusView(root,ctx){
   // 3) 금 장신구·전체 단계  4) 탑·우주 입구
   const doors=add(el('div',null,'st-doors'),door(h,'탑',towerSub(whole,date,money),ctx.openTower),door(h,'우주',universeSub(whole,nowIso),ctx.openUniverse));
   add(out,add(el('div',null,'st-body'),avatar,add(el('div',null,'st-side'),daily.node,todayCard,ladderCard(h,proj),doors)));
+  const build=buildingPanel(h,doc,whole,date,money);   // V8W6 3: 나만의 건물(상태 아래 전체 폭)
+  if(build)add(out,build);
 
   const paint=()=>{
     const iso=String(ctx.now());
@@ -270,6 +308,7 @@ export function renderStatusView(root,ctx){
   };
   const stop=liveTick(out,doc,paint);
   root.append(out);
+  build?.paintBuilding();   // 문서에 붙은 뒤 그린다(3D는 붙은 칸에만 올린다)
   return out;
 }
 

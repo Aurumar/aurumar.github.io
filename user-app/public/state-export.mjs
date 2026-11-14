@@ -5,7 +5,7 @@
 // 8절(공부 요약: 과목명과 숫자만)·9절(건강 요약: 수면·걸음 평균과 기록 일수만)은 토글이 기본 꺼짐이고, 소유자가 켠 절만 단추 내보내기와 쌓기 뒤 자동 내보내기에 들어간다(토글을 켠 것이 동의, 통제탑 결정 B61).
 // 시험 점수·등급(life.results)·주간 목표(life.goals)·칭호(life.profile)·책 이름과 쪽 번호는 읽지 않는다(통제탑 결정 D46 ★4, 넣으면 외부 AI 전송 범위 변경). 형식 v1 그대로다.
 // 형식 정본: AUTOPILOT\design\STATE_FORMAT_V1.md (8·9절 범위는 작업 B47 지시서가 정한다).
-import {lifeDefs,entryDone,nearestExam,dDay,shiftDay,kstDate,hhmmFromIso,subjectOfSession,diaryOpenDate} from './life-model.mjs';
+import {lifeDefs,entryDone,nearestExam,dDay,shiftDay,kstDate,hhmmFromIso,subjectOfSession,diaryOpenDate,examStatusOf} from './life-model.mjs';
 import {achieve,SUBJECT_BY_CODE,studyBricks,smallWeight} from './life-achieve.mjs';
 import {todayPlanModel} from './plan-today.mjs';
 import {readPlanMarks} from './life-plan.mjs';
@@ -106,7 +106,7 @@ function vaultInfo(fin,today){
 function examInfo(life,today){
   if(!life)return null;
   const exams=lifeDefs(life).exams,near=nearestExam(exams,today),csat=csatTarget(exams);
-  const csatOut=csat&&csat.date>=today?{name:clean(csat.name),status:clean(csat.status,4),date:csat.date,dDay:dDay(today,csat.date),isNearest:Boolean(near&&near.id===csat.id)}:null;
+  const csatOut=csat&&csat.date>=today?{name:clean(csat.name),status:clean(examStatusOf(csat),4),date:csat.date,dDay:dDay(today,csat.date),isNearest:Boolean(near&&near.id===csat.id)}:null;
   return {nearest:near?{name:clean(near.name),date:near.date,dDay:near.dDay}:null,csat:csatOut};
 }
 function yesterdayInfo(life,today,includeLine){

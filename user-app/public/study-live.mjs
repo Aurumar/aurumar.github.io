@@ -156,12 +156,14 @@ function brickRing(h,size){
   };
   return {node:n,paint};
 }
-// DS1 (설계 V5 §2.3): 시계 = 시·분(굵게) · 콜론(1초 주기 1→0.6) · 초(같은 색 60%·가늘게). 색은 셋 다 --ink-900 하나. 좁은 화면은 2줄(시:분 / 초).
-// 글자 전체(textContent)는 여전히 HH:MM:SS 그대로다.
+// DS1 (설계 V5 §2.3): 시계 = 시·분 · 콜론 · 초. 좁은 화면은 초가 작다.
+// V8W2-5 (소유자 2026-11-14 "시·분이 0인데 진하고 초가 연하다"): 값이 0인 앞쪽 단위는 연하게, 가장 큰 0 아닌 단위부터 아래는 모두 진하게(00:00:00이면 초만 진하게).
+// data-lead = 연한 앞 단위 수(0 = 모두 진함 · 1 = 시 · 2 = 시:분 묶음). 단위 아래 작은 "시간·분·초" 라벨은 CSS ::after(글자 전체 textContent는 여전히 HH:MM:SS).
+export const clockLead=t=>{const [a,b]=String(t).split(':');return Number(a)?0:Number(b)?1:2;};
 function clockNode(h,text,cls){
   const {el}=h,n=el('strong',null,cls),hm=el('span',null,'live-clock-hm'),hh=el('span',null,'live-clock-h'),mm=el('span',null,'live-clock-m'),ss=el('span',null,'live-clock-s');
   hm.append(hh,el('span',':','live-colon'),mm);n.append(hm,el('span',':','live-colon live-colon-s'),ss);
-  const set=t=>{const [a,b,c]=String(t).split(':');hh.textContent=a??'';mm.textContent=b??'';ss.textContent=c??'';};
+  const set=t=>{const [a,b,c]=String(t).split(':');hh.textContent=a??'';mm.textContent=b??'';ss.textContent=c??'';n.setAttribute('data-lead',String(clockLead(t)));};
   set(text);
   return {node:n,set};
 }
@@ -297,7 +299,7 @@ export function dailyCharStrip(doc,{useArt=false,cls='',title='오늘의 캐릭�
 
 // 작은 카드(오늘 화면 맨 위) + 덮개(open일 때). 단추 동작은 on.* (life-ui). 반환: {card, dialog, stop}.
 // on = {finish, pause, resume, expand, collapse, storage}. 덮개를 닫아도(작게 보기) 타이머는 멈추지 않는다. note = 덮개에 보일 한 줄(R42: 덮개가 오늘 화면의 안내를 가리므로).
-export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=null,goalBricks=null,note=null,on={}}){
+export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=null,ddayActive=null,goalBricks=null,note=null,on={}}){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button}=h,win=doc.defaultView??null;
   const read=()=>liveState({timer,nowIso:String(ctx.now()),study:ctx.getWhole()?.study??null,draftCard,exams,goalBricks});
   let s=read();
@@ -319,7 +321,7 @@ export function renderLive(ctx,{timer,subject,open=false,draftCard=null,exams=nu
     const todaySec=el('span','오늘 '+hmsShort(s.todayMs),'muted small live-today-sec'),ring=brickRing(h,120);
     const next=el('p',nextText(s),'live-next'),gold=el('p',goldText(s),'live-gold'+(s.session.gold?' done':''));
     const todayChip=el('span','오늘 '+hmText(s.todayMin),'live-chip'),weekChip=el('span','이번 주 '+hmText(s.weekMin),'live-chip');
-    const chips=ddayChips(exams,s.date);   // V6A: 오늘 카드·계획 탭과 같은 D-day 두 칩(가까운 시험 먼저 · 최종 수능)
+    const chips=ddayChips(exams,s.date,ddayActive);   // V6A: 오늘 카드·계획 탭과 같은 D-day 두 칩(가까운 시험 먼저 · 최종 수능). V8W2: 활성 칩도 같은 값(life-ui가 lb.dday.active를 읽어 넘긴다, 여기서는 저장소를 읽지 않는다)
     const examChip=chips.length?ddayChipsNode(h,chips,'live-dday'):el('span',examText(s.exam),'live-chip live-dday');
     const bricks=el('p',bricksText(s),'live-bricks'),cellSlot=el('div',null,'live-brick-cells'),overlap=el('p',null,'notice live-overlap'),restNote=el('p','30분 넘게 쉬었어요 · 다시 집중을 누르면 앞부분을 먼저 담고 새로 시작해요','notice live-rest-over');
     const paintBands=()=>{overlap.textContent=s.overlapMin?'다른 기기에서 담은 타이머 '+s.overlapMin+'분이 지금 시간과 겹쳐요 · 끝낼 때 한쪽만 담으세요':'';overlap.hidden=!s.overlapMin;restNote.hidden=!restOver(timer,s);};

@@ -17,8 +17,11 @@ export async function prepareLegacySettlement(material,state,{confirmed,sourceCh
  return {registration,descriptor,ack,decision,intentId:randomId()};
 }
 export async function transitionReviewedAppPending(store,transport,auth,{confirmed,sourceCheckpoint,decision}={}){
- check(store.storeFormat===2&&confirmed===true&&same(store.checkpoint,sourceCheckpoint),'B4_REVIEWED_TRANSITION_REQUIRED');await auth.requireRecentMfa();
- let plan=store.state.sequentialSync.enrollment?.legacySettlement;
- if(!plan){plan=await prepareLegacySettlement(store.material,store.state,{confirmed,sourceCheckpoint,decision});await store.transaction(state=>{check(!state.sequentialSync.enrollment.legacySettlement,'B4_LEGACY_PLAN_COLLISION');state.sequentialSync.enrollment.legacySettlement=copy(plan);});}
- const response=await transport.call('settleLegacyEnrollment',plan);return store.transitionPending(response,{confirmed,sourceCheckpoint:store.checkpoint});
+ const reviewed=()=>check(same(store.checkpoint,sourceCheckpoint),'B4_REVIEWED_TRANSITION_REQUIRED');
+ check(store.storeFormat===2&&confirmed===true,'B4_REVIEWED_TRANSITION_REQUIRED');reviewed();await auth.requireRecentMfa();
+ // DEFR1 (GPT 8차 A6-002): await 사이에 다른 쓰기가 끼면 검토한 출발점이 아니다. MFA 뒤·계획 저장 직전(트랜잭션 안)에 다시 확인하고,
+ // 전환에는 지금의 checkpoint가 아니라 검토값(계획을 저장했으면 그 저장 직후 값)을 넘겨 원격 정리 중의 변경도 transitionPending이 거절한다.
+ reviewed();let plan=store.state.sequentialSync.enrollment?.legacySettlement,expected=sourceCheckpoint;
+ if(!plan){plan=await prepareLegacySettlement(store.material,store.state,{confirmed,sourceCheckpoint,decision});await store.transaction(state=>{reviewed();check(!state.sequentialSync.enrollment.legacySettlement,'B4_LEGACY_PLAN_COLLISION');state.sequentialSync.enrollment.legacySettlement=copy(plan);});expected=store.checkpoint;}
+ const response=await transport.call('settleLegacyEnrollment',plan);return store.transitionPending(response,{confirmed,sourceCheckpoint:expected});
 }

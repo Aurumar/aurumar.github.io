@@ -46,7 +46,17 @@ export function formatKRW(n){
   return (neg?'-':'')+abs.replace(/\B(?=(\d{3})+(?!\d))/g,',')+'원';
 }
 
+// DEFR2 (MG01, 소유자 승인 2026-11-14): 선택 키 opening = {amount: 기초잔액(원 단위 정수 문자열, 0·음수 가능), date: 기준일(그날 거래까지 반영된 잔액)}.
+// 키가 없으면 기초잔액 모름(옛 기록 그대로). 잔액은 저장하지 않고 화면에서 계산한다(public/fin-ledger.mjs accountBalance).
+// 옛 앱은 이 키가 있는 기록을 모양 검사에서 거절한다(INVALID_FIN_SCHEMA) → 배포 때 모든 기기를 같은 날 업데이트.
 function validateAccount(d){
+  // opening이 있으면 먼저 따로 검사하고, 나머지는 원래 다섯 키 그대로 검사한다.
+  if(d&&typeof d==='object'&&Object.hasOwn(d,'opening')){
+    requireValue(Object.getPrototypeOf(d)===Object.prototype,'INVALID_FIN_SCHEMA');
+    const {opening,...rest}=d;shape(opening,['amount','date']);
+    requireValue(typeof opening.amount==='string'&&SIGNED.test(opening.amount)&&dateOK(opening.date),'INVALID_FIN_OPENING');
+    d=rest;
+  }
   shape(d,['name','type','issuer','active','note']);
   text(d.name,60,false);text(d.issuer,40);text(d.note,500);
   requireValue(ACCOUNT_TYPES.includes(d.type)&&bool(d.active),'INVALID_FIN_ACCOUNT');
@@ -215,6 +225,7 @@ export function finTransition(v,old,ctx,provenance){
     }
   }
   if(type==='FIN_ACCOUNT'&&old)requireValue(old.data.type===d.type,'FIN_ACCOUNT_TYPE_IMMUTABLE');
+  if(type==='FIN_ACCOUNT'&&d.opening)requireValue(dateOK(provenance.recordedLocalDate)&&d.opening.date<=provenance.recordedLocalDate,'FUTURE_FIN_OPENING_REJECTED');
   if(type==='FIN_RULE')requireValue(d.accountId===null||get(ctx,'FIN_ACCOUNT',d.accountId),'UNKNOWN_FIN_ACCOUNT');
   // 같은 달에 시작하는 예산은 하나만(어느 예산이 적용되는지 모호하지 않게).
   if(type==='FIN_BUDGET')for(const x of ctx.entities.values())requireValue(!(x.entityType==='FIN_BUDGET'&&x.entityId!==id&&x.data.effectiveFrom===d.effectiveFrom),'FIN_BUDGET_DUPLICATE_MONTH');

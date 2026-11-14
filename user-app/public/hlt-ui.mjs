@@ -24,6 +24,7 @@ export const HLT_ERROR_TEXT=Object.freeze({
   APP_ENTITY_LIMIT:'개수 한도에 닿았습니다.',STALE_HEADS:'다른 기기에서 먼저 바뀌었습니다. 다시 받아 합친 뒤 쌓으세요.',BROKEN_HLT_WAKE_REFERENCE:'맑아짐 기록은 같은 카드의 기상 기록을 가리켜야 합니다.',
   MD_NOT_WRITE_READY:'지금은 서버에 쌓을 수 없습니다. 임시 입력은 이 기기에 남아 있습니다.',VERSION_CONFLICT:'다른 기기가 먼저 쌓았습니다. 다시 쌓기를 누르면 받아서 합칩니다.',
   ABORTED:'서버가 이 쌓기를 받지 않았습니다(기록되지 않음) · 임시 입력은 그대로 있습니다. 다시 쌓을 수 있습니다.',
+  INVALID_HLT_DOSE:'용량은 0보다 크고 '+MAX_AMOUNT+' 이하인 숫자로 적어 주세요.',INVALID_HLT_TEXT:'글자 칸을 확인해 주세요(이름 1~'+MAX_LABEL+'자, 메모 '+MAX_NOTE+'자까지).',   // V8W5: 내 약 설정·직접 용량
   LOG_LIMIT:'저장 공간이 꽉 찼어요. 입력은 이 기기에 남아 있어요. 이월이 필요해요.',   // OPS1A: 금고 평생 연산 10,000(fin-ledger LOG_LIMIT_TEXT와 같은 글, 건강 화면 import 그래프는 그대로라 글로 둔다 · 시험 OPS1A-3b)
 });
 export const hltErrorText=code=>HLT_ERROR_TEXT[code]??(code?'처리하지 못했어요 · 임시 입력은 그대로 있습니다.'+' · 문의 코드 ▾\u2060'+code+'\u2060':'쌓지 못했습니다.');
@@ -51,11 +52,13 @@ export function fellAsleepAt(hhmm,endAt){
   return !t?null:Date.parse(t)>Date.parse(endAt)?isoFromKst(day,hhmm,-1):t;
 }
 export const SLEEP_SHIFTS=Object.freeze([[15,'+15분'],[30,'+30분'],[60,'+1시간']]);
+export const SLEEP_INPUT_TYPES=Object.freeze(['sleep','wake']);   // V8W5: 건강 화면에서 뺀 수면 입력 항목(오늘 화면에 있음)
 const mmdd=date=>date.slice(5);
 export const SLEEP_TEXT=Object.freeze({
   saved:p=>'취침 '+hhmmKst(p.item.startAt)+' · '+mmdd(p.date)+' 카드 임시 입력에 적어 두었어요 · 기상을 누르면 수면으로 완성돼요.',
   tip:'잠 버튼 = 잠자리에 든 시각, 실제 잠든 시각은 기상 때 고칠 수 있어요.',
   pending:p=>'취침 기록 중 · '+hhmmKst(p.item.startAt)+' (KST) · '+mmdd(p.date)+' 카드 임시 입력 — 기상을 누르면 수면으로 완성돼요.',
+  pendingEdit:p=>'끝나지 않은 수면 · '+hhmmKst(p.item.startAt)+' (KST) · '+mmdd(p.date)+' 카드 임시 입력 — 그 날짜의 "그날 항목"에서 수면을 수정해 끝 시각을 넣으세요.',   // V8W5: 건강 화면에 기상 버튼이 없을 때
   woke:'기상과 수면을 임시 입력에 넣었습니다.',wakeOnly:'기상을 임시 입력에 넣었습니다(수면은 직접 입력하세요).',
   moved:m=>mmdd(m.from)+' 카드에 있던 끝나지 않은 수면을 옮겨 왔어요'+(m.restack?' · 그 카드도 다시 쌓아 주세요.':'.'),
   stale:date=>'끝나지 않은 수면이 '+mmdd(date)+' 카드에 남아 있어요(48시간 넘음) · 그 카드에서 직접 고치세요.',
@@ -137,6 +140,7 @@ export function createPorts(ctx){
   };
 }
 
+export const CLARITY_NO_WAKE='맑아짐은 건강 카드의 기상 항목에 이어 적어요 · 기상 입력은 오늘 화면으로 옮겨서, 이 카드에 기상 항목이 없으면 "맑아짐 추가"가 보이지 않아요.';
 // ---- 화면 상태(모듈 단위, 저장하지 않는다: 앱을 다시 열면 숨김 항목도 다시 숨겨진다) ----
 export function createHealthState(){return {date:null,showPrivate:false,showRemoved:false,notices:[],message:null,error:false,form:null,flowState:null,flow:null,ports:null,pendingSleep:null,sleepFix:null};}
 const profileMapAll=raw=>new Map(raw.profiles.map(p=>[p.key,p]));
@@ -145,13 +149,21 @@ export function viewCard(st,fs){try{return shownCard(fs,st.ports?.latest?.(fs.ca
 // 프로필 저장: 다른 기기가 먼저 같은 프로필을 고쳤으면(STALE_HEADS) 최신을 받아 그 위에 방금 저장하려던 값을 그대로 쓴다(B3d: 비공개·삭제는 양방향 자유라 합치는 규칙이 없다).
 // B17 (A8-D03, 통제탑 결정): field를 주면(지금은 '사용 중단/다시 사용' 버튼만) 재시도 때 최신 프로필을 다시 읽어 그 필드 하나만 바꿔 저장한다(버튼의 의도는 한 필드뿐).
 // field 없는 저장(프로필 편집·비공개·삭제·복원)은 기존 "전체 값 마지막 쓰기" 그대로(hlt-profile-rules P07, hlt-ui H10).
-export async function saveProfile(ctx,key,mine,heads,reason,{field=null}={}){
+// V8FIX M-03: base(화면을 그릴 때 읽은 값)를 주면(지금은 "내 약 설정" 저장) 재시도 때 최신 위에 내가 바꾼 칸만 얹는다(life-flow mergeDefinition과 같은 방식).
+// 다른 기기가 바꾼 칸(숨김 enabled·삭제 removed 등)은 내가 안 바꿨으면 그대로 남는다. 얹을 것이 없으면 쓰지 않는다.
+export async function saveProfile(ctx,key,mine,heads,reason,{field=null,base=null}={}){
   try{await ctx.entity('HLT_PROFILE',key,mine,heads,reason);}
   catch(e){
     if(e?.code!=='STALE_HEADS'||!ctx.reload)throw e;
     await ctx.reload();const latest=ctx.getWhole().hlt.profiles.find(p=>p.key===key);
     if(!latest)throw e;
     if(field&&latest.data[field]===mine[field])return;   // 최신이 이미 그 값이다: 다시 쓰지 않는다
+    if(base&&!field){
+      const out={...latest.data};
+      for(const k of Object.keys(mine))if(mine[k]!==base[k])out[k]=mine[k];
+      if(Object.keys(out).every(k=>out[k]===latest.data[k]))return;
+      await ctx.entity('HLT_PROFILE',key,out,latest.heads,reason);return;
+    }
     await ctx.entity('HLT_PROFILE',key,field?{...latest.data,[field]:mine[field]}:mine,latest.heads,reason);
   }
 }
@@ -354,7 +366,7 @@ export function renderHealth(root,ctx,st){
   const chipEl=el('p',chipText(),'hlt-chip');
   const dateIn=input(date,{inputmode:'numeric',placeholder:'YYYY-MM-DD',maxlength:'10'});
   const go=d=>()=>{if(!dateKeyOK(d)){st.message='날짜는 YYYY-MM-DD 형식이어야 합니다.';st.error=true;void ctx.rerender();return;}st.date=d;st.form=null;st.message=null;st.notices=[];void ctx.perform(async()=>{await prepareHealth(ctx,st);await ctx.rerender();});};
-  const nav=add(el('div',null,'buttons'),button('◀ 전날',()=>go(shiftDay(date,-1))()),dateIn,button('이동',()=>go(dateIn.value.trim())()),button('▶ 다음날',()=>go(shiftDay(date,1))()),button('오늘',()=>go(st.today)()));if(nav.dataset)nav.dataset.freshKeep='1';   // V7D2: 기준 전 날짜를 보면 날짜 이동만 남기고 잠근다
+  const nav=add(el('div',null,'buttons day-nav'),button('◀ 전날',()=>go(shiftDay(date,-1))()),dateIn,button('이동',()=>go(dateIn.value.trim())()),button('▶ 다음날',()=>go(shiftDay(date,1))()),button('오늘',()=>go(st.today)()));if(nav.dataset)nav.dataset.freshKeep='1';   // V7D2: 기준 전 날짜를 보면 날짜 이동만 남기고 잠근다
   add(head,nav,add(el('div',null,'rc-line'),chipEl,ctx.clearMenu?.('HLT_DAY',date)??null));   // V7D2: 쌓은 건강 카드 ⋯ 메뉴
   if(st.ports?.persistent===false)add(head,hint('이 환경에는 임시 저장 공간이 없어 임시 입력이 앱을 닫거나 새로고침하면 사라집니다. 쌓기 전에 닫지 마세요. (PC 앱에서는 임시 입력이 기기에 암호화되어 남습니다.)'));
   if(box){
@@ -385,19 +397,24 @@ export function renderHealth(root,ctx,st){
   const follow=(s,text=null)=>{const d=s?.card?.date,moved=Boolean(d)&&d!==date;if(moved){st.date=d;st.form=null;st.notices=[];}st.message=[text,moved?'빠른 입력은 오늘('+d+') 카드에 들어갑니다 · 화면을 그 날짜로 옮겼습니다.':null].filter(Boolean).join(' · ')||null;};
   // K1: 기상 문구. 수면을 닫았으면 옮김 안내, 48시간이 넘은 열린 수면은 남아 있다고 알린다.
   const wakeText=w=>w.withSleep?[SLEEP_TEXT.woke,w.moved?SLEEP_TEXT.moved(w.moved):null].filter(Boolean).join(' · '):w.staleSleep?SLEEP_TEXT.wakeOnly+' · '+SLEEP_TEXT.stale(w.staleSleep):SLEEP_TEXT.wakeOnly;
+  // V8W5 (소유자 2026-11-14): 수면 입력(지금 기상·지금 취침·잠든 시각 다듬기·수면/기상 추가)은 오늘 화면에 있으니 건강 화면에서 뺀다.
+  // 쌓인 수면·기상 항목은 "그날 항목"에 그대로 보이고 고칠 수 있다(자료·기록 그대로). 흐름(quickSleep·quickWake·setSleepStart)은 그대로 두고,
+  // ctx.sleepQuick이 참일 때만 예전 줄을 그린다(앱은 켜지 않는다 · K1 화면 시험이 이 길로 흐름을 계속 검사한다).
+  const sleepQuick=Boolean(ctx.sleepQuick);
   const quick=add(el('div',null,'buttons hlt-quick'),
-    button('지금 기상',act(async()=>{
+    sleepQuick?button('지금 기상',act(async()=>{
       const w=await st.flow.quickWake();follow(w,wakeText(w));
       if(w.sleep)st.sleepFix={date:w.sleep.date,id:w.sleep.id,button:w.sleep.startAt,startAt:w.sleep.startAt,endAt:w.sleep.endAt,how:SLEEP_TEXT.button,watch:w.watch??null,duplicate:Boolean(w.duplicate),typing:false};
-    }),'primary'),
+    }),'primary'):null,
     // K1 (DEFECT-10 B안): 취침은 깬 날 카드 초안의 열린 수면이다(PC 저널·브라우저 상자에 남음). 화면은 옮기지 않는다.
-    button('지금 취침',act(async()=>{const r=await st.flow.quickSleep();if(r?.pendingSleep)st.message=SLEEP_TEXT.saved(r.pendingSleep)+(takeSleepTip(ctx.storage??globalThis.localStorage)?' '+SLEEP_TEXT.tip:'');})));
+    sleepQuick?button('지금 취침',act(async()=>{const r=await st.flow.quickSleep();if(r?.pendingSleep)st.message=SLEEP_TEXT.saved(r.pendingSleep)+(takeSleepTip(ctx.storage??globalThis.localStorage)?' '+SLEEP_TEXT.tip:'');})):null);
   for(const k of MEAL_KINDS)add(quick,button(MEAL_TEXT[k],act(async()=>{follow(await st.flow.quickMeal(k));})));
   const habitProfiles=view.profiles.filter(p=>p.data.kind==='HABIT'&&p.data.enabled);
   for(const p of habitProfiles)add(quick,button(p.data.label,act(async()=>{follow(await st.flow.quickHabit(p.key,p.data));})));
-  add(q,quick);if(pend&&Date.parse(ctx.now())-Date.parse(pend.item.startAt)<=MAX_SLEEP_MS)add(q,hint(SLEEP_TEXT.pending(pend)));   // 48시간이 넘은 열린 수면은 기상이 닫지 않으므로 "기록 중"이라 하지 않는다
+  // 48시간이 넘은 열린 수면은 기상이 닫지 않으므로 "기록 중"이라 하지 않는다. V8W5: 기상 버튼이 없는 화면에서는 항목 수정으로 끝 시각을 넣으라고 알린다.
+  add(q,quick);if(pend&&Date.parse(ctx.now())-Date.parse(pend.item.startAt)<=MAX_SLEEP_MS)add(q,hint(sleepQuick?SLEEP_TEXT.pending(pend):SLEEP_TEXT.pendingEdit(pend)));
   // K1 (4·5): 기상 직후 잠든 시각 다듬기. 기본은 잠 버튼 시각 그대로이고, 고르면 그 수면의 startAt만 바꾼다(연산 0). +n분은 잠 버튼 시각 기준이며 기상 시각을 넘는 버튼은 숨긴다.
-  const fix=st.sleepFix;
+  const fix=sleepQuick?st.sleepFix:null;
   if(fix){
     const fixTo=(startAt,how)=>act(async()=>{st.sleepFix=fix;await st.flow.setSleepStart(fix.date,fix.id,startAt);st.sleepFix={...fix,startAt,how,typing:false};st.message=SLEEP_TEXT.fixed(startAt);});
     const row1=add(el('div',null,'buttons hlt-sleep-shift'));
@@ -424,8 +441,12 @@ export function renderHealth(root,ctx,st){
     button('수정',()=>{st.form={type:it.type,id:it.id,item:it};void ctx.rerender();}),
     button('삭제',act(async()=>{await st.flow.removeItem(date,it.id);})))));
   const adders=add(el('div',null,'buttons'));
-  for(const t of ITEM_TYPES){if(t==='steps'&&shown.items.some(i=>i.type==='steps'))continue;add(adders,button(itemLabel[t]+' 추가',()=>{st.form={type:t,id:null,item:null};void ctx.rerender();}));}   // 걸음은 카드당 1개: 있으면 "수정"으로 고친다
+  // V8FIX M-07: 맑아짐은 같은 카드의 기상 항목을 가리켜야 한다(hlt-model clarity.wakeId → BROKEN_HLT_WAKE_REFERENCE). V8W5로 건강 화면에서 기상을 만들 수 없게 됐으므로
+  // 그 카드에 기상 항목이 없으면 "맑아짐 추가"를 숨기고 한 줄 알린다(오늘 화면 기상은 생활 기록의 습관 시각이라 건강 카드 항목이 아니다 · 새 칸·새 기록 종류 없이).
+  const noWake=!sleepQuick&&!shown.items.some(i=>i.type==='wake');
+  for(const t of ITEM_TYPES){if(t==='steps'&&shown.items.some(i=>i.type==='steps'))continue;if(!sleepQuick&&SLEEP_INPUT_TYPES.includes(t))continue;if(t==='clarity'&&noWake)continue;add(adders,button(itemLabel[t]+' 추가',()=>{st.form={type:t,id:null,item:null};void ctx.rerender();}));}   // 걸음은 카드당 1개: 있으면 "수정"으로 고친다 · V8W5: 수면·기상 추가는 오늘 화면으로
   add(list,adders);
+  if(noWake)add(list,hint(CLARITY_NO_WAKE));
   // B58B: 다리가 있고 healthState().supported일 때만 보인다(PC·노트북·iPad·브라우저에서는 ctx.foldHealth()가 null). 교체 확인창이 없는 환경에서는 덮어쓰지 않는다.
   const fold=ctx.foldHealth?.()??null;
   if(fold?.healthState()?.supported)add(list,add(el('div',null,'buttons hlt-fold'),button(FOLD_TEXT.button,act(async()=>{
@@ -520,10 +541,12 @@ export function renderHealth(root,ctx,st){
 export const STATE_KINDS=Object.freeze([['fatigue','무기력'],['depression','우울']]);
 export const STATE_MAX=4;
 export const UNIT_TEXT=Object.freeze({tablet:'정',capsule:'캡슐',mg:'mg',mL:'mL'});
-export const DOSE_STEPS=Object.freeze([[0.5,'반'],[1,'1배'],[2,'2배']]);
 export const MED_NOTE='약은 처방대로 · 바꾸려면 의사와 상의하세요';
 export const NAP_CHIPS=Object.freeze([15,30,60]);
-export const EASY_TEXT=Object.freeze({meds:'약 복용',medsSub:'칩을 누르면 지금 시각 · 기본 용량으로 기록해요. 시각·용량은 바꿀 수 있어요.',noMeds:'내 약이 없어요 · 아래 "약·습관 목록"에서 약을 등록하세요(앱이 약 이름을 미리 넣지 않아요).',
+export const EASY_TEXT=Object.freeze({meds:'약 복용',medsSub:'내 약을 누르면 지금 시각으로 바로 기록해요 · 용량은 칩으로 골라요(기본은 내 약 설정의 평소 용량, 고른 칩은 그 기록에만).',
+  setupSame:'바뀐 것이 없어요.',hidePending:'이 약의 아직 안 쌓은 복용을 먼저 쌓지 못해 숨기지 않았어요 · "카드 쌓기"로 쌓은 뒤 다시 숨기세요.',noMeds:'내 약이 없어요 · "내 약 설정"에서 처음 한 번 이름과 용량을 넣으세요(앱이 약 이름을 미리 넣지 않아요).',
+  pickDose:'용량 고르기',custom:'직접 입력',setup:'내 약 설정',setupClose:'내 약 설정 닫기',setupAdd:'내 약 추가',setupSaved:'내 약을 저장했어요.',setupAdded:'내 약을 추가했어요.',
+  setupSub:'처음 한 번만 넣으면 그 뒤로는 칩만 누르면 돼요 · 숨긴 약은 칩에서 빠지고 지난 기록은 그대로예요 · 용량 칩은 여기 용량과 기록에 쓴 용량으로 만들어져요.',
   state:'지금 상태',stateSub:'0 없음 ~ 4 아주 심함 · 누르면 지금 시각으로 기록 · 하루에 여러 번 가능',memo:'메모 한 줄 (선택, 그날 메모 칸에 붙어요)',
   saved:'기록했어요',kept:'임시 입력에 넣었어요 · "카드 쌓기"로 쌓으세요',batched:'이 기기에 넣었어요 · 5분 안에 자동으로 쌓여요',timeline:'하루 타임라인',summary:'심해지는 시간대 (최근 14일)',few:'자료 부족',
   napNone:'낮잠: 안 잠',napAsk:'낮잠 잤음',nap:m=>'낮잠 '+m+'분',
@@ -556,6 +579,64 @@ export async function easyAdd(ctx,st,item,{note=null}={}){
   return {status:r.status,error:!ok&&r.status!=='NEEDS_CHOICE',text:ok?EASY_TEXT.saved:r.status==='REJECTED'?hltErrorText(r.code):EASY_TEXT.kept};
 }
 export function doseItem(profile,{amount,at}){return {type:'dose',profileKey:profile.key,amount,unit:profile.data.unit,at};}
+// ---- V8W5 약 칩 (소유자 2026-11-14) ----
+// 약 이름·용량은 소유자가 앱 안 "내 약 설정"에서 넣는다(코드·시험에는 가짜 이름만). 저장은 기존 HLT_PROFILE(MED)·HLT_DAY dose 그대로(건강 기록과 같은 금고 경로, 새 칸 없음).
+// 용량 칩·기본 선택은 새 칸 없이 복용 기록(쌓인 카드 + 보고 있는 날짜의 이 기기 초안)에서 읽는다. 화면에서 고른 칩(st.medDose)은 저장하지 않는다.
+export const DOSE_CHIP_MAX=6;
+const amountText=v=>String(v);
+export function doseHistory(raw,st=null){
+  const m=new Map(),put=(date,i)=>{if(i?.type==='dose'&&typeof i.amount==='number'&&i.amount>0&&i.amount<=MAX_AMOUNT&&isoOK(i.at))m.set(date+'|'+i.id,{key:i.profileKey,amount:i.amount,unit:i.unit,at:i.at});};
+  for(const d of raw?.days??[])for(const i of d.data?.items??[])put(d.date,i);
+  const fs=st?.flowState;if(fs?.status==='LOCAL_DRAFT'&&fs.card)for(const i of fs.card.items??[])put(fs.card.date,i);
+  return [...m.values()].sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
+}
+// 용량 칩 = 내 약 설정의 용량 + 이 약에 기록한 용량(최근 것부터, 모두 합쳐 6개까지), 작은 값부터.
+// V8FIX M-05: 지금 단위와 같은 단위로 쓴 기록만 칩이 된다(mg → 정으로 바꾼 뒤 옛 mg 숫자에 "정"이 붙어 기록되지 않게).
+export function doseChips(hist,p){
+  const out=new Set([p.data.defaultAmount]);
+  for(const d of hist){if(out.size>=DOSE_CHIP_MAX)break;if(d.key===p.key&&d.unit===p.data.unit)out.add(d.amount);}
+  return [...out].sort((a,b)=>a-b);
+}
+// 고른 용량 = 이 화면에서 칩으로 고른 값 → 내 약 설정의 평소 용량.
+// V8FIX M-06 (통제탑 결정): 기본 = 설정의 "평소 용량". 기록할 때 고른 칩·직접 입력은 그 기록에만 쓰고 기본을 바꾸지 않는다(마지막 기록값·오타가 기본이 되지 않는다). hist는 부르는 쪽 모양을 위해 남긴다.
+export function chosenDose(hist,p,picked=null){return picked?.[p.key]??p.data.defaultAmount;}
+// V8FIX M-04: 이 기기 초안(보고 있는 날짜 + 초안이 남은 날짜) 가운데 그 약 복용이 든 카드를 쌓는다. 모두 쌓았거나 쌓을 것이 없으면 true.
+export async function stackPendingDoses(st,key){
+  if(!st.flow)return true;
+  const dates=[...new Set([st.flowState?.card?.date,...(st.draftDates??[])].filter(Boolean))].sort();
+  for(const date of dates){
+    const s=await st.flow.state(date);
+    if(s?.status!=='LOCAL_DRAFT'||!(s.card?.items??[]).some(i=>i.type==='dose'&&i.profileKey===key))continue;
+    const r=await st.flow.confirm(date);
+    if(r?.status!=='CONFIRMED'&&r?.status!=='ALREADY_APPLIED')return false;
+  }
+  return true;
+}
+// 내 약 설정: 이름 1칸 + 용량 + 단위 + 숨기기/다시 보이기(기존 enabled 칸). 용량 칩 여러 개·순서 바꾸기는 저장할 칸이 없어 하지 않았다(REPORT 소유자 확인 필요).
+function medSetup(h,ctx,st){
+  const {el,add,button,hint,input,select}=h,raw=st.raw;
+  const save=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{await fn();}catch(e){st.message=hltErrorText(e?.code);st.error=true;}await prepareHealth(ctx,st);await ctx.rerender();});
+  const fail=code=>{throw Object.assign(new Error(code),{code});};
+  const read=(name,amt,unit)=>{const label=name.value.trim(),v=num(amt.value);if(!label||[...label].length>MAX_LABEL)fail('INVALID_HLT_TEXT');if(!(v>0&&v<=MAX_AMOUNT))fail('INVALID_HLT_DOSE');return {label,defaultAmount:v,unit:unit.value};};
+  const unitSel=(v,label)=>{const s=select(UNITS.map(u=>[u,unitText(u)]),v);s.setAttribute('aria-label',label);return s;};
+  const box=add(el('div',null,'hlt-med-setup'),el('h3',EASY_TEXT.setup,'panel-title'),hint(EASY_TEXT.setupSub));
+  for(const p of raw.profiles.filter(x=>x.data.kind==='MED'&&!x.data.removed&&(st.showPrivate||!x.data.private))){
+    const d=p.data,name=input(d.label,{maxlength:String(MAX_LABEL),'aria-label':'약 이름'}),amt=input(String(d.defaultAmount),{inputmode:'decimal','aria-label':'평소 용량'}),unit=unitSel(d.unit,'단위');
+    // V8FIX M-03·L-18: 바뀐 칸이 없으면 쓰지 않는다(연산 0). 다른 기기와 겹치면 바꾼 칸만 얹는다(base). 단위·용량이 바뀌면 이 화면에서 고른 칩은 비운다.
+    const row=add(el('div',null,'hlt-med-setup-row'+(d.enabled?'':' hlt-med-hidden')),name,amt,unit,
+      button('저장',save(async()=>{const v=read(name,amt,unit);if(Object.keys(v).every(k=>v[k]===d[k])){st.message=EASY_TEXT.setupSame;return;}await saveProfile(ctx,p.key,{...d,...v},p.heads,'내 약 설정',{base:d});if(st.medDose)delete st.medDose[p.key];st.message=EASY_TEXT.setupSaved;})),
+      // V8FIX M-04: 숨기기 전에 이 약의 아직 안 쌓은 복용(이 기기 초안)을 먼저 쌓는다. 숨긴 뒤에는 그 복용이 든 카드 전체가 HLT_PROFILE_DISABLED로 거절되기 때문(금고 규칙은 그대로).
+      button(d.enabled?'숨기기':'다시 보이기',save(async()=>{if(d.enabled&&!(await stackPendingDoses(st,p.key))){st.message=EASY_TEXT.hidePending;st.error=true;return;}await saveProfile(ctx,p.key,{...d,enabled:!d.enabled},p.heads,d.enabled?'내 약 숨기기':'내 약 다시 보이기',{field:'enabled'});})),
+      d.enabled?null:el('span','숨김','hlt-med-badge'));
+    row.dataset.med=p.key;add(box,row);
+  }
+  const name=input('',{maxlength:String(MAX_LABEL),placeholder:'약 이름','aria-label':'새 약 이름'}),amt=input('',{inputmode:'decimal',placeholder:'용량','aria-label':'새 약 용량'}),unit=unitSel('mg','새 약 단위');
+  add(box,add(el('div',null,'hlt-med-setup-row hlt-med-setup-new'),name,amt,unit,button(EASY_TEXT.setupAdd,save(async()=>{
+    const v=read(name,amt,unit),key='med-'+ctx.uid().slice(0,12);
+    await ctx.entity('HLT_PROFILE',key,{key,kind:'MED',...v,enabled:true,private:false,removed:false},[],'내 약 추가');st.message=EASY_TEXT.setupAdded;
+  }),'primary')));
+  return box;
+}
 export function stateItem(kind,score,at){return {type:'change',kind,intensity:score,at,endAt:null};}
 // 낮잠: 분과 시작 시각(선택). 시작이 없으면 지금 끝난 것으로 본다(시작 = 지금 − 분).
 // FIX68 (HUNT65 F6, 통제탑): 시작 시각은 약 시각과 같은 규칙이다 — 지금보다 늦은 시각이면 전날. 그래도 끝이 지금보다 뒤(미래)면 만들지 않는다(napProblem = 이유 코드).
@@ -631,22 +712,33 @@ export function renderEasyHealth(root,ctx,st){
   const markSaved=fields=>{for(const n of fields())if(n?.dataset)n.dataset.editInit=String(n.value??'');};
   const run=(item,opts,fields=()=>[])=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;st.easy=null;try{const r=await easyAdd(ctx,st,item(),opts?.());st.message=r.text;st.error=r.error;markSaved(fields);}catch(e){st.message=hltErrorText(e?.code);st.error=true;}await prepareHealth(ctx,st);await ctx.rerender();});
   const out=add(el('div',null,'hlt-easy'),null);out.id='hlt-easy';
-  // 1) 약 복용
+  // 1) 약 복용 — V8W5: 내 약 칩을 누르면 바로 지금 시각으로 기록(타이핑 없음). 용량은 칩으로 고르고(기본 = 마지막에 기록한 용량), 직접 입력은 남긴다.
   const meds=raw.profiles.filter(p=>p.data.kind==='MED'&&p.data.enabled&&!p.data.removed&&(st.showPrivate||!p.data.private));
   const ms=add(section(EASY_TEXT.meds,EASY_TEXT.medsSub),null);
   if(!meds.length)add(ms,hint(EASY_TEXT.noMeds));
-  const chips=add(el('div',null,'buttons hlt-med-chips'),null);
-  for(const p of meds){const b=button(p.data.label+' '+p.data.defaultAmount+(UNIT_TEXT[p.data.unit]??p.data.unit),()=>{st.easy={med:p.key,step:1,custom:'',at:''};void ctx.rerender();},'secondary hlt-med-chip'+(st.easy?.med===p.key?' selected':''));add(chips,b);}
+  const hist=doseHistory(raw,st),unitOf=p=>UNIT_TEXT[p.data.unit]??p.data.unit;
+  const chips=add(el('div',null,'hlt-med-list'),null);
+  for(const p of meds){
+    const chosen=chosenDose(hist,p,st.medDose),u=unitOf(p);
+    const tap=button(p.data.label+' · '+amountText(chosen)+u,run(()=>{if(st.medDose)delete st.medDose[p.key];return doseItem(p,{amount:chosen,at:ctx.now()});}),'primary hlt-med-chip');   // M-06: 고른 칩은 이 기록에만(다음 기본은 다시 평소 용량)
+    tap.setAttribute('aria-label',p.data.label+' '+amountText(chosen)+u+' 지금 기록');
+    const doses=add(el('div',null,'buttons hlt-dose-chips'),el('span',EASY_TEXT.pickDose,'hlt-dose-label'));
+    for(const v of doseChips(hist,p)){const on=v===chosen,b=button(amountText(v)+u,()=>{(st.medDose??={})[p.key]=v;void ctx.rerender();},'secondary hlt-dose-chip'+(on?' selected':''));b.setAttribute('aria-pressed',String(on));add(doses,b);}
+    add(doses,button(EASY_TEXT.custom,()=>{st.easy={med:p.key,custom:'',at:''};void ctx.rerender();},'secondary hlt-dose-custom'+(st.easy?.med===p.key?' selected':'')));
+    const line=add(el('div',null,'hlt-med-row'),tap,doses);line.dataset.med=p.key;add(chips,line);
+  }
   add(ms,chips);
   const pick=st.easy?.med?meds.find(p=>p.key===st.easy.med):null;
   if(pick){
-    const e=st.easy,steps=add(el('div',null,'buttons hlt-dose-steps'),...DOSE_STEPS.map(([k,t])=>button(t+' ('+pick.data.defaultAmount*k+(UNIT_TEXT[pick.data.unit]??pick.data.unit)+')',()=>{e.step=k;e.custom='';void ctx.rerender();},e.step===k&&!e.custom?'selected':'secondary')));
-    const custom=input(e.custom,{inputmode:'decimal',placeholder:'직접 용량','aria-label':'직접 용량'});custom.addEventListener('input',()=>{e.custom=custom.value;});
+    const e=st.easy,chosen=chosenDose(hist,pick,st.medDose);
+    const custom=input(e.custom,{inputmode:'decimal',placeholder:amountText(chosen)+unitOf(pick),'aria-label':'직접 용량'});custom.addEventListener('input',()=>{e.custom=custom.value;});
     const at=input(e.at,{inputmode:'numeric',placeholder:'지금 '+hhmmKst(nowIso),'aria-label':'복용 시각 HH:MM (비우면 지금)',maxlength:'5'});at.addEventListener('input',()=>{e.at=at.value;});
-    const amountOf=()=>{const v=e.custom.trim()?num(e.custom):pick.data.defaultAmount*e.step;if(!(v>0&&v<=MAX_AMOUNT)){const x=new Error('INVALID_HLT_DOSE');x.code='INVALID_HLT_DOSE';throw x;}return v;};
+    const amountOf=()=>{const v=e.custom.trim()?num(e.custom):chosen;if(!(v>0&&v<=MAX_AMOUNT)){const x=new Error('INVALID_HLT_DOSE');x.code='INVALID_HLT_DOSE';throw x;}return v;};
     const atOf=()=>{const t=e.at.trim();if(!t)return nowIso;const iso=isoFromKst(today,t,Date.parse(isoFromKst(today,t,0)??'')>Date.parse(nowIso)?-1:0);if(!iso||!isoOK(iso)){const x=new Error('INVALID_HLT_TIME');x.code='INVALID_HLT_TIME';throw x;}return iso;};
-    add(ms,steps,add(el('div',null,'buttons'),field('직접 용량',custom),field('시각 (비우면 지금)',at),button('저장',run(()=>doseItem(pick,{amount:amountOf(),at:atOf()}),null,()=>[custom,at]),'primary'),button('취소',()=>{st.easy=null;void ctx.rerender();})));
+    add(ms,add(el('div',null,'buttons hlt-dose-direct'),el('strong',pick.data.label+' · '+EASY_TEXT.custom),field('직접 용량 ('+unitOf(pick)+')',custom),field('시각 (비우면 지금)',at),button('저장',run(()=>doseItem(pick,{amount:amountOf(),at:atOf()}),null,()=>[custom,at]),'primary'),button('취소',()=>{st.easy=null;void ctx.rerender();})));
   }
+  add(ms,add(el('div',null,'buttons'),button(st.medSetup?EASY_TEXT.setupClose:EASY_TEXT.setup,()=>{st.medSetup=!st.medSetup;void ctx.rerender();},'secondary hlt-med-setup-open')));
+  if(st.medSetup)add(ms,medSetup(h,ctx,st));
   add(ms,hint(MED_NOTE));
   add(out,ms);
   // 2) 지금 상태 0~4

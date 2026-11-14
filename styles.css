@@ -87,6 +87,9 @@
   --cal-chip-bg:var(--lb-gold-soft);--cal-chip-bar:var(--lb-gold-2);--cal-chip-text:var(--lb-ink-2);--cal-chip-deadline-bg:var(--lb-gold-1);--cal-chip-deadline-bar:var(--lb-gold-3);--cal-chip-deadline-text:var(--lb-ink-1);--cal-sun:var(--lb-bad);--cal-sun-num:var(--lb-bad);--cal-sat:var(--lb-chart-2);--cal-today-ring:var(--lb-gold-3);--cal-today-tint:var(--lb-gold-1);--cal-today-fill:#F3D98A;--cal-today-edge:#E8C45A;
   /* CAL2B (소유자 A안 2026-11-13): 달력의 금은 '오늘'에만. 고른 날 = 남색 2px 안쪽 테두리·남색 숫자, 공부량(벽돌) = 칸 아래 하늘색 막대 4단계, 계획 점 = 하늘색 4단 */
   --cal-pick-edge:#0C447C;--cal-heat-1:#E6F1FB;--cal-heat-2:#B5D4F4;--cal-heat-3:#85B7EB;--cal-heat-4:#378ADD;--cal-plan-dot:var(--cal-heat-4);
+  /* V8W1 (소유자 2026-11-14 "지난 날짜가 연하긴 한데 차이가 약하다"): 지나간 것(날짜·달) = 회색 바탕 + 연한 글자 + 가는 빗금. 글자 대비 바탕 4.1 · 빗금 선 3.3(≥3). 무채색이라 금지 띠 밖 */
+  --cal-past-bg:#ECEAE5;--cal-past-line:#D5D1C8;--cal-past-ink:#707070;
+  --cal-past:repeating-linear-gradient(135deg,var(--cal-past-line) 0 1px,transparent 1px 6px),var(--cal-past-bg);
   --cal-serif:"Palatino Linotype","Book Antiqua",Palatino,Georgia,"Noto Serif KR","Noto Serif CJK KR","AppleMyungjo",Batang,serif;
   font-family:var(--lb-font);color:var(--lb-ink-2);background:var(--lb-bg);line-height:1.6;font-size:var(--lb-body);
 }
@@ -1376,11 +1379,7 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 .plan-rail-today{stroke:var(--lb-ink-1);stroke-width:2}
 .plan-wall-brick{fill:none;stroke:var(--lb-line);stroke-width:.8}
 .plan-wall-brick.on{fill:var(--lb-gold-2);stroke:var(--lb-gold-3)}
-/* V6A: 연 보기 = HTML 행. 월 라벨은 본문 서체 15px·600·ink-600·오른쪽 정렬·고정폭 숫자, 줄 높이 = 주 칸 높이(--plan-year-cell) */
-.plan-yeargrid{--plan-year-cell:24px;display:grid;gap:4px;min-width:0}
-.plan-year-row{display:grid;grid-template-columns:3.2em minmax(0,1fr);align-items:center;column-gap:8px;min-width:0}
-.plan-year-month{font-family:var(--lb-font);font-size:15px;font-weight:600;color:var(--ink-600);text-align:right;font-variant-numeric:tabular-nums;line-height:var(--plan-year-cell);white-space:nowrap}
-.plan-year-weeks{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;min-width:0}
+/* V6A: 연 보기 주 칸 = HTML(높이 = --plan-year-cell), 채움 막대만 칸 안 SVG. V8W3-3: 12달 × 주 행 격자는 연간 계획(40절, 고른 달의 주 줄)으로 바뀌고 주 칸 모양만 남았다 */
 .plan-year-slot{position:relative;display:flex;align-items:center;justify-content:center;height:var(--plan-year-cell);min-width:0;border:1px solid var(--lb-line-soft);border-radius:var(--lb-r-1);background:var(--lb-heat-none);overflow:hidden}
 .plan-year-slot.now{border:2px solid var(--lb-gold-3)}
 .plan-year-bar{position:absolute;inset:0;width:100%;height:100%}
@@ -1448,13 +1447,16 @@ button.wr-choice.selected,button.wr-choice.selected:hover{background:var(--lb-go
 #view-content:has(>.plan-panel)>.plan-more{grid-column:1/-1}
 .plan-more>summary{min-height:40px;line-height:40px;cursor:pointer;font-weight:700;color:var(--lb-ink-2)}
 .plan-more[open]{display:grid;gap:var(--lb-s-3)}
-.pw-grid{display:grid;grid-template-columns:22px repeat(7,minmax(0,1fr));gap:3px;align-items:stretch;min-width:0}
-.pw-dayhead{display:grid;justify-items:center;padding:2px 0;border-radius:var(--lb-r-1);font-size:11px;line-height:1.2;color:var(--lb-ink-3)}
-.pw-dayhead strong{font-size:12px;color:var(--lb-ink-1)}
-.pw-dayhead.today{background:var(--lb-gold-soft);padding:3px 2px}
+.pw-grid{display:grid;grid-template-columns:22px repeat(7,minmax(0,1fr));gap:3px;align-items:stretch;min-width:0;padding-top:14px}
+.pw-dayhead{position:relative;display:grid;justify-items:center;align-content:center;gap:2px;padding:6px 0 4px;border-radius:var(--lb-r-1);line-height:1.2;color:var(--lb-ink-3);text-align:center}
+/* V8W3-1: 요일 PC 16px·폰 14px 굵게, 날짜 PC 24px·폰 20px, 모든 칸 같은 상자(오늘도 같은 자리·크기) */
+.pw-dayhead strong{font-size:16px;font-weight:700;line-height:1.2;color:var(--lb-ink-1)}
+.pw-dayhead small{display:flex;align-items:center;justify-content:center;width:32px;height:32px;font-size:24px;font-weight:700;line-height:1;color:var(--lb-ink-1);font-variant-numeric:tabular-nums}
+.pw-dayhead.today{background:var(--lb-gold-soft)}
 .pw-dayhead.today strong,.pw-dayhead.today small{color:var(--lb-ink-1);font-weight:800}
-.pw-dayhead.today small{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--lb-metal);box-shadow:inset 0 0 0 1.5px var(--cal-today-edge);font-variant-numeric:tabular-nums}
-.pw-dayhead .calendar-today-badge{order:-1;justify-self:start;padding-left:2px}
+.pw-dayhead.today small{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--lb-metal);box-shadow:inset 0 0 0 1.5px var(--cal-today-edge);font-variant-numeric:tabular-nums}
+.pw-dayhead .calendar-today-badge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);z-index:1;width:max-content;padding:3px 8px;border-radius:var(--lb-r-full);font-size:12px;font-weight:800}
+.pw-dayhead.today .calendar-today-badge{background:var(--lb-metal);box-shadow:inset 0 0 0 1.5px var(--cal-today-edge)}
 .pw-dayhead.sat:not(.today) strong,.pw-dayhead.sat:not(.today) small{color:var(--cal-sat)}
 .pw-dayhead.sun:not(.today) strong,.pw-dayhead.sun:not(.today) small{color:var(--cal-sun-num)}
 .pw-dayhead[data-past]>*{opacity:.55}
@@ -1565,8 +1567,8 @@ button.life-color-link{flex:0 0 auto;min-height:44px;padding:6px 8px;border:0;ba
 .lb-dday-value{font-size:13px;font-weight:600;color:var(--ink-600)}
 .lb-dday-chip.main{min-height:40px;padding:4px 14px;border:1px solid var(--lb-metal-line);background:var(--lb-metal);box-shadow:var(--lb-metal-lift)}   /* V7E: 2px 진한 금 테 → 금속 면 + 1px 금 선 */
 .lb-dday-chip.main .lb-dday-value{font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--lb-ink-1)}
-button.plan-exam-line.has-chips{padding:2px;border:0;background:transparent;box-shadow:none;overflow:visible;white-space:normal;min-height:44px}
-button.plan-exam-line.has-chips[aria-expanded="true"]{background:transparent}
+.plan-exam-line.has-chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:2px;border:0;background:transparent;box-shadow:none;overflow:visible;white-space:normal;min-height:44px}   /* V8W2-3: 단추가 아니라 칩 단추 + 펼치기 단추를 담는 줄 */
+button.plan-exam-toggle{min-height:40px;padding:4px 12px;font-size:13px}
 /* ===== 17-4. V6B 습관 성취표 · 오늘 "더 보기" · 낮잠 줄 · 건강 쉬운 입력. 새 색 없음 — 토큰만 ===== */
 .hb-board{display:grid;gap:8px}
 .hb-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
@@ -1596,6 +1598,18 @@ button.hb-cell:disabled{opacity:.35}
 .hb-detail{text-align:left;padding:8px;border-left:3px solid var(--lb-gold-2);background:var(--lb-gold-soft)}
 .hb-day-row th,.hb-day-rate{font-size:11px;color:var(--lb-ink-3);font-variant-numeric:tabular-nums}
 .hb-sheet .life-chip-row{flex-wrap:wrap}
+/* V8W5 기록 메인: 상세 맨 위 [기록]·[숨기기], 목록 끝 [+ 추가], 맨 아래 "숨긴 항목 n개" 접힘 */
+.hb-quick{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+.hb-quick button{min-height:44px;min-width:6em}
+.hb-add-box{display:grid;gap:6px}
+button.hb-add-open{justify-self:start;min-height:44px;font-weight:700;border-style:dashed}
+.hb-add-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.hb-hidden{border-top:1px solid var(--lb-line);padding-top:6px}
+.hb-hidden-sum{min-height:44px;display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;color:var(--lb-ink-2)}
+.hb-hidden-sum::before{content:"▸"}
+.hb-hidden[open]>.hb-hidden-sum::before{content:"▾"}
+.hb-hidden-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px dashed var(--lb-line)}
+.hb-hidden-name{color:var(--lb-ink-2);font-weight:600}
 .life-habits-more-box{margin-top:6px}
 .life-habits-more-summary{min-height:44px;cursor:pointer;color:var(--lb-ink-2);font-weight:600}
 .life-nap{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:2px 0 0;font-size:13px;color:var(--lb-ink-2)}
@@ -1603,6 +1617,23 @@ button.hb-cell:disabled{opacity:.35}
 .hlt-easy{display:grid;gap:8px}
 .hlt-med-chip{min-height:44px;font-weight:700}
 .hlt-med-chip.selected{border-color:var(--lb-gold-3);background:var(--lb-gold-soft)}
+/* V8W5 약 칩: 한 줄 = [약 이름 · 고른 용량](누르면 바로 기록) + 용량 고르기 칩. 고른 칩 = 금 채움 + 굵은 글자 + ✓(색만으로 가르지 않음) */
+.hlt-med-list{display:grid;gap:10px}
+.hlt-med-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px;border:1px solid var(--lb-line);border-radius:var(--lb-r-2);background:var(--lb-surface-solid)}
+.hlt-med-row .hlt-med-chip{font-size:16px;min-width:9em}
+.hlt-dose-chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.hlt-dose-label{font-size:13px;font-weight:700;color:var(--lb-ink-2)}
+button.hlt-dose-chip{min-height:40px;padding:6px 12px;font-variant-numeric:tabular-nums}
+button.hlt-dose-chip.selected{background:var(--lb-metal);border-color:var(--lb-metal-line);box-shadow:var(--lb-metal-edge);font-weight:800}
+button.hlt-dose-chip.selected::before{content:"✓ "}
+button.hlt-dose-custom.selected{border-width:2px;font-weight:800}
+.hlt-dose-direct{align-items:flex-end}
+.hlt-med-setup{display:grid;gap:8px;padding:10px;border:1px dashed var(--lb-gold-2);border-radius:var(--lb-r-2);background:var(--lb-gold-soft)}
+/* 한 줄 = 이름 · 용량 · 단위 · 단추. 칸은 격자 칸 폭을 채운다(전역 input 100%와 같이 씀). 좁은 폰은 이름·용량·단위 한 줄 + 단추 다음 줄 */
+.hlt-med-setup-row{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) auto auto auto;align-items:center;gap:6px}
+.hlt-med-setup-row.hlt-med-hidden input:first-child{color:var(--lb-ink-3);text-decoration:line-through}
+@media(max-width:700px){.hlt-med-setup-row{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr)}}
+.hlt-med-badge{font-size:12px;font-weight:700;color:var(--lb-ink-2);border:1px solid var(--lb-line);border-radius:999px;padding:1px 8px}
 .hlt-state-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:4px 0}
 .hlt-state-name{min-width:4.5em;font-weight:700;color:var(--lb-ink-1)}
 button.hlt-state-btn{min-width:44px;min-height:44px;font-variant-numeric:tabular-nums;font-weight:700}
@@ -1738,6 +1769,20 @@ button.life-color-link{margin-left:6px;padding-left:10px;border-left:1px solid v
 .universe-legend-dot{fill:var(--uni)}
 .universe-detail{display:grid;gap:var(--lb-s-2)}
 .universe-row{display:flex;justify-content:space-between;gap:var(--lb-s-3)}
+/* V8W7 예시 우주: 아이보리→연금 바탕, "예시" 표지(글자 + 금 테 + 굵기, 색만으로 구분하지 않음), 읽는 법 목록, 행성 단추. 토큰만. */
+.universe-3d-slot{position:relative}
+.universe-example .universe-3d-canvas,.universe-example .universe-scroll{background:linear-gradient(180deg,var(--lb-surface-solid) 0%,var(--lb-surface-tint) 45%,var(--lb-gold-soft) 100%);box-shadow:var(--lb-metal-edge)}
+.universe-example-badge,.universe-example-tag{display:inline-block;padding:2px 10px;border-radius:var(--lb-r-full);background:var(--lb-metal);box-shadow:var(--lb-metal-edge);color:var(--lb-ink-1);font-weight:800;font-size:13px;letter-spacing:.08em}
+.universe-example-badge{justify-self:start;align-self:start;width:max-content}
+.universe-example-tag{position:absolute;top:var(--lb-s-2);left:var(--lb-s-2);margin:0;pointer-events:none}
+.universe-example-mark{fill:var(--lb-ink-1);font-size:12px;font-weight:800;letter-spacing:.08em}
+.universe-example-lead{margin:0}
+.universe-example-key{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:var(--lb-s-2);margin:0;padding:0;list-style:none}
+.universe-example-key-item{display:grid;gap:2px;padding:var(--lb-s-2) var(--lb-s-3);border:1px solid var(--lb-line);border-radius:var(--lb-r-1);background:var(--lb-surface-tint)}
+.universe-example-key-item strong{font-size:15px}
+.universe-example-key-item span{color:var(--lb-ink-3);font-size:14px}
+.universe-planet-btn{display:inline-flex;align-items:center;gap:var(--lb-s-1);min-height:36px;padding:var(--lb-s-1) var(--lb-s-3);border:1px solid var(--lb-metal-line);border-radius:var(--lb-r-full);background:var(--lb-surface-tint);color:var(--lb-ink-1);font:inherit;cursor:pointer}
+.universe-planet-btn:focus-visible{outline:2px solid var(--lb-gold-3);outline-offset:2px}
 
 /* ===== 22. AI 게이트 (B47): 새 색 없음 — 토큰만. 보고 글은 줄 단위 글자일 뿐이다(링크·이미지 없음) ===== */
 .state-export-gate{margin:0;font-weight:600;color:var(--ink-900)}
@@ -2133,12 +2178,23 @@ button.life-quest-open:hover .life-quest-more{color:var(--ink-900)}
 .tower-badge.done{font-weight:700;color:var(--lb-ink-1)}
 
 /* ===== 30. 금빛 공부 화면 (DS1, 설계 V5 §2.1·§2.3·§2.7·§2.8): 새 색 없음 — :root DS1 토큰만. 좁은 화면 = 폭 ≤ 420px(Fold 접힘) ===== */
-/* 시계: 시·분·초·콜론 모두 --ink-900 한 색. 시·분 굵게, 초는 60%·가늘게.
-   V7A (2026-11-11 소유자 "콜론이 계속 깜박거려서 거슬린다"): 콜론은 움직이지 않는다(1초 주기 투명도 애니메이션 제거, 늘 불투명). 숫자는 고정폭(tabular)이라 폭이 흔들리지 않는다 */
+/* 시계: 시·분·초·콜론 모두 --ink-900 한 색.
+   V7A (2026-11-11 소유자 "콜론이 계속 깜박거려서 거슬린다"): 콜론은 움직이지 않는다(1초 주기 투명도 애니메이션 제거, 늘 불투명). 숫자는 고정폭(tabular)이라 폭이 흔들리지 않는다
+   V8W2-5 (소유자 2026-11-14): 초도 시·분과 같이 진하게(예전 60%·가늘게 없앰). 값이 0인 앞쪽 단위만 연하게 = 55% + 굵기 400(색만이 아니라 굵기도, 바탕 대비 3:1 이상).
+   data-lead(study-live clockLead) 1 = 시 "00"만 · 2 = 시:분 "00:00" 묶음(.live-clock-hm, 안의 콜론 포함). 콜론 규칙 자체는 그대로(V7A). 단위 아래 작은 라벨 "시간·분·초"(::after, 글자 전체 textContent는 HH:MM:SS 그대로) */
 .live-clock-hm,.live-clock-h,.live-clock-m{color:var(--ink-900);font-weight:800}
 .live-colon{color:var(--ink-900);opacity:1;animation:none}
-.live-clock-s{color:var(--ink-900);opacity:.6;font-weight:300}
+.live-clock-s{color:var(--ink-900);opacity:1;font-weight:800}
 .live-clock-hm,.live-clock-h,.live-clock-m,.live-clock-s,.live-colon{font-variant-numeric:tabular-nums}
+.live-clock[data-lead="1"] .live-clock-h,.live-clock[data-lead="2"] .live-clock-hm{opacity:.55}
+.live-clock[data-lead="1"] .live-clock-h,.live-clock[data-lead="2"] .live-clock-h,.live-clock[data-lead="2"] .live-clock-m{font-weight:400}
+.live-clock{padding-bottom:18px}
+.live-clock-h,.live-clock-m,.live-clock-s{position:relative;display:inline-block}
+.live-clock-h::after,.live-clock-m::after,.live-clock-s::after{position:absolute;left:50%;top:100%;transform:translateX(-50%);font-family:var(--lb-font);font-size:12px;font-weight:700;letter-spacing:0;line-height:1.3;width:max-content;color:var(--ink-600);text-shadow:none}
+.live-clock-h::after{content:"시간"}
+.live-clock-m::after{content:"분"}
+.live-clock-s::after{content:"초"}
+.live-panel .live-clock-h::after,.live-panel .live-clock-m::after,.live-panel .live-clock-s::after{font-size:14px}
 /* 링 가운데: 숫자 크게(글자 크기는 SVG font-size 속성) + "벽돌" 작게 */
 .live-ring-unit{fill:var(--ink-600);font-weight:600}
 /* 버튼 크기: 집중 시작 60px 전체 너비 · 끝내고 담기 64px(좁은 화면 56px, 글자 20px) · 휴식은 같은 높이 · 터치 44×44 이상 · 간격 12px 이상 */
@@ -2297,6 +2353,103 @@ button.life-stack-btn:hover,button.life-habit-btn:hover,.life-habit .life-chip-r
 .fin-same-check{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0;padding:6px 10px;border:1px solid var(--gold-deep);border-radius:8px}
 .fin-same-check.active{border-width:2px}
 
+/* ===== V8W6 상태: 탑 배경·건물 수집·칭호 메달·달성 연출. 새 색 없음 — 토큰만(아이보리·금). 움직임은 prefers-reduced-motion이면 멈추고 멈춘 그림이 남는다 ===== */
+/* 1) 탑 3D·대체 화면 배경: 흰 상자 대신 아이보리(아래 바닥 쪽) → 금(위 하늘 쪽) 그라데이션(3D 하늘 구 backdropAt과 같은 방향). 캔버스는 첫 장면 전에도 같은 배경이다 */
+.tower-3d-canvas,.tower-scroll,.bd-3d-canvas,.st-build-view{background:linear-gradient(180deg,var(--lb-gold-1) 0%,var(--lb-gold-soft) 45%,var(--lb-surface-tint) 100%)}
+.tower-3d-spin{justify-self:start}
+.tower-3d-spin[hidden],.bd-3d-spin[hidden]{display:none}
+/* 3) 나만의 건물 */
+.st-build{display:grid;gap:var(--lb-s-3);min-width:0}
+.st-build-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--lb-s-2);flex-wrap:wrap}
+.st-build-head strong{font-size:18px;font-weight:800;color:var(--lb-ink-1)}
+.st-build-view{position:relative;display:grid;min-width:0;border-radius:var(--lb-r-2);overflow:hidden;box-shadow:inset 0 0 0 1px var(--lb-gold-1)}
+.bd-3d-slot{display:grid;gap:var(--lb-s-2);min-width:0}
+.bd-3d-slot[hidden],.bd-fallback[hidden]{display:none}
+.bd-3d-canvas{display:block;width:100%;height:min(46vh,380px);touch-action:pan-y;cursor:grab;border-radius:var(--lb-r-2)}
+.bd-3d-canvas:focus-visible{outline:2px solid var(--lb-gold-3);outline-offset:-2px}
+.bd-3d-spin{position:absolute;right:var(--lb-s-2);bottom:var(--lb-s-2)}
+.bd-fallback{display:grid;place-items:center;height:min(46vh,380px);padding:var(--lb-s-3)}
+.bd-svg{display:block;width:100%;height:100%;overflow:visible}
+.bd-big{max-width:420px;max-height:100%}
+.st-build-text{display:grid;gap:2px}
+.st-build-name{font-size:17px;font-weight:800;color:var(--lb-ink-1)}
+.st-build-next{display:grid;gap:var(--lb-s-1)}
+.st-build-next-text{font-size:14px;font-weight:700;color:var(--lb-ink-1)}
+.st-build-list{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:var(--lb-s-2);margin:0;padding:0;list-style:none}
+.st-build-item{min-width:0}
+button.bd-card{display:grid;gap:2px;justify-items:center;width:100%;min-height:44px;padding:var(--lb-s-2) 4px;border-radius:var(--lb-r-2);background:var(--lb-surface-solid);border:1.5px solid var(--lb-gold-1);color:var(--lb-ink-1);text-align:center}
+button.bd-card.done{background:linear-gradient(180deg,var(--lb-surface-tint),var(--lb-gold-soft));border-color:var(--lb-gold-2)}
+button.bd-card.locked{border-style:dashed;border-color:var(--lb-ink-4)}
+button.bd-card[aria-pressed="true"]{outline:2.5px solid var(--lb-gold-3);outline-offset:1px}
+.bd-thumb{height:56px}
+.bd-card-name{font-size:13px;font-weight:800;line-height:1.2;overflow-wrap:anywhere}
+.bd-card-state{font-size:11px;font-weight:700;color:var(--lb-ink-3);line-height:1.2}
+button.bd-card.done .bd-card-state{color:var(--lb-ink-1)}
+@media(max-width:700px){.st-build-list{grid-template-columns:repeat(3,minmax(0,1fr))}.bd-3d-canvas,.bd-fallback{height:min(40vh,300px)}}
+/* 건물 부품 색(2D): 금빛 언어. 잠긴 건물은 흰 면 + 회색 점선 테(색만으로 구분하지 않는다) */
+.bd-shadow{fill:var(--lb-gold-2);opacity:.28}
+.bd-part{stroke:var(--lb-gold-3);stroke-width:.05;stroke-linejoin:round}
+.bd-c-ivory,.bd-c-stone{fill:var(--lb-surface-tint)}
+.bd-c-champagne{fill:var(--lb-gold-1)}
+.bd-c-gold{fill:var(--lb-gold-2)}
+.bd-c-bright{fill:var(--lb-gold-bright)}
+.bd-c-deep{fill:var(--lb-gold-3)}
+.bd-c-window{fill:var(--lb-gold-soft)}
+.bd-svg.locked .bd-part{fill:var(--lb-surface-solid);stroke:var(--lb-ink-4);stroke-dasharray:.12 .1;opacity:.85}
+.bd-svg.locked .bd-shadow{fill:var(--lb-ink-4);opacity:.18}
+/* 4) 칭호 메달: 같은 틀·같은 선 굵기의 한 세트. 등급은 모양(테 1줄·2줄·별 장식·점선)으로도 구분 */
+.medal{display:inline-block;flex:none;overflow:visible;vertical-align:middle}
+.medal-stop-1{stop-color:var(--lb-gold-soft)}
+.medal-stop-2{stop-color:var(--lb-gold-bright)}
+.medal-stop-3{stop-color:var(--lb-gold-2)}
+.medal-ribbon{fill:var(--lb-gold-1);stroke:var(--lb-gold-3);stroke-width:.8}
+.medal-ribbon-b{fill:var(--lb-gold-bright)}
+.medal-disc{stroke:none}
+.medal-rim{stroke:var(--lb-gold-3);stroke-width:1.6}
+.medal-rim-in{stroke-width:.9}
+.medal-rim.dashed{stroke-dasharray:2.4 1.6}
+.medal-stud{fill:var(--lb-gold-3)}
+.medal-emblem path{fill:none;stroke:var(--lb-ink-1);stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
+.medal-emblem.filled path{fill:var(--lb-gold-3);stroke:var(--lb-ink-1);stroke-width:.8}
+.medal-hatch-bg{fill:var(--lb-surface-solid)}
+.medal-hatch-line{stroke:var(--lb-ink-4);stroke-width:.7}
+.medal-locked .medal-ribbon{fill:var(--lb-surface-solid);stroke:var(--lb-ink-4)}
+.medal-locked .medal-rim{stroke:var(--lb-ink-4)}
+.medal-locked .medal-emblem path{stroke:var(--lb-ink-4)}
+.medal-locked .medal-emblem.filled path{fill:var(--lb-surface-solid)}
+.title-chip .medal{margin-right:4px}
+.medal-set{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:var(--lb-s-2);margin:var(--lb-s-2) 0 0;padding:0;list-style:none}
+.medal-cell{display:grid;justify-items:center;gap:2px;padding:var(--lb-s-2) 2px;border-radius:var(--lb-r-2);text-align:center}
+.medal-cell.done{background:var(--lb-gold-soft)}
+.medal-name{font-size:12px;font-weight:700;line-height:1.25;overflow-wrap:anywhere;color:var(--lb-ink-1)}
+.medal-cell.locked .medal-name{color:var(--lb-ink-3)}
+/* 5) 달성 연출: 가운데 팝업 + 빛살·빛 번짐·금빛 가루(약 2초). 누르면 닫힘. 움직임 줄이기면 효과가 정지 그림으로 남는다 */
+dialog.cel-dlg{border:0;padding:0;background:transparent;max-width:min(92vw,420px);width:100%;overflow:visible}
+dialog.cel-dlg::backdrop{background:var(--lb-surface-2)}
+.cel-card{display:grid;justify-items:center;gap:var(--lb-s-2);padding:var(--lb-s-4) var(--lb-s-3) var(--lb-s-3);border-radius:var(--lb-r-2);background:linear-gradient(180deg,var(--lb-surface-solid) 0%,var(--lb-gold-soft) 100%);box-shadow:inset 0 0 0 2px var(--lb-gold-2),var(--lb-gold-glow);text-align:center;cursor:pointer;animation:celPop .45s ease-out both}
+.cel-stage{position:relative;display:grid;place-items:center;width:200px;height:170px}
+.cel-fx{position:absolute;inset:-20px;width:calc(100% + 40px);height:calc(100% + 40px);overflow:visible;pointer-events:none}
+.cel-glow{fill:var(--lb-gold-1);opacity:.55;transform-box:fill-box;transform-origin:center;animation:celGlow 2s ease-out both}
+.cel-rays{transform-box:fill-box;transform-origin:center;animation:celSpin 2.2s linear both}
+.cel-ray{fill:var(--lb-gold-bright);opacity:.42}
+.cel-dust{fill:var(--lb-gold-2);animation:celFall 1.8s ease-in both}
+.cel-dust-1{animation-delay:.15s}.cel-dust-2{animation-delay:.3s;fill:var(--lb-gold-bright)}.cel-dust-3{animation-delay:.45s}
+.cel-spark{fill:var(--lb-gold-bright);stroke:var(--lb-gold-3);stroke-width:.6;transform-box:fill-box;transform-origin:center;animation:celTwinkle 1.6s ease-in-out .2s both}
+.cel-stage .medal{position:relative;width:96px;height:112px}
+.cel-stage .bd-svg{position:relative;width:150px;height:130px}
+.cel-star{position:relative;width:84px;height:84px}
+.cel-star path{fill:var(--lb-gold-2);stroke:var(--lb-gold-3);stroke-width:1.2;stroke-linejoin:round}
+.cel-kind{margin:0;font-size:13px;font-weight:800;letter-spacing:.04em;color:var(--lb-ink-3)}
+.cel-title{margin:0;font-size:22px;font-weight:800;line-height:1.3;color:var(--lb-ink-1);overflow-wrap:anywhere}
+.cel-detail{margin:0;font-size:15px;font-weight:600;color:var(--lb-ink-1)}
+.cel-next{margin:var(--lb-s-1) 0 0;padding:var(--lb-s-2) var(--lb-s-3);border-radius:var(--lb-r-2);background:var(--lb-surface-solid);box-shadow:inset 0 0 0 1px var(--lb-gold-1);font-size:14px;font-weight:700;color:var(--lb-ink-1)}
+.cel-count{margin:0}
+@keyframes celPop{0%{transform:scale(.86);opacity:0}100%{transform:scale(1);opacity:1}}
+@keyframes celGlow{0%{transform:scale(.3);opacity:0}35%{opacity:.8}100%{transform:scale(1);opacity:.55}}
+@keyframes celSpin{0%{transform:rotate(-20deg) scale(.6);opacity:0}25%{opacity:1}100%{transform:rotate(25deg) scale(1);opacity:1}}
+@keyframes celFall{0%{transform:translateY(-34px);opacity:0}25%{opacity:1}100%{transform:translateY(26px);opacity:0}}
+@keyframes celTwinkle{0%{transform:scale(0);opacity:0}40%{transform:scale(1.25);opacity:1}100%{transform:scale(1);opacity:1}}
+@media(prefers-reduced-motion:reduce){.cel-card,.cel-glow,.cel-rays,.cel-dust,.cel-spark{animation:none}}
 /* ===== 33. 오늘 상태 6단계 효과 층·미리보기 격자 (AV5, study-room avatarFxLayer): 새 색 없음 — :root DS1(DS7 금색 B) 토큰 이름만. 그림은 평생 등급 기본 그림 그대로(필터 없음), 효과만 그 위 SVG 층. 움직임은 steps()로 초당 몇 프레임, 움직임 줄이기면 멈춘 그림 ===== */
 .room-stage .av5-fx,.st-stage .av5-fx{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;overflow:hidden;z-index:1}
 .st-stage .av5-fx{z-index:3}
@@ -2450,28 +2603,31 @@ button.rc-restore{color:var(--lb-ink-1);border-color:var(--lb-gold-3)}
 .pw-cell.fresh-locked{opacity:.55}
 
 /* ===== 38. CAL2 오늘 탭 맨 위 달력(life-plan renderHomeCal): 이번 주 띠(월~일 7칸, 412 폭에서도 한 줄) · 고른 날 계획·일정 · 달력 펼치기(계획 탭 .plan-cal 그대로).
-   오늘 = CAL1C와 같은 옅은 금 칸 + 숫자 뒤 금속 동그라미(--lb-metal + 1.5px --cal-today-edge 선), 지난 날 .55, 토 파랑·일 빨강(오늘이면 검정). 글꼴 --lb-font 한 가지 + tabular-nums. 토큰만 ===== */
+   V8W1: 오늘 = 금속 금 칸(--lb-metal) + 3px 금 테 + 칸 위 "오늘" 표지, 지난 날 = 회색 빗금 칸(--cal-past) + 연한 글자, 토 파랑·일 빨강(오늘·지난 날이면 아님).
+   글자: 날짜 숫자 PC 24px·폰 20px, 요일 PC 16px·폰 14px 굵게, 칸 가운데. 글꼴 --lb-font 한 가지 + tabular-nums. 토큰만 ===== */
 #view-content>.home-cal{grid-column:1/-1}
 .home-cal{display:grid;gap:var(--lb-s-2);min-width:0}
 .hc-nav{display:flex;align-items:center;gap:var(--lb-s-2);min-width:0}
 .hc-range{flex:1 1 auto;min-width:0;text-align:center;font-family:var(--lb-font);font-size:17px;font-weight:700;line-height:1.3;font-variant-numeric:tabular-nums;color:var(--lb-ink-1);overflow-wrap:anywhere}
 .hc-nav button{flex:none;min-height:40px;padding-inline:12px}
 .hc-nav button.hc-step{min-width:44px;font-size:18px;line-height:1}
-.hc-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;min-width:0}
-button.hc-day,button.hc-day:hover{display:grid;justify-items:center;align-content:start;gap:2px;min-width:0;min-height:72px;padding:6px 2px;border:1px solid var(--lb-line-soft);border-radius:var(--lb-r-1);background:var(--lb-surface-solid);box-shadow:none;color:var(--lb-ink-1);font-family:var(--lb-font);font-weight:600;font-variant-numeric:tabular-nums}
+.hc-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;min-width:0;padding-top:12px}
+button.hc-day,button.hc-day:hover{position:relative;display:grid;justify-items:center;align-content:center;gap:4px;min-width:0;min-height:88px;padding:10px 2px 6px;border:1px solid var(--lb-line-soft);border-radius:var(--lb-r-1);background:var(--lb-surface-solid);box-shadow:none;color:var(--lb-ink-1);font-family:var(--lb-font);font-weight:600;font-variant-numeric:tabular-nums}
 .hc-blank{min-width:0}
-.hc-wd{font-size:12px;font-weight:700;line-height:1.2;color:var(--lb-ink-3)}
-.hc-num{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;font-size:16px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.hc-wd{font-size:16px;font-weight:700;line-height:1.2;color:var(--lb-ink-2)}
+.hc-num{display:flex;align-items:center;justify-content:center;min-width:32px;height:32px;font-size:24px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
 .hc-day.sat:not(.today) :is(.hc-wd,.hc-num){color:var(--cal-sat)}
 .hc-day.sun:not(.today) :is(.hc-wd,.hc-num){color:var(--cal-sun-num)}
-button.hc-day.today,button.hc-day.today:hover{background:var(--lb-gold-soft)}
+button.hc-day[data-past],button.hc-day[data-past]:hover{background:var(--cal-past);border-color:var(--cal-past-line)}
+.hc-day[data-past]:not(.today) :is(.hc-wd,.hc-num){color:var(--cal-past-ink);font-weight:600}
+button.hc-day.today,button.hc-day.today:hover{background:var(--lb-metal);border:3px solid var(--cal-today-edge)}
 .hc-day.today .hc-wd{color:var(--lb-ink-1)}
-.hc-day.today .hc-num{color:var(--lb-ink-1);font-weight:800;background:var(--lb-metal);box-shadow:inset 0 0 0 1.5px var(--cal-today-edge)}
-.hc-day .calendar-today-badge{font-size:11px;font-weight:700;line-height:1;letter-spacing:.02em;color:var(--lb-ink-1)}
+.hc-day.today .hc-num{color:var(--lb-ink-1);font-weight:800}
+.hc-day .calendar-today-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);width:max-content;padding:3px 8px;border-radius:var(--lb-r-full);font-size:12px;font-weight:800;line-height:1;letter-spacing:.02em;color:var(--lb-ink-1)}
+.hc-day.today .calendar-today-badge{background:var(--lb-metal);box-shadow:inset 0 0 0 1.5px var(--cal-today-edge)}
 button.hc-day.selected,button.hc-day.selected:hover{border-color:var(--cal-pick-edge);box-shadow:inset 0 0 0 1px var(--cal-pick-edge)}
 .hc-day.selected:not(.today) .hc-num{color:var(--cal-pick-edge);font-weight:500}
-.hc-day[data-past]>*{opacity:.55}
-.hc-day[data-past]:is(:hover,:focus-visible,:active)>*{opacity:1}
+button.hc-day.today.selected,button.hc-day.today.selected:hover{border-color:var(--cal-today-edge);box-shadow:none}
 .hc-dots{display:flex;align-items:center;justify-content:center;gap:2px;min-height:12px}
 .hc-dot-row{display:block;flex:none}
 .hc-dot.plan{fill:var(--cal-plan-dot)}
@@ -2491,4 +2647,246 @@ button.hc-day.selected,button.hc-day.selected:hover{border-color:var(--cal-pick-
 .hc-plan-row{padding:2px 0}
 .hc-block{flex:none;font-size:12px;font-weight:700;color:var(--lb-ink-3)}
 .hc-empty{margin:0;color:var(--lb-ink-3)}
-@media(max-width:700px){button.hc-day,button.hc-day:hover{min-height:66px;padding:4px 1px}.hc-num{width:28px;height:28px;font-size:14px}.hc-range{font-size:15px}.hc-date{font-size:16px}}
+@media(max-width:700px){button.hc-day,button.hc-day:hover{min-height:76px;padding:9px 1px 4px}.hc-num{min-width:28px;height:28px;font-size:20px}.hc-wd{font-size:14px}.hc-range{font-size:15px}.hc-date{font-size:16px}}
+/* ===== 39. V8W1 오늘 탭 달력 (소유자 2026-11-14): 큰 글씨 오늘 머리 + 진행 띠 2개 · 펼친 달(home-cal 안 .plan-cal만, 계획 탭은 그대로) 큰 숫자·가운데·오늘 금 칸·지난 날 빗금 · 연간 달력 · 일정 종류 직접 입력.
+   색은 :root 토큰만(금은 오늘 표시에만), 지난 것 = --cal-past(회색 + 빗금), 글자 크기 0절(숫자 PC 24·폰 20, 요일 PC 16·폰 14 굵게) ===== */
+.hc-head{display:grid;gap:6px;min-width:0}
+.hc-big{margin:0;font-family:var(--lb-font);font-size:30px;font-weight:800;line-height:1.2;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--lb-ink-1)}
+.hc-prog{display:grid;grid-template-columns:4.5em minmax(0,1fr) auto;align-items:center;gap:var(--lb-s-2);min-width:0;font-size:13px;line-height:1.3;color:var(--lb-ink-3)}
+.hc-prog-label{font-weight:700;color:var(--lb-ink-2)}
+.hc-prog-bar{display:block;width:100%;height:10px;border-radius:var(--lb-r-full);overflow:hidden;outline:1px solid var(--lb-line)}
+.hc-hatch-bg{fill:var(--cal-past-bg)}
+.hc-hatch-line{stroke:var(--cal-past-line);stroke-width:2}
+.hc-prog-left{fill:var(--lb-surface-solid)}
+.hc-prog-today{fill:var(--lb-gold-2)}
+.hc-prog-value{font-variant-numeric:tabular-nums}
+.hc-prog-value strong{font-weight:800;color:var(--lb-ink-1)}
+.hc-nav button.hc-range-btn{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:center;gap:6px}
+.hc-range-icon{flex:none;font-size:13px;line-height:1;color:var(--lb-ink-3)}
+.home-cal button.plan-nav-label{min-height:40px}
+.home-cal .plan-cal{row-gap:14px}
+.home-cal .plan-cal-head{font-size:16px;font-weight:700}
+.home-cal .plan-day-cell{justify-items:center;align-content:center;text-align:center;min-height:72px}
+.home-cal .plan-cal-blank{justify-items:center;align-content:center;min-height:72px}
+.home-cal .plan-cal-num{min-width:max-content;font-size:24px;line-height:1.1}
+.home-cal .plan-cal-other{font-size:24px;line-height:1.1}
+.home-cal .plan-day-cell.today{background:var(--lb-metal);border:3px solid var(--cal-today-edge)}
+.home-cal .plan-day-cell.today .plan-cal-num{width:auto;height:auto;background:none;box-shadow:none}
+.home-cal .plan-day-cell.today.selected{outline:none}
+.home-cal .plan-day-cell .calendar-today-badge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);z-index:1;width:max-content;padding:3px 8px;border-radius:var(--lb-r-full);font-size:12px;font-weight:800}
+.home-cal .plan-day-cell.today .calendar-today-badge{background:var(--lb-metal);box-shadow:inset 0 0 0 1.5px var(--cal-today-edge)}
+.home-cal .plan-day-cell[data-past]{background:var(--cal-past)}
+.home-cal .plan-day-cell[data-past]>*{opacity:1}
+.home-cal .plan-day-cell[data-past]:not(.today):not(.selected) .plan-cal-num{color:var(--cal-past-ink);font-weight:600}
+.hc-year{display:grid;gap:var(--lb-s-3);min-width:0}
+.hc-year-nav{display:flex;align-items:center;gap:var(--lb-s-2);min-width:0}
+.hc-year-title{flex:1 1 auto;min-width:0;text-align:center;font-family:var(--lb-font);font-size:20px;font-weight:800;line-height:1.3;font-variant-numeric:tabular-nums;color:var(--lb-ink-1)}
+.hc-year-nav button{flex:none;min-height:40px;padding-inline:12px}
+.hc-year-nav button.hc-step{min-width:44px;font-size:18px;line-height:1}
+.hc-year-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--lb-s-2);min-width:0}
+button.hc-ymon,button.hc-ymon:hover{display:grid;gap:4px;align-content:start;min-width:0;padding:8px 6px;border:1px solid var(--lb-line);border-radius:var(--lb-r-1);background:var(--lb-surface-solid);box-shadow:none;color:var(--lb-ink-1);font-family:var(--lb-font);font-weight:600;text-align:center}
+button.hc-ymon:hover{border-color:var(--cal-pick-edge)}
+button.hc-ymon.past,button.hc-ymon.past:hover{background:var(--cal-past)}
+button.hc-ymon.current,button.hc-ymon.current:hover{border:2px solid var(--lb-ink-3)}
+.hc-ymon-name{font-size:16px;font-weight:800;line-height:1.2}
+.hc-ymon.past .hc-ymon-name{color:var(--cal-past-ink)}
+.hc-ymon-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;min-width:0}
+.hc-ywd{font-size:11px;font-weight:700;line-height:1.6;color:var(--lb-ink-3)}
+.hc-ywd.sat{color:var(--cal-sat)}
+.hc-ywd.sun{color:var(--cal-sun)}
+.hc-yd{display:flex;align-items:center;justify-content:center;min-width:0;height:22px;border-radius:4px;font-size:13px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums;color:var(--lb-ink-1)}
+.hc-yd.sat{color:var(--cal-sat)}
+.hc-yd.sun{color:var(--cal-sun-num)}
+.hc-yd.past{background:var(--cal-past);color:var(--cal-past-ink)}
+.hc-ymon.past .hc-yd.past{background:none}
+.hc-yd.today{background:var(--lb-metal);box-shadow:inset 0 0 0 2px var(--cal-today-edge);color:var(--lb-ink-1);font-weight:800}
+/* ===== 40. V8W2 디데이 활성 칩 · 게이지 (소유자 2026-11-14): 칩 = 단추(활성 = .main 금속 면·큰 글자, 다른 칩 = 작은 회색 글자 그대로). 게이지 = 남은 몫 금 · 지나간 몫 회색 빗금(--cal-past 토큰) · 오늘 줄어든 칸 = 연한 금 칸 + 진한 눈금. 색은 :root 토큰만 ===== */
+button.lb-dday-chip{margin:0;color:inherit;font-weight:inherit;line-height:1.3;box-shadow:none;cursor:pointer}
+button.lb-dday-chip:hover{background:var(--lb-surface-2);border-color:var(--lb-metal-line);box-shadow:none}
+button.lb-dday-chip.main,button.lb-dday-chip.main:hover{background:var(--lb-metal);border-color:var(--lb-metal-line);box-shadow:var(--lb-metal-lift)}
+.life-exam .dd-gauge{flex:1 1 100%}
+.dd-gauge{display:grid;gap:4px;min-width:0;max-width:560px}
+.dd-gauge-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--lb-s-2);min-width:0}
+.dd-gauge-name{font-size:13px;font-weight:700;color:var(--lb-ink-3)}
+.dd-gauge-pct{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--lb-ink-1)}
+.dd-gauge-bar{display:block;width:100%;height:14px;border-radius:var(--lb-r-full);overflow:hidden;outline:1px solid var(--lb-line)}
+.dd-gauge-left{fill:var(--lb-gold-2)}
+.dd-gauge-cut{fill:var(--lb-gold-soft)}
+.dd-gauge-mark{stroke:var(--lb-ink-1);stroke-width:2}
+.dd-gauge-text{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:0;font-size:14px;line-height:1.35;font-variant-numeric:tabular-nums;color:var(--lb-ink-1)}
+.dd-gauge-long{font-weight:800}
+.dd-gauge-cut-text{font-size:12px;font-weight:700;color:var(--lb-ink-3)}
+.dd-gauge-span{margin:0;font-size:12px;line-height:1.3;font-variant-numeric:tabular-nums;color:var(--lb-ink-3)}
+.event-kind-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--lb-s-2);min-width:0}
+.plan-sched-kind{flex:none;padding:1px 8px;border:1px solid var(--lb-line);border-radius:var(--lb-r-full);background:var(--lb-surface-solid);font-size:12px;font-weight:700;line-height:1.5;color:var(--lb-ink-2)}
+@media(max-width:700px){.hc-big{font-size:24px}.hc-prog{grid-template-columns:3.6em minmax(0,1fr) auto;font-size:12px}.home-cal .plan-cal-head{font-size:14px}.home-cal :is(.plan-day-cell,.plan-cal-blank){min-height:62px;padding-inline:1px}.home-cal .plan-day-cell.today{border-width:2px}.home-cal :is(.plan-cal-num,.plan-cal-other){font-size:20px}.hc-year-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hc-yd{height:20px;font-size:12px}.hc-ywd{font-size:10px}}
+/* ===== 40. V8W3 계획 탭 (소유자 2026-11-14): 주 격자 머리(17-2절 규칙: 큰 글자·같은 자리·"오늘" 칸 위) 지난 날 빗금 · 월 날짜 달력 큰 숫자·7칸 주·앞뒤 달 기록 · 과목×주차 표 주 이름 · 연간 계획(열두 달 + 고른 달 계획).
+   색은 :root 토큰만(금은 오늘 표시에만), 지난 것 = --cal-past(회색 + 빗금) + --cal-past-ink(바탕 대비 4.1), 다른 달 = --lb-ink-4(흐림 0, 대비 ≥4.5), 글자 크기 0절(숫자 PC 24·폰 20, 요일 PC 16·폰 14 굵게) ===== */
+/* 1. 주 격자: 지난 날 머리·칸 = 회색 빗금 칸(흐림 대신, 계획 줄 글자는 그대로 읽힘) */
+.pw-grid .pw-dayhead[data-past]{background:var(--cal-past)}
+.pw-grid .pw-dayhead[data-past]>*{opacity:1}
+.pw-grid .pw-dayhead[data-past] :is(strong,small){color:var(--cal-past-ink);font-weight:600}
+.pw-grid .pw-cell[data-past]{background:var(--cal-past);border-color:var(--cal-past-line)}
+.pw-grid .pw-cell[data-past]>*{opacity:1}
+/* 2. 월 날짜 달력(계획 탭 .plan-month 안만 — 오늘 탭 .home-cal은 V8W1 그대로): 큰 숫자·가운데·오늘 금 칸 + 칸 위 "오늘"·지난 날 빗금, 앞뒤 달 날짜 = 조금 연한 숫자 + 기록 표시 */
+.plan-month .plan-cal{row-gap:14px}
+.plan-month .plan-cal-head{font-size:16px;font-weight:700}
+.plan-month .plan-day-cell{justify-items:center;align-content:center;text-align:center;min-height:72px}
+.plan-month .plan-cal-blank{position:relative;justify-items:center;align-content:center;gap:2px;min-height:72px;padding:4px 4px 10px;text-align:center}
+.plan-month .plan-cal-num{min-width:max-content;font-size:24px;line-height:1.1}
+.plan-month .plan-cal-other{font-size:24px;line-height:1.1;opacity:1}
+.plan-month .plan-cal-blank.has-rec{border:1px dashed var(--lb-line);background:var(--lb-bg-2)}
+.plan-month .plan-cal-blank.has-plan::before{content:"";position:absolute;top:5px;right:5px;width:6px;height:6px;border-radius:50%;background:var(--cal-plan-dot)}
+.plan-month .plan-day-cell.today{background:var(--lb-metal);border:3px solid var(--cal-today-edge)}
+.plan-month .plan-day-cell.today .plan-cal-num{width:auto;height:auto;background:none;box-shadow:none}
+.plan-month .plan-day-cell .calendar-today-badge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);z-index:1;width:max-content;padding:3px 8px;border-radius:var(--lb-r-full);font-size:12px;font-weight:800}
+.plan-month .plan-day-cell.today .calendar-today-badge{background:var(--lb-metal);box-shadow:inset 0 0 0 1.5px var(--cal-today-edge)}
+.plan-month .plan-day-cell[data-past]{background:var(--cal-past)}
+.plan-month .plan-day-cell[data-past]>*{opacity:1}
+.plan-month .plan-day-cell[data-past]:not(.today):not(.selected) .plan-cal-num{color:var(--cal-past-ink);font-weight:600}
+/* 3. 과목×주차 표: 주 이름(두 줄까지)·7일 날짜 범위(다른 달 조각만 연하게), 다른 달 이름의 주 = 바탕만 조금 연하게(칸 숫자는 그대로) */
+.pm-grid .pm-colhead strong{white-space:normal;word-break:keep-all;text-align:center}
+.pm-range{max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:center;font-variant-numeric:tabular-nums}
+.pm-other{color:var(--lb-ink-4)}
+.pm-grid .pm-colhead.other strong{color:var(--lb-ink-4)}
+.pm-grid :is(.pm-cell,.pm-sched).other{background:var(--lb-bg-2)}
+/* 4. 연간 계획: 열두 달(PC 한 줄 12칸 · 폰 6×2), 지난 달 = 회색 빗금 + 연한 글자(값은 읽힘), 이번 달 = 굵은 테, 고른 달 = 남색 테(CAL2B 고른 날과 같은 색). 아래 = 고른 달 계획(주 줄, 누르면 주 보기) */
+.py-months{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:4px;min-width:0}
+button.py-month,button.py-month:hover{display:grid;justify-items:center;align-content:center;gap:2px;min-width:0;min-height:64px;padding:6px 2px;border:1px solid var(--lb-line);border-radius:var(--lb-r-1);background:var(--lb-surface-solid);box-shadow:none;color:var(--lb-ink-1);font-family:var(--lb-font);text-align:center}
+button.py-month.past,button.py-month.past:hover{background:var(--cal-past);border-color:var(--cal-past-line)}
+button.py-month.current,button.py-month.current:hover{border:2px solid var(--lb-ink-3)}
+button.py-month.selected,button.py-month.selected:hover{border-color:var(--cal-pick-edge);box-shadow:inset 0 0 0 1px var(--cal-pick-edge)}
+.py-month-name{font-size:16px;font-weight:800;line-height:1.2;font-variant-numeric:tabular-nums}
+.py-month.past .py-month-name{color:var(--cal-past-ink)}
+.py-month-value{max-width:100%;overflow-wrap:anywhere;font-size:11px;font-weight:700;line-height:1.2;color:var(--lb-ink-2);font-variant-numeric:tabular-nums}
+.py-month-value.none{color:var(--lb-ink-4)}
+.py-month-exam{max-width:100%;overflow-wrap:anywhere;font-size:10px;font-weight:800;line-height:1.2;color:var(--lb-ink-1)}
+.py-detail{display:grid;gap:var(--lb-s-2);min-width:0;padding-top:var(--lb-s-2);border-top:1px solid var(--lb-line)}
+.py-detail-title{margin:0;font-family:var(--lb-font);font-size:18px;font-weight:800;line-height:1.3;color:var(--lb-ink-1)}
+.py-sum{margin:0}
+.py-weeks{--plan-year-cell:24px;display:grid;gap:6px;min-width:0}
+button.py-week,button.py-week:hover{display:grid;grid-template-columns:5.4em 6.6em minmax(0,1fr) auto;align-items:center;column-gap:8px;row-gap:4px;width:100%;min-width:0;min-height:44px;padding:6px 10px;border:1px solid var(--lb-line-soft);border-radius:var(--lb-r-1);background:var(--lb-surface-solid);box-shadow:none;color:var(--lb-ink-1);font-family:var(--lb-font);font-weight:400;text-align:left}
+button.py-week[data-past],button.py-week[data-past]:hover{background:var(--cal-past);border-color:var(--cal-past-line)}
+button.py-week.now,button.py-week.now:hover{border:2px solid var(--lb-ink-3)}
+.py-week-name{font-size:15px;font-weight:800;word-break:keep-all}
+.py-week-range{font-size:13px;color:var(--lb-ink-3);font-variant-numeric:tabular-nums;word-break:keep-all}
+.py-week[data-past] :is(.py-week-name,.py-week-range){color:var(--cal-past-ink)}
+.py-week-plans{font-size:13px;font-weight:700;word-break:keep-all}
+.py-week-plans.none{font-weight:400;color:var(--lb-ink-4)}
+.py-week-exam{grid-column:1/-1;font-size:12px;font-weight:800;color:var(--lb-ink-1)}
+.py-open-month{min-height:40px}
+@media(max-width:700px){.pw-dayhead strong{font-size:14px}.pw-grid .pw-dayhead small{width:28px;height:28px;font-size:20px}.plan-month .plan-cal-head{font-size:14px}.plan-month :is(.plan-day-cell,.plan-cal-blank){min-height:62px;padding-inline:1px}.plan-month .plan-day-cell.today{border-width:2px}.plan-month :is(.plan-cal-num,.plan-cal-other){font-size:20px}.py-months{grid-template-columns:repeat(6,minmax(0,1fr))}button.py-week,button.py-week:hover{grid-template-columns:auto minmax(0,1fr) auto;padding:6px 8px}.py-week .plan-year-slot{grid-column:1/-1;grid-row:2}}
+/* ===== 39. V8W4 이번 달 돈(숫자 5개 · 게이지 빠름/적정 · 분류별 상위 5 · 쓸 수 있는 돈 입력) + 거래 달력(월요일 시작, 금액 6구간 = 글자 크기·굵기·색 농도). 토큰 이름만.
+   지난 날 = 회색 바탕 + 연한 글자 + 가는 빗금, 오늘 = 금속 금 채움 + 굵은 테 + 칸 위 "오늘", 남은 날 = 흰 칸 진한 글자. 날짜 숫자 PC 24px·폰 20px, 요일 PC 16px·폰 14px 굵게, 칸 가운데 ===== */
+.vault-nums.vault-nums-5{grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.vault-nums-5 .vault-num-amount{font-size:clamp(20px,2.3vw,30px)}
+.vault-nums-5 .vault-num-today{padding:4px 8px;border-left:3px solid var(--gold-deep)}
+.vault-nums-5 .vault-num-today.over{border:2px solid var(--danger)}
+.vault-bar-title-row{display:inline-flex;align-items:center;gap:8px;min-width:0}
+.vault-speed{display:inline-block;padding:1px 10px;border:1.5px solid var(--gold-deep);border-radius:var(--lb-r-full);background:var(--ivory-0);font-size:13px;font-weight:800;line-height:1.5;color:var(--ink-900)}
+.vault-speed[data-speed=OVER_PACE],.vault-speed[data-speed=OVER_MONTH]{border-style:dashed;border-color:var(--danger);color:var(--danger)}
+.vault-bar-date{font-weight:700;color:var(--ink-900)}
+.vault-l2{margin:10px 0 6px;padding-top:8px;border-top:1px solid var(--lb-line)}
+h3.vault-l2-sum{margin:0;font-size:14px;font-weight:700;color:var(--ink-900);cursor:auto}
+.month-budget{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin:0 0 10px;min-width:0}
+.month-budget-label{display:flex;flex-direction:column;gap:4px;flex:1 1 14em;min-width:0;font-weight:700;color:var(--ink-900)}
+.month-budget-input{min-height:44px;font-size:18px;font-variant-numeric:tabular-nums}
+@media(max-width:900px){.vault-nums.vault-nums-5{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:420px){.vault-nums.vault-nums-5{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 6px}.vault-nums-5 .vault-num-amount{font-size:20px;letter-spacing:-.03em}.vault-nums-5 .vault-num-label,.vault-nums-5 .vault-num-foot{font-size:12px}.vault-nums-5 .vault-num-today{grid-column:1/-1}}
+.fin-txn-views{margin:8px 0}
+.fin-txn-views button.active{background:var(--gold-metal);box-shadow:var(--gold-metal-edge);font-weight:800}
+.txn-cal{display:grid;gap:var(--lb-s-2);min-width:0}
+.txn-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;min-width:0}
+.txn-cal-wd{display:flex;align-items:center;justify-content:center;padding:4px 0;font-size:16px;font-weight:800;line-height:1.2;color:var(--ink-900)}
+.txn-cal-wd.sat{color:var(--cal-sat)}
+.txn-cal-wd.sun{color:var(--cal-sun-num)}
+.txn-cal-blank{min-width:0}
+button.txn-cal-day,button.txn-cal-day:hover{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:0;min-height:84px;padding:14px 2px 6px;border:1px solid var(--lb-line);border-radius:var(--lb-r-1);background:var(--lb-surface-solid);box-shadow:none;color:var(--ink-900);text-align:center;font-weight:600;line-height:1.15;transform:none}
+.txn-cal-num{font-size:24px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+button.txn-cal-day.ph-past,button.txn-cal-day.ph-past:hover{background-color:var(--ivory-2);background-image:repeating-linear-gradient(135deg,var(--lb-chart-none) 0 1px,transparent 1px 8px);color:var(--ink-600)}
+.txn-cal-day.ph-past .txn-cal-num{font-weight:500;color:var(--ink-600)}
+button.txn-cal-day.ph-today,button.txn-cal-day.ph-today:hover{background:var(--lb-metal);border:3px solid var(--cal-today-edge);color:var(--ink-900)}
+.txn-cal-day.ph-today .txn-cal-num{font-weight:900}
+.txn-cal-today{position:absolute;top:2px;left:50%;transform:translateX(-50%);padding:0 6px;border-radius:var(--lb-r-full);background:var(--ink-900);color:var(--ivory-0);font-size:11px;font-weight:800;line-height:1.4;word-break:keep-all;overflow-wrap:normal}
+.txn-cal-day.sat:not(.ph-today):not(.ph-past) .txn-cal-num{color:var(--cal-sat)}
+.txn-cal-day.sun:not(.ph-today):not(.ph-past) .txn-cal-num{color:var(--cal-sun-num)}
+button.txn-cal-day.picked{outline:3px solid var(--cal-pick-edge);outline-offset:-3px}
+.txn-cal-amt{display:block;max-width:100%;font-variant-numeric:tabular-nums;letter-spacing:-.02em;word-break:keep-all;overflow-wrap:normal}
+.txn-cal-short{display:none}
+:is(.txn-cal-day,.txn-cal-legend li).t1 :is(.txn-cal-amt,.txn-cal-sample){font-size:12px;font-weight:500;color:var(--ink-600)}
+:is(.txn-cal-day,.txn-cal-legend li).t2 :is(.txn-cal-amt,.txn-cal-sample){font-size:13px;font-weight:600;color:var(--ink-900)}
+:is(.txn-cal-day,.txn-cal-legend li).t3 :is(.txn-cal-amt,.txn-cal-sample){font-size:14px;font-weight:800;color:var(--ink-900)}
+:is(.txn-cal-day,.txn-cal-legend li).t4 :is(.txn-cal-amt,.txn-cal-sample){font-size:15px;font-weight:800;color:var(--danger)}
+:is(.txn-cal-day,.txn-cal-legend li).t5 :is(.txn-cal-amt,.txn-cal-sample){font-size:16px;font-weight:900;color:var(--danger)}
+:is(.txn-cal-day,.txn-cal-legend li).t6 :is(.txn-cal-amt,.txn-cal-sample){font-size:17px;font-weight:900;color:var(--danger);text-decoration:underline;text-decoration-thickness:2px}
+.txn-cal-day.t0 .txn-cal-amt,.txn-cal-day.unk .txn-cal-amt{font-size:12px;font-weight:600;color:var(--ink-600)}
+.txn-cal-legend li{display:inline-flex;align-items:center;gap:4px}
+.txn-cal-sample{display:inline-block;min-width:1.2em;text-align:center}
+.swatch.txn-cal-swatch-past{background-color:var(--ivory-2);background-image:repeating-linear-gradient(135deg,var(--lb-chart-none) 0 1px,transparent 1px 4px);border:1px solid var(--lb-line)}
+.txn-day{display:grid;gap:6px;min-width:0;padding-top:var(--lb-s-2);border-top:1px solid var(--lb-line)}
+.txn-day-title{margin:0;font-size:17px;font-weight:800;color:var(--ink-900);font-variant-numeric:tabular-nums}
+.txn-day-time{color:var(--ink-600)}
+@media(max-width:700px){.txn-cal-wd{font-size:14px}.txn-cal-num{font-size:20px}button.txn-cal-day,button.txn-cal-day:hover{min-height:70px;padding:14px 1px 4px}.txn-cal-full{display:none}.txn-cal-short{display:inline}button.txn-cal-day.t1 .txn-cal-amt{font-size:11px}button.txn-cal-day.t2 .txn-cal-amt{font-size:11.5px}button.txn-cal-day.t3 .txn-cal-amt{font-size:12px}button.txn-cal-day.t4 .txn-cal-amt{font-size:12.5px}button.txn-cal-day.t5 .txn-cal-amt{font-size:13px}button.txn-cal-day.t6 .txn-cal-amt{font-size:13.5px}.txn-cal-grid{gap:3px}}
+/* ===== 41. V8W8 전체 점검 (통제탑 2026-11-14): 3폭 훑기에서 찾은 작은 글자·지난 주 표시·잘린 칩 줄. 색은 :root 토큰만, 기존 규칙은 그대로 두고 뒤에서 덮는다 ===== */
+/* 읽는 글자 최소 11px(머리 표지·꼬리말·이력·차트 날짜·상태 칸 이름). 9~10px였던 것만 올린다 */
+.eyebrow,.rail-label,.save-state-card .state-kicker{font-size:11px}
+footer,nav .nav-en,.rail-bottom small{font-size:11px}
+.chart-column small,.chart-column .bar-count{font-size:11px}
+.history-item .meta,.history-item details,.history-item pre{font-size:11px}
+.history-item button{font-size:12px;padding:6px 12px}
+.fin-line .meta .tag,.st-gal-tag,.dc-name,.pw-block,.settings-action p{font-size:11px}
+/* 월 보기 주 머리 날짜 범위: 머리 10px의 small(8.3px)이라 읽히지 않았다 */
+.pm-colhead .pm-range{font-size:11px;line-height:1.25}
+/* 월 보기 과목×주차 표: 다 지난 주 = 0절 "지나간 것"(회색 + 빗금 + 연한 글자). 계획 테두리·벽돌 막대는 그대로 보인다 */
+.pm-grid :is(.pm-cell,.pm-sched)[data-past]{background:var(--cal-past)}
+.pm-grid .pm-cell[data-past]:not(.plan-heat-4){color:var(--cal-past-ink)}
+.pm-colhead[data-past] strong{color:var(--cal-past-ink);font-weight:600}
+/* 습관 칸 분 칩 줄(가로 넘김): 오른쪽 끝을 흐리게 해 더 있다는 것을 보인다(과목 칩 줄과 같은 방식) */
+.life-habit.kind-duration .life-chip-row{-webkit-mask-image:linear-gradient(to right,var(--lb-ink-1) calc(100% - 22px),transparent);mask-image:linear-gradient(to right,var(--lb-ink-1) calc(100% - 22px),transparent);padding-right:22px}
+/* 건강·공부 날짜 이동 줄: 날짜 칸이 줄 전체를 차지해 [◀ 전날] / 날짜 / [이동 ▶ 다음날 오늘] 세 줄로 흩어졌다 → 지난 오늘 카드(.life-past)와 같은 한 줄 */
+.buttons.day-nav input{width:130px;flex:0 0 auto}
+/* 주 보기 머리 날짜: 숫자 24px(V8W3)인데 원은 32px라 오늘 "14"가 원 밖으로 나왔다 → PC는 모든 날 같은 40px 상자(오늘·다른 날 같은 크기 유지) */
+@media(min-width:701px){.pw-grid .pw-dayhead small{width:40px;height:40px}}
+/* 연결·장치의 접힘 묶음(서버 로그인 등): summary가 flex라 기본 ▶ 표지가 사라져 내용 없는 제목처럼 보였다 → 접힘 ▸ / 펼침 ▾ 표지 */
+.md-group>summary::before{content:"▸";flex:0 0 auto;margin-right:8px;color:var(--ink-600)}
+.md-group[open]>summary::before{content:"▾"}
+/* 돈 > 분류 트리맵: 칸이 검정·주황·남색 진한 면이라 0절(아이보리 바탕, 진한 바탕 금지)에 어긋났다 → 같은 분류 색을 옅게 깐 면 + 진한 글자(칸 안 이름으로 구분, 색만으로 구분하지 않음) */
+.fin-svg .tm-cell,.fin-svg .tm-cell.tm-sub{fill-opacity:.24}
+.fin-svg .tm-cell:hover{fill-opacity:.36}
+.fin-svg :is(.tm-label,.tm-value){fill:var(--ink-900)}
+/* 월 보기 주 범위 조각("10/26~" "11/1")은 조각 안에서 끊지 않는다(접힘 폭에서 "10/2 / 6~1"로 쪼개졌다) */
+.pm-range>span{display:inline-block;width:max-content;overflow-wrap:normal}
+/* 접힘 폭(≤480px) 줄 바꿈 정리: 3폭 훑기에서 한두 글자씩 떨어지거나 단추 하나만 다음 줄로 넘어간 곳 */
+@media(max-width:480px){
+  .hlt-slot-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .st-tiers{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hlt-state-row{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
+  .hlt-state-row .hlt-state-name{grid-column:1 / -1}
+  .plan-feel{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .plan-feel-cell:nth-child(3){grid-column:1 / -1}
+  .hb-nav .hb-seg{flex:0 0 100%}
+  .hb-nav .hb-range{flex:1 1 0;min-width:0;text-align:center}
+  .hb-seg button{min-width:56px;min-height:44px}
+  /* 월 보기 과목×주차 표: 접힘 폭에서 주 칸이 약 26px라 범위("10/26~")가 잘리고 칸도 누르기 작았다 → 주 칸 최소 44px, 표가 넘치면 가로 넘김 */
+  .pm-grid{overflow-x:auto;scrollbar-width:thin;padding-bottom:4px}
+  .pm-grid.pm-cols-4{grid-template-columns:54px repeat(4,minmax(44px,1fr)) 46px}
+  .pm-grid.pm-cols-5{grid-template-columns:54px repeat(5,minmax(44px,1fr)) 46px}
+  .pm-grid.pm-cols-6{grid-template-columns:54px repeat(6,minmax(44px,1fr)) 46px}
+}
+@media(max-width:400px){.metric-value{font-size:20px}}
+/* 더보기: 항목 타일 묶음과 아래 비서 카드가 붙어 있었다(간격 2px) → 카드 사이 간격 */
+.more-list{margin-bottom:16px}
+/* ===== 42. V8FIX (V8HUNT 결함 고침, 통제탑 2026-11-14): 색은 :root 토큰만, 움직임·nowrap 없음(뒤 절 규칙) ===== */
+/* H-01 탑 3D 바탕: 카메라가 땅을 내려다봐 화면 위 끝도 지평선 아래(안개·땅 아이보리)라 하늘 구의 금 그라데이션이 화면에 들어오지 않았다.
+   → 화면 위쪽에 금 → 투명 그라데이션을 곱하기로 얹는다(GPU와 상관없음, 진한 선·글자는 그대로 진하다, 누르기는 캔버스로 통과). 글자 표지(SVG)는 그 위 */
+.tower-3d-stage::before{content:"";position:absolute;left:0;right:0;top:0;height:58%;border-radius:var(--lb-r-2) var(--lb-r-2) 0 0;pointer-events:none;background:linear-gradient(180deg,var(--lb-gold-1) 0%,var(--lb-gold-1) 18%,transparent 100%);mix-blend-mode:multiply}
+/* M-01 일정 줄: 직접 쓴 종류(최대 20자) 표지가 줄어들지 않아(flex:none) 폰에서 제목 폭이 0이 됐다 → 표지는 줄 폭의 40%까지, 넘치면 한 줄 말줄임(줄 수 제한, 뒤 절 nowrap 금지 규칙). 제목은 남은 폭을 갖는다 */
+.plan-sched-row .plan-sched-kind{flex:0 1 auto;min-width:0;max-width:40%;overflow:hidden;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1;line-clamp:1}
+.plan-sched-row .plan-sched-title{min-width:3em}
+/* 접힘 폭(≤480px): 한 줄에 다 안 들어가면 종류 표지를 둘째 줄로 내린다(제목이 46px까지 줄던 월 보기). 종류 표지가 있는 줄만 */
+@media(max-width:480px){.plan-sched-row:has(>.plan-sched-kind){flex-wrap:wrap}.plan-sched-row .plan-sched-kind{max-width:100%}}
+/* L-01 달력의 앞 달 날짜 칸 중 오늘보다 앞(data-past) = 0절 "지나간 것"(회색 + 빗금 + 연한 글자). 뒤 달(앞으로 올 날)은 그대로 */
+:is(.home-cal,.plan-month) .plan-cal-blank[data-past]{background:var(--cal-past)}
+:is(.home-cal,.plan-month) .plan-cal-blank[data-past] .plan-cal-other{color:var(--cal-past-ink)}
+/* L-14 집중 시계: 연한 앞쪽 단위(opacity .55) 안의 "시간·분" 라벨도 함께 연해져 대비 2.4:1이었다 → 그 라벨만 진한 잉크(55%에서 대비 3:1 이상) */
+.live-clock[data-lead="1"] .live-clock-h::after,.live-clock[data-lead="2"] .live-clock-h::after,.live-clock[data-lead="2"] .live-clock-m::after{color:var(--ink-900)}

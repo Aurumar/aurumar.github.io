@@ -14,7 +14,7 @@ import {renderLive,liveRecordMin,liveElapsedMin,liveSettings,REST_SPLIT_MS} from
 import {dailyCharStrip} from './study-live.mjs';   // V7A: 오늘의 캐릭터 13단계 띠 + 눌러서 미리보기
 import {dayRoomCard,CELEBRATED_KEY} from './study-room.mjs';
 import {brickCells} from './study-room.mjs';   // DS1: 오늘 벽돌 칸(공부방 기둥과 같은 금 벽돌 스프라이트)
-import {examLineText,daySummary,barsText,ddayChips,ddayChipsNode,planOf,dayPlanLink,writePlanMarks,BLOCK_TEXT} from './life-plan.mjs';
+import {examLineText,daySummary,barsText,ddayChips,ddayChipsNode,readDdayActive,writeDdayActive,ddayGauge,ddayGaugeNode,maker as planMaker,planOf,dayPlanLink,writePlanMarks,BLOCK_TEXT} from './life-plan.mjs';
 import {diaryEntryState,renderDiaryEntry,openDiarySheet,diaryDayRow,diaryErrorText} from './diary-ui.mjs';   // FIX49B: 일기 입구·시트(쓰기 문이 열렸을 때만)
 import {LOG_LIMIT_CODE,LOG_LIMIT_TEXT} from './fin-ledger.mjs';   // OPS1A: LOG_LIMIT 전용 문구(한 곳에서)
 import {HABIT_KINDS,HABIT_AREAS,DAY_TYPES,MAX_NAME,MAX_NOTE,SUBJECT_COLOR_KEYS,HABIT_HINTS,
@@ -25,6 +25,7 @@ import {LIFE_CLEAR_TYPES,LIFE_CLEAR_KIND,emptyLifeRecord,lifeRecordEmpty,lifeRec
 import {emptyStudyDay,studyDayEmpty} from './study-model.mjs';
 import {emptyHltDay,hltDayEmpty} from './hlt-model.mjs';
 
+export const EXAM_NONE_AHEAD='다가올 시험이 없어요 · 습관 편집에서 다음 시험을 넣으면 디데이가 다시 보여요.';
 export const LIFE_ERROR_TEXT=Object.freeze({
   INVALID_LIFE_MINUTES:'분은 1~1440의 정수로 넣어 주세요.',STUDY_OFF:'공부 기능이 꺼져 있습니다. 설정에서 켜세요.',
   INVALID_LIFE_ENTRY:'습관 값이 올바르지 않습니다. 시각은 00:00~23:59, 분은 0~1440, 횟수는 0~99입니다.',
@@ -239,8 +240,9 @@ export function renderLifeToday(root,ctx,st){
 
   // 1) 머리: 날짜, 수능 + 다음 시험 D-day(FIX44, 계획 탭과 같은 글, 잠정 배지), 오늘 XP 링(쌓은 기록 기준), 연속·레벨 칩
   // V6A: D-day 두 칩(가까운 시험 먼저 · 최종 수능 보조), 계획 탭·STUDY LIVE와 같은 함수. 다가올 시험이 없으면 예전처럼 한 줄 글자.
-  const dd=ddayChips(defs.exams,date),examText=examLineText(defs.exams,date);
-  const examLine=dd.length?add(el('div',null,'life-exam'),ddayChipsNode(h,dd,'life-dday')):examText?add(el('div',null,'life-exam'),el('strong',examText,'life-dday')):hint('시험 일정이 없습니다. 습관 편집에서 추가하세요.');
+  // V8W2-1·2: 칩을 누르면 그 칩이 활성(진하게, 이 기기에 기억 lb.dday.active), 활성 칩 아래 게이지(남은 몫 금 · 지나간 몫 빗금 · 남은 % · 주·개월 환산).
+  const dd=ddayChips(defs.exams,date,readDdayActive(ctx.storage)),examText=examLineText(defs.exams,date),pickDday=role=>{writeDdayActive(ctx.storage,role);void ctx.rerender();};
+  const examLine=dd.length?add(el('div',null,'life-exam'),ddayChipsNode(h,dd,'life-dday',pickDday),ddayGaugeNode(planMaker(doc),ddayGauge(defs.exams,dd.find(c=>c.main),date))):examText?add(el('div',null,'life-exam'),el('strong',examText,'life-dday'),hint(EXAM_NONE_AHEAD)):hint('시험 일정이 없습니다. 습관 편집에서 추가하세요.');   // V8FIX L-30: 지난 시험만 남으면 다음 시험 안내
   const money=ctx.money?.(date)??null,ach=atDiaryDay(achieve({life:whole.life??null,study:whole.study??null,fin:whole.fin??null,today:date,money}),diaryOpenDate(ctx.now())),topLevel=ach.levels[ach.topArea];   // FIX50A (HUNT49 C1): 일기 연속은 04:00 일기 날 기준
   const xpSlot=add(el('div',null,'life-xp-slot'),ring(ach.todayXp,ach.goalXp,{size:64}));xpSlot.id='xp-slot';xpSlot.setAttribute('aria-label','오늘 XP '+ach.todayXp+' / '+ach.goalXp);
   const chips=add(el('div',null,'life-chips'),el('span',ach.todayXp+' / '+ach.goalXp+' XP','life-xp-text'),(()=>{const n=el('span','연속 '+ach.streak.days+'일 '+multText(ach.streak.mult10),'life-chip-slot');n.id='streak-chip';return n;})(),(()=>{const n=el('span',AREA_TEXT[ach.topArea]+' Lv '+topLevel.level,'life-chip-slot');n.id='level-chip';return n;})());
@@ -673,7 +675,7 @@ function bricksTimer(ctx,st,h,defs,subjects,sec,act,recordNow,finishTimer,goalBr
       const {pausedAt:_p,...rest}=c;st.timer={...rest,restMs};writeTimer(store,st.timer);void ctx.rerender();
     };
     st.liveStop?.();
-    const live=renderLive(ctx,{timer:t,subject:ts??subject,open:st.liveOpen,draftCard:st.studyCard?.card??null,exams:defs.exams,goalBricks,on:{
+    const live=renderLive(ctx,{timer:t,subject:ts??subject,open:st.liveOpen,draftCard:st.studyCard?.card??null,exams:defs.exams,ddayActive:readDdayActive(ctx.storage),goalBricks,on:{
       finish:act(()=>finishTimer(ts??subject,t.startIso,liveRecordMin(t,ctx.now()))),pause,resume,
       expand:()=>{st.liveOpen=true;void ctx.rerender();},collapse:()=>{st.liveOpen=false;void ctx.rerender();},
       storage:()=>{st.timer=readTimer(store);if(!st.timer)st.liveOpen=false;void ctx.rerender();}}});   // 다른 탭의 휴식·담기·취소를 따라간다
@@ -853,7 +855,7 @@ export function openEditor(ctx,st){
       add(body,add(el('div',null,'life-edit-row'),name,date,status,x.status==='잠정'?el('span','잠정','life-badge'):null,button('빼기',()=>{work.exams.items.splice(i,1);rerender();},'secondary')));
     });
     const nn=input('',{maxlength:String(MAX_NAME),placeholder:'새 시험 이름'});
-    add(body,add(el('div',null,'life-edit-row'),nn,button('시험 추가',()=>{const name=nn.value.trim();if(!name){showErr('INVALID_LIFE_TEXT');return;}work.exams.items.push({id:'e-'+ctx.uid().slice(0,12),name,date:ctx.now().slice(0,10),status:'잠정'});rerender();},'primary')),hint('날짜는 발표 전 잠정값입니다. 확정되면 상태를 "확정"으로 바꾸세요.'));
+    add(body,add(el('div',null,'life-edit-row'),nn,button('시험 추가',()=>{const name=nn.value.trim();if(!name){showErr('INVALID_LIFE_TEXT');return;}work.exams.items.push({id:'e-'+ctx.uid().slice(0,12),name,date:kstDate(ctx.now()),status:'잠정'});rerender();},'primary'))   /* V8FIX L-16: 새 시험 기본 날짜 = KST 오늘(00:00~08:59 KST에 UTC 날짜라 어제가 되던 것) */,hint('날짜는 발표 전 잠정값입니다. 확정되면 상태를 "확정"으로 바꾸세요.'));
   };
   rerender();
   let dlg=null;
@@ -1100,11 +1102,30 @@ export function boardLife(ctx,st,life,today){
   days.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
   return {...life,days};
 }
-export function renderHabitBoard(root,ctx,st,{actionDefs=[],actionDays={},actionDetail=null,recordAction=null,openActionPast=null}={}){
+// ---- V8W5 기록 메인 화면에서 바로 숨기기·다시 보이기·추가 (소유자 2026-11-14) ----
+// 행 이름을 누르면 [기록]·[숨기기]. 숨긴 항목은 맨 아래 "숨긴 항목 n개" 접힘에서 [다시 보이기]. 목록 끝 [+ 추가].
+// 저장 = 기존 칸 그대로: 습관 = HABIT_DEF.hidden(습관 고르기 시트의 빼기·다시 켜기와 같은 collectRows·saveDefinitions, 바뀐 습관 1개 = 연산 1),
+// 기본 행동 = ACTION.active(설정 "행동 편집"의 "오늘 화면에 활성화"와 같은 칸, 앱이 setActionShown으로 준다). 새 칸·새 종류 0.
+export const QUICK_TEXT=Object.freeze({record:'기록',hide:'숨기기',show:'다시 보이기',add:'+ 추가',cancel:'취소',newName:'새 습관 이름',
+  hidden:n=>'숨긴 항목 '+n+'개',hiddenNote:'숨겨도 지난 기록은 그대로예요 · 다시 보이면 그대로 보여요.',
+  hid:name=>name+' · 숨겼어요 · 아래 "숨긴 항목"에서 다시 보이게 할 수 있어요.',shown:name=>name+' · 다시 보여요.',added:name=>name+' · 추가했어요.'});
+// 습관 정의 작업본을 한 번 고쳐 바로 저장한다(습관 고르기 시트의 [저장]과 같은 길). 저장된 습관이 없으면 첫 저장 때 기본 습관을 함께 쓴다(collectRows 규칙 그대로).
+export async function saveHabitChange(ctx,st,mutate,reason){
+  const life=ctx.getWhole().life??{habits:[],days:[],subjects:[],exams:null},{defs,work}=habitPickWork(life),bases=definitionBases(life,defs);
+  mutate(work.habits);
+  const rows=collectRows(work,life,defs);
+  for(const r of rows)validateLifeData(r.type,r.id,r.data);
+  if(!rows.length)return {saved:0,sealed:false};
+  const memo={},n=await saveDefinitions(ctx,rows,reason,memo,bases);
+  return {saved:n,sealed:memo.sealed>0};
+}
+export function renderHabitBoard(root,ctx,st,{actionDefs=[],actionDays={},actionDetail=null,recordAction=null,openActionPast=null,setActionShown=null}={}){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,hint}=h;
   const whole=ctx.getWhole(),today=kstDate(ctx.now()),life=ctx.autoStack?boardLife(ctx,st,whole.life??null,today):whole.life??null;   // OPS1A: 초안 칸도 바로 보인다
   st.board??={mode:'WEEK',anchor:today,open:null};
-  const b=st.board,dates=boardDates(b.mode,b.anchor);
+  // V8FIX L-06: 켜 둔 채 날이 바뀌면(일요일 자정 등) 사용자가 옮기지 않은 기준(= 어제의 오늘)은 새 오늘로 따라간다. 직접 옮긴 주·달은 그대로.
+  const b=st.board;if(b.today!==today){if(b.today!==undefined&&b.anchor===b.today)b.anchor=today;b.today=today;}
+  const dates=boardDates(b.mode,b.anchor);
   const board=habitBoard({life,actionDefs,actionDays,dates,today});
   const act=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{await fn();}catch(x){st.message=st.ports?.box?.ERROR_TEXT[x?.code]??lifeErrorText(x?.code);st.error=true;}await prepareLife(ctx,st);await ctx.rerender();});
   const sec=add(el('section',null,'panel hb-board'),null);sec.id='habit-board';
@@ -1140,17 +1161,55 @@ export function renderHabitBoard(root,ctx,st,{actionDefs=[],actionDays={},action
     add(tbody,tr);
     if(b.open===r.id){
       const box=el('td',null,'hb-detail');box.colSpan=dates.length+3;
+      // V8W5: 상세 맨 위 = [기록](오늘 칸과 같은 시트) · [숨기기]. 행동 숨기기는 앱이 길을 줄 때만(설정의 활성화 칸).
+      const fresh=Boolean(ctx.freshBefore?.(today)),canHide=r.kind!=='ACTION'||Boolean(setActionShown);
+      add(box,add(el('div',null,'buttons hb-quick'),
+        fresh?null:button(QUICK_TEXT.record,()=>openBoardCell(ctx,st,r,today,{act,recordAction,openActionPast}),'primary hb-quick-record'),
+        canHide?button(QUICK_TEXT.hide,()=>hideRow(r),'secondary hb-quick-hide'):null));
       if(r.kind==='ACTION')add(box,actionDetail?.(r.action)??hint('상세를 불러오지 못했어요.'));
       else add(box,el('p',KIND_TEXT[r.h.kind]+(r.h.target.time?' · 목표 '+r.h.target.time:'')+(r.h.target.minutes?' · 목표 '+r.h.target.minutes+'분':'')+(r.h.target.count?' · 목표 '+(r.h.target.per==='WEEK'?'주 ':'하루 ')+r.h.target.count+'회':'')+(r.pinned?' · 오늘 탭 고정':' · 오늘 탭 "더 보기"'),'muted small'),button('이름·고정·순서·보관 바꾸기',()=>openEditor(ctx,st),'secondary'));
       add(tbody,add(el('tr',null,'hb-detail-row'),box));
     }
   };
+  // V8W5: 숨기기·다시 보이기·추가는 누르는 즉시 저장한다(습관 1개 = 연산 1, 행동 1개 = 연산 1).
+  const habitSave=(mutate,reason,done)=>act(async()=>{const r=await saveHabitChange(ctx,st,mutate,reason);if(r.sealed){st.message=DEFS_SEALED_TEXT;return;}st.message=r.saved?done:PICK_TEXT.none;});
+  function hideRow(r){
+    if(b.open===r.id)b.open=null;
+    if(r.kind==='ACTION'){setActionShown?.(r.id,false);return;}
+    habitSave(list=>{const x=list.find(h=>h.id===r.id);if(x)x.hidden=true;},'기록 화면에서 숨기기',QUICK_TEXT.hid(r.name))();
+  }
   for(const r of board.rows)rowNode(r);
-  if(!board.rows.length)add(sec,hint('보이는 습관이 없습니다. "습관 추가 · 편집"에서 추가하세요.'));
+  if(!board.rows.length)add(sec,hint('보이는 습관이 없습니다. 아래 "+ 추가"로 추가하세요.'));
   const foot=add(el('tr',null,'hb-day-row'),el('th',BOARD_TEXT.day,'hb-name-col'));
   for(const d of board.days)add(foot,el('td',d.rate===null?'':d.rate+'%','hb-day-rate'));
   add(foot,el('td'),el('td'));add(table,add(el('tfoot'),foot));
-  add(sec,wrap,hint('● 완료 · ◐ 일부 · ○ 못함 · 빈칸 기록 없음(못함 아님) · 칸을 누르면 그 날 기록 · 길게 누르거나 이름을 누르면 상세'+(b.mode==='MONTH'?' · 날짜 칸은 옆으로 밀어 보기':'')));
+  add(sec,wrap,hint('● 완료 · ◐ 일부 · ○ 못함 · 빈칸 기록 없음(못함 아님) · 칸을 누르면 그 날 기록 · 이름을 누르면 기록·숨기기'+(b.mode==='MONTH'?' · 날짜 칸은 옆으로 밀어 보기':'')));
+  // 목록 끝 [+ 추가]: 습관 고르기 시트의 새 습관과 같은 칸(이름 · 종류 · 목표).
+  const addBox=add(el('div',null,'hb-add-box'),null);
+  // V8FIX L-10: "+ 추가" 저장이 실패하면(습관 30개 상한 등, act가 st.error) 입력 줄을 다시 열고 적은 값(b.addDraft)을 그대로 둔다. 성공하면 비운다.
+  if(b.addDraft&&!b.adding){if(st.error)b.adding=true;else b.addDraft=null;}
+  if(b.adding){
+    const dft=b.addDraft??{};
+    const nn=h.input(dft.name??'',{maxlength:String(MAX_NAME),placeholder:QUICK_TEXT.newName,'aria-label':QUICK_TEXT.newName}),kind=h.select(NEW_HABIT_KINDS,dft.kind??'CHECK'),goal=h.input(dft.goal??'',{placeholder:'목표(시각 HH:MM · 분 · 주 횟수)','aria-label':'새 습관 목표',maxlength:'5'});kind.setAttribute('aria-label','새 습관 종류');
+    const err=el('p',null,'notice error hb-add-error');err.hidden=true;
+    add(addBox,add(el('div',null,'life-edit-row life-edit-new hb-add-row'),nn,kind,goal,button(QUICK_TEXT.add.replace('+ ',''),()=>{
+      const name=nn.value.trim();if(!name){err.textContent=lifeErrorText('INVALID_LIFE_TEXT');err.hidden=false;return;}
+      const t=newHabitTarget(kind.value,goal.value);if(!t){err.textContent=lifeErrorText('INVALID_HABIT_TARGET');err.hidden=false;return;}
+      b.adding=false;b.addDraft={name:nn.value,kind:kind.value,goal:goal.value};
+      habitSave(list=>{list.push({id:'h-'+ctx.uid().slice(0,12),name,kind:kind.value,target:t,difficulty:'AUTO',hidden:false,order:list.length,area:'BODY'});},'기록 화면에서 습관 추가',QUICK_TEXT.added(name))();
+    },'primary hb-add-save'),button(QUICK_TEXT.cancel,()=>{b.adding=false;b.addDraft=null;void ctx.rerender();},'secondary')),err);
+  }else add(addBox,button(QUICK_TEXT.add,()=>{b.adding=true;void ctx.rerender();},'secondary hb-add-open'));
+  add(sec,addBox);
+  // 맨 아래 "숨긴 항목 n개" 접힘: 숨긴 습관(HABIT_DEF.hidden) + 꺼 둔 기본 행동(ACTION.active=false, 행동 길이 있을 때만).
+  const hiddenHabits=lifeDefs(whole.life??null).habits.filter(x=>x.hidden),hiddenActions=setActionShown?actionDefs.filter(a=>a&&!a.active):[];
+  const nHidden=hiddenHabits.length+hiddenActions.length;
+  if(nHidden){
+    const fold=el('details',null,'hb-hidden');fold.open=Boolean(b.hiddenOpen);fold.addEventListener?.('toggle',()=>{b.hiddenOpen=fold.open;});
+    add(fold,el('summary',QUICK_TEXT.hidden(nHidden),'hb-hidden-sum'),hint(QUICK_TEXT.hiddenNote));
+    for(const a of hiddenActions){const row=add(el('div',null,'hb-hidden-row'),el('span',a.name,'hb-hidden-name'),button(QUICK_TEXT.show,()=>setActionShown(a.actionId,true),'secondary hb-hidden-show'));row.dataset.habit=a.actionId;add(fold,row);}
+    for(const x of hiddenHabits){const row=add(el('div',null,'hb-hidden-row'),el('span',x.name,'hb-hidden-name'),button(QUICK_TEXT.show,habitSave(list=>{const y=list.find(z=>z.id===x.id);if(y)y.hidden=false;},'기록 화면에서 다시 보이기',QUICK_TEXT.shown(x.name)),'secondary hb-hidden-show'));row.dataset.habit=x.id;add(fold,row);}
+    add(sec,fold);
+  }
   root.append(sec);
   boardScroll(wrap,b,today);
   return sec;

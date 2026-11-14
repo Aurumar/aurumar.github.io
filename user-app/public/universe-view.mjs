@@ -2,11 +2,25 @@
 // 읽기만 한다: 이미 저장된 공부 카드의 오답을 기존 투영(projectStudy)으로 읽어 그릴 뿐 어떤 기록도 쓰지 않는다(새 엔티티·스키마 없음). 합성 데이터로만 시험한다.
 // 화면 규칙: DOM 생성 함수만 쓴다(innerHTML·인라인 style·외부 라이브러리 없음). 색은 styles.css 클래스(과목 토큰), 토큰과 다른 과목 색(DS2 설정·영어 주황)은 SVG 속성. 별 상세에는 과목·오답 코드·itemRef·복습 예정일만 있고 메모(note)는 읽지도 보이지도 않는다.
 import {projectStudy} from './study-projection.mjs';
-import {layoutUniverse,universeColors,SUBJECT_INFO,SUBJECT_TOKEN_COLORS,STATE_TEXT,VIEW_2D,MAX_NODES} from './universe-layout.mjs';
+// V8W7: 오답이 하나도 없으면 빈 화면 대신 "예시" 표지를 단 예시 우주(universe-layout exampleUniverse, 금 톤)를 3D·2D로 보이고, 행성·별을 누르면 어떤 기록이 무엇이 되는지 설명한다.
+// 오답이 하나라도 생기면 다음 그리기부터 실제 우주만 보인다(예시와 실제는 섞이지 않는다). 상태 화면의 별 수(universeData)는 실제 값 그대로다.
+import {layoutUniverse,universeColors,exampleUniverse,EXAMPLE_PREFIX,SUBJECT_INFO,SUBJECT_TOKEN_COLORS,STATE_TEXT,VIEW_2D,MAX_NODES} from './universe-layout.mjs';
 import {kstDate,bookRefText} from './study-model.mjs';
 
 export const EMPTY_TEXT='공부 기록에 오답을 남기면 여기에 별이 생겨요';
 export const ERROR_TEXT='지식 우주를 계산하지 못했습니다(공부 기록 값 확인 필요).';
+export const EXAMPLE_LEAD='아직 오답 기록이 없어 예시 우주를 보여 드려요. 기록이 생기면 내 우주로 바뀌어요.';
+// 읽는 법: 어떤 기록이 어떤 행성·별이 되는지(실제 배치 규칙 그대로).
+export const EXAMPLE_KEY=Object.freeze([
+  ['행성','과목 하나 · 그 과목 오답이 많을수록 커져요'],
+  ['별','오답 1개 · 그 과목 행성 둘레에 생겨요'],
+  ['빛나는 별','복습에서 기억해 낸 오답(졸업 포함)'],
+  ['붉은 테 별','복습할 날이 지난 오답'],
+  ['선','같은 과목의 같은 오답 코드끼리 이어져요'],
+]);
+export const STATE_MEANING=Object.freeze({due:'복습할 날이 남은 오답이에요',late:'복습할 날이 지나 붉은 테가 둘러요',glow:'복습에서 기억해 내 밝게 빛나요'});
+// 예시 행성 설명 한 줄: "공부 기록에 국어 오답을 12개 남기면 이런 행성이 생겨요".
+export const examplePlanetLine=c=>'공부 기록에 '+c.name+' 오답을 '+c.count+'개 남기면 이런 행성이 생겨요';
 const NS='http://www.w3.org/2000/svg';
 const svgMaker=doc=>(tag,attrs={})=>{const n=doc.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));return n;};
 function maker(doc){
@@ -31,18 +45,29 @@ const paint=(code,color)=>tokenOf(code,color)?{}:{fill:color};
 const subjectName=n=>String(n.id).startsWith('lf_bio_')?'생물':SUBJECT_INFO[n.subject].name;
 const refText=n=>{const b=bookRefText(n.itemRef);return b?'시중 문제집 · '+b:n.itemRef;};
 // 별 하나의 상세 시트 내용: 과목·오답 코드·itemRef·복습 예정일·상태. (문제 내용·메모 필드는 모델에도 이 화면에도 없다.)
-export function nodeSheetBody(doc,node){
+const rowsBody=(doc,rows)=>{
   const {el,add}=maker(doc),body=el('div',null,'universe-detail');
-  const rows=[['과목',subjectName(node)],['오답 코드',node.errorCode],['항목',refText(node)],['복습 예정일',node.due??'정해진 날짜 없음'],['상태',STATE_TEXT[node.state]]];
   for(const [label,value] of rows)add(body,add(el('div',null,'universe-row'),el('span',label,'tower-stat-label'),el('strong',value,'tower-stat-value')));
   return body;
+};
+export function nodeSheetBody(doc,node){
+  return rowsBody(doc,[['과목',subjectName(node)],['오답 코드',node.errorCode],['항목',refText(node)],['복습 예정일',node.due??'정해진 날짜 없음'],['상태',STATE_TEXT[node.state]]]);
 }
-const nodeLabel=n=>subjectName(n)+' '+n.errorCode+' '+refText(n)+' · '+STATE_TEXT[n.state];
+// 행성(과목 군집) 시트. 예시면 "이런 행성이 생겨요" 설명, 실제면 그 과목 별 수·상태별 수.
+export function planetSheetBody(doc,c,example=false){
+  if(example)return rowsBody(doc,[['예시',examplePlanetLine(c)],['별',c.name+' 오답 1개마다 별 1개'],['크기','오답이 많을수록 행성이 커져요'],['별 모습','기억함 '+c.glow+' · 복습 늦음 '+c.late+' · 복습 예정 '+c.due]]);
+  return rowsBody(doc,[['과목',c.name],['별',c.count+'개'],['복습 늦음',c.late+'개'],['기억함',c.glow+'개'],['복습 예정',c.due+'개']]);
+}
+// 예시 별 시트: 과목·상태와 그 뜻만(오답 코드·문제 번호는 실제 별에서 보인다).
+export function exampleNodeSheetBody(doc,n){
+  return rowsBody(doc,[['예시','오답 1개가 별 1개가 돼요'],['과목',SUBJECT_INFO[n.subject].name],['상태',STATE_TEXT[n.state]],['뜻',STATE_MEANING[n.state]],['실제','실제 별에는 오답 코드·문제 번호·복습 예정일이 보여요']]);
+}
+const nodeLabel=n=>String(n.id).startsWith(EXAMPLE_PREFIX)?'예시 별 '+SUBJECT_INFO[n.subject].name+' · '+STATE_TEXT[n.state]:subjectName(n)+' '+n.errorCode+' '+refText(n)+' · '+STATE_TEXT[n.state];
 
 // 2D 우주: 과목 6개 원 + 오답 점 + 같은 과목·같은 코드 링크. WebGL이 없거나 느릴 때의 대체이자 3D와 같은 데이터다.
 export function buildUniverseSvg(doc,data,{onNode=null}={}){
   const s=svgMaker(doc);
-  const svg=s('svg',{class:'universe-svg',viewBox:'0 0 '+VIEW_2D.width+' '+VIEW_2D.height,width:'100%',role:'group','aria-label':'지식 우주 별 '+data.nodes.length+'개'});
+  const svg=s('svg',{class:'universe-svg',viewBox:'0 0 '+VIEW_2D.width+' '+VIEW_2D.height,width:'100%',role:'group','aria-label':(data.example?'예시 우주 별 ':'지식 우주 별 ')+data.nodes.length+'개'});
   const rings=s('g',{class:'universe-rings'}),links=s('g',{class:'universe-links'}),dots=s('g',{class:'universe-dots'});
   const colorOf=new Map(data.clusters.map(c=>[c.code,c.color]));
   for(const c of data.clusters){
@@ -63,39 +88,60 @@ export function buildUniverseSvg(doc,data,{onNode=null}={}){
     dots.append(g);
   }
   svg.append(rings,links,dots);
+  if(data.example){const mark=s('text',{class:'universe-example-mark',x:8,y:18});mark.textContent='예시';svg.append(mark);}
   return svg;
 }
 
-function legend(h,data){
+// 범례. onPlanet이 있으면 과목 이름이 단추가 되어 행성 시트를 연다(예시 우주).
+function legend(h,data,onPlanet=null){
   const {el,add}=h,s=svgMaker(h.doc),list=el('ul',null,'universe-legend');
   for(const c of data.clusters){
     const dot=s('svg',{class:'life-dot',width:10,height:10,viewBox:'0 0 10 10','aria-hidden':'true',...paint(c.code,c.color)});dot.append(s('circle',{class:'universe-legend-dot'+subjClass(c.code,c.color),cx:5,cy:5,r:5}));
-    add(list,add(el('li',null,'universe-legend-item'),dot,el('span',c.name),el('strong',c.count+'개')));
+    const parts=[dot,el('span',onPlanet?c.name+' 행성':c.name),el('strong',c.count+'개')];
+    if(!onPlanet){add(list,add(el('li',null,'universe-legend-item'),...parts));continue;}
+    const b=add(el('button',null,'universe-planet-btn'),...parts);b.type='button';b.setAttribute('aria-label',c.name+' 예시 행성 설명 보기');b.addEventListener('click',()=>onPlanet(c));
+    add(list,add(el('li',null,'universe-legend-item'),b));
   }
+  return list;
+}
+
+// 예시 우주 읽는 법(어떤 기록이 무엇이 되는지). 모양 표시는 글자로도 적는다(색만으로 구분하지 않는다).
+function exampleKey(h){
+  const {el,add}=h,list=el('ul',null,'universe-example-key');
+  for(const [what,means] of EXAMPLE_KEY)add(list,add(el('li',null,'universe-example-key-item'),el('strong',what),el('span',means)));
   return list;
 }
 
 // 우주 패널 한 개. 3D는 WebGL2가 있을 때만 첫 장면이 그려진 뒤 SVG를 대신한다. 실패하면 SVG 그대로.
 function renderUniversePanel(ctx,state){
   const doc=ctx.document??globalThis.document,h={...maker(doc),doc},{el,add}=h;
-  const out=add(el('section',null,'panel universe-panel'),add(el('div',null,'tower-head'),el('span','우주','eyebrow'),el('h2','지식 우주','panel-title')));
+  const head=add(el('div',null,'tower-head'),el('span','우주','eyebrow'),el('h2','지식 우주','panel-title')),out=add(el('section',null,'panel universe-panel'),head);
   let data;
   try{const whole=ctx.getWhole();data=universeData(whole.study??null,isoOf(ctx.now()),whole.life??null);}catch{data=null;}
   if(!data){add(out,el('p',ERROR_TEXT,'notice error universe-message'));return out;}
-  if(data.empty){
-    add(out,el('p',EMPTY_TEXT,'universe-empty'));
+  // 오답이 없으면 예시 우주(같은 그리기 경로, "예시" 표지·설명 시트). 공부 기록 단추는 그대로 둔다.
+  const example=data.empty;
+  if(example){
+    data=exampleUniverse();
+    out.className+=' universe-example';
+    add(head,el('span','예시','universe-example-badge'));
+    add(out,el('p',EMPTY_TEXT,'universe-empty'),el('p',EXAMPLE_LEAD,'muted universe-example-lead'));
     if(ctx.openStudy){const b=el('button','공부 기록으로 가기','secondary');b.type='button';b.addEventListener('click',()=>ctx.openStudy());add(out,b);}
-    return out;
   }
-  const open=n=>ctx.sheet?.(subjectName(n)+' 오답 · '+n.errorCode,nodeSheetBody(doc,n));
-  const summary='별 '+data.shown+'개 · 복습 늦음 '+data.counts.late+' · 기억함 '+data.counts.glow+' · 복습 예정 '+data.counts.due;
-  add(out,el('p',summary,'universe-summary'));
-  if(data.capped)add(out,el('p','최근 '+MAX_NODES+'개만 보여요(전체 '+data.total+'개)','notice universe-capped'));
+  const open=example?n=>ctx.sheet?.('예시 별 · '+SUBJECT_INFO[n.subject].name+' 오답',exampleNodeSheetBody(doc,n)):n=>ctx.sheet?.(subjectName(n)+' 오답 · '+n.errorCode,nodeSheetBody(doc,n));
+  const openPlanet=c=>ctx.sheet?.((example?'예시 · ':'')+c.name+' 행성',planetSheetBody(doc,c,example));
+  if(!example){
+    const summary='별 '+data.shown+'개 · 복습 늦음 '+data.counts.late+' · 기억함 '+data.counts.glow+' · 복습 예정 '+data.counts.due;
+    add(out,el('p',summary,'universe-summary'));
+    if(data.capped)add(out,el('p','최근 '+MAX_NODES+'개만 보여요(전체 '+data.total+'개)','notice universe-capped'));
+  }
   const slot=el('div',null,'universe-3d-slot');slot.hidden=true;
   const scroller=el('div',null,'universe-scroll');
   add(scroller,buildUniverseSvg(doc,data,{onNode:open}));
-  add(out,slot,scroller,legend(h,data),el('p','붉은 테두리 = 복습 늦음 · 빛나는 별 = 기억함(졸업 포함) · 선 = 같은 과목의 같은 오답 코드','muted small'));
-  if(globalThis.WebGL2RenderingContext)import('./universe-3d.mjs').then(m=>{if(scroller.isConnected)m.mountUniverse3d({doc,slot,fallback:scroller,data,onNode:open,st:state});}).catch(()=>{slot.dataset.mode='svg';slot.dataset.reason='IMPORT_FAILED';});
+  add(out,slot,scroller);
+  if(example)add(out,exampleKey(h),legend(h,data,openPlanet),el('p','행성 이름이나 3D 행성을 누르면 어떤 기록이 이 행성이 되는지 볼 수 있어요','muted small'));
+  else add(out,legend(h,data),el('p','행성 = 과목(누르면 별 수) · 붉은 테두리 = 복습 늦음 · 빛나는 별 = 기억함(졸업 포함) · 선 = 같은 과목의 같은 오답 코드','muted small'));
+  if(globalThis.WebGL2RenderingContext)import('./universe-3d.mjs').then(m=>{if(scroller.isConnected)m.mountUniverse3d({doc,slot,fallback:scroller,data,onNode:open,onPlanet:openPlanet,st:example?null:state});}).catch(()=>{slot.dataset.mode='svg';slot.dataset.reason='IMPORT_FAILED';});
   return out;
 }
 

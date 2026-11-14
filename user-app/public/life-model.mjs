@@ -338,8 +338,11 @@ export const DEFAULT_EXAMS=Object.freeze({items:Object.freeze([
   Object.freeze({id:'e-mock3',name:'3평',date:'2027-03-23',status:'잠정'}),
   Object.freeze({id:'e-mock6',name:'6평',date:'2027-06-03',status:'잠정'}),
   Object.freeze({id:'e-mock9',name:'하반기 모평(8월)',date:'2027-08-25',status:'잠정'}),
-  Object.freeze({id:'e-csat',name:'수능',date:'2027-11-18',status:'잠정'}),
+  Object.freeze({id:'e-csat',name:'수능',date:'2027-11-18',status:'확정'}),   // V8W2-4: 2028학년도 수능 = 2027-11-18(목) 확정(교육부 2025-06-02 발표)
 ])});
+// V8W2-4: 공식 발표로 확정된 수능 날짜. 저장된 일정이 아직 '잠정'이어도 화면 표시만 '확정'으로 읽는다(기록은 고치지 않는다, 편집 시트는 저장값 그대로).
+export const CSAT_CONFIRMED_DATES=Object.freeze(['2027-11-18']);
+export const examStatusOf=x=>x?.status==='잠정'&&(x.id==='e-csat'||x.name==='수능')&&CSAT_CONFIRMED_DATES.includes(x.date)?'확정':x?.status;
 export const emptyDay=date=>({date,habits:{},mood:null,note:'',dayType:'NORMAL'});
 export const emptyDiary=date=>({date,score:null,energy:null,good:[],bad:[],tomorrow:'',text:''});
 export const emptyWeekReview=monday=>({monday,pick:null,next:''});

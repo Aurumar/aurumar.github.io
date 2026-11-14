@@ -3,7 +3,7 @@
 // 제외: 메모·계획 본문(notes/goal 등)·건강/공부 카드 내용·돈 거래·가게 이름·금액. 제목만 싣는다. private/hidden 표시가 있는 항목은 뺀다(현재 일정 데이터에는 그 표시가 없어 방어용).
 // 시간대: 앱 날짜 기준은 한국 표준시(KST) 고정이고 일정 시각은 그 벽시계 값이다. 그래서 시각 일정은 TZID·Z 없는 "플로팅" 시각으로 내보내 어느 기기에서도 같은 시각으로 보인다. DTSTAMP만 규격상 UTC(Z)다.
 // 하루 계획은 블록 하나에 일정 1개로 묶는다(P1D2, UID = pd-날짜-블록). 바깥 캘린더에서 들여온 EVENT(id가 ics-로 시작)는 다시 내보내지 않는다.
-import {lifeDefs,shiftDay,dateKeyOK} from './life-model.mjs';
+import {lifeDefs,shiftDay,dateKeyOK,examStatusOf} from './life-model.mjs';
 
 export const ICS_DAYS=90;
 export const IMPORTED_EVENT_PREFIX='ics-';
@@ -92,7 +92,7 @@ export function collectIcsItems({events=[],plans=[],life=null,today,skipPlanDays
     for(const x of d.items??[])if(!excluded(x)){const b=shownBlock(x.block);blocks.set(b,[...(blocks.get(b)??[]),x.title]);}
     for(const [block,titles] of blocks)push('pd-'+safeId(row.date)+'-'+safeId(block),'공부 계획 · '+(BLOCK_TEXT[block]??'')+' · '+[...new Set(titles)].join(' · '),row.date,null);
   }
-  for(const x of lifeDefs(life).exams.items??[])if(!excluded(x))pushOpen('ex-'+safeId(x.id),'시험 · '+x.name+(x.status==='잠정'?' (잠정)':''),x.date,null);
+  for(const x of lifeDefs(life).exams.items??[])if(!excluded(x))pushOpen('ex-'+safeId(x.id),'시험 · '+x.name+(examStatusOf(x)==='잠정'?' (잠정)':''),x.date,null);
   items.sort((a,b)=>a.date.localeCompare(b.date)||(a.time??'').localeCompare(b.time??'')||(a.uid<b.uid?-1:a.uid>b.uid?1:0));
   return items.slice(0,MAX_ITEMS);
 }

@@ -8,7 +8,7 @@ import {lifeDefs,kstDate,shiftDay,validateLifeData,SUBJECT_COLOR_KEYS,PLAN_BLOCK
 import {achieve} from './life-achieve.mjs';
 import {stable} from './life-rebase.mjs';
 import {planOf,sortedItems,actualOf,planVsActual,copyPlan,savePlanDay,planErrorText,unknownOutcome,PLAN_NOTICE_TEXT,barsText,rateText,RATE_MEANING,mondayOf,dateLabel,NO_SUBJECT_COLOR,choosePlanDate,followPlanToday,weekDraftChanged,
-  daySessions,linkPlan,readPlanMarks,itemStateText,oldTarget,goalVsText,NEW_ITEM_BRICKS,todayDraft,studyDraftOf,SHOWN_BLOCKS,shownBlock} from './life-plan.mjs';
+  daySessions,linkPlan,readPlanMarks,itemStateText,oldTarget,goalVsText,NEW_ITEM_BRICKS,todayDraft,studyDraftOf,SHOWN_BLOCKS,shownBlock,weekSpanText} from './life-plan.mjs';
 import {openChipSheet,blockLabel,BLOCK_SHORT,titleOr,slotLabel} from './plan-today.mjs';
 export const WEEKDAYS=Object.freeze(['월','화','수','목','금','토','일']);
 export const CELL_SHOW=3,LONG_PRESS_MS=450;
@@ -204,7 +204,7 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
   };
 
   const out=el('section',null,'plan-card pw-week');out.id='plan-week';out.dataset.monday=monday;
-  const nav=add(el('div',null,'plan-nav'),button('◀',()=>{choosePlanDate(st,'monday',shiftDay(monday,-7));rerender();},'secondary'),el('strong',short(monday)+' ~ '+short(m.end),'plan-nav-label'),button('▶',()=>{choosePlanDate(st,'monday',shiftDay(monday,7));rerender();},'secondary'));
+  const nav=add(el('div',null,'plan-nav'),button('◀',()=>{choosePlanDate(st,'monday',shiftDay(monday,-7));rerender();},'secondary'),el('strong',weekSpanText(monday),'plan-nav-label'),button('▶',()=>{choosePlanDate(st,'monday',shiftDay(monday,7));rerender();},'secondary'));   // V8W3-1: "11/9(월) ~ 11/15(일)"
   if(monday!==mondayOf(day0))nav.append(button('이번 주',()=>{choosePlanDate(st,'monday',mondayOf(day0),false);rerender();},'secondary'));
   const head=weekHeadText(m);
   const timeLine=ctx.weekTimeLine?.(monday,day0)??null;   // FIX45 (AUD1 #6): 이 주 공부 시간·그 전 주 비교(study-stats, 앱이 넘긴다)
@@ -217,7 +217,8 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
 
   const grid=el('div',null,'pw-grid');grid.setAttribute('role','grid');grid.setAttribute('aria-label',short(monday)+' 주 계획, 칸 = 그 날 그 시간대');
   grid.append(el('span',null,'pw-corner'));
-  // CAL1B: 오늘 머리·열 = CAL1과 같은 금빛 채움·"오늘"(머리 셋째 자식, CSS order로 맨 위)·aria-current, 지난 날 = data-past(흐리게), 토·일 머리 = sat·sun(글자 색).
+  // CAL1B: 오늘 머리·열 = CAL1과 같은 금빛 채움·"오늘"(머리 셋째 자식)·aria-current, 지난 날 = data-past, 토·일 머리 = sat·sun(글자 색).
+  // V8W3-1: "오늘" 표지는 칸 안이 아니라 칸 위(CSS absolute)라 요일·날짜는 모든 칸 같은 자리·크기. 요일 PC 16px·폰 14px 굵게, 날짜 PC 24px·폰 20px, 지난 날 = 회색 빗금(0절).
   for(const d of m.days){
     const c=add(el('span',null,'pw-dayhead'+(d.isToday?' today':'')+(d.changed?' changed':'')+(d.weekday==='토'?' sat':d.weekday==='일'?' sun':'')),el('strong',d.weekday),el('small',String(Number(d.date.slice(8,10)))));c.dataset.date=d.date;
     if(d.isToday){c.setAttribute('aria-current','date');c.append(el('span','오늘','calendar-today-badge'));}else if(d.past)c.setAttribute('data-past','');

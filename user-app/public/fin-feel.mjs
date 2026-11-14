@@ -2,7 +2,7 @@
 // 규칙: 금액은 BigInt, 모름은 0이 아니다. 저장·시계·난수·저장소·innerHTML 없음. 통신은 없고 비서 목록 읽기(M1C)는 부른 쪽이 넘긴 request로만 한다. 화면 요소는 부른 쪽이 넘긴 h로만 만든다.
 // 결과와 문구에는 분류 이름과 합계만 넣는다(가게 이름·규칙 이름 없음). 의료·민감 줄은 가리기 설정과 상관없이 원인 후보에서 뺀다.
 // "무엇을 할지" 정하는 문장은 이 카드에만 쓴다(2026-11-06 지시서의 명시 요구). fin-forecast.mjs·fin-plan.mjs의 옛 원칙과 옛 함수는 그대로다.
-import {formatWon,isSensitive,shiftMonth} from './fin-ledger.mjs';
+import {formatWon,formatCompact,isSensitive,shiftMonth} from './fin-ledger.mjs';
 import {prepare,roundDiv} from './fin-charts.mjs';
 import {budgetStatus,monthInsight,vaultBricks} from './fin-plan.mjs';
 import {fixedPlan,fixedSchedule,monthForecast,forecastNode,TIGHT_PCT} from './fin-forecast.mjs';
@@ -503,8 +503,10 @@ function numCell(h,kind,label,amount,foot,extra='',tag=null){
   return h.add(h.el('div',null,'vault-num vault-num-'+kind+(own?' vault-l1-main':'')+extra),
     h.el('span',label,'vault-num-label'+(own?' vault-l1-label':'')),h.el('strong',amount,'vault-num-amount'+(own?' vault-l1-amount':'')),tag?h.el('span',tag,'vault-num-tag'):null,foot?h.el('span',foot,'vault-num-foot'+(own?' vault-l1-foot':'')):null);
 }
+// V8W4 (소유자 W4-1): 게이지 머리의 빠르기 글자. 색만으로 가르지 않는다(글자 + 막대 무늬). 적당선 = 날짜 진행(예산 × 지난 날 ÷ 이달 날, 오늘 포함)
+export const MONTH_SPEED_TEXT=Object.freeze({ROOM:'적정',OVER_PACE:'빠름',OVER_MONTH:'예산 초과'});
 // 이달 막대: 금 = 쓴 돈(적당선까지), 벽돌색 = 적당선을 넘은 부분, 빈 칸 = 남은 돈, 세로 눈금 = 오늘까지 이만큼이 적당. 예산을 넘으면 예산 자리에 가는 선.
-function monthBarNode(h,m){
+function monthBarNode(h,m,day=null){
   const H=24,label='이번 달 쓴 돈 '+formatWon(m.spent)+' · 예산 '+formatWon(m.budget)+' · 오늘까지 적당선 '+formatWon(m.pace)+(m.paceOver>0n?' · 적당선보다 '+formatWon(m.paceOver)+' 더 씀':'');
   const svg=barSvg(h,H,label,[
     ['rect',{x:0,y:2,width:1000,height:H-4},'vault-bar-track'],
@@ -512,10 +514,11 @@ function monthBarNode(h,m){
     ['rect',overRect(m.pacePm,m.spentPm,H),'vault-bar-over'],
     ['line',m.budgetOver>0n?{x1:m.budgetPm,y1:0,x2:m.budgetPm,y2:H}:null,'vault-bar-budget'],
     ['line',{x1:m.pacePm,y1:0,x2:m.pacePm,y2:H},'vault-bar-pace']]);
+  const speed=h.el('strong',MONTH_SPEED_TEXT[m.state],'vault-speed');speed.setAttribute('data-speed',m.state);
   const n=h.add(h.el('div',null,'vault-month vault-bar'+(m.paceOver>0n?' over':'')),
-    h.add(h.el('div',null,'vault-bar-head'),h.el('span','이달','vault-bar-title'),h.el('span','오늘까지 이만큼이 적당 '+formatWon(m.pace),'vault-bar-pace-text')),
+    h.add(h.el('div',null,'vault-bar-head'),h.add(h.el('span',null,'vault-bar-title-row'),h.el('span','이달','vault-bar-title'),speed),h.el('span','오늘까지 이만큼이 적당 '+formatWon(m.pace),'vault-bar-pace-text')),
     svg,
-    h.add(h.el('div',null,'vault-bar-foot'),h.el('span','쓴 돈 '+formatWon(m.spent)),h.el('span','예산 '+formatWon(m.budget))),
+    h.add(h.el('div',null,'vault-bar-foot'),h.el('span','쓴 돈 '+formatWon(m.spent)),day?h.el('span','세로선 = 날짜 진행 '+day.elapsed+'/'+day.days+'일','vault-bar-date'):null,h.el('span','예산 '+formatWon(m.budget))),
     m.paceOver>0n?h.el('p',VAULT_OVER_PACE(m.paceOver),'vault-bar-over-text'):null,
     m.budgetOver>0n?h.el('p',VAULT_OVER_BUDGET(m.budgetOver),'vault-bar-over-text'):null);
   n.setAttribute('data-state',m.state);
@@ -541,23 +544,49 @@ function topSpendNode(h,top){
     const svg=barSvg(h,10,r.name+' '+formatWon(r.won),[['rect',{x:0,y:1,width:1000,height:8},'vault-bar-track'],['rect',r.pm>0?{x:0,y:1,width:r.pm,height:8}:null,'vault-bar-fill']]);
     h.add(ul,h.add(h.el('li',null,'vault-top-row'),h.el('span',r.name,'vault-top-name'),h.add(h.el('span',null,'vault-top-bar'),svg),h.el('strong',formatWon(r.won),'vault-top-won')));
   }
-  return h.add(h.el('div',null,'vault-top'),h.el('h3','많이 쓴 곳 · 이번 달','vault-top-title'),ul);
+  return h.add(h.el('div',null,'vault-top'),h.el('h3','분류별 쓴 돈 · 이번 달 상위 '+MONTH_TOP_N,'vault-top-title'),ul);
+}
+// ---------- V8W4 이번 달 돈 (소유자 W4-1: "벽돌로 보기"가 무엇을 보여 주는지 감이 안 온다) ----------
+// 숫자 5개: 이번 달 쓸 수 있는 돈(예산) / 지금까지 쓴 돈 / 남은 돈 / 남은 날(오늘 포함) / 하루에 쓸 수 있는 돈. 새 계산 없음 — 예산·쓴 돈·남은 돈은 budgetStatus total,
+// 하루에 쓸 수 있는 돈은 FIX67 오늘 몫(vaultTodayShare: (고정비 예정 뺀 남은 돈 + 오늘 쓴 돈) ÷ 오늘 포함 남은 날)을 그대로 쓴다. 금괴 벽은 "자세히" 안으로 옮겼다(지우지 않음).
+export const MONTH_MONEY_TEXT=Object.freeze({title:'이번 달 돈',budget:'이번 달 쓸 수 있는 돈',spent:'지금까지 쓴 돈',left:'남은 돈',over:'이달 초과',days:'남은 날',perDay:'하루에 쓸 수 있는 돈',wall:'날마다 쓴 돈 · 금괴 한 개 = 하루 몫(예산 ÷ 날수)',input:'이번 달 쓸 수 있는 돈 (원)',save:'저장'});
+export const MONTH_TOP_N=5;
+// 남은 날 = 오늘 포함. 이번 달이 아니면 null.
+export const monthDaysLeft=s=>s.current?s.days-s.elapsed+1:null;
+// 오늘 몫 안(LEFT) = 오늘 몫, 마지막 날(LAST) = 오늘 남은 돈. 오늘 몫을 넘겼으면(OVER) 오늘 몫은 이미 다 썼으므로 내일부터 하루 몫(core.safe, 예전 칩 값)을 크게 보인다.
+function perDayCell(h,num,core,minus){
+  const L=MONTH_MONEY_TEXT,fx=' · '+VAULT_TODAY_TEXT.fixed;
+  if(minus)return numCell(h,'today',L.perDay,VAULT_MINUS(core.A),vaultDayText(core));
+  const t=num.share;
+  if(!t||num.state==='LAST')return numCell(h,'today',L.perDay,num.value,num.foot,'',num.tag??null);
+  if(num.state==='OVER')return numCell(h,'today',L.perDay,formatWon(core.safe),VAULT_OVER_SHARE(t.over)+' · '+(core.A>0n&&core.safe>0n?'내일부터 하루':vaultTomorrowText(core))+fx,' over');
+  return numCell(h,'today',L.perDay,formatWon(t.share),'오늘 남은 몫 '+formatWon(t.left)+fx);
+}
+// 예산이 없을 때 이번 달 쓸 수 있는 돈 입력 칸. 저장은 부른 쪽(onBudget = 기존 FIN_BUDGET 저장 경로)이 한다. onBudget이 없으면 칸도 없다.
+function budgetInputNode(h,onBudget){
+  if(!onBudget)return null;
+  const input=h.el('input',null,'month-budget-input');
+  for(const [k,v] of [['type','text'],['inputmode','numeric'],['autocomplete','off'],['aria-label',MONTH_MONEY_TEXT.input],['placeholder','예: 1200000']])input.setAttribute(k,v);
+  if(input.dataset)input.dataset.navOnly='1';
+  return h.add(h.el('div',null,'month-budget'),h.add(h.el('label',null,'month-budget-label'),h.el('span',MONTH_MONEY_TEXT.input),input),h.button(MONTH_MONEY_TEXT.save,()=>onBudget(String(input.value??'')),'primary'));
 }
 
 // h={el,add,button,svgEl,svgRoot}. ctx = app.mjs vaultState() 값({prep,s,f,v}) + rules·narrow(≤420px), 앱 쪽 줄(live 지금 내 돈, fixed 아직 안 나간 고정비, feedback 저장 직후 줄), onQuick·onCalc. 부른 쪽이 root에 붙인다.
 // DS3B: 위에서 아래로 ① 숫자 3개(쓴 돈·남은 돈·오늘 쓸 수 있는 돈, 같은 크기) ② 이달 막대 ③ 오늘 막대 ④ 많이 쓴 곳 3개 ⑤ "벽돌로 보기"(접힘: 오늘 금괴·금괴 벽). "자세히"는 늘 접혀서 시작한다.
-export function vaultCardNode(h,{prep,s,f,v,rules=[],narrow=false,live=null,fixed=null,feedback=null,onQuick,onCalc}){
+// V8W4: 카드 이름 "이번 달 돈". ① 숫자 5개(MONTH_MONEY_TEXT) ② 이달 게이지(빠름·적정 글자 + 날짜 진행 세로선) ③ 오늘 막대 ④ 분류별 상위 5 ⑤ "자세히" 안에 금괴 벽. 예산이 없으면 입력 칸(onBudget).
+export function vaultCardNode(h,{prep,s,f,v,rules=[],narrow=false,live=null,fixed=null,feedback=null,onQuick,onCalc,onBudget=null}){
   const T=s.total,p=h.el('section',null,'panel vault-card vault-v5'),fcBox=feelDetails(h,forecastNode(h,f));
   const tip=h.el('summary','ⓘ');tip.setAttribute('aria-label','금고 계산 도움말');
   const help=h.add(h.el('details',null,'vault-help'),tip,...VAULT_NOTES.map(t=>h.el('p',t,'muted small')));
-  h.add(p,h.add(h.el('div',null,'vault-head'),h.el('h2','이번 달 금고','panel-title'),h.add(h.el('span',null,'vault-head-side'),h.el('span',s.month,'eyebrow'),help)));
-  const top=topSpendNode(h,vaultTopSpend(prep,s));
+  h.add(p,h.add(h.el('div',null,'vault-head'),h.el('h2',MONTH_MONEY_TEXT.title,'panel-title'),h.add(h.el('span',null,'vault-head-side'),h.el('span',s.month,'eyebrow'),help)));
+  const top=topSpendNode(h,vaultTopSpend(prep,s,MONTH_TOP_N));
   const unknownFoot=s.unknownRows?'실제 금액 모름 '+Number(s.unknownRows).toLocaleString('ko-KR')+'행 뺌':'이번 달 오늘까지';
   if(v.state==='NO_BUDGET'){
     // DS3B: 예산이 없으면 쓴 돈만 크게(소비 줄이 없으면 0원이 아니라 자료 없음, 모름 줄만 있으면 모름) + 예산 정하기 단추 하나.
+    // V8W4: 그 위에 이번 달 쓸 수 있는 돈 입력 칸(기존 FIN_BUDGET 저장, onBudget이 있을 때만).
     const spent=s.dataState==='KNOWN'?formatWon(s.actualTotal):s.dataState==='NO_DATA'?'자료 없음':'모름';
-    h.add(p,h.add(h.el('div',null,'vault-nums solo'),numCell(h,'spent','쓴 돈',spent,s.dataState==='KNOWN'?unknownFoot:null)),
-      h.add(h.el('div',null,'button-row'),h.button(VAULT_NO_BUDGET_CTA,onCalc,'primary')),top,live,fcBox,fixed);
+    h.add(p,h.add(h.el('div',null,'vault-nums solo'),numCell(h,'spent',MONTH_MONEY_TEXT.spent,spent,s.dataState==='KNOWN'?unknownFoot:null)),
+      budgetInputNode(h,onBudget),h.add(h.el('div',null,'button-row'),h.button(VAULT_NO_BUDGET_CTA,onCalc,onBudget?'secondary':'primary')),top,live,fcBox,fixed);
     return p;
   }
   const known=v.state==='OK',wall=vaultWall(prep,s,v),num=vaultTodayNum({f,s,v,todaySpent:wall.today?.spent??null}),over=num.state==='OVER';   // FIX67 (M-04): 넘김 = 오늘 몫(vaultTodayShare) 기준
@@ -565,31 +594,123 @@ export function vaultCardNode(h,{prep,s,f,v,rules=[],narrow=false,live=null,fixe
   const core=known&&s.current?feelCore(f):null,minus=Boolean(core&&core.A<0n);
   p.setAttribute('data-tone',!known?'none':feelTone(moneyFeel({prep,status:s,forecast:f,rules}),T));
   // ① 숫자 3개. 쓴 돈·남은 돈 = budgetStatus total 그대로(넘으면 "이달 초과" + 넘은 금액). 셋째 = 오늘 남은 몫(FIX67 vaultTodayNum, 아래 작은 줄 = 내일부터 하루 몫). 모름·자료 없음은 0원이 아니다.
-  const unk=v.state==='NO_DATA'?'자료 없음':'모름',overMonth=known&&T.remaining<0n;
-  const nums=h.add(h.el('div',null,'vault-nums'),
-    numCell(h,'spent','쓴 돈',known?formatWon(T.actual):unk,known?unknownFoot:null),
-    numCell(h,'left',overMonth?'이달 초과':'남은 돈',known?formatWon(overMonth?-T.remaining:T.remaining):'모름','예산 '+formatWon(T.budget),overMonth?' over':''),
-    numCell(h,'today',num.label,minus?VAULT_MINUS(core.A):num.value,num.foot,over&&!minus?' over':'',num.tag??null));
+  const unk=v.state==='NO_DATA'?'자료 없음':'모름',overMonth=known&&T.remaining<0n,L=MONTH_MONEY_TEXT,dLeft=monthDaysLeft(s);
+  // V8W4: 숫자 5개. 쓸 수 있는 돈 = 예산(기존 FIN_BUDGET), 남은 날 = 오늘 포함, 하루에 쓸 수 있는 돈 = 오늘 몫(perDayCell)
+  const nums=h.add(h.el('div',null,'vault-nums vault-nums-5'),
+    numCell(h,'budget',L.budget,formatWon(T.budget),'예산 · 금고 계산기·예산 탭에서 바꿈'),
+    numCell(h,'spent',L.spent,known?formatWon(T.actual):unk,known?unknownFoot:null),
+    numCell(h,'left',overMonth?L.over:L.left,known?formatWon(overMonth?-T.remaining:T.remaining):'모름','예산 '+formatWon(T.budget),overMonth?' over':''),
+    numCell(h,'days',L.days,dLeft===null?'-':dLeft+'일',dLeft===null?'이번 달이 아님':'오늘 포함 · '+s.days+'일 중 '+s.elapsed+'일째'),
+    perDayCell(h,num,core,minus));
   const l1=h.add(h.el('div',null,'vault-l1'+(over?' over':'')+(minus?' minus':'')),nums,
     known?null:h.el('p',v.state==='NO_DATA'?'이 달 소비 자료가 없습니다(0원 아님). 예산 '+formatWon(T.budget)
       :'실제 금액 모름 줄만 있어 쓴 돈을 알 수 없습니다. 예산 '+formatWon(T.budget),'vault-sub'),
     // ② 이달 막대 ③ 오늘 막대: 쓴 돈을 알 때만(모름 달은 0원 막대로 그리지 않는다)
-    known?monthBarNode(h,vaultMonthBar(T)):null,
+    known?monthBarNode(h,vaultMonthBar(T),s.current?{elapsed:s.elapsed,days:s.days}:null):null,
     known&&s.current?todayBarNode(h,num.share?vaultTodayBar(wall,num.share.share):null,vaultRestText(core)):null,
     fixed,h.add(h.el('div',null,'vault-l1-side button-row'),h.button('빠른 지출',onQuick,'primary')));   // FIX67 (MAN1 9): 단추 이름 하나로
   l1.setAttribute('data-over',over?'1':'0');l1.setAttribute('data-minus',minus?'1':'0');
   h.add(p,l1,feedback,top);
-  // ⑤ 벽돌로 보기(접힘): 오늘 금괴 + 금괴 벽. 지우지 않고 옮겼다.
-  const l2=h.add(h.el('details',null,'vault-l2'),h.el('summary','벽돌로 보기','vault-l2-sum'),
+  // ⑤ 금괴 벽(V8W4: "벽돌로 보기" 접힘을 없애고 "자세히" 안 한 칸으로 옮김): 오늘 금괴 + 금괴 벽. 지우지 않고 옮겼다.
+  const l2=h.add(h.el('div',null,'vault-l2'),h.el('h3',L.wall,'vault-l2-sum'),
     h.add(h.el('div',null,'vault-l2-today'),todayIngot(h,wall,minus),h.el('span','오늘 금괴 · 금 = 금괴 한 개(예산 ÷ 날수) 중 오늘 남은 만큼','muted small')),
     wallNode(h,wall,{cols:narrow?6:10}),vaultLegend(h),
     known?null:h.el('p',v.state==='NO_DATA'?'소비 줄이 없는 달은 0원이 아니라 자료 없음입니다.':'실제 금액 모름 줄 '+Number(s.unknownRows).toLocaleString('ko-KR')+'행은 합계에 넣지 않습니다.','muted small'));
-  // 3층(접힘): 지금 내 돈·기대치 대비·금괴 한 개·이번 달 속도로 계산한 값·금고 계산기
+  // 3층(접힘): 지금 내 돈·기대치 대비·금괴 한 개·금괴 벽·이번 달 속도로 계산한 값·금고 계산기
   const pace=(known&&s.current?(T.paceDelta>0n?formatWon(T.paceDelta)+' 더 씀':T.paceDelta<0n?formatWon(-T.paceDelta)+' 덜 씀':'같음'):'-')+' · '+(known&&s.current?'기대치 '+formatWon(T.expectedToDate):'이번 달만 비교');
   const l3=h.add(h.el('details',null,'vault-more'),h.el('summary','자세히'),live,
     h.el('p','오늘까지 기대치 대비 '+pace,'small vault-more-line'),
     h.el('p','금괴 한 개 '+(v.perBrick===null?'-':formatWon(v.perBrick))+' · '+s.days+'일 × 한 개 = 하루 몫','small vault-more-line'),
-    fcBox,h.add(h.el('div',null,'button-row'),h.button('금고 계산기',onCalc,'secondary')));
-  h.add(p,l2,l3);
+    l2,fcBox,h.add(h.el('div',null,'button-row'),h.button('금고 계산기',onCalc,'secondary')));
+  h.add(p,l3);
   return p;
+}
+
+// ---------- V8W4 거래 달력 (소유자 W4-2) ----------
+// 월요일 시작. 날짜 칸에는 그날 소비 합계(지출 − 환불, 순액 모름 줄은 빼고 따로 셈)만. 금액 구간 6단계(글자 크기·굵기·색 농도). 계산만(저장 0), 넘겨받은 줄(필터 적용 뒤)만 쓴다.
+export const TXN_TIERS=Object.freeze([10000n,100000n,1000000n,2000000n,3000000n]);
+export const TXN_TIER_TEXT=Object.freeze(['1만 원 미만','10만 원 미만','100만 원 미만','200만 원 미만','300만 원 미만','300만 원 이상']);
+export const TXN_WEEKDAYS=Object.freeze(['월','화','수','목','금','토','일']);
+// 0원 넘는 금액의 구간 1~6. 0원 이하(환불이 더 큰 날)는 0.
+export function txnTier(won){
+  if(won<=0n)return 0;
+  let i=0;while(i<TXN_TIERS.length&&won>=TXN_TIERS[i])i++;
+  return i+1;
+}
+const weekdayMon=date=>(new Date(Date.UTC(Number(date.slice(0,4)),Number(date.slice(5,7))-1,Number(date.slice(8,10)))).getUTCDay()+6)%7;
+// lines = 이 달 줄(monthLines 결과), today = 기기 현지 날짜(YYYY-MM-DD). 칸 = {date,day,weekday,phase,net,count,unknown,tier}. net = 순액을 아는 소비 줄 합(없으면 null).
+export function txnCalendar(lines,month,today){
+  const days=daysOf(month),byDay=new Map();
+  for(const l of lines){
+    if(l.month!==month||!CONSUMPTION.has(l.kind))continue;
+    const d=Number(l.date.slice(8,10)),e=byDay.get(d)??{net:0n,count:0,unknown:0};
+    if(l.net===null)e.unknown++;else{e.net+=l.net;e.count++;}
+    byDay.set(d,e);
+  }
+  const cells=[];
+  for(let d=1;d<=days;d++){
+    const date=month+'-'+pad(d),e=byDay.get(d),net=e&&e.count?e.net:null;
+    cells.push({date,day:d,weekday:weekdayMon(date),phase:date<today?'PAST':date===today?'TODAY':'FUTURE',net,count:e?.count??0,unknown:e?.unknown??0,tier:net===null?null:txnTier(net)});
+  }
+  const lead=cells[0].weekday,slots=[...Array(lead).fill(null),...cells];
+  while(slots.length%7)slots.push(null);
+  const weeks=[];
+  for(let i=0;i<slots.length;i+=7)weeks.push(slots.slice(i,i+7));
+  return {month,days,lead,cells,weeks};
+}
+// 칸 글자: 금액(넓은 화면 = 원 단위 전체, 좁은 화면 = 짧게 — CSS가 하나만 보인다). 순액 모름 줄만 있는 날 = "모름", 소비 줄 없는 날 = 빈칸.
+// 짧은 글자: 1만 원 이상은 formatCompact("1.2만"), 1천~1만 원은 "4천"·"7.5천"(접힌 폰 한 칸 폭에 들게), 1천 원 미만은 원 그대로.
+export function txnShort(won){
+  const a=won<0n?-won:won,sign=won<0n?'-':'';
+  if(a>=10000n)return formatCompact(won);
+  if(a<1000n)return sign+a+'원';
+  const t=(a+50n)/100n;
+  if(t>=100n)return sign+'1만';
+  return sign+(t/10n)+(t%10n?'.'+(t%10n):'')+'천';
+}
+export function txnCellText(c){
+  if(c.net===null)return c.unknown?{full:'모름',short:'모름'}:null;
+  return {full:formatWon(c.net),short:txnShort(c.net)};
+}
+const txnCellClass=(c,picked)=>'txn-cal-day ph-'+c.phase.toLowerCase()+(c.tier===null?c.unknown?' unk':'':' t'+c.tier)+(c.weekday===5?' sat':c.weekday===6?' sun':'')+(c.date===picked?' picked':'');
+const txnCellLabel=c=>{const t=txnCellText(c);return c.date+(c.phase==='TODAY'?' 오늘':'')+' · '+(t?'소비 '+t.full+(c.tier?' ('+TXN_TIER_TEXT[c.tier-1]+')':''):'소비 없음')+(c.unknown&&c.net!==null?' · 실제 금액 모름 '+c.unknown+'건':'');};
+// 그날 거래 표: 시각 · 가맹점 · 분류 · 금액. 거래 기록에 시각 칸이 없어 시각은 "-"(구조 변경은 REPORT 소유자 확인). name(l)·cat(l)·kind(l)은 부른 쪽(가리기 설정·분류 이름)이 준다.
+export function txnDayNode(h,date,lines,{name,cat,kind}){
+  const mine=lines.filter(l=>l.date===date),cal=txnCalendar(mine,date.slice(0,7),date),c=cal.cells[Number(date.slice(8,10))-1],t=txnCellText(c);
+  const box=h.add(h.el('div',null,'txn-day'),h.el('h3',date+' ('+TXN_WEEKDAYS[c.weekday]+') · '+(t?'소비 '+t.full:'소비 없음')+' · '+mine.length+'건','txn-day-title'));
+  if(!mine.length)return h.add(box,h.el('p','이 날 거래가 없습니다.','muted small'));
+  const head=h.el('tr'),body=h.el('tbody');
+  ['시각','가맹점','분류','금액'].forEach((x,i)=>h.add(head,h.el('th',x,i===3?'num':null)));
+  for(const l of mine){
+    const won=l.net===null?'모름':(l.kind==='INCOME'?'+':'')+formatWon(l.net),k=l.kind==='EXPENSE'?'':kind(l)+' ';
+    h.add(body,h.add(h.el('tr'),h.el('td','-','txn-day-time'),h.el('td',name(l)),h.el('td',l.category?cat(l):'-'),h.el('td',k+won,'num')));
+  }
+  return h.add(box,h.add(h.el('div',null,'table-wrap'),h.add(h.el('table',null,'fin-table txn-day-table'),h.add(h.el('thead'),head),body)),h.el('p','시각은 거래 기록에 없어 표시하지 않습니다.','muted small'));
+}
+// 달력. 칸을 누르면 그 칸만 고른 표시가 바뀌고 아래 표를 그날로 바꾼다(다시 그리기 없음). onPick(date)는 부른 쪽이 고른 날을 기억할 때 쓴다.
+export function txnCalendarNode(h,cal,{lines,picked=null,onPick=null,name,cat,kind}){
+  const grid=h.el('div',null,'txn-cal-grid'),detail=h.el('div',null,'txn-cal-detail'),buttons=[];
+  grid.setAttribute('role','group');grid.setAttribute('aria-label',cal.month+' 거래 달력 · 월요일 시작');
+  for(const w of TXN_WEEKDAYS)h.add(grid,h.el('span',w,'txn-cal-wd'+(w==='토'?' sat':w==='일'?' sun':'')));
+  let now=picked&&picked.startsWith(cal.month+'-')?picked:null;
+  const show=date=>{
+    now=date;
+    for(const [b,c] of buttons){b.className=txnCellClass(c,now);b.setAttribute('aria-pressed',String(c.date===now));}
+    detail.replaceChildren(...(now?[txnDayNode(h,now,lines,{name,cat,kind})]:[h.el('p','날짜를 누르면 그날 거래(시각·가맹점·분류·금액)를 보여 줍니다.','muted small')]));
+  };
+  for(const w of cal.weeks)for(const c of w){
+    if(!c){h.add(grid,h.el('span','','txn-cal-blank'));continue;}
+    const t=txnCellText(c),b=h.button('',()=>{show(c.date);onPick?.(c.date);},txnCellClass(c,now));
+    b.setAttribute('aria-label',txnCellLabel(c));b.setAttribute('aria-pressed',String(c.date===now));b.setAttribute('data-phase',c.phase);
+    if(c.tier!==null)b.setAttribute('data-tier',String(c.tier));
+    h.add(b,c.phase==='TODAY'?h.el('span','오늘','txn-cal-today'):null,h.el('span',String(c.day),'txn-cal-num'),
+      t?h.add(h.el('span',null,'txn-cal-amt'),h.el('span',t.full,'txn-cal-full'),h.el('span',t.short,'txn-cal-short')):null);
+    buttons.push([b,c]);h.add(grid,b);
+  }
+  const legend=h.el('ul',null,'fin-legend txn-cal-legend');
+  TXN_TIER_TEXT.forEach((x,i)=>h.add(legend,h.add(h.el('li',null,'t'+(i+1)),h.el('span','가','txn-cal-sample'),h.el('span',x))));
+  h.add(legend,h.add(h.el('li',null,'ph-past'),h.el('span','','swatch txn-cal-swatch-past'),h.el('span','지난 날(회색 빗금)')));
+  const box=h.add(h.el('div',null,'txn-cal'),grid,legend,detail);
+  show(now);
+  return box;
 }
