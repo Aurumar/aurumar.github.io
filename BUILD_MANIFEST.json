@@ -1826,8 +1826,8 @@
     {
       "path": "brand-brick-512.png",
       "sourcePath": "user-app/public/brand-brick-512.png",
-      "sourceSha256": "bc129e73a7a678b18732d788709f42001a79fd245f03d61bb94d4be220d78be1",
-      "outputSha256": "bc129e73a7a678b18732d788709f42001a79fd245f03d61bb94d4be220d78be1"
+      "sourceSha256": "dba40cc5d47a160e20aa91d7dc00a9cb5f99fc1211c07bb64971e647c241af58",
+      "outputSha256": "dba40cc5d47a160e20aa91d7dc00a9cb5f99fc1211c07bb64971e647c241af58"
     },
     {
       "path": "brand-b1-1280x720.png",
@@ -1838,20 +1838,20 @@
     {
       "path": "favicon-16.png",
       "sourcePath": "user-app/public/favicon-16.png",
-      "sourceSha256": "9daa88871b8ddb02baebfd80ae457d30f2aaecf8c26cb081dc84192f8630e9ce",
-      "outputSha256": "9daa88871b8ddb02baebfd80ae457d30f2aaecf8c26cb081dc84192f8630e9ce"
+      "sourceSha256": "420f2e487fa77fb0a9eee387023795dbae1bca158b79065fc7a7667f5fd6c1ad",
+      "outputSha256": "420f2e487fa77fb0a9eee387023795dbae1bca158b79065fc7a7667f5fd6c1ad"
     },
     {
       "path": "favicon-32.png",
       "sourcePath": "user-app/public/favicon-32.png",
-      "sourceSha256": "20b7a2d1acc056c8c4ae340765711ad1ba98dd5361e75524fbddea91be5babe6",
-      "outputSha256": "20b7a2d1acc056c8c4ae340765711ad1ba98dd5361e75524fbddea91be5babe6"
+      "sourceSha256": "dc3c0b00e57b828653f8fc87c039e1242efbd6d877d552092e03111460ed2c9b",
+      "outputSha256": "dc3c0b00e57b828653f8fc87c039e1242efbd6d877d552092e03111460ed2c9b"
     },
     {
       "path": "favicon-48.png",
       "sourcePath": "user-app/public/favicon-48.png",
-      "sourceSha256": "4555c4b03f4a007d56650eaabfab0c165f76526a6892fd5309d47b46f31e7415",
-      "outputSha256": "4555c4b03f4a007d56650eaabfab0c165f76526a6892fd5309d47b46f31e7415"
+      "sourceSha256": "bce56091d8d8dd73bbcd5f6bbd256ba764eeb7a06850efc4d8f426c418199a8e",
+      "outputSha256": "bce56091d8d8dd73bbcd5f6bbd256ba764eeb7a06850efc4d8f426c418199a8e"
     }
   ]
 }
