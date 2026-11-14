@@ -82,7 +82,9 @@ export function renderMonth(ctx,st,{data,ym,dateGrid,goWeek,items=null}){
     grid.append(el('span',null,'pm-corner'));
     for(const c of m.cols){
       const range=el('small',null,'pm-range');for(const p of weekRangeParts(c))range.append(el('span',p.text,p.other?'pm-other':null));
-      const n=add(el('span',null,'pm-colhead'+(c.now?' now':'')+(c.edge?' edge':'')+(c.other?' other':'')),el('strong',c.name),range);n.dataset.monday=c.monday;n.setAttribute('aria-label',c.name+' '+short(c.monday)+'~'+short(c.end));if(c.end<data.today)n.setAttribute('data-past','');grid.append(n);
+      // V8LOW L-09: 보고 있는 해와 다른 해의 주 이름이면 이름 위에 연도 한 줄, 해가 바뀌는 주는 읽기 이름에 양쪽 연도
+      const wy=weekName(c.monday).ym.slice(0,4),cross=c.monday.slice(0,4)!==c.end.slice(0,4),yr=wy!==ym.slice(0,4)?el('small',Number(wy)+'년','pm-year'):null;
+      const n=add(el('span',null,'pm-colhead'+(c.now?' now':'')+(c.edge?' edge':'')+(c.other?' other':'')),yr,el('strong',c.name),range);n.dataset.monday=c.monday;n.setAttribute('aria-label',(yr?Number(wy)+'년 ':'')+c.name+' '+(cross?Number(c.monday.slice(0,4))+'년 ':'')+short(c.monday)+'~'+(cross?Number(c.end.slice(0,4))+'년 ':'')+short(c.end));if(c.end<data.today)n.setAttribute('data-past','');grid.append(n);
     }
     grid.append(el('span','이 달','pm-colhead pm-total-head'));
     for(const r of m.rows){

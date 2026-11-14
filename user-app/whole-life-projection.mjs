@@ -6,6 +6,8 @@ import {hltTitle,HLT_TYPES} from './public/hlt-model.mjs';
 import {hltRawView} from './public/hlt-projection.mjs';
 import {studyTitle,studyRawView,STUDY_TYPES} from './public/study-model.mjs';
 import {lifeTitle,lifeRawView,lifeHistoryValue,LIFE_TYPES} from './public/life-model.mjs';
+import {cardDayTitle,cardRawView,CARD_TYPES} from './public/study-cards-model.mjs';
+import {rangeDayTitle,rangeRawView,RANGE_TYPES} from './public/study-range-model.mjs';
 import {finView} from './fin-projection.mjs';
 import {WL_FORMAT,DOMAIN_CODES,DOMAIN_NAMES,effectiveActions,entityKey,emptyDomain,financeTotals,shiftDate,dateOK,shape} from './whole-life-model.mjs';
 
@@ -34,7 +36,7 @@ export function wholeHistory(graph,orderedOperations=null){
         context.set(v.actionId,{title:v.title,domain:null});type='ACTION';title=v.title;
       }else if(v.format===WL_FORMAT){
         type=v.entityType;domain=type==='DOMAIN'?v.entityId:type==='FINANCE'||type.startsWith('FIN_')?'E':type.startsWith('HLT_')?'B':type.startsWith('STUDY_')?'F':type==='LIFE_DAY'||type==='HABIT_DEF'||type==='DIARY_DAY'||type==='WEEK_REVIEW'?'C':type==='SUBJECT_DEF'||type==='EXAM_SCHEDULE'||type==='PLAN_GOAL'||type==='EXAM_RESULT'||type==='GAME_PROFILE'||type==='PLAN_DAY'?'F':v.data.domain??null;
-        title=type==='DOMAIN'?DOMAIN_NAMES[v.entityId]:type==='FINANCE'?v.data.snapshotDate+' 재정 스냅샷':type==='PREFERENCES'?'표시 설정':type.startsWith('FIN_')?finTitle(v):type.startsWith('HLT_')?hltTitle(v):type.startsWith('STUDY_')?studyTitle(v):LIFE_TYPES.includes(type)?lifeTitle(v):v.data.title;
+        title=type==='DOMAIN'?DOMAIN_NAMES[v.entityId]:type==='FINANCE'?v.data.snapshotDate+' 재정 스냅샷':type==='PREFERENCES'?'표시 설정':type.startsWith('FIN_')?finTitle(v):type.startsWith('HLT_')?hltTitle(v):CARD_TYPES.includes(type)?cardDayTitle(v):RANGE_TYPES.includes(type)?rangeDayTitle(v):type.startsWith('STUDY_')?studyTitle(v):LIFE_TYPES.includes(type)?lifeTitle(v):v.data.title;
         if(type==='ACTION'){context.set(v.entityId,{title:v.data.title,domain:v.data.domain});actionId=v.entityId;}
       }else{
         type=v.format===FORMATS.result?'RESULT':v.format===MEASUREMENT_FORMAT?'MEASUREMENT':'RESTART';const current=context.get(v.actionId);
@@ -117,6 +119,8 @@ export function wholeLifeView(graph,date=clock().localDate,orderedOperations=nul
     hlt:hltRawView(HLT_TYPES.flatMap(type=>entities(graph,type))),
     study:studyRawView(STUDY_TYPES.flatMap(type=>entities(graph,type))),
     life:lifeRawView(LIFE_TYPES.flatMap(type=>entities(graph,type))),
+    cards:cardRawView(CARD_TYPES.flatMap(type=>entities(graph,type))),   // V9A 공부 카드 하루 묶음
+    range:rangeRawView(RANGE_TYPES.flatMap(type=>entities(graph,type))),   // V9B 공부 범위 하루 묶음(역산 계획·모의고사 목표선)
     home:{priorityActions:actions.filter(a=>a.active).slice(0,5),restartPoints:actions.filter(a=>a.restartPoint.trim()),
       upcoming:expandCalendar(events,plans,date,shiftDate(date,90)).slice(0,10),
       activePlans:plans.filter(p=>['ACTIVE','MAINTAIN'].includes(p.data.status)),

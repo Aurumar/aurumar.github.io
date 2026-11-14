@@ -134,6 +134,9 @@ export function mountUniverse3d({doc,slot,fallback,data,onNode=null,onPlanet=nul
     if(frames===1){
       if(gl.isContextLost()){toFallback('CONTEXT_LOST');return;}
       fallback.hidden=true;slot.hidden=false;setMode('3d','OK');
+      // V8LOW L-21·L-22: 칸은 첫 장면 뒤에만 보인다(탑 W6 규칙). 숨은 동안 그린 장면은 기본 크기라 보인 직후 실제 크기로 다시 그리고, 보이게 됐으니 회전을 잇는다.
+      resize();aim();try{renderer.render(scene,camera);}catch{toFallback('RENDER_FAILED');return;}
+      if(!reduced&&visible())invalidate();
       slot.dataset.instances=String(data.nodes.length);slot.dataset.links=String(data.links.length);slot.dataset.drawCalls=String(renderer.info.render.calls);
     }
     if(spinning)invalidate();
@@ -199,7 +202,7 @@ export function mountUniverse3d({doc,slot,fallback,data,onNode=null,onPlanet=nul
 
   slot.replaceChildren(...(tag?[tag]:[]),canvas,hint);
   active=handle;
-  slot.hidden=false;
+  // V8LOW L-21: 여기서 칸을 보이지 않는다(첫 프레임 전 빈 캔버스와 SVG가 함께 보였다). drawFrame frames===1이 보인다.
   observer=new win.ResizeObserver(()=>{resize();invalidate();});observer.observe(canvas);
   // 화면이 다시 그려져 캔버스가 문서에서 빠지면 GPU 자원을 바로 돌려준다.
   watcher=new win.MutationObserver(()=>{if(!canvas.isConnected)dispose();});watcher.observe(doc.body,{childList:true,subtree:true});

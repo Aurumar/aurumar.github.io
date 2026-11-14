@@ -78,6 +78,11 @@ export function weekName(monday){
 }
 // V8W3-1: 주 머리 "11/9(월) ~ 11/15(일)".
 export const weekSpanText=monday=>short(monday)+'(월) ~ '+short(shiftDay(monday,6))+'(일)';
+// V8LOW L-09: 주 머리 글자. 해가 바뀌는 주만 양쪽에 연도("2026년 12/28(월) ~ 2027년 1/3(일)"), 같은 해면 weekSpanText 그대로.
+export function weekSpanLabel(monday){
+  const end=shiftDay(monday,6);
+  return monday.slice(0,4)===end.slice(0,4)?weekSpanText(monday):Number(monday.slice(0,4))+'년 '+short(monday)+'(월) ~ '+Number(end.slice(0,4))+'년 '+short(end)+'(일)';
+}
 // a~b(양끝 포함)에 든 요일 w(0=일)의 날 수.
 export function countWeekday(a,b,w){
   const da=dayNumber(a),db=dayNumber(b);if(db<da)return 0;
@@ -1119,6 +1124,7 @@ export function renderPlan(root,ctx,st){
   for(const n of st.notices??[])add(out,el('p',PLAN_NOTICE_TEXT[n.code]??'알림을 읽지 못했어요'+' · 문의 코드 ▾\u2060'+n.code+'\u2060','notice plan-notice'));
   const view={DAY:dayView,WEEK:weekView,MONTH:monthView,YEAR:yearView,CSAT:csatView}[st.view]??dayView;
   add(out,view(h,ctx,st,data));
+  if(st.view==='CSAT')ctx.rangePanel?.(out);   // V9B: 수능 보기 아래 D-day 역산(남은 범위·이번 주 목표) + 모의고사 추세(study-plan이 그린다, 앱이 넘긴다)
   // P1C: 옛 '달력' 화면의 하루·7일 목록 = 오늘·주 보기 아래 일정 줄(달 보기는 plan-month 안에).
   if(st.view==='DAY')add(out,scheduleBox(h,ctx,st,data,st.date,st.date,{addDate:st.date,withDate:false}));
   if(st.view==='WEEK'){const end=shiftDay(st.monday,6);add(out,scheduleBox(h,ctx,st,data,st.monday,end,{addDate:today>=st.monday&&today<=end?today:st.monday}));}

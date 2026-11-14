@@ -14,22 +14,25 @@ export const CONFIRM_REASON='공부 카드 확정';
 const sameHeads=(a,b)=>a.length===b.length&&a.every((h,i)=>h===b[i]);
 // FIX72 (FIX71 규칙): 화면에 보일 카드 = 쌓인 카드(latest) 위에 이 기기 초안을 줄(세션·오답·복습 id) 단위로 얹은 결과(쌓기의 rebase와 같은 규칙, 읽기만).
 // 초안이 최신 카드 위에 있으면 초안 그대로. 합칠 수 없으면(REJECTED) 예전처럼 초안 그대로. 이미 다 들어 있으면(ALREADY_APPLIED) 쌓인 카드.
-export function shownCard(s,latest){
+export function shownCard(s,latest,rb0=rebase){
   if(s?.status!=='LOCAL_DRAFT'||!latest||sameHeads(s.baseHeads??[],latest.heads??[]))return s?.card;
-  const rb=rebase({date:s.card.date,base:s.base,mine:s.card,latest:latest.card});
+  const rb=rb0({date:s.card.date,base:s.base,mine:s.card,latest:latest.card});
   return rb.status==='MERGED'?rb.card:rb.status==='ALREADY_APPLIED'?latest.card??s.card:s.card;
 }
 const err=code=>Object.assign(new Error(code),{code});
 // FIX34 (HUNT34 H1): 같은 타이머(같은 시작 시각 = 같은 id)를 두 창이 따로 끝냈으면 같은 집중이다 → 먼저 디스크에 적힌 행을 쓴다(id 충돌로 막지 않음).
 const adoptTimerRows=(mine,disk)=>({...mine,sessions:mine.sessions.map(s=>sessionMark(s.id)==='T'?disk.sessions.find(x=>x.id===s.id)??s:s)});
 
+// V9A: 같은 흐름(초안 → 확정 1번 = 연산 1)을 다른 하루 묶음 종류에도 쓴다. ports.spec이 없으면 STUDY_DAY(지금까지와 같음).
+// spec = {type, validate(date,data), rebase, empty(date), diff, hasChanges, stable, newBookRow?(base,next), prepare?(mine,disk)} — 공부 카드(STUDY_CARD_DAY)는 study-cards.mjs가 넘긴다.
+const STUDY_SPEC=Object.freeze({type:'STUDY_DAY',validate:(date,d)=>validateStudyData('STUDY_DAY',date,d),rebase,empty:date=>({...emptyCard(date),confirmCount:1}),diff:diffCard,hasChanges,stable,newBookRow:hasNewBookRow,prepare:adoptTimerRows});
 export class StudyFlow{
-  #p;
+  #p;#s;
   // B17: hlt-flow와 같다. 이번 실행에서 확정 결과를 모르게 끝난 requestId(#sent), 결말이 ABORTED·미반영으로 확인된 requestId(#aborted).
   #sent=new Set();#aborted=new Set();
-  constructor(ports){this.#p=ports;ports.drafts?.mergeWith?.({rebase,ports,prepare:adoptTimerRows});}
+  constructor(ports){this.#p=ports;this.#s=ports.spec??STUDY_SPEC;ports.drafts?.mergeWith?.({rebase:this.#s.rebase,ports,...(this.#s.prepare?{prepare:this.#s.prepare}:{})});}
   async #draftFor(date){
-    const list=(await this.#p.drafts.list()).filter(d=>d.type==='ENTITY'&&d.body?.entityType==='STUDY_DAY'&&d.body.entityId===date);
+    const list=(await this.#p.drafts.list()).filter(d=>d.type==='ENTITY'&&d.body?.entityType===this.#s.type&&d.body.entityId===date);
     if(!list.length)return null;
     return list.reduce((a,b)=>(b.createdAt>=a.createdAt?b:a));
   }
@@ -39,19 +42,19 @@ export class StudyFlow{
     const draft=await this.#draftFor(date),latest=this.#p.latest(date);
     if(draft){
       const base=this.#baseOf(date,draft.body.expectedHeads);
-      return {status:'LOCAL_DRAFT',card:structuredClone(draft.body.data),base,baseHeads:[...draft.body.expectedHeads],draftId:draft.draftId,changes:diffCard(base,draft.body.data),latestConfirmCount:latest.card?.confirmCount??0};
+      return {status:'LOCAL_DRAFT',card:structuredClone(draft.body.data),base,baseHeads:[...draft.body.expectedHeads],draftId:draft.draftId,changes:this.#s.diff(base,draft.body.data),latestConfirmCount:latest.card?.confirmCount??0};
     }
-    return {status:latest.card?'CONFIRMED':'NONE',card:latest.card?structuredClone(latest.card):{...emptyCard(date),confirmCount:1},base:latest.card,baseHeads:[...latest.heads],draftId:null,changes:diffCard(latest.card,latest.card),latestConfirmCount:latest.card?.confirmCount??0};
+    return {status:latest.card?'CONFIRMED':'NONE',card:latest.card?structuredClone(latest.card):this.#s.empty(date),base:latest.card,baseHeads:[...latest.heads],draftId:null,changes:this.#s.diff(latest.card,latest.card),latestConfirmCount:latest.card?.confirmCount??0};
   }
   // 입력 즉시 디스크(초안 저널)에 저장한다. 검증에 걸리면 아무것도 바꾸지 않고 던진다. 변경이 base와 같아지면 초안을 지운다.
   async edit(date,mutate){
     const s=await this.state(date),next=structuredClone(s.card);
     mutate(next);
     next.date=date;next.confirmCount=(s.base?.confirmCount??0)+1;
-    validateStudyData('STUDY_DAY',date,next);
-    if(hasNewBookRow(s.base,next)&&!this.#p.recordsDoor?.())throw err('RECORDS_DOOR_CLOSED');   // 쓰기 문(D46 4.2): 포트가 없으면 닫힌 것으로 본다
-    if(!hasChanges(s.base,next)){if(s.draftId)await this.#p.drafts.discard(s.draftId);return this.state(date);}
-    if(s.draftId&&stable(next)===stable(s.card))return s;
+    this.#s.validate(date,next);
+    if(this.#s.newBookRow?.(s.base,next)&&!this.#p.recordsDoor?.())throw err('RECORDS_DOOR_CLOSED');   // 쓰기 문(D46 4.2): 포트가 없으면 닫힌 것으로 본다
+    if(!this.#s.hasChanges(s.base,next)){if(s.draftId)await this.#p.drafts.discard(s.draftId);return this.state(date);}
+    if(s.draftId&&this.#s.stable(next)===this.#s.stable(s.card))return s;
     const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:next,heads:s.baseHeads,reason:DRAFT_REASON});
     await this.#p.drafts.save({type:'ENTITY',body});
     if(s.draftId)await this.#p.drafts.discard(s.draftId);
@@ -110,12 +113,12 @@ export class StudyFlow{
       const settled=await this.#settleSent(draft,ended);
       if(settled)return settled;
       const latest=this.#p.latest(date),base=this.#baseOf(date,draft.body.expectedHeads);
-      if(hasNewBookRow(base,draft.body.data)&&!this.#p.recordsDoor?.())return {status:'REJECTED',code:'RECORDS_DOOR_CLOSED',notices:[]};   // 초안은 그대로 둔다
-      const rb=rebase({date,base,mine:draft.body.data,latest:latest.card});
+      if(this.#s.newBookRow?.(base,draft.body.data)&&!this.#p.recordsDoor?.())return {status:'REJECTED',code:'RECORDS_DOOR_CLOSED',notices:[]};   // 초안은 그대로 둔다
+      const rb=this.#s.rebase({date,base,mine:draft.body.data,latest:latest.card});
       if(rb.status==='REJECTED')return {status:'REJECTED',code:rb.code,itemId:rb.itemId??null,list:rb.list??null,notices:rb.notices};
       if(rb.status==='ALREADY_APPLIED'){await this.#p.drafts.discard(draft.draftId);return {status:'ALREADY_APPLIED',notices:rb.notices};}
       let target=draft;
-      if(!(stable(draft.body.data)===stable(rb.card)&&sameHeads(draft.body.expectedHeads,latest.heads))||ended||this.#aborted.has(draft.body.requestId)){   // 이미 결말이 난(ABORTED 등) requestId는 다시 쓰지 않는다
+      if(!(this.#s.stable(draft.body.data)===this.#s.stable(rb.card)&&sameHeads(draft.body.expectedHeads,latest.heads))||ended||this.#aborted.has(draft.body.requestId)){   // 이미 결말이 난(ABORTED 등) requestId는 다시 쓰지 않는다
         const body=await this.#p.makeBody({requestId:this.#p.newRequestId(),date,data:rb.card,heads:latest.heads,reason:CONFIRM_REASON});
         const saved=await this.#p.drafts.save({type:'ENTITY',body});
         await this.#p.drafts.discard(draft.draftId);   // 새 초안은 내 변경을 모두 포함한다(base=최신)

@@ -543,8 +543,10 @@ export const STATE_MAX=4;
 export const UNIT_TEXT=Object.freeze({tablet:'정',capsule:'캡슐',mg:'mg',mL:'mL'});
 export const MED_NOTE='약은 처방대로 · 바꾸려면 의사와 상의하세요';
 export const NAP_CHIPS=Object.freeze([15,30,60]);
+export const DOSE_AGAIN_MS=60000;   // V8LOW L-19: 같은 약 다시 누름 확인 시간(1분)
 export const EASY_TEXT=Object.freeze({meds:'약 복용',medsSub:'내 약을 누르면 지금 시각으로 바로 기록해요 · 용량은 칩으로 골라요(기본은 내 약 설정의 평소 용량, 고른 칩은 그 기록에만).',
   setupSame:'바뀐 것이 없어요.',hidePending:'이 약의 아직 안 쌓은 복용을 먼저 쌓지 못해 숨기지 않았어요 · "카드 쌓기"로 쌓은 뒤 다시 숨기세요.',noMeds:'내 약이 없어요 · "내 약 설정"에서 처음 한 번 이름과 용량을 넣으세요(앱이 약 이름을 미리 넣지 않아요).',
+  doseAgain:'1분 안에 같은 약을 이미 기록했어요 · 한 번 더 먹은 것이면 칩을 다시 누르세요.',
   pickDose:'용량 고르기',custom:'직접 입력',setup:'내 약 설정',setupClose:'내 약 설정 닫기',setupAdd:'내 약 추가',setupSaved:'내 약을 저장했어요.',setupAdded:'내 약을 추가했어요.',
   setupSub:'처음 한 번만 넣으면 그 뒤로는 칩만 누르면 돼요 · 숨긴 약은 칩에서 빠지고 지난 기록은 그대로예요 · 용량 칩은 여기 용량과 기록에 쓴 용량으로 만들어져요.',
   state:'지금 상태',stateSub:'0 없음 ~ 4 아주 심함 · 누르면 지금 시각으로 기록 · 하루에 여러 번 가능',memo:'메모 한 줄 (선택, 그날 메모 칸에 붙어요)',
@@ -720,7 +722,13 @@ export function renderEasyHealth(root,ctx,st){
   const chips=add(el('div',null,'hlt-med-list'),null);
   for(const p of meds){
     const chosen=chosenDose(hist,p,st.medDose),u=unitOf(p);
-    const tap=button(p.data.label+' · '+amountText(chosen)+u,run(()=>{if(st.medDose)delete st.medDose[p.key];return doseItem(p,{amount:chosen,at:ctx.now()});}),'primary hlt-med-chip');   // M-06: 고른 칩은 이 기록에만(다음 기본은 다시 평소 용량)
+    const record=run(()=>{if(st.medDose)delete st.medDose[p.key];return doseItem(p,{amount:chosen,at:ctx.now()});});   // M-06: 고른 칩은 이 기록에만(다음 기본은 다시 평소 용량)
+    // V8LOW L-19: 같은 약을 1분 안에 다시 누르면 바로 쓰지 않고 한 줄로 묻는다(한 번 더 누르면 기록). 빠른 두 번 누름으로 복용 2건이 쌓이지 않게.
+    const tap=button(p.data.label+' · '+amountText(chosen)+u,()=>{
+      const ms=Date.parse(ctx.now()),last=st.lastDose;
+      if(last?.key===p.key&&ms-last.ms>=0&&ms-last.ms<DOSE_AGAIN_MS&&st.doseAgain!==p.key){st.doseAgain=p.key;st.message=EASY_TEXT.doseAgain;st.error=false;void ctx.rerender();return;}
+      st.doseAgain=null;st.lastDose={key:p.key,ms};record();
+    },'primary hlt-med-chip');
     tap.setAttribute('aria-label',p.data.label+' '+amountText(chosen)+u+' 지금 기록');
     const doses=add(el('div',null,'buttons hlt-dose-chips'),el('span',EASY_TEXT.pickDose,'hlt-dose-label'));
     for(const v of doseChips(hist,p)){const on=v===chosen,b=button(amountText(v)+u,()=>{(st.medDose??={})[p.key]=v;void ctx.rerender();},'secondary hlt-dose-chip'+(on?' selected':''));b.setAttribute('aria-pressed',String(on));add(doses,b);}

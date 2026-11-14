@@ -342,7 +342,9 @@ export const DEFAULT_EXAMS=Object.freeze({items:Object.freeze([
 ])});
 // V8W2-4: 공식 발표로 확정된 수능 날짜. 저장된 일정이 아직 '잠정'이어도 화면 표시만 '확정'으로 읽는다(기록은 고치지 않는다, 편집 시트는 저장값 그대로).
 export const CSAT_CONFIRMED_DATES=Object.freeze(['2027-11-18']);
-export const examStatusOf=x=>x?.status==='잠정'&&(x.id==='e-csat'||x.name==='수능')&&CSAT_CONFIRMED_DATES.includes(x.date)?'확정':x?.status;
+// V8LOW L-28: 이름이 정확히 "수능"일 때만 수능으로 읽어 "2028 수능"·"2028학년도 수능"은 잠정으로 남았다 → 연도·"학년도"가 앞에 붙은 수능(대학수학능력시험) 이름까지. "수능 대비 모의" 같은 이름은 아니다.
+export const isCsatName=n=>typeof n==='string'&&/^(\d{4}\s*(학년도)?\s*)?(수능|대학수학능력시험)$/.test(n.trim());
+export const examStatusOf=x=>x?.status==='잠정'&&(x.id==='e-csat'||isCsatName(x.name))&&CSAT_CONFIRMED_DATES.includes(x.date)?'확정':x?.status;
 export const emptyDay=date=>({date,habits:{},mood:null,note:'',dayType:'NORMAL'});
 export const emptyDiary=date=>({date,score:null,energy:null,good:[],bad:[],tomorrow:'',text:''});
 export const emptyWeekReview=monday=>({monday,pick:null,next:''});

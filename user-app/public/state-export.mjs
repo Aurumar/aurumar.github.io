@@ -333,7 +333,7 @@ export function renderStateExport(root,ctx){
 // 칸은 DW1 설계안 형식 그대로(host widget-status-writer.mjs WIDGET_KEYS와 같다, 시험이 대조). 값은 화면이 이미 쓰는 계산(achieve·오늘 계획 카드·칭호)에서만 가져온다.
 // 일기 글·내일 한 가지·금액·잔고·계좌·건강 수치·과목 이름·할 일 글자 칸은 없다. 일기는 엔진 결과(achieve 하루 줄)의 "그날 일기 있음"만 본다(일기 기록을 직접 읽지 않는다).
 // 이 모듈은 파일을 쓰지 않고 시계·타이머를 쓰지 않는다: now·칭호·마지막 동기화 시각은 부른 쪽(app.mjs)이 넘기고, 쓰는 때(앱 열 때·저장 뒤 30초·04:00 일기 날짜 넘김·종료)도 app.mjs가 정한다.
-export const WIDGET_FILE_KEYS=Object.freeze(['v','device','exported_at','diary_day','level','xp','xp_next','title','bricks_total','bricks_week','streak_days','diary_done','plan_done','plan_total','last_sync_at','bricks_today','bricks_goal_day','focus_min_by_hour_7d']);   // EXP1: 뒤 3칸 추가(앞 15칸 이름·뜻·순서 그대로)
+export const WIDGET_FILE_KEYS=Object.freeze(['v','device','exported_at','diary_day','level','xp','xp_next','title','bricks_total','bricks_week','streak_days','diary_done','plan_done','plan_total','last_sync_at','bricks_today','bricks_goal_day','focus_min_by_hour_7d','focus']);   // EXP1: 뒤 3칸 추가(앞 15칸 이름·뜻·순서 그대로). V9B: 맨 뒤 focus 1칸(집중 상태, 앞 18칸 그대로)
 export const WIDGET_FILE_DEVICES=Object.freeze(['PC','LAPTOP']);
 export const WIDGET_FILE_ROUTE='/api/widget-status',WIDGET_FILE_WAIT_MS=30000,WIDGET_TITLE_MAX=20;
 export const WIDGET_SWITCH_KEYS=Object.freeze({on:'lb.widget.file',laptop:'lb.widget.laptop'});
@@ -367,7 +367,19 @@ export function focusMinByHour(study,today){
   return by;
 }
 // FIX68 (HUNT65 F7): marks = 이 기기의 손 완료 값(없으면 planStorage에서 life-plan readPlanMarks(저장소, 오늘)). plan_done은 손 완료 줄을 채운 것으로 센다(achievedMarked, 없으면 예전 값과 같다).
-export function widgetStatusOf({life=null,study=null,fin=null,money=null,now,device='PC',title=null,lastSyncAt=null,marks=null,planStorage=null}){
+// V9B 집중 상태(소유자 "집중 지킴이: 알림만" 2026-11-14): 이 기기 집중 타이머(life-ui 타이머 칸)에서 running·시작 시각만. 비서단 집중 알림이 이 칸을 읽는다(앱은 알림을 띄우지 않는다).
+// 돈다 = 타이머가 있고 끝 시각·쉬는 중이 아님. 쉬는 중·끝냄·없음 = running:false(시각 null).
+// 지시서의 subject 칸은 넣지 않았다: 이 파일에는 과목 표지(키 이름 subject 포함)를 두지 않는 개인정보 규칙(ST1-2·EXP1-6 시험)이 있다. 넣을지는 통제탑 결정(V9B REPORT "소유자 확인 필요").
+export function focusFromTimer(t){
+  const start=isoOf(t?.startIso),running=Boolean(t&&start&&!t.endIso&&!t.pausedAt);
+  return running?{running:true,startedAt:start}:{running:false,startedAt:null};
+}
+export const sameFocus=(a,b)=>Boolean(a)===Boolean(b)&&(!a||a.running===b.running&&a.startedAt===b.startedAt);
+// V9FIX M-13: 타이머가 도는 동안은 내용이 같아도 FOCUS_REFRESH_MS마다 다시 쓴다(exported_at이 살아 있다는 표시). 앱이 꺼지면 exported_at이 멈춘다.
+// 읽는 쪽(비서단) 규칙: focus.running이 true여도 exported_at이 FOCUS_STALE_MS(10분)보다 오래됐으면 "앱 꺼짐 · 모름"으로 본다.
+export const FOCUS_REFRESH_MS=5*60000,FOCUS_STALE_MS=10*60000;
+export const focusStale=(last,nowIso)=>Boolean(last?.focus?.running)&&!(Date.parse(nowIso)-Date.parse(last.exported_at)<FOCUS_REFRESH_MS);
+export function widgetStatusOf({life=null,study=null,fin=null,money=null,now,device='PC',title=null,lastSyncAt=null,marks=null,planStorage=null,timer=null}){
   const at=isoOf(now);if(!at)throw new Error('BAD_NOW');
   const today=kstDate(at),diaryDay=diaryOpenDate(at);
   const ach=life?guard(()=>achieve({life,study,fin,today,money})):null,top=ach?.levels?.[ach.topArea]??null;
@@ -377,24 +389,24 @@ export function widgetStatusOf({life=null,study=null,fin=null,money=null,now,dev
     level:top?.level??null,xp:top?.into??null,xp_next:top?.need??null,title:ach&&typeof title==='function'?titleText(guard(()=>title(ach))):null,
     bricks_total:ach?guard(()=>studyBricks(ach.weeks)+smallWeight(ach.weeks)):null,bricks_week:ach?.currentWeek?.value??null,streak_days:ach?.streak?.days??null,
     diary_done:Boolean(day?.diary),plan_done:plan?.achievedMarked??plan?.achieved??null,plan_total:plan?.planned??null,last_sync_at:isoOf(lastSyncAt),
-    bricks_today:ach?.todayDay?.value??null,bricks_goal_day:ach?.goalBricks??null,focus_min_by_hour_7d:guard(()=>focusMinByHour(study,today))};
+    bricks_today:ach?.todayDay?.value??null,bricks_goal_day:ach?.goalBricks??null,focus_min_by_hour_7d:guard(()=>focusMinByHour(study,today)),focus:focusFromTimer(timer)};
 }
 // FIX58Q (HUNT55 HS2): 잠금·로그아웃 때 바로 덮어쓰는 빈 숫자 파일. 칸은 지금 WIDGET_FILE_KEYS 전부: 숫자·칭호·마지막 동기화·EXP1 새 3칸은 null, 일기 false. 어느 프로필의 숫자도 싣지 않는다.
 export function widgetLockedStatus({now,device='PC'}){return widgetStatusOf({now,device});}
 // 쓰는 때 정하기(순수). last = 마지막으로 쓴 값(없으면 null), next = 지금 값, reason = 'open'|'change'|'day'|'close'.
 // 처음·종료·일기 날짜가 바뀐 때는 바로(NOW), 내용이 같으면(시각 빼고) 건너뜀(SKIP), 그 밖의 바뀜은 부른 쪽이 WIDGET_FILE_WAIT_MS 뒤에 쓴다(LATER).
-const sameValue=(x,y)=>Array.isArray(x)&&Array.isArray(y)?x.length===y.length&&x.every((v,i)=>v===y[i]):x===y;   // EXP1: 배열 칸은 값으로 비교
+const sameValue=(x,y)=>Array.isArray(x)&&Array.isArray(y)?x.length===y.length&&x.every((v,i)=>v===y[i]):x&&y&&typeof x==='object'&&typeof y==='object'?sameFocus(x,y):x===y;   // EXP1: 배열 칸은 값으로 비교. V9B: focus 칸(객체)도 값으로 비교
 const sameButTime=(a,b)=>WIDGET_FILE_KEYS.every(k=>k==='exported_at'||sameValue(a[k],b[k]));
 export function widgetWriteWhen(last,next,reason){
   if(!next)return 'SKIP';
-  if(!last||reason==='open'||reason==='close'||last.diary_day!==next.diary_day)return 'NOW';
+  if(!last||reason==='open'||reason==='close'||last.diary_day!==next.diary_day||!sameFocus(last.focus,next.focus)||next.focus?.running&&focusStale(last,next.exported_at))return 'NOW';   // V9B: 집중 시작·쉬기·끝은 바로(알림이 늦지 않게). V9FIX M-13: 도는 동안 5분마다
   return sameButTime(last,next)?'SKIP':'LATER';
 }
 // 설정 안의 작은 카드. PC 앱(APP_SHELL)이 아니면 아무것도 그리지 않는다(Fold·iPad·브라우저는 쓰지 않는다). h={el,add}, kit={toggle}.
 export function renderWidgetFile(root,ctx){
   if(ctx.surface!=='APP_SHELL')return null;
   const {h,kit}=ctx,sec=h.add(h.el('section',null,'panel widget-file'),h.el('h2','바탕화면 위젯 숫자 파일','panel-title'));
-  h.add(sec,h.el('p','바탕화면 위젯이 읽을 숫자(레벨·XP·칭호·벽돌·연속일·오늘 일기 여부·오늘 계획 양·오늘 쌓은 벽돌과 하루 목표·시간대별 공부 분·마지막 동기화 시각)만 사령부 상태 폴더의 widget_status.json 한 파일에 덮어씁니다. 앱을 열 때·저장 뒤·새벽 4시·저장 후 종료 때 씁니다. 일기 글·금액·건강 수치·과목 이름은 들어가지 않습니다.','muted'));
+  h.add(sec,h.el('p','바탕화면 위젯이 읽을 숫자(레벨·XP·칭호·벽돌·연속일·오늘 일기 여부·오늘 계획 양·오늘 쌓은 벽돌과 하루 목표·시간대별 공부 분·마지막 동기화 시각)만 사령부 상태 폴더의 widget_status.json 한 파일에 덮어씁니다. 앱을 열 때·저장 뒤·새벽 4시·저장 후 종료 때 씁니다. 집중 타이머가 도는지(시작 시각)도 적어 비서단 집중 알림이 읽습니다. 일기 글·금액·건강 수치·과목 이름은 들어가지 않습니다.','muted'));
   h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('바탕화면 위젯 숫자 파일 쓰기 (이 기기 설정)',widgetSwitch('on',ctx.storage),on=>{setWidgetSwitch('on',on,ctx.storage);ctx.changed?.();})));
   h.add(sec,h.add(h.el('div',null,'native-row'),kit.toggle('이 기기는 노트북 (끄면 PC · 이 기기 설정)',widgetSwitch('laptop',ctx.storage),on=>{setWidgetSwitch('laptop',on,ctx.storage);ctx.changed?.();})));
   h.add(root,sec);

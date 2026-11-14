@@ -677,7 +677,7 @@ const txnCellLabel=c=>{const t=txnCellText(c);return c.date+(c.phase==='TODAY'?'
 // 그날 거래 표: 시각 · 가맹점 · 분류 · 금액. 거래 기록에 시각 칸이 없어 시각은 "-"(구조 변경은 REPORT 소유자 확인). name(l)·cat(l)·kind(l)은 부른 쪽(가리기 설정·분류 이름)이 준다.
 export function txnDayNode(h,date,lines,{name,cat,kind}){
   const mine=lines.filter(l=>l.date===date),cal=txnCalendar(mine,date.slice(0,7),date),c=cal.cells[Number(date.slice(8,10))-1],t=txnCellText(c);
-  const box=h.add(h.el('div',null,'txn-day'),h.el('h3',date+' ('+TXN_WEEKDAYS[c.weekday]+') · '+(t?'소비 '+t.full:'소비 없음')+' · '+mine.length+'건','txn-day-title'));
+  const box=h.add(h.el('div',null,'txn-day'),h.el('h3',date+' ('+TXN_WEEKDAYS[c.weekday]+') · '+(t?'소비 '+t.full+(c.unknown&&c.net!==null?' + 모름 '+c.unknown+'건':''):'소비 없음')+' · '+mine.length+'건','txn-day-title'));
   if(!mine.length)return h.add(box,h.el('p','이 날 거래가 없습니다.','muted small'));
   const head=h.el('tr'),body=h.el('tbody');
   ['시각','가맹점','분류','금액'].forEach((x,i)=>h.add(head,h.el('th',x,i===3?'num':null)));
@@ -704,7 +704,7 @@ export function txnCalendarNode(h,cal,{lines,picked=null,onPick=null,name,cat,ki
     b.setAttribute('aria-label',txnCellLabel(c));b.setAttribute('aria-pressed',String(c.date===now));b.setAttribute('data-phase',c.phase);
     if(c.tier!==null)b.setAttribute('data-tier',String(c.tier));
     h.add(b,c.phase==='TODAY'?h.el('span','오늘','txn-cal-today'):null,h.el('span',String(c.day),'txn-cal-num'),
-      t?h.add(h.el('span',null,'txn-cal-amt'),h.el('span',t.full,'txn-cal-full'),h.el('span',t.short,'txn-cal-short')):null);
+      t?h.add(h.el('span',null,'txn-cal-amt'),h.el('span',t.full,'txn-cal-full'),h.el('span',t.short,'txn-cal-short'),c.unknown&&c.net!==null?h.el('span','+모름','txn-cal-unk'):null):null);   // V8LOW L-15: 아는 금액 + 모름 섞인 날은 화면에도 "+모름"
     buttons.push([b,c]);h.add(grid,b);
   }
   const legend=h.el('ul',null,'fin-legend txn-cal-legend');

@@ -2827,6 +2827,124 @@ button.txn-cal-day.picked{outline:3px solid var(--cal-pick-edge);outline-offset:
 .txn-day-title{margin:0;font-size:17px;font-weight:800;color:var(--ink-900);font-variant-numeric:tabular-nums}
 .txn-day-time{color:var(--ink-600)}
 @media(max-width:700px){.txn-cal-wd{font-size:14px}.txn-cal-num{font-size:20px}button.txn-cal-day,button.txn-cal-day:hover{min-height:70px;padding:14px 1px 4px}.txn-cal-full{display:none}.txn-cal-short{display:inline}button.txn-cal-day.t1 .txn-cal-amt{font-size:11px}button.txn-cal-day.t2 .txn-cal-amt{font-size:11.5px}button.txn-cal-day.t3 .txn-cal-amt{font-size:12px}button.txn-cal-day.t4 .txn-cal-amt{font-size:12.5px}button.txn-cal-day.t5 .txn-cal-amt{font-size:13px}button.txn-cal-day.t6 .txn-cal-amt{font-size:13.5px}.txn-cal-grid{gap:3px}}
+/* ===== 40. V9A 공부 카드(오답·개념 카드 + 1·3·7·14·30일 간격 반복). 토큰 이름만. 큰 숫자 = 오늘 복습 장수, 한 장씩 넘기는 복습 칸, 맞음/틀림 단추는 글자·굵기·테두리로도 구분(색만으로 구분하지 않음).
+   졸업한 카드 = 0절 "지나간 것"(회색 바탕 + 가는 빗금, 글자는 읽힘), 오늘 복습 카드 = 금 테두리 굵게. 사진은 캔버스(가로 맞춤). ===== */
+.cards-panel .cards-head{display:flex;align-items:center;justify-content:space-between;gap:var(--lb-s-3);flex-wrap:wrap}
+.cards-due{display:flex;align-items:baseline;gap:var(--lb-s-2);margin:0}
+.cards-due-n{font-size:40px;font-weight:800;line-height:1;color:var(--lb-ink-1)}
+.cards-due-t{font-size:17px;font-weight:700;color:var(--lb-ink-2)}
+.cards-start{min-height:44px;font-size:16px}
+.cards-session{margin:var(--lb-s-3) 0;padding:var(--lb-s-4);border:2px solid var(--lb-gold-border);border-radius:var(--lb-r-3);background:var(--lb-surface-solid);box-shadow:var(--lb-shadow-1)}
+.cards-session-top{display:flex;align-items:center;gap:var(--lb-s-3);flex-wrap:wrap;margin-bottom:var(--lb-s-2)}
+.cards-count{font-weight:800;font-size:18px;color:var(--lb-ink-1)}
+.cards-subj{font-weight:700;color:var(--lb-ink-2);flex:1}
+.cards-side-label{display:inline-block;font-size:13px;font-weight:800;letter-spacing:.04em;color:var(--lb-ink-3);margin:var(--lb-s-2) 0 2px}
+.cards-front{font-size:18px;line-height:1.6;color:var(--lb-ink-1);white-space:pre-wrap;margin:0 0 var(--lb-s-2)}
+.cards-back,.cards-mine{font-size:17px;line-height:1.6;color:var(--lb-ink-1);white-space:pre-wrap;margin:var(--lb-s-1) 0}
+.cards-mine{color:var(--lb-ink-2)}
+.cards-flip{min-height:48px;width:100%;font-size:17px;margin-top:var(--lb-s-2)}
+.cards-answer{display:grid;grid-template-columns:1fr 1fr;gap:var(--lb-s-3);margin-top:var(--lb-s-3)}
+.cards-answer button{min-height:52px;font-size:18px;font-weight:800}
+.cards-answer .cards-bad{border:2px dashed var(--lb-bad-line);color:var(--lb-bad);background:var(--lb-bad-bg)}
+.cards-sum{display:flex;gap:var(--lb-s-4);flex-wrap:wrap;margin:var(--lb-s-2) 0}
+.cards-sum-n{margin:0;font-size:16px;color:var(--lb-ink-2)}
+.cards-sum-n strong{font-size:32px;font-weight:800;color:var(--lb-ink-1)}
+.cards-sum-bad strong{text-decoration:underline dashed var(--lb-bad-line)}
+.cards-form{margin:var(--lb-s-3) 0;padding-top:var(--lb-s-3);border-top:1px solid var(--lb-line-soft)}
+.cards-kind{display:flex;gap:var(--lb-s-2);margin-bottom:var(--lb-s-3)}
+.cards-kind button{min-height:40px;font-weight:700}
+.card-field{display:flex;flex-direction:column;gap:4px;margin:var(--lb-s-2) 0}
+.card-field-label{font-size:14px;font-weight:700;color:var(--lb-ink-2)}
+.cards-form textarea{width:100%;box-sizing:border-box;font:inherit;font-size:16px;line-height:1.5;padding:var(--lb-s-2);border:1px solid var(--lb-line);border-radius:var(--lb-r-2);background:var(--lb-surface-solid);color:var(--lb-ink-1);resize:vertical}
+.cards-chips{display:flex;flex-wrap:wrap;gap:var(--lb-s-2)}
+.cards-chip{min-height:36px;border-radius:var(--lb-r-full)}
+.cards-chip[aria-pressed=true]{font-weight:800;outline:2px solid var(--lb-gold-border);outline-offset:1px}
+.cards-photo-pick{display:flex;flex-direction:column;gap:var(--lb-s-1)}
+.cards-add{min-height:46px;margin-top:var(--lb-s-3);font-size:16px}
+.cards-list{margin-top:var(--lb-s-4)}
+.cards-filter{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--lb-s-3)}
+.cards-row{border-left:3px solid var(--lb-line);padding-left:var(--lb-s-3)}
+.cards-row-due{border-left:5px solid var(--lb-gold-border)}
+.cards-row-due .cards-state{font-weight:800;color:var(--lb-ink-1)}
+.cards-row-grad{background-color:var(--lb-surface-2);background-image:repeating-linear-gradient(135deg,var(--lb-line) 0 1px,transparent 1px 7px);color:var(--lb-ink-3)}
+.cards-row-grad strong{color:var(--lb-ink-2)}
+.card-photo{margin:var(--lb-s-2) 0}
+.card-photo-canvas{display:block;max-width:100%;height:auto;border-radius:var(--lb-r-2);border:1px solid var(--lb-line)}
+.cards-today{display:flex;align-items:center;justify-content:space-between;gap:var(--lb-s-3);flex-wrap:wrap}
+.cards-today-main{display:flex;align-items:baseline;gap:var(--lb-s-3)}
+.cards-today-k{font-size:14px;font-weight:800;color:var(--lb-ink-3);letter-spacing:.04em}
+.cards-today-n{font-size:20px;font-weight:800;color:var(--lb-ink-1)}
+.cards-today-go{min-height:40px}
+@media (max-width:420px){.cards-due-n{font-size:34px}.cards-answer button{min-height:56px}.cards-filter{flex-direction:column;align-items:stretch}}
+@media (prefers-reduced-motion:reduce){.cards-session{box-shadow:none}}
+
+/* ===== 41. V9B 수능 학습 엔진 2: D-day 역산(남은 범위·이번 주 목표) · 주간 제안 · 모의고사 추세 · 받은 일정 칸. 토큰 이름만. 색만으로 구분하지 않음(✓·▲▼―·점선·굵기).
+   끝낸 단원 = 0절 "지나간 것"(회색 바탕 + 가는 빗금, 글자 읽힘), 이번 주 목표 단원 = 금 테두리 굵게. 그래프 = SVG(과목 색 stroke 속성) + 클래스. ===== */
+.range-today{display:flex;align-items:baseline;gap:var(--lb-s-2);flex:0 1 auto;margin:var(--lb-s-1) 0 0;padding:6px var(--lb-s-3);border:2px solid var(--lb-gold-border);border-radius:var(--lb-r-full);background:var(--lb-surface-solid);max-width:100%;box-sizing:border-box;flex-wrap:wrap}
+.range-today-k{font-size:14px;font-weight:800;color:var(--lb-ink-2)}
+.range-today-n{font-size:20px;font-weight:800;color:var(--lb-ink-1);font-variant-numeric:tabular-nums}
+.range-today-t{font-size:13px;color:var(--lb-ink-3)}
+.range-today.done .range-today-n::after{content:' ✓'}
+.range-week{margin:var(--lb-s-3) 0;padding:var(--lb-s-3);border:2px solid var(--lb-gold-border);border-radius:var(--lb-r-3);background:var(--lb-surface-solid)}
+.range-week-head{margin:0 0 var(--lb-s-2);font-size:16px}
+.range-week-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--lb-s-2);margin:4px 0}
+.range-week-subj{font-weight:800;color:var(--lb-ink-1);min-width:4.5em}
+.range-week-unit{padding:2px 10px;border:1px solid var(--lb-line);border-radius:var(--lb-r-full);font-size:14px;color:var(--lb-ink-1);background:var(--lb-surface-solid)}
+.range-week-unit.done{background-color:var(--lb-surface-2);background-image:repeating-linear-gradient(135deg,var(--lb-line) 0 1px,transparent 1px 7px);color:var(--lb-ink-2);font-weight:700}
+.range-week-fill{min-height:44px;margin-top:var(--lb-s-2)}
+.range-panel,.range-trend{margin-top:var(--lb-s-4)}
+.range-sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--lb-s-3);margin:var(--lb-s-3) 0}
+.range-sum-cell{display:flex;flex-direction:column;gap:2px;margin:0;padding:var(--lb-s-2) var(--lb-s-3);border:1px solid var(--lb-line);border-radius:var(--lb-r-2);background:var(--lb-surface-solid)}
+.range-sum-cell strong{font-size:22px;font-weight:800;color:var(--lb-ink-1);font-variant-numeric:tabular-nums}
+.range-sum-cell span{font-size:13px;color:var(--lb-ink-3)}
+.range-h{margin:var(--lb-s-3) 0 var(--lb-s-2);font-size:15px;color:var(--lb-ink-2)}
+.range-chips{display:flex;flex-wrap:wrap;gap:var(--lb-s-2)}
+.range-chip{min-height:36px;border-radius:var(--lb-r-full)}
+.range-chip[aria-pressed=true]{font-weight:800;outline:2px solid var(--lb-gold-border);outline-offset:1px}
+.range-text{width:100%;box-sizing:border-box;margin-top:var(--lb-s-2);font:inherit;font-size:16px;line-height:1.5;padding:var(--lb-s-2);border:1px solid var(--lb-line);border-radius:var(--lb-r-2);background:var(--lb-surface-solid);color:var(--lb-ink-1);resize:vertical}
+.range-add{min-height:44px;margin-top:var(--lb-s-2)}
+.range-subject{margin:var(--lb-s-2) 0;border:1px solid var(--lb-line);border-radius:var(--lb-r-2);background:var(--lb-surface-solid);padding:var(--lb-s-2) var(--lb-s-3)}
+.range-subject-sum{cursor:pointer;font-size:16px;min-height:32px}
+.range-bar{display:block;margin:var(--lb-s-2) 0}
+.range-bar-bg{fill:var(--lb-surface-2);stroke:var(--lb-line)}
+.range-unit{display:flex;flex-wrap:wrap;align-items:center;gap:var(--lb-s-2);padding:6px var(--lb-s-2);border-left:3px solid var(--lb-line);margin:4px 0}
+.range-unit.target{border-left:5px solid var(--lb-gold-border)}
+.range-unit.target .range-unit-name{font-weight:800}
+.range-unit.done{background-color:var(--lb-surface-2);background-image:repeating-linear-gradient(135deg,var(--lb-line) 0 1px,transparent 1px 7px);color:var(--lb-ink-3)}
+.range-unit-name{flex:1 1 10em;font-size:15px;color:var(--lb-ink-1)}
+.range-unit.done .range-unit-name{color:var(--lb-ink-2)}
+.range-unit-pct{font-weight:800;font-variant-numeric:tabular-nums;min-width:3.2em;text-align:right}
+.range-steps{display:flex;flex-wrap:wrap;gap:4px}
+.range-step,.range-del{min-height:34px;padding:2px 10px;font-size:13px}
+.range-step[aria-pressed=true]{font-weight:800;outline:2px solid var(--lb-gold-border);outline-offset:1px}
+.range-metric{display:flex;gap:var(--lb-s-2);margin:var(--lb-s-2) 0}
+.range-trend-card{margin:var(--lb-s-3) 0;padding:var(--lb-s-2) var(--lb-s-3);border:1px solid var(--lb-line);border-radius:var(--lb-r-2);background:var(--lb-surface-solid)}
+.range-trend-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--lb-s-2);margin:0 0 var(--lb-s-1);font-size:15px}
+.range-trend-last{color:var(--lb-ink-2)}
+.range-arrow{font-weight:800}
+.range-arrow.up{color:var(--lb-ink-1)}
+.range-arrow.down{color:var(--lb-bad);text-decoration:underline dashed var(--lb-bad-line)}
+.range-arrow.same,.range-arrow.new{color:var(--lb-ink-3)}
+.range-trend-gap{color:var(--lb-ink-2)}
+.range-chart{display:block;width:100%;max-width:520px;height:auto}
+.range-grid{stroke:var(--lb-line-soft);stroke-width:1}
+.range-tick,.range-xlab{font-size:8px;fill:var(--lb-ink-3);text-anchor:end}
+.range-xlab{text-anchor:middle}
+.range-goal{stroke-width:1.5;stroke-dasharray:5 4;opacity:.85}
+.range-goal-text{font-size:8px;font-weight:800;fill:var(--lb-ink-2);text-anchor:start}
+.range-line{stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.range-dot{fill:var(--lb-surface-solid);stroke-width:2}
+.range-val{font-size:9px;font-weight:800;fill:var(--lb-ink-1);text-anchor:middle}
+.range-goals{margin-top:var(--lb-s-3)}
+.range-goals-sum{cursor:pointer;font-weight:700;min-height:32px}
+.range-goal-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--lb-s-2);margin:6px 0}
+.range-goal-name{min-width:5em;font-weight:700}
+.range-goal-row input{width:4.5em;min-height:34px;font:inherit;font-size:15px;padding:2px 6px;border:1px solid var(--lb-line);border-radius:var(--lb-r-2);background:var(--lb-surface-solid);color:var(--lb-ink-1)}
+.inbox-today .inbox-title{display:flex;align-items:baseline;justify-content:flex-start;flex-wrap:wrap;gap:6px}
+.inbox-n{font-size:22px;font-weight:800;color:var(--lb-ink-1)}
+.inbox-row{border-left:3px solid var(--lb-gold-border);padding-left:var(--lb-s-3)}
+.inbox-put,.inbox-skip{min-height:40px}
+@media (max-width:420px){.range-tick,.range-xlab{font-size:11px}.range-val{font-size:12px}.range-goal-text{font-size:10px}.range-sum{grid-template-columns:1fr 1fr}.range-sum-cell strong{font-size:19px}.range-unit-name{flex-basis:100%}}
 /* ===== 41. V8W8 전체 점검 (통제탑 2026-11-14): 3폭 훑기에서 찾은 작은 글자·지난 주 표시·잘린 칩 줄. 색은 :root 토큰만, 기존 규칙은 그대로 두고 뒤에서 덮는다 ===== */
 /* 읽는 글자 최소 11px(머리 표지·꼬리말·이력·차트 날짜·상태 칸 이름). 9~10px였던 것만 올린다 */
 .eyebrow,.rail-label,.save-state-card .state-kicker{font-size:11px}
@@ -2890,3 +3008,11 @@ footer,nav .nav-en,.rail-bottom small{font-size:11px}
 :is(.home-cal,.plan-month) .plan-cal-blank[data-past] .plan-cal-other{color:var(--cal-past-ink)}
 /* L-14 집중 시계: 연한 앞쪽 단위(opacity .55) 안의 "시간·분" 라벨도 함께 연해져 대비 2.4:1이었다 → 그 라벨만 진한 잉크(55%에서 대비 3:1 이상) */
 .live-clock[data-lead="1"] .live-clock-h::after,.live-clock[data-lead="2"] .live-clock-h::after,.live-clock[data-lead="2"] .live-clock-m::after{color:var(--ink-900)}
+/* ===== 43. V8LOW (V8HUNT 낮음 결함 남은 것, 통제탑 2026-11-14): 색은 :root 토큰만, 움직임·nowrap 없음(뒤 절 규칙) ===== */
+/* L-07 주 격자 머리: 저장 안 한 날의 " •"가 고정 폭 날짜 상자 안 글자로 붙어 숫자가 옆으로 밀렸다 → 점은 상자 오른쪽 위 모서리에 띄운다(숫자 자리 그대로) */
+.pw-dayhead.changed small{position:relative}
+.pw-dayhead.changed small::after{content:"•";position:absolute;top:-3px;right:-5px;font-size:14px;line-height:1;color:var(--ink-900)}
+/* L-15 거래 달력: 아는 금액과 "실제 금액 모름"이 섞인 날은 금액 아래 "+모름"을 보인다(전에는 aria에만) */
+.txn-cal-unk{display:block;font-size:11px;font-weight:600;line-height:1.2;color:var(--ink-600)}
+/* L-09 월 보기 주 이름: 보고 있는 해와 다른 해의 주(1월 표의 "12월 5주")는 이름 위에 연도 한 줄 */
+.pm-year{display:block;font-size:11px;font-weight:600;line-height:1.2;color:var(--lb-ink-3)}

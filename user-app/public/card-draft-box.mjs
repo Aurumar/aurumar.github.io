@@ -37,7 +37,9 @@ export const CARD_DRAFT_FORMAT='LB_CARD_DRAFT_1';
 export const CARD_DRAFT_KINDS=Object.freeze(['HLT_DAY','STUDY_DAY','LIFE_DAY','DIARY_DAY']);
 // OPS1A (통제탑 2026-11-11): 하루 계획(PLAN_DAY) 초안도 같은 상자에 둔다(계획 줄 고치기 묶기, life-flow createPlanDrafts). 하루 카드가 아니라서 카드 종류 목록(위, 안내 문구가 쓰는 것)과 따로 둔다.
 // 이 종류를 모르는 옛 빌드는 일기와 같이 열 수 없는 초안으로 보존한다(지우지 않음).
-export const CARD_DRAFT_EXTRA_KINDS=Object.freeze(['PLAN_DAY']);
+// V9A: 공부 카드 하루 묶음(STUDY_CARD_DAY) 초안도 같은 상자에 둔다(카드·복습 입력을 모았다가 쌓기 1번). 옛 빌드는 계획과 같이 열 수 없는 초안으로 보존한다(지우지 않음).
+// V9B: 공부 범위 하루 묶음(STUDY_RANGE_DAY, 단원·진도·목표선)도 같은 상자(쌓기 1번 = 묶음 1건). 옛 빌드는 열 수 없는 초안으로 보존한다(지우지 않음).
+export const CARD_DRAFT_EXTRA_KINDS=Object.freeze(['PLAN_DAY','STUDY_CARD_DAY','STUDY_RANGE_DAY']);
 const BOX_KINDS=Object.freeze([...CARD_DRAFT_KINDS,...CARD_DRAFT_EXTRA_KINDS]);
 export const CARD_DRAFT_LIMITS=Object.freeze({records:60,recordBytes:96*1024});
 export const CARD_DRAFT_EVENT='lb:card-drafts-changed';

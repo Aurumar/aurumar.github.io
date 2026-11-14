@@ -96,11 +96,14 @@ const EVIDENCE_TEXT={OBSERVED:'직접 확인',USER_REPORTED:'내가 말함',INFE
 
 // ---- 포트: 앱의 api/기록 함수를 StudyFlow가 쓰는 모양으로 ----
 // ctx: hlt-ui와 같은 모양 {api, mdProfile(), getWhole(), getChanges(), syncForWrite(), hasPending(), reconcile(), uid(), now(), canDrafts(), write()}
-export function createStudyPorts(ctx){
+// V9A: spec이 있으면 같은 포트를 다른 하루 묶음 종류(공부 카드 STUDY_CARD_DAY)에 쓴다 — {type, view(whole) → {days}, noJournal}. 없으면 STUDY_DAY(지금까지와 같음).
+export function createStudyPorts(ctx,spec=null){
+  const TYPE=spec?.type??'STUDY_DAY';
   const memoryDrafts=new Map();let seq=0,cache=null;
-  const study=()=>ctx.getWhole().study;
-  const revisionMap=()=>{const rows=ctx.getChanges();if(cache?.rows===rows)return cache.map;const m=new Map();for(const c of rows)if(c.type==='STUDY_DAY')m.set(c.revisionId,c.value.data);cache={rows,map:m};return m;};
-  const journal=ctx.canDrafts?Boolean(ctx.canDrafts()):ctx.mdProfile();
+  const study=()=>spec?spec.view(ctx.getWhole()):ctx.getWhole().study;
+  const revisionMap=()=>{const rows=ctx.getChanges();if(cache?.rows===rows)return cache.map;const m=new Map();for(const c of rows)if(c.type===TYPE)m.set(c.revisionId,c.value.data);cache={rows,map:m};return m;};
+  // V9A: spec.noJournal이면 PC 저널을 쓰지 않는다(저널 draft-list는 새 기록 초안의 본문을 돌려주지 않는 경계, FIX49-P10) → 계획(OPS1A)처럼 이 기기 상자 → 메모리.
+  const journal=spec?.noJournal?false:ctx.canDrafts?Boolean(ctx.canDrafts()):ctx.mdProfile();
   // B3c 선택 순서: PC 저널 → 이 기기 상자(card-draft-box, 브라우저 IndexedDB 암호문) → 메모리. PC 경로(저널)는 상자를 만들지도 않는다.
   const box=journal?null:ctx.cardDraftBox?.()??null,mode=journal?'JOURNAL':box?.available()?'DEVICE_BOX':'MEMORY';
   const write=body=>ctx.write?ctx.write(body):ctx.api('/api/entity',body);
@@ -115,15 +118,15 @@ export function createStudyPorts(ctx){
     // B19: 상자·메모리 경로는 저널의 SERVER_COMMITTED가 없다. ctx.receipt(requestId)(앱: 읽기 전용 /api/command/<requestId>, 이 기기 금고의 영수증)가 있으면
     // NOT_ESTABLISHED가 아닌 결말(COMMITTED·ABORTED·HOLD)을 '이미 결말 남'으로 알려 앱을 다시 연 뒤의 재확정도 원래 영수증에 수렴하게 한다. 서버 호출·쓰기 없음.
     terminal:!journal&&ctx.receipt?async rid=>(await ctx.receipt(rid))?.status!=='NOT_ESTABLISHED':()=>false,
-    makeBody:async({requestId,date,data,heads,reason})=>{const fields={entityType:'STUDY_DAY',entityId:date,expectedHeads:[...heads],data:structuredClone(data),reason,confirmed:false};return {requestId,commandDigest:await ctx.digest({type:'ENTITY',...fields}),...fields};},
+    makeBody:async({requestId,date,data,heads,reason})=>{const fields={entityType:TYPE,entityId:date,expectedHeads:[...heads],data:structuredClone(data),reason,confirmed:false};return {requestId,commandDigest:await ctx.digest({type:'ENTITY',...fields}),...fields};},
     now:()=>ctx.now(),newId:()=>'i'+Date.now().toString(36)+(++seq).toString(36)+ctx.uid().slice(0,6),newRequestId:()=>ctx.uid(),
     drafts:journal?{
       // 서버 초안 저널(drafts.lbd, 봉인 저장). 공부 카드 초안은 draft-list가 본문(내 카드 + base heads)을 함께 돌려준다.
-      list:async()=>(await ctx.api('/api/md/draft-list',{})).drafts.filter(d=>d.type==='ENTITY'&&d.body?.entityType==='STUDY_DAY'),
+      list:async()=>(await ctx.api('/api/md/draft-list',{})).drafts.filter(d=>d.type==='ENTITY'&&d.body?.entityType===TYPE),
       save:r=>ctx.api('/api/md/draft-save',r),
       discard:id=>ctx.api('/api/md/draft-discard',{draftId:id,confirmed:true}),
       commit:id=>ctx.api('/api/md/draft-commit',{draftId:id,confirmed:true}),
-    }:mode==='DEVICE_BOX'?box.port('STUDY_DAY',{write}):{
+    }:mode==='DEVICE_BOX'?box.port(TYPE,{write}):{
       // 초안 저널이 없는 환경(브라우저·PWA): 이번 실행 동안만 메모리에 둔다. 확정은 일반 저장 경로(ctx.write)로 한다.
       list:async()=>[...memoryDrafts.values()],
       save:async({type,body})=>{const id='local'+(++seq);memoryDrafts.set(id,{draftId:id,type,body:structuredClone(body),createdAt:new Date().toISOString()+String(seq).padStart(6,'0')});return {draftId:id,status:'LOCAL_DRAFT'};},
@@ -277,7 +280,8 @@ export function renderStudy(root,ctx,st){
   add(out,ses);
 
   // 3) 오답
-  const mis=section('오답','문제 본문·정답·해설은 저장하지 않습니다. 출처와 번호, 틀린 이유, 짧은 메모만 남깁니다. 등록하면 복습일이 기본으로 다음 날로 들어갑니다.');
+  // V9FIX M-14: 같은 화면 위 "공부 카드"(V9A)는 문제 글·정답을 저장한다. 이 칸(출처·번호만)과 다른 체계임을 한 줄로 밝힌다(두 체계를 합칠지는 통제탑 결정).
+  const mis=section('오답','문제 본문·정답·해설은 저장하지 않습니다. 출처와 번호, 틀린 이유, 짧은 메모만 남깁니다. 등록하면 복습일이 기본으로 다음 날로 들어갑니다. 이 칸은 출처·번호용 오답 목록이에요 · 문제 글·사진·정답은 위 "공부 카드"에 넣어요(따로 1·3·7·14·30일 복습).');
   // 쓰기 문이 닫혀 있으면 시중 문제집 선택지가 없다(D46 4.2). 출처·책은 넣은 뒤에도 남겨 같은 책을 3번 안에 다시 넣는다.
   const bookOpen=Boolean(st.ports?.recordsDoor?.()),provs=bookOpen?[...PROVENANCE,BOOK_TAG]:PROVENANCE,lastProv=provs.includes(st.lastProv)?st.lastProv:PROVENANCE[0];
   const mSub=select(mistakeSubjectOptions(),SUBJECTS[0]),mProv=select(provs.map(p=>[p,PROV_TEXT[p]]),lastProv),mNum=input('',{maxlength:'35',placeholder:'번호(영문·숫자·.-_)'}),

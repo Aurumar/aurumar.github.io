@@ -32,7 +32,8 @@ export function hasChanges(base,mine){const d=diffCard(base,mine);return d.added
 const sortById=items=>[...items].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
 export function sameContent(a,b){return LISTS.every(l=>same(sortById(rowsOf(a,l)),sortById(rowsOf(b,l))));}
 
-function mergeList(list,base,mine,latest,notices){
+// V9A: 공부 카드 하루 묶음(study-cards.mjs)도 배열마다 같은 규칙을 쓴다(목록 이름만 다름).
+export function mergeList(list,base,mine,latest,notices){
   const B=new Map(rowsOf(base,list).map(i=>[i.id,i])),M=new Map(rowsOf(mine,list).map(i=>[i.id,i])),T=new Map(rowsOf(latest,list).map(i=>[i.id,i]));
   const keep=new Map();
   const ids=[...new Set([...T.keys(),...M.keys(),...B.keys()])];

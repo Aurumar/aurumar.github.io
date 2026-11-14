@@ -140,6 +140,8 @@ function writeTimer(storage,t){
   }catch{/* 저장소가 막혀 있으면 이번 실행 동안만 */}
 }
 // 메모리 타이머를 저장소에 맞춘다(다시 읽을 때·타이머 칸을 쓰기 전).
+// V9B: 위젯 파일 집중 상태(focus)용 읽기 전용 창구(앱이 widget_status.json을 만들 때 부른다). 기록 형식이 아니다.
+export const readTimerState=storage=>readTimer(storage);
 function currentTimer(st,storage){
   if(!st.timer||onDisk.has(st.timer))st.timer=readTimer(storage);
   return st.timer;
@@ -242,7 +244,7 @@ export function renderLifeToday(root,ctx,st){
   // V6A: D-day 두 칩(가까운 시험 먼저 · 최종 수능 보조), 계획 탭·STUDY LIVE와 같은 함수. 다가올 시험이 없으면 예전처럼 한 줄 글자.
   // V8W2-1·2: 칩을 누르면 그 칩이 활성(진하게, 이 기기에 기억 lb.dday.active), 활성 칩 아래 게이지(남은 몫 금 · 지나간 몫 빗금 · 남은 % · 주·개월 환산).
   const dd=ddayChips(defs.exams,date,readDdayActive(ctx.storage)),examText=examLineText(defs.exams,date),pickDday=role=>{writeDdayActive(ctx.storage,role);void ctx.rerender();};
-  const examLine=dd.length?add(el('div',null,'life-exam'),ddayChipsNode(h,dd,'life-dday',pickDday),ddayGaugeNode(planMaker(doc),ddayGauge(defs.exams,dd.find(c=>c.main),date))):examText?add(el('div',null,'life-exam'),el('strong',examText,'life-dday'),hint(EXAM_NONE_AHEAD)):hint('시험 일정이 없습니다. 습관 편집에서 추가하세요.');   // V8FIX L-30: 지난 시험만 남으면 다음 시험 안내
+  const examLine=dd.length?add(el('div',null,'life-exam'),ddayChipsNode(h,dd,'life-dday',pickDday),ddayGaugeNode(planMaker(doc),ddayGauge(defs.exams,dd.find(c=>c.main),date)),ctx.weekRange?.()??null):examText?add(el('div',null,'life-exam'),el('strong',examText,'life-dday'),hint(EXAM_NONE_AHEAD)):hint('시험 일정이 없습니다. 습관 편집에서 추가하세요.');   // V8FIX L-30: 지난 시험만 남으면 다음 시험 안내
   const money=ctx.money?.(date)??null,ach=atDiaryDay(achieve({life:whole.life??null,study:whole.study??null,fin:whole.fin??null,today:date,money}),diaryOpenDate(ctx.now())),topLevel=ach.levels[ach.topArea];   // FIX50A (HUNT49 C1): 일기 연속은 04:00 일기 날 기준
   const xpSlot=add(el('div',null,'life-xp-slot'),ring(ach.todayXp,ach.goalXp,{size:64}));xpSlot.id='xp-slot';xpSlot.setAttribute('aria-label','오늘 XP '+ach.todayXp+' / '+ach.goalXp);
   const chips=add(el('div',null,'life-chips'),el('span',ach.todayXp+' / '+ach.goalXp+' XP','life-xp-text'),(()=>{const n=el('span','연속 '+ach.streak.days+'일 '+multText(ach.streak.mult10),'life-chip-slot');n.id='streak-chip';return n;})(),(()=>{const n=el('span',AREA_TEXT[ach.topArea]+' Lv '+topLevel.level,'life-chip-slot');n.id='level-chip';return n;})());

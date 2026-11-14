@@ -8,7 +8,7 @@ import {lifeDefs,kstDate,shiftDay,validateLifeData,SUBJECT_COLOR_KEYS,PLAN_BLOCK
 import {achieve} from './life-achieve.mjs';
 import {stable} from './life-rebase.mjs';
 import {planOf,sortedItems,actualOf,planVsActual,copyPlan,savePlanDay,planErrorText,unknownOutcome,PLAN_NOTICE_TEXT,barsText,rateText,RATE_MEANING,mondayOf,dateLabel,NO_SUBJECT_COLOR,choosePlanDate,followPlanToday,weekDraftChanged,
-  daySessions,linkPlan,readPlanMarks,itemStateText,oldTarget,goalVsText,NEW_ITEM_BRICKS,todayDraft,studyDraftOf,SHOWN_BLOCKS,shownBlock,weekSpanText} from './life-plan.mjs';
+  daySessions,linkPlan,readPlanMarks,itemStateText,oldTarget,goalVsText,NEW_ITEM_BRICKS,todayDraft,studyDraftOf,SHOWN_BLOCKS,shownBlock,weekSpanText,weekSpanLabel} from './life-plan.mjs';
 import {openChipSheet,blockLabel,BLOCK_SHORT,titleOr,slotLabel} from './plan-today.mjs';
 export const WEEKDAYS=Object.freeze(['월','화','수','목','금','토','일']);
 export const CELL_SHOW=3,LONG_PRESS_MS=450;
@@ -204,7 +204,7 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
   };
 
   const out=el('section',null,'plan-card pw-week');out.id='plan-week';out.dataset.monday=monday;
-  const nav=add(el('div',null,'plan-nav'),button('◀',()=>{choosePlanDate(st,'monday',shiftDay(monday,-7));rerender();},'secondary'),el('strong',weekSpanText(monday),'plan-nav-label'),button('▶',()=>{choosePlanDate(st,'monday',shiftDay(monday,7));rerender();},'secondary'));   // V8W3-1: "11/9(월) ~ 11/15(일)"
+  const nav=add(el('div',null,'plan-nav'),button('◀',()=>{choosePlanDate(st,'monday',shiftDay(monday,-7));rerender();},'secondary'),el('strong',weekSpanLabel(monday),'plan-nav-label'),button('▶',()=>{choosePlanDate(st,'monday',shiftDay(monday,7));rerender();},'secondary'));   // V8W3-1: "11/9(월) ~ 11/15(일)"
   if(monday!==mondayOf(day0))nav.append(button('이번 주',()=>{choosePlanDate(st,'monday',mondayOf(day0),false);rerender();},'secondary'));
   const head=weekHeadText(m);
   const timeLine=ctx.weekTimeLine?.(monday,day0)??null;   // FIX45 (AUD1 #6): 이 주 공부 시간·그 전 주 비교(study-stats, 앱이 넘긴다)
@@ -212,6 +212,8 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
   // FIX46B: 이번 주 과목 목표·"목표 대비" 줄(life-quest가 그린다, 앱이 넘겨 준다). 계획 달성률과 분모를 섞지 않는다.
   add(out,ctx.weekGoals?.({monday,state:m.state,subjects:m.subjects,actual:m.subjectActual,report:(text,error,notices)=>{w.message=text;w.error=error;w.notices=notices;}})??null);
   add(out,ctx.weekReview?.({monday,today:day0})??null);   // FIX49D: 이 주 돌아보기(지난 주·이번 주만, 쓰기 문이 열렸을 때만, week-review가 그린다)
+  // V9B: D-day 역산 이번 주 목표 제안(study-plan이 그린다, 앱이 넘긴다). 받아들이면 "다음 주 채우기"와 같은 길(fillFromSuggest)로 이 주 임시 입력에 들어간다.
+  add(out,ctx.rangeWeek?.({monday,today:day0,planned:m.days.flatMap(d=>dayItems(life,w,d.date)),counts:Object.fromEntries(m.days.map(d=>[d.date,dayItems(life,w,d.date).length])),fill:plan=>{const r=fillFromSuggest(ctx.getWhole().life??null,w,plan,ctx.uid);say(r.bad.length?planErrorText(r.bad[0].code)+' (넣은 날 '+r.n+'일)':'이번 주 목표 단원을 '+r.n+'일에 넣었습니다 · 확인하고 저장하세요',r.bad.length>0);if(r.n&&!r.bad.length)commit();else rerender();}})??null);
   if(w.message)add(out,el('p',w.message,w.error?'notice error pw-message':'notice pw-message'));
   for(const n of w.notices)add(out,el('p',PLAN_NOTICE_TEXT[n.code]??'알림을 읽지 못했어요'+' · 문의 코드 ▾\u2060'+n.code+'\u2060','notice plan-notice'));
 

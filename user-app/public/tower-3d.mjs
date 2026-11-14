@@ -498,6 +498,8 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
     if(frames===1){
       if(gl.isContextLost()){toFallback('CONTEXT_LOST');return;}
       fallback.hidden=true;slot.hidden=false;setMode('3d','OK');
+      // V8LOW L-22: 숨은 칸에서 그린 첫 장면은 캔버스 기본 크기(300×150) 비율이다 → 칸을 보인 직후 같은 프레임에서 실제 크기로 맞춰 다시 그린다(늘어진 장면이 화면에 나가지 않는다).
+      resize();aim();try{renderer.render(scene,camera);}catch{toFallback('RENDER_FAILED');return;}placeLabels();
       slot.dataset.instances=String(data.total);slot.dataset.bricks=String(data.counts.bricks);slot.dataset.drawCalls=String(renderer.info.render.calls);
       writeStatus();
     }
