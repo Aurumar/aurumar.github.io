@@ -20,7 +20,7 @@ import {LOG_LIMIT_CODE,LOG_LIMIT_TEXT} from './fin-ledger.mjs';   // OPS1A: LOG_
 import {HABIT_KINDS,HABIT_AREAS,DAY_TYPES,MAX_NAME,MAX_NOTE,SUBJECT_COLOR_KEYS,HABIT_HINTS,
   kstDate,diaryOpenDate,shiftDay,dateKeyOK,dayNumber,hhmmFromIso,timeOK,targetTimeOK,lifeIdOK,
   brickOf,sumBricks,entryDone,nearestExam,lifeDefs,weekCount,studyCodeOf,sessionIdFor,timerSessionId,timerTagFrom,subjectOfSession,emptyDay,
-  SUBJECT_PALETTE,NEW_SUBJECT_COLOR,subjectColor,defaultSubjectColor,parseSubjectHex,nearSubjectPairs,habitPinned,habitState,MISSED_ENTRY,HABIT_UNPIN_ORDER,validateLifeData,DEFAULT_HABITS} from './life-model.mjs';
+  SUBJECT_PALETTE,NEW_SUBJECT_COLOR,subjectColor,defaultSubjectColor,parseSubjectHex,nearSubjectPairs,habitPinned,habitState,MISSED_ENTRY,HABIT_UNPIN_ORDER,validateLifeData,DEFAULT_HABITS,NO_SUN_ENTRY,entryExcused,isMealHabit} from './life-model.mjs';
 import {LIFE_CLEAR_TYPES,LIFE_CLEAR_KIND,emptyLifeRecord,lifeRecordEmpty,lifeRecordOf,lifeRecordSummary,lifeClearDate,lifeClearCheckDate} from './life-model.mjs';   // V7D2: 기록별 비우기
 import {emptyStudyDay,studyDayEmpty} from './study-model.mjs';
 import {emptyHltDay,hltDayEmpty} from './hlt-model.mjs';
@@ -217,6 +217,8 @@ function entryFor(h,{now,minutes,count}={}){
 }
 function habitValueText(h,e,week){
   if(h.kind==='COUNT'){const w=week!==null&&h.target.per==='WEEK'?' · 이번 주 '+week+'/'+h.target.count:'';return e?.count?e.count+'회'+w:'오늘 0회'+w;}
+  if(e&&entryExcused(h,e))return V10C_TEXT.noSun;   // V10C-3
+  if(e&&!e.done&&isMealHabit(h))return V10C_TEXT.mealMiss;   // V10C-2
   if(!e||!entryDone(h,e))return h.kind==='TIME'&&h.target.time?'목표 '+h.target.time:h.kind==='DURATION'&&h.target.minutes?'목표 '+h.target.minutes+'분':'';
   if(h.kind==='TIME')return e.at;
   if(h.kind==='DURATION')return e.minutes+'분';
@@ -299,20 +301,31 @@ export function renderLifeToday(root,ctx,st){
     if(!wasDone&&entry&&entryDone(hb,entry))st.floatXp={habitId:hb.id,text:'+'+habitXpToday(ach,hb.id)};   // 다시 그린 뒤 칸 위에 잠깐 보인다
   },()=>Boolean(ctx.autoStack)&&draftLoose(st,date,{memory:false}));
   for(const hb of hs){
-    const e=card.habits[hb.id]??null,done=entryDone(hb,e),cell=el('div',null,'life-habit '+(done?'done':'todo')+' kind-'+hb.kind.toLowerCase());
+    const e=card.habits[hb.id]??null,done=entryDone(hb,e),meal=isMealHabit(hb),skip=entryExcused(hb,e),missed=meal&&Boolean(e)&&!e.done;
+    const cell=el('div',null,'life-habit '+(done?'done':missed?'miss':skip?'skip':'todo')+' kind-'+hb.kind.toLowerCase()+(meal?' life-meal':''));
     cell.dataset.habitId=hb.id;
     if(floatXp?.habitId===hb.id){const f=el('span',floatXp.text,'life-xp-float');f.setAttribute('aria-hidden','true');f.addEventListener('animationend',()=>f.remove());add(cell,f);}
     const week=hb.kind==='COUNT'&&hb.target.per==='WEEK'?weekCount(hb.id,date,life.days,card):null;
     const head=add(el('div',null,'life-habit-head'),el('strong',hb.name),el('span',habitValueText(hb,e,week),'life-habit-value'));
     add(cell,head,HABIT_HINTS[hb.id]?el('span',HABIT_HINTS[hb.id],'muted small'):null);
-    if(hb.kind==='TIME'){
+    if(meal){
+      // V10C-2: 누를 때마다 미기록 → 먹음(지금 시각) → 안 먹음(✕, 기존 못함 칸) → 미기록. 길게 누르면 시각 고치기(예전 시트).
+      const next=mealNext(e),b=el('button',done?'✓ '+e.at:missed?'✕ 안 먹음':'먹음','life-habit-btn life-meal-btn'+(done?' on':missed?' miss':''));b.type='button';
+      b.setAttribute('aria-label',hb.name+' '+(done?'먹음 '+e.at:missed?'안 먹음':'기록 없음')+' · 누르면 '+V10C_TEXT.mealNext[next]);
+      pressable(b,()=>setEntry(hb,()=>next==='done'?entryFor(hb,{now:hhmmFromIso(ctx.now())}):next==='miss'?{...MISSED_ENTRY}:null)(),()=>openEntrySheet(ctx,st,hb,e));add(cell,b);
+    }else if(hb.kind==='TIME'){
       const b=el('button',done?'수정':'지금','life-habit-btn');b.type='button';
       pressable(b,()=>{if(done)openEntrySheet(ctx,st,hb,e);else setEntry(hb,()=>entryFor(hb,{now:hhmmFromIso(ctx.now())}))();},()=>openEntrySheet(ctx,st,hb,e));add(cell,b);
     }else if(hb.kind==='DURATION'){
       const row=el('div',null,'life-chip-row');
       const shown=durationChips(hb.target?.minutes);
       for(const m of shown)add(row,chip(m+'분',{selected:e?.minutes===m,onClick:setEntry(hb,()=>e?.minutes===m?null:entryFor(hb,{minutes:m,now:hhmmFromIso(ctx.now())}))}));
-      add(row,button(e&&!shown.includes(e.minutes)&&e.minutes?'직접 '+e.minutes+'분':'직접',()=>openEntrySheet(ctx,st,hb,e),'secondary'));add(cell,row);
+      add(row,button(e&&!shown.includes(e.minutes)&&e.minutes?'직접 '+e.minutes+'분':'직접',()=>openEntrySheet(ctx,st,hb,e),'secondary'));
+      // V10C-3: 햇볕 = '오늘 해 없음(비·흐림)'. 실패도 성공도 아닌 어쩔 수 없음(연속이 끊기지 않음). 다시 누르면 지운다.
+      // 칩 줄은 한 줄 가로 밀기라 끝에 두면 안 보인다(PC 캡처) → 칩 줄 아래 자기 줄.
+      const noRow=hb.id===SUN_HABIT_ID?el('div',null,'life-nosun-row'):null;
+      if(noRow){const no=chip(V10C_TEXT.noSunChip,{selected:skip,onClick:setEntry(hb,()=>skip?null:{...NO_SUN_ENTRY})});no.className=(no.className?no.className+' ':'')+'life-nosun';add(noRow,no);}
+      add(cell,row,noRow);
     }else if(hb.kind==='COUNT'){
       const row=el('div',null,'life-chip-row');
       add(row,button('+1',setEntry(hb,()=>entryFor(hb,{count:Math.min(99,(e?.count??0)+1)})),'primary'),button('수정',()=>openEntrySheet(ctx,st,hb,e),'secondary'));add(cell,row);
@@ -435,10 +448,13 @@ export function renderNapLine(ctx,st,{el,add,button,input},date){
   // OPS1A: shown = 아직 안 쌓은 초안 낮잠까지(앱이 넘김)
   const naps=(nap.shown?nap.shown(date):nap.list(date))??[],line=add(el('div',null,'life-nap'),el('span',naps.length?naps.map(n=>'낮잠 '+n.minutes+'분'+(n.start?' ('+n.start+'~)':'')).join(' · '):'낮잠: 안 잠','life-nap-text'));line.id='today-nap';
   const save=m=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{const r=await nap.add(m,(st.napStart??'').trim());st.message=r.text;st.error=r.error;st.napOpen=false;st.napStart='';markSaved(start,custom);}catch(x){st.message=lifeErrorText(x?.code);st.error=true;}await prepareLife(ctx,st);await ctx.rerender();});
-  if(!st.napOpen){add(line,button(naps.length?'낮잠 더':'낮잠 잤음',()=>{st.napOpen=true;void ctx.rerender();},'secondary life-nap-open'));return line;}
+  if(!st.napOpen){add(line,button(naps.length?'낮잠 더':'낮잠 잤음',()=>{st.napOpen=true;st.napFocus=true;void ctx.rerender();},'secondary life-nap-open'));return line;}
   const start=input(st.napStart??'',{inputmode:'numeric',placeholder:'시작 HH:MM (선택)','aria-label':'낮잠 시작 시각',maxlength:'5'});start.addEventListener('input',()=>{st.napStart=start.value;});
   const custom=input('',{inputmode:'numeric',placeholder:'분','aria-label':'낮잠 분 직접',maxlength:'3'});
-  add(line,...[15,30,60].map(m=>chip(m+'분',{onClick:save(m)})),custom,button('직접',()=>{const v=int(custom.value);if(v>=1&&v<=720)save(v)();else{st.message=lifeErrorText('INVALID_LIFE_ENTRY');st.error=true;void ctx.rerender();}},'secondary'),start,button('취소',()=>{st.napOpen=false;void ctx.rerender();},'secondary'));
+  const chips=[15,30,60].map(m=>chip(m+'분',{onClick:save(m)}));
+  // V10FIX L-32: [낮잠 잤음]을 누르면 그 단추가 고르기 줄로 바뀌어 초점이 body로 빠졌다 → 첫 칩(15분)으로 옮긴다(그린 뒤 한 번).
+  if(st.napFocus){st.napFocus=false;const f=chips[0];setTimeout(()=>{if(f?.isConnected)f.focus?.({preventScroll:true});},0);}
+  add(line,...chips,custom,button('직접',()=>{const v=int(custom.value);if(v>=1&&v<=720)save(v)();else{st.message=lifeErrorText('INVALID_LIFE_ENTRY');st.error=true;void ctx.rerender();}},'secondary'),start,button('취소',()=>{st.napOpen=false;void ctx.rerender();},'secondary'));
   return line;
 }
 // FIX44 (AUD1 #3·#2·#7): 머리 바로 아래 요약 한 줄. 보여 주기만 한다(쓰기 0). 복습 건수·복습 열기·백업 열기·빠른 지출은 앱이 ctx로 넘긴다(없으면 그 조각을 그리지 않는다).
@@ -689,8 +705,115 @@ function bricksTimer(ctx,st,h,defs,subjects,sec,act,recordNow,finishTimer,goalBr
   const put=button('담기',act(async()=>{await recordNow(subject,int(min.value));min.value='';put.disabled=true;}),'secondary life-min-add');
   put.setAttribute('aria-label','분 입력으로 담기');put.disabled=true;
   min.addEventListener('input',()=>{put.disabled=!String(min.value??'').trim();});
-  add(sec,timerRow,add(el('div',null,'life-min-row'),el('span','분','life-min-label'),min,put),linkNoteNode(ctx,st,h,defs));
+  const fix=button(FOCUS_EDIT_TEXT.open,()=>openFocusEdit(ctx,st,defs,st.today,act),'secondary life-focus-edit-open');fix.dataset.navOnly='1';   // V10C-4
+  add(sec,timerRow,add(el('div',null,'life-min-row'),el('span','분','life-min-label'),min,put),add(el('div',null,'buttons life-focus-edit-row'),fix),linkNoteNode(ctx,st,h,defs));
   return sec;
+}
+// ---- V10C-4 (소유자 2026-11-15): 집중 기록 고치기 — 잘못 누른 시작·종료를 바로잡는다 ----
+// 그날 공부 카드(STUDY_DAY)의 담은 세션(완료·확인)을 시작~끝·과목·분으로 보이고 지우기·시간 고치기·직접 추가. 세션 칸은 그대로(at = 끝 시각, 구간 [at − 분, at]).
+// 공부 카드는 덧붙이기식이 아니라 카드 전체를 다시 쌓는 기록이라 정정 기록 없이 그 세션을 고친다(다른 기기와는 기존 항목 단위 합치기). 고치면 그날 카드를 바로 쌓아 합계·탑·달성에 반영한다.
+export const FOCUS_EDIT_TEXT=Object.freeze({open:'집중 기록 고치기',title:'집중 기록 고치기',none:'이 날 담은 집중 기록이 없어요.',fix:'시간 고치기',del:'지우기',
+  delAsk:'이 집중 기록을 지울까요? 합계·탑·달성에서 빠져요.',add:'직접 추가',start:'시작',end:'끝',subject:'과목',save:'저장',cancel:'취소',
+  bad:'시각은 HH:MM으로, 끝이 시작보다 1분 이상 뒤여야 해요(저녁 6시 이후 시작 · 새벽 6시까지 끝일 때만 자정을 넘긴 것으로 봐요).',
+  overlap:(a,b)=>'이미 담은 기록('+a+'~'+b+')과 시간이 겹쳐요 · 겹치는 기록을 먼저 고치거나 지워 주세요.',
+  dayOver:'하루 합계가 24시간을 넘어요 · 시각을 확인해 주세요.',long:m=>Math.floor(m/60)+'시간 '+(m%60)+'분으로 담아요 · 12시간이 넘는데 맞나요?',
+  rebased:n=>'다른 기기에서 바뀐 집중 기록 '+n+'개와 합쳤어요 · 목록을 확인해 주세요(지운 기록이 다시 보이거나 다른 기기 값이 남았을 수 있어요).',
+  overlapAfter:(a,b)=>'쌓은 뒤 보니 다른 기록('+a+'~'+b+')과 시간이 겹쳐요 · 두 번 세지 않게 하나를 고치거나 지워 주세요.',
+  saved:'고쳤어요 · 그날 공부 카드를 다시 쌓아 합계에 반영했어요.',kept:'고쳤어요 · 아직 쌓지 못해 이 기기에 남아 있어요("오늘 쌓기"나 공부 화면의 "카드 쌓기"로 쌓아 주세요).',
+  note:'잘못 누른 시작·종료를 바로잡는 곳이에요 · 분만 입력해 담은 기록은 시작을 끝 − 분으로 보여요.',total:(n,m)=>'담은 기록 '+n+'개 · '+m+'분',fresh:'새 시작 전 기록이라 읽기만 할 수 있어요.'});
+const hmOk=v=>typeof v==='string'&&/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(v.trim());
+const isoAt=(date,hm,plusDay=0)=>new Date(Date.parse(date+'T'+hm.trim()+':00.000Z')-9*3600000+plusDay*86400000).toISOString();
+// 세션 → 목록 줄. 담은(완료·확인) 세션만, 끝 시각 순.
+export function focusRows(sessions,nameOf=()=>null){
+  return (sessions??[]).filter(s=>(s?.state==='COMPLETED'||s?.state==='VERIFIED')&&Number.isInteger(s.confirmedMin)&&s.confirmedMin>0&&typeof s.at==='string'&&Number.isFinite(Date.parse(s.at)))
+    .map(s=>({id:s.id,name:nameOf(s)??'공부',minutes:s.confirmedMin,start:hhmmFromIso(new Date(Date.parse(s.at)-s.confirmedMin*60000).toISOString()),end:hhmmFromIso(s.at),at:s.at}))
+    .sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
+}
+// 시작·끝(HH:MM, 그 카드 날짜 KST) → {at, minutes}. 같으면 null. 1~1440분이 아니면 null.
+// V10FIX M-01: 끝이 시작보다 이르면 저녁 시작(18:00 이후) + 새벽 끝(06:00까지)일 때만 다음 날 끝으로 본다. 그 밖(10:00→09:59 같은 오타)은 null(쓰지 않음).
+export const FOCUS_NIGHT_FROM=18*60,FOCUS_NIGHT_TO=6*60,FOCUS_LONG_MIN=12*60;
+const hmMin=hm=>Number(hm.slice(0,2))*60+Number(hm.slice(3,5));
+export function focusSpan(date,startHm,endHm){
+  if(!dateKeyOK(date)||!hmOk(startHm)||!hmOk(endHm))return null;
+  const a=Date.parse(isoAt(date,startHm));let b=Date.parse(isoAt(date,endHm));if(b===a)return null;
+  if(b<a){if(!(hmMin(startHm.trim())>=FOCUS_NIGHT_FROM&&hmMin(endHm.trim())<=FOCUS_NIGHT_TO))return null;b+=86400000;}
+  const minutes=Math.round((b-a)/60000);
+  return minutes>=1&&minutes<=1440?{at:new Date(b).toISOString(),minutes}:null;
+}
+// V10FIX M-03: 그 카드의 다른 담은 세션과 1분 이상 겹치면 그 세션(목록 줄 모양), 아니면 null. exceptId = 고치는 세션 자신.
+export function focusOverlap(sessions,span,exceptId=null){
+  const b=Date.parse(span.at),a=b-span.minutes*60000;
+  for(const s of sessions??[]){
+    if(s?.id===exceptId||(s?.state!=='COMPLETED'&&s?.state!=='VERIFIED')||!(s.confirmedMin>0))continue;
+    const sb=Date.parse(s.at),sa=sb-s.confirmedMin*60000;
+    if(Math.min(b,sb)-Math.max(a,sa)>=60000)return {id:s.id,start:hhmmFromIso(new Date(sa).toISOString()),end:hhmmFromIso(s.at)};
+  }
+  return null;
+}
+// V10FIX L-15: 그날 담은 세션 합계(고치는 세션 빼고) + 새 분이 하루(1440분)를 넘는지.
+export const focusDayOver=(sessions,minutes,exceptId=null)=>(sessions??[]).filter(s=>s?.id!==exceptId&&(s?.state==='COMPLETED'||s?.state==='VERIFIED')&&s.confirmedMin>0).reduce((n,s)=>n+s.confirmedMin,0)+minutes>1440;
+// V10FIX M-02: 쌓을 때 다른 기기와 합친 알림(세션 목록) → 사람이 읽는 한 줄. 없으면 null.
+const FOCUS_REBASE_CODES=['REBASE_CONFLICT_KEPT_LOCAL','REBASE_CONFLICT_KEPT_REMOTE','REBASE_VALUE_OVERWRITTEN'];
+export function focusRebaseText(notices){
+  const n=(notices??[]).filter(x=>x?.list==='sessions'&&FOCUS_REBASE_CODES.includes(x.code));
+  return n.length?FOCUS_EDIT_TEXT.rebased(n.length):null;
+}
+// 시간 고치기: 같은 세션(id·과목·상태·이어하기 위치 그대로)의 at·확인한 분만 바꾼다. 계획 분이 확인한 분보다 작으면 같이 맞춘다(검사기 범위 안).
+export function focusEdited(s,span){return {...s,at:span.at,confirmedMin:span.minutes,plannedMin:Math.max(s.plannedMin??0,span.minutes)};}
+// 직접 추가: 분 입력 담기와 같은 모양(표지 없는 세션 id).
+export function focusAdded(subjectId,span,rand){return {id:sessionIdFor(subjectId,'E'+String(rand).replace(/[^A-Za-z0-9]/g,'').slice(0,7)),subject:studyCodeOf(subjectId),state:'COMPLETED',plannedMin:span.minutes,confirmedMin:span.minutes,restartLocator:'',at:span.at};}
+function openFocusEdit(ctx,st,defs,date0,act){
+  const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,hint,input}=h,T=FOCUS_EDIT_TEXT;
+  const body=el('div',null,'life-sheet-body focus-edit');sheet(T.title,body);
+  const life=ctx.getWhole()?.life??null,subjects=defs.subjects.filter(s=>!s.hidden);
+  const nameOf=s=>sessionSubjectName(life,s.id)??defs.subjects.find(x=>studyCodeOf(x.id)===s.subject)?.name??null;
+  const v={date:date0,edit:null,adding:false,msg:null,error:false};
+  const sel=(options,value,label)=>{const n=el('select');n.setAttribute('aria-label',label);for(const [k,t] of options){const o=el('option',t);o.value=k;n.append(o);}n.value=value;return n;};
+  // 쌓기(confirm)는 화면의 act 핸들러 안에서만(B41-6b 규칙). act가 끝에 prepareLife·다시 그리기를 한다. 결과 문구는 이 시트 안에.
+  // V10FIX M-02: 쌓을 때 다른 기기와 합친 알림이 있으면 성공 문구 대신 그 알림을 보인다. M-03: 쌓은 뒤 카드에서 방금 고친·더한 세션이 다른 세션과 겹치면 알린다(지우지 않음).
+  const run=fn=>act(async()=>{v.msg=null;v.error=false;try{const s=await studyFlow(ctx);if(!s)throw Object.assign(new Error('STUDY_OFF'),{code:'STUDY_OFF'});const touched=await fn(s);if(touched===STOP)return;   // 확인에서 "아니요": 쓰지 않고 시트 칸도 그대로
+    const r=await s.st.flow.confirm(v.date),ok=r?.status==='CONFIRMED'||r?.status==='ALREADY_APPLIED';
+    if(ok)try{await ctx.reload?.();}catch{/* 다음 동기화가 다시 읽는다 */}
+    const merged=focusRebaseText(r?.notices),card=ok&&touched?.id?(await s.st.flow.state(v.date)).card:null,cur=card?.sessions?.find(z=>z.id===touched.id),o=cur?focusOverlap(card.sessions,{at:cur.at,minutes:cur.confirmedMin},cur.id):null;
+    v.msg=!ok?T.kept:merged??(o?T.overlapAfter(o.start,o.end):T.saved);v.error=!ok||Boolean(merged||o);v.edit=null;v.adding=false;}catch(e){v.msg=e?.code==='FOCUS_SPAN'?T.bad:e?.focusText??lifeErrorText(e?.code);v.error=true;}await draw();});
+  const STOP=Symbol('stop'),stop=text=>{throw Object.assign(new Error('FOCUS_CHECK'),{code:'FOCUS_CHECK',focusText:text});};
+  // V10FIX M-01·M-03·L-15: 저장 전에 검사한다(쓰기 0). 12시간 넘는 구간은 확인을 받는다(아니요 = 쓰지 않고 칸 그대로).
+  const span=(a,b)=>{const x=focusSpan(v.date,a.value,b.value);if(!x)throw Object.assign(new Error('FOCUS_SPAN'),{code:'FOCUS_SPAN'});return x;};
+  const checked=(sp,sessions,exceptId=null)=>{
+    const o=focusOverlap(sessions,sp,exceptId);if(o)stop(T.overlap(o.start,o.end));
+    if(focusDayOver(sessions,sp.minutes,exceptId))stop(T.dayOver);
+    if(sp.minutes>FOCUS_LONG_MIN&&!(ctx.confirmDialog?.(T.long(sp.minutes))??globalThis.confirm?.(T.long(sp.minutes))??true))return null;
+    return sp;
+  };
+  async function draw(){
+    const s=await studyFlow(ctx),card=s?(await s.st.flow.state(v.date)).card:null,rows=focusRows(card?.sessions,nameOf),today=kstDate(ctx.now()),ro=Boolean(ctx.freshBefore?.(v.date));
+    const go=d=>()=>{v.date=d;v.edit=null;v.adding=false;v.msg=null;void draw();};
+    const nav=add(el('div',null,'buttons focus-edit-nav'),button('◀',go(shiftDay(v.date,-1)),'secondary'),el('strong',dateLabel(v.date),'focus-edit-date'),v.date<today?button('▶',go(shiftDay(v.date,1)),'secondary'):null,v.date!==today?button('오늘',go(today),'secondary'):null);
+    const list=el('div',null,'focus-edit-list');
+    for(const r of rows){
+      const line=add(el('div',null,'focus-edit-row'),el('strong',r.start+'~'+r.end,'focus-edit-span'),el('span',r.name+' · '+r.minutes+'분','focus-edit-what'));line.dataset.session=r.id;
+      if(!ro&&v.edit!==r.id)add(line,add(el('div',null,'buttons'),button(T.fix,()=>{v.edit=r.id;v.adding=false;void draw();},'secondary'),
+        button(T.del,()=>{if(ctx.confirmDialog?.(T.delAsk)??globalThis.confirm?.(T.delAsk)??true)run(async x=>{await x.st.flow.removeRow(v.date,'sessions',r.id);})();},'secondary focus-edit-del')));
+      if(v.edit===r.id){
+        const a=input(r.start,{inputmode:'numeric','aria-label':T.start,maxlength:'5'}),b=input(r.end,{inputmode:'numeric','aria-label':T.end,maxlength:'5'});
+        add(line,add(el('div',null,'buttons focus-edit-form'),h.field(T.start,a),h.field(T.end,b),
+          button(T.save,run(async x=>{const all=(await x.st.flow.state(v.date)).card.sessions,cur=all.find(z=>z.id===r.id);if(!cur)throw Object.assign(new Error('UNKNOWN_STUDY_ROW'),{code:'UNKNOWN_STUDY_ROW'});const sp=checked(span(a,b),all,r.id);if(!sp)return STOP;await x.st.flow.updateRow(v.date,'sessions',focusEdited(cur,sp));return {id:r.id};}),'primary'),
+          button(T.cancel,()=>{v.edit=null;void draw();},'secondary')));
+      }
+      add(list,line);
+    }
+    if(!rows.length)add(list,hint(T.none));
+    const parts=[nav,v.msg?el('p',v.msg,v.error?'notice error focus-edit-msg':'notice focus-edit-msg'):null,hint(ro?T.fresh:T.note),el('p',T.total(rows.length,rows.reduce((n,r)=>n+r.minutes,0)),'focus-edit-total'),list];
+    if(!ro){
+      if(v.adding&&subjects.length){
+        const sub=sel(subjects.map(x=>[x.id,x.name]),st.subjectId&&subjects.some(x=>x.id===st.subjectId)?st.subjectId:subjects[0].id,T.subject),a=input('',{inputmode:'numeric','aria-label':T.start,placeholder:'HH:MM',maxlength:'5'}),b=input('',{inputmode:'numeric','aria-label':T.end,placeholder:'HH:MM',maxlength:'5'});
+        parts.push(add(el('div',null,'buttons focus-edit-form focus-edit-add'),h.field(T.subject,sub),h.field(T.start,a),h.field(T.end,b),
+          button(T.save,run(async x=>{const sp=checked(span(a,b),(await x.st.flow.state(v.date)).card.sessions);if(!sp)return STOP;const row=focusAdded(sub.value,sp,ctx.uid());await x.st.flow.addRow(v.date,'sessions',row);return {id:row.id};}),'primary'),button(T.cancel,()=>{v.adding=false;void draw();},'secondary')));
+      }else if(subjects.length)parts.push(add(el('div',null,'buttons'),button('+ '+T.add,()=>{v.adding=true;v.edit=null;void draw();},'secondary focus-edit-add-open')));
+    }
+    body.replaceChildren(...parts.filter(Boolean));
+  }
+  void draw();
 }
 // ---- V6A: 담기 직후 "○○ 계획에 반영됨" 한 줄 + "다른 항목으로" ----
 // 연결은 life-plan linkPlan 규칙(같은 시간대 미완료 → 이른 시간대 미완료)으로 그릴 때마다 계산한다(저장 0). "다른 항목으로"는 같은 과목의 다른 계획 줄을 고르게 하고
@@ -1025,7 +1148,15 @@ export const BOARD_TEXT=Object.freeze({title:'습관 성취표',add:'습관 추�
   none:'기록 없음',done:'완료',part:'일부',miss:'못함',clear:'기록 지우기',noneNote:'빈칸은 기록 없음이에요 · 못함으로 세지 않아요',
   actionPast:'지난 날 기본 행동 결과는 이력에서 정정할 수 있어요',more:n=>'더 보기 · 고정 안 한 습관 '+n+'개',
   bricks:(w,t)=>'이번 주 습관 벽돌 '+w+'장 · 지금까지 '+t+'장 (공부 벽돌과 따로 셈)',brickRule:'고정한 매일 습관과 켜 둔 기본 행동을 하루에 모두 완료하면 습관 벽돌 1장'});
-const STATE_MARK=Object.freeze({done:'●',part:'◐',miss:'○',none:''});
+const STATE_MARK=Object.freeze({done:'●',part:'◐',miss:'○',none:'',skip:'–'});
+// ---- V10C-2·3 (소유자 2026-11-15): 끼니 안 먹음 ✕ · 햇볕 해 없음 ----
+export const SUN_HABIT_ID='hb-sun';
+export const V10C_TEXT=Object.freeze({mealMiss:'안 먹음 ✕',noSun:'해 없음 (비·흐림)',noSunChip:'오늘 해 없음',skip:'해 없음',legend:'✕ 안 먹음(끼니, 달성률에 셈) · – 해 없음(달성률에서 빠지고 연속을 끊지 않음)',
+  mealNext:Object.freeze({done:'먹음으로',miss:'안 먹음으로',none:'기록 지우기'})});
+// 끼니 순환: 미기록 → 먹음 → 안 먹음 → 미기록.
+export const mealNext=e=>!e?'done':e.done?'miss':'none';
+// 성취표 칸 글자: 끼니의 못함 = '안 먹음 ✕', skip = '해 없음'. 그 밖은 BOARD_TEXT 그대로.
+export const boardStateText=(h,s)=>s==='skip'?V10C_TEXT.skip:s==='miss'&&isMealHabit(h)?V10C_TEXT.mealMiss:BOARD_TEXT[s];
 export function boardDates(mode,anchor){
   if(mode==='MONTH'){const first=anchor.slice(0,7)+'-01',out=[];for(let d=first;d.slice(0,7)===first.slice(0,7);d=shiftDay(d,1))out.push(d);return out;}
   const monday=shiftDay(anchor,-((new Date(anchor+'T12:00:00Z').getUTCDay()+6)%7));return Array.from({length:7},(_,i)=>shiftDay(monday,i));
@@ -1034,6 +1165,7 @@ export function boardDates(mode,anchor){
 export function boardEntry(hb,pick,{nowHm,date,today}){
   if(pick===null)return null;
   if(pick==='miss')return {...MISSED_ENTRY};
+  if(pick==='skip')return {...NO_SUN_ENTRY};   // V10C-3: 해 없음
   if(typeof pick==='object'){
     if(hb.kind==='DURATION')return entryFor(hb,{minutes:pick.minutes,now:date===today?nowHm:null});
     if(hb.kind==='COUNT')return entryFor(hb,{count:pick.count});
@@ -1059,7 +1191,7 @@ function openBoardCell(ctx,st,row,date,{act,recordAction,openActionPast}){
   const save=pick=>{dlg.close();const entry=boardEntry(hb,pick,{nowHm,date,today});const put=()=>st.flow.setHabit(date,hb.id,entry);stackAt(act,ctx,st,date,put,ctx.autoStack?()=>draftLoose(st,date):null)();};   // FIX70 (F2): 앱이 묶으면 초안에 넣고 상자에 확실히 남지 않았을 때만(메모리 초안 포함) 바로 쌓기, 끄면 예전처럼 바로 쌓기
   const err=el('p',null,'notice error');err.hidden=true;
   const fail=()=>{err.textContent=lifeErrorText('INVALID_LIFE_ENTRY');err.hidden=false;};
-  add(body,el('p',BOARD_TEXT[habitState(hb,e)]+(e&&entryDone(hb,e)?' · '+habitValueText(hb,e,null):''),'muted small hb-now'));
+  add(body,el('p',boardStateText(hb,habitState(hb,e))+(e&&entryDone(hb,e)?' · '+habitValueText(hb,e,null):''),'muted small hb-now'));
   if(hb.kind==='DURATION'){
     const row1=el('div',null,'life-chip-row');for(const m of durationChips(hb.target.minutes))add(row1,chip(m+'분',{selected:e?.minutes===m,onClick:()=>save({minutes:m})}));
     const m=input(e?.minutes?String(e.minutes):'',{inputmode:'numeric','aria-label':'분 직접'});add(body,row1,add(el('div',null,'buttons'),field('분 직접',m),button('저장',()=>{const v=int(m.value);if(v>=1&&v<=1440)save({minutes:v});else fail();})));
@@ -1068,7 +1200,7 @@ function openBoardCell(ctx,st,row,date,{act,recordAction,openActionPast}){
   }else if(hb.kind==='TIME'){
     const t=input(e?.at??(date===today?nowHm:hb.target.time&&hb.target.time!=='24:00'?hb.target.time:''),{},'time');add(body,add(el('div',null,'buttons'),field('시각 (KST)',t),button('저장',()=>{if(timeOK(t.value))save({at:t.value});else fail();},'primary')));
   }else add(body,add(el('div',null,'buttons'),button(BOARD_TEXT.done,()=>save('done'),'primary')));
-  add(body,add(el('div',null,'buttons'),button(BOARD_TEXT.miss,()=>save('miss')),e?button(BOARD_TEXT.clear,()=>save(null)):null),hint(BOARD_TEXT.noneNote),err);
+  add(body,add(el('div',null,'buttons'),button(isMealHabit(hb)?V10C_TEXT.mealMiss:BOARD_TEXT.miss,()=>save('miss')),hb.id===SUN_HABIT_ID?button(V10C_TEXT.noSunChip,()=>save('skip')):null,e?button(BOARD_TEXT.clear,()=>save(null)):null),hint(BOARD_TEXT.noneNote),err);   // V10C-2·3
 }
 // FIX71 (CAP3 O-CAP3-1, 통제탑 2026-11-11): 화면이 보는 그날 카드 = 쌓인 카드 위에 이 기기 초안(s = LOCAL_DRAFT 상태)을 칸 단위로 얹은 것. 날짜 단위로 통째로 고르지 않는다.
 // 초안의 칸 = 초안이 base(고치기 시작한 때의 금고 값) 대비 넣거나 바꾼 칸(초안 값)·지운 칸(빈칸). base에서 그대로 옮겨 온 칸은 쌓인 값(다른 탭이 그 사이 바로 쌓은 칸이 가려지지 않게).
@@ -1151,15 +1283,16 @@ export function renderHabitBoard(root,ctx,st,{actionDefs=[],actionDays={},action
     const name=button(r.name,()=>{b.open=b.open===r.id?null:r.id;void ctx.rerender();},'hb-name');name.setAttribute('aria-expanded',String(b.open===r.id));
     add(tr,add(el('th',null,'hb-name-col'),name));
     for(const c of r.cells){
-      const cell=el('button',STATE_MARK[c.state],'hb-cell hb-'+c.state+(c.date===today?' hb-today':''));cell.type='button';cell.dataset.state=c.state;cell.dataset.date=c.date;
-      cell.setAttribute('aria-label',r.name+' '+dateLabel(c.date)+' '+BOARD_TEXT[c.state]);
+      const meal=r.kind==='LIFE'&&isMealHabit(r.h),cell=el('button',meal&&c.state==='miss'?'✕':STATE_MARK[c.state],'hb-cell hb-'+c.state+(meal&&c.state==='miss'?' hb-meal-miss':'')+(c.date===today?' hb-today':''));cell.type='button';cell.dataset.state=c.state;cell.dataset.date=c.date;
+      cell.setAttribute('aria-label',r.name+' '+dateLabel(c.date)+' '+(r.kind==='LIFE'?boardStateText(r.h,c.state):BOARD_TEXT[c.state]));   // V10C-2·3
       const fresh=Boolean(ctx.freshBefore?.(c.date));   // V7D1: 새 시작 기준 전 날짜 칸은 누를 수 없다(읽기 전용)
       if(fresh){cell.classList.add('hb-fresh');cell.setAttribute('aria-label',r.name+' '+dateLabel(c.date)+' '+(ctx.freshText?.badge??'새 시작 전 기록 · 읽기 전용'));}
       if(c.future||fresh)cell.disabled=true;else pressable(cell,()=>openBoardCell(ctx,st,r,c.date,{act,recordAction,openActionPast}),()=>{b.open=r.id;void ctx.rerender();});
       add(tr,add(el('td'),cell));
     }
     const rate=r.week?r.week.count+'/'+r.week.target+'회':r.rate===null?'—':r.rate+'%';
-    add(tr,el('td',rate,'hb-stat'),el('td',r.streak?r.streak+'일':'—','hb-stat'));
+    const mealMiss=r.kind==='LIFE'&&isMealHabit(r.h)&&r.missed?el('span',' · ✕'+r.missed,'hb-meal-missed'):null;   // V10C-2: 안 먹음 수(미기록과 따로)
+    add(tr,add(el('td',rate,'hb-stat'),mealMiss),el('td',r.streak?r.streak+'일':'—','hb-stat'));
     add(tbody,tr);
     if(b.open===r.id){
       const box=el('td',null,'hb-detail');box.colSpan=dates.length+3;
@@ -1186,6 +1319,7 @@ export function renderHabitBoard(root,ctx,st,{actionDefs=[],actionDays={},action
   for(const d of board.days)add(foot,el('td',d.rate===null?'':d.rate+'%','hb-day-rate'));
   add(foot,el('td'),el('td'));add(table,add(el('tfoot'),foot));
   add(sec,wrap,hint('● 완료 · ◐ 일부 · ○ 못함 · 빈칸 기록 없음(못함 아님) · 칸을 누르면 그 날 기록 · 이름을 누르면 기록·숨기기'+(b.mode==='MONTH'?' · 날짜 칸은 옆으로 밀어 보기':'')));
+  add(sec,hint(V10C_TEXT.legend));   // V10C-2·3: 끼니 ✕ · 해 없음 – 범례(위 줄은 그대로)
   // 목록 끝 [+ 추가]: 습관 고르기 시트의 새 습관과 같은 칸(이름 · 종류 · 목표).
   const addBox=add(el('div',null,'hb-add-box'),null);
   // V8FIX L-10: "+ 추가" 저장이 실패하면(습관 30개 상한 등, act가 st.error) 입력 줄을 다시 열고 적은 값(b.addDraft)을 그대로 둔다. 성공하면 비운다.

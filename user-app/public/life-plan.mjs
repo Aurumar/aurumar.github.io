@@ -402,14 +402,14 @@ function tag(h,subjects,id,{dashed=false}={}){
   const dot=h.svg('svg',{class:'life-dot',width:10,height:10,viewBox:'0 0 10 10','aria-hidden':'true'});dot.append(h.svg('circle',{cx:5,cy:5,r:5,fill:s.color}));
   n.dataset.subjectId=id;n.append(dot,h.el('span',s.name+(s.bridge?' · 징검다리':'')));return n;
 }
-// 칩 4개. '오늘'은 날짜도 오늘로 되돌린다. '월'은 과목 표(FIX75 H74-4: '달력' 진입이 세운 날짜 달력 monthDates를 끈다). '연간 계획'(옛 '멀리')은 마지막에 본 먼 보기(없으면 연)로 가고, 고른 동안 아래에 연·수능까지 칩 줄을 연다.
+// 칩 4개. '오늘'은 날짜도 오늘로 되돌린다. '월'은 기본 보기(FIX75 H74-4: '달력' 진입이 세운 날짜 달력 monthDates를 끈다 · V10D-1: 기본 = 계획 달력, 과목 표 monthTable도 끈다). '연간 계획'(옛 '멀리')은 마지막에 본 먼 보기(없으면 연)로 가고, 고른 동안 아래에 연·수능까지 칩 줄을 연다.
 function viewChips(h,ctx,st,today){
   const far=FAR_VIEWS.includes(st.view),rows=[];
   const line=(list,label,cls)=>{
     const row=h.el('div',null,cls);row.setAttribute('role','toolbar');row.setAttribute('aria-label',label);
     for(const [key,text] of list){
       const on=key==='FAR'?far:st.view===key;
-      const pick=()=>{if(key==='DAY')choosePlanDate(st,'date',today,false);if(key==='MONTH')st.monthDates=false;setView(st,ctx,key==='FAR'?(far?st.view:st.far??FAR_VIEWS[0]):key);if(FAR_VIEWS.includes(st.view))st.far=st.view;void ctx.rerender();};
+      const pick=()=>{if(key==='DAY')choosePlanDate(st,'date',today,false);if(key==='MONTH'){st.monthDates=false;st.monthTable=false;}setView(st,ctx,key==='FAR'?(far?st.view:st.far??FAR_VIEWS[0]):key);if(FAR_VIEWS.includes(st.view))st.far=st.view;void ctx.rerender();};
       const b=ctx.kit?.chip?ctx.kit.chip(text,{selected:on,onClick:pick}):h.button(text,pick,'lb-chip'+(on?' selected':''));
       b.setAttribute('aria-pressed',String(on));b.dataset.view=key;row.append(b);
     }
@@ -455,11 +455,12 @@ export function ddayChips(exams,today,active=null){
 }
 export const ddayChipText=c=>DDAY_LABEL[c.role]+' '+c.name+' '+ddayText(c);
 // h = {el,add,button}. pick이 없으면 칩 줄은 span(STUDY LIVE처럼 보기만), 있으면 칩마다 단추(aria-pressed = 활성)이고 누르면 pick(role).
-export function ddayChipsNode(h,chips,cls='',pick=null){
+// V10FIX2: gauge(칩 → ddayGauge 값)를 주면 칩 안에 얇은 막대(ddayChipBar)를 단다(계획 탭). 오늘 탭·STUDY LIVE는 주지 않아 그대로.
+export function ddayChipsNode(h,chips,cls='',pick=null,gauge=null){
   const row=h.el('span',null,'lb-dday-chips'+(cls?' '+cls:''));
   for(const c of chips){
     const k='lb-dday-chip '+c.role+(c.main?' main':'');
-    const n=h.add(pick?h.button(null,()=>pick(c.role),k):h.el('span',null,k),h.el('span',DDAY_LABEL[c.role],'lb-dday-label'),h.el('strong',c.name+' '+ddayText(c),'lb-dday-value'),c.status==='잠정'?h.el('span','잠정','life-badge'):null);
+    const n=h.add(pick?h.button(null,()=>pick(c.role),k):h.el('span',null,k),h.el('span',DDAY_LABEL[c.role],'lb-dday-label'),h.el('strong',c.name+' '+ddayText(c),'lb-dday-value'),c.status==='잠정'?h.el('span','잠정','life-badge'):null,gauge?ddayChipBar(h,gauge(c)):null);
     n.dataset.examId=c.id;if(pick)n.setAttribute('aria-pressed',String(c.main));row.append(n);
   }
   return row;
@@ -486,16 +487,17 @@ export function ddayLongText(d){
 export const ddayPctText=g=>'남은 '+(Math.round(g.pct*10)/10)+'%';
 // V8FIX L-12(일부): 구간 첫날(dDay = total)에는 안내가 없었다 → "구간 첫날 · 내일부터 하루씩 줄어요". 시작 전 "n일 뒤"의 n(= 구간 시작까지 날 수)은 V8W2 시험이 단언하는 값 그대로(REPORT 남김).
 export function ddayWaitText(g){return g.dDay<=g.total?'구간 첫날 · 내일부터 하루씩 줄어요':'구간 시작 전 · '+(g.dDay-g.total)+'일 뒤부터 줄어요';}
-// h = {el,add,svg}. 막대 = SVG(바탕 회색 빗금 = 지나간 몫 · 왼쪽부터 금 = 남은 몫 · 오늘 줄어든 칸 = 금 테 빗금 칸 + 진한 눈금), 너비는 % 속성(인라인 style 없음).
+// h = {el,add,svg}. 막대 = SVG(바탕 회색 빗금 = 지나간 몫 · 금 = 남은 몫 · 오늘 줄어든 칸 = 금 테 빗금 칸 + 진한 눈금), 너비는 % 속성(인라인 style 없음).
+// V10B-4 (0절 게이지 규칙): 처음에 꽉 차 있고 왼쪽부터 깎인다 → 남은 금은 오른쪽 끝에 붙고(x = 지나간 몫), 오늘 줄어든 칸은 그 바로 왼쪽, 눈금은 금이 시작하는 자리.
 export function ddayGaugeNode(h,g){
   if(!g)return null;
-  const {el,add,svg}=h,pct=v=>Math.round(v/g.total*100000)/1000+'%',id='dd-hatch-'+g.role,H=14;
+  const {el,add,svg}=h,pct=v=>Math.round(v/g.total*100000)/1000+'%',id='dd-hatch-'+g.role,H=14,gone=g.total-g.left;
   const bar=svg('svg',{class:'dd-gauge-bar',width:'100%',height:H,'aria-hidden':'true'}),pat=svg('pattern',{id,width:6,height:6,patternUnits:'userSpaceOnUse',patternTransform:'rotate(45)'});
   pat.append(svg('rect',{class:'hc-hatch-bg',width:6,height:6}),svg('line',{class:'hc-hatch-line',x1:0,y1:0,x2:0,y2:6}));
   add(bar,add(svg('defs'),pat),svg('rect',{class:'dd-gauge-past',x:0,y:0,width:'100%',height:H,fill:'url(#'+id+')'}),
-    g.left>0?svg('rect',{class:'dd-gauge-left',x:0,y:0,width:pct(g.left),height:H}):null,
-    g.cut?svg('rect',{class:'dd-gauge-cut',x:pct(g.cut.from),y:0,width:pct(1),height:H}):null,
-    g.cut?svg('line',{class:'dd-gauge-mark',x1:pct(g.cut.from),y1:0,x2:pct(g.cut.from),y2:H}):null);
+    g.left>0?svg('rect',{class:'dd-gauge-left',x:pct(gone),y:0,width:pct(g.left),height:H}):null,
+    g.cut?svg('rect',{class:'dd-gauge-cut',x:pct(g.total-g.cut.to),y:0,width:pct(1),height:H}):null,
+    g.cut?svg('line',{class:'dd-gauge-mark',x1:pct(gone),y1:0,x2:pct(gone),y2:H}):null);
   const out=add(el('div',null,'dd-gauge '+g.role),
     add(el('div',null,'dd-gauge-head'),el('span',g.name+'까지','dd-gauge-name'),el('strong',ddayPctText(g),'dd-gauge-pct')),bar,
     add(el('p',null,'dd-gauge-text'),el('strong',ddayLongText(g.dDay),'dd-gauge-long'),g.cut?el('span','오늘도 하루 줄었어요','dd-gauge-cut-text'):g.dDay>=g.total?el('span',ddayWaitText(g),'dd-gauge-cut-text'):null),
@@ -503,6 +505,17 @@ export function ddayGaugeNode(h,g){
   out.dataset.examId=g.id;out.dataset.left=String(g.left);out.dataset.total=String(g.total);
   out.setAttribute('role','group');out.setAttribute('aria-label',g.name+'까지 '+ddayPctText(g)+' · '+ddayLongText(g.dDay)+(g.cut?' · 오늘도 하루 줄었어요':''));
   return out;
+}
+// V10FIX2 (소유자 2026-11-15 "계획 탭 디데이칩에도 게이지 넣어", V10HUNT L-01): 계획 탭 칩 안의 얇은 막대. 값은 오늘 탭 게이지와 같은 ddayGauge.
+// 바탕 = 지나간 몫, 금 = 남은 몫(오른쪽 끝에 붙음 = 처음 꽉 차 있고 왼쪽부터 깎임). 시험 당일은 left 0 → 빈 막대, 다음 날은 칩이 없어 막대도 없음.
+// 칩 크기 안의 4px 막대라 오늘 줄어든 칸·눈금·% 글자는 그리지 않는다(계획 탭 퍼센트 없음 B44B-8a, 글자는 칩의 D-n 그대로).
+export const DDAY_CHIP_BAR_H=4;
+export function ddayChipBar(h,g){
+  if(!g)return null;
+  const H=DDAY_CHIP_BAR_H,pct=v=>Math.round(v/g.total*100000)/1000+'%',bar=h.svg('svg',{class:'lb-dday-chip-bar',width:'100%',height:H,'aria-hidden':'true','data-left':g.left,'data-total':g.total});
+  bar.append(h.svg('rect',{class:'lb-dday-chip-past',x:0,y:0,width:'100%',height:H}));
+  if(g.left>0)bar.append(h.svg('rect',{class:'lb-dday-chip-left',x:pct(g.total-g.left),y:0,width:pct(g.left),height:H}));
+  return bar;
 }
 // 글자판(읽기 낭독·안내용): "다음 시험 3평 D-133 · 최종 수능 D-373". 다가올 시험이 없으면 "지난 시험 n개", 일정이 없으면 null.
 export function examLineText(exams,today){
@@ -518,7 +531,7 @@ function examLine(h,ctx,st,exams,today){
   const storage=ctx.storage??null,chips=ddayChips(exams,today,readDdayActive(storage)),flip=()=>{st.examsOpen=!st.examsOpen;void ctx.rerender();};
   const b=h.button(chips.length?(st.examsOpen?'일정 접기 ▴':'일정 ▾'):text,flip,chips.length?'secondary plan-exam-toggle':'plan-exam-line');
   b.setAttribute('aria-expanded',String(Boolean(st.examsOpen)));b.setAttribute('aria-label','시험 일정 '+(st.examsOpen?'접기':'펼치기')+' · '+text);
-  const line=chips.length?h.add(h.el('div',null,'plan-exam-line has-chips'),ddayChipsNode(h,chips,'',role=>{writeDdayActive(storage,role);void ctx.rerender();}),b):b;
+  const line=chips.length?h.add(h.el('div',null,'plan-exam-line has-chips'),ddayChipsNode(h,chips,'',role=>{writeDdayActive(storage,role);void ctx.rerender();},c=>ddayGauge(exams,c,today)),b):b;   // V10FIX2: 칩마다 얇은 게이지
   if(chips.length){line.setAttribute('role','group');line.setAttribute('aria-label','디데이');}
   return h.add(h.el('div',null,'plan-exam-wrap'),line,st.examsOpen?examRow(h,exams,today):null);
 }
@@ -619,7 +632,8 @@ function monthView(h,ctx,st,data){
   // P1C: 앱이 ctx.planMonth를 넘겨 주면 과목 × 주차 표(plan-month.mjs)를 그리고, 날짜 달력은 그 안의 "날짜로 보기"로 들어간다. 못 받으면 아래 날짜 달력 그대로.
   const items=planItemsDone(data.life,data.study,ym+'-01',ym+'-'+String(daysInMonth(ym)).padStart(2,'0'),today,ctx.storage??null,studyDraftOf(ctx,today));   // V6A: 이 달 계획 줄 n개 중 m개(손 완료 표시 포함) · FIX68 F7: 오늘 초안 포함
   // V8W3-2: 계획 탭 날짜 달력도 뒤 빈칸을 다음 달 날짜로 채워 주마다 7칸(tail), 앞뒤 달 날짜에도 기록 표시(dateGrid의 !o.pick 경로).
-  const table=ctx.planMonth?.(st,{data,ym,items,dateGrid:()=>dateGrid(h,ctx,st,data,ym,{tail:true}),goWeek:monday=>{choosePlanDate(st,'monday',monday);setView(st,ctx,'WEEK');void ctx.rerender();}})??null;
+  // V10D-1: 계획 달력 칸을 누르면 그날 요약 시트(날짜 달력 칸과 같은 openDaySheet).
+  const table=ctx.planMonth?.(st,{data,ym,items,dateGrid:()=>dateGrid(h,ctx,st,data,ym,{tail:true}),goWeek:monday=>{choosePlanDate(st,'monday',monday);setView(st,ctx,'WEEK');void ctx.rerender();},openDay:date=>openDaySheet(ctx,st,data,date)})??null;
   h.add(out,...(table?[table]:dateGrid(h,ctx,st,data,ym,{tail:true})));
   return out;
 }
@@ -659,8 +673,8 @@ function dateGrid(h,ctx,st,data,ym,o={}){
     else if(date<today)b.setAttribute('data-past','');
     b.append(h.el('span',String(d),'plan-cal-num'));
     marks(b,act,ex);
-    if(evs)b.append(h.el('span','●'+evs,'plan-cal-events'));
-    if(outs)b.append(h.el('span','○'+outs,'plan-cal-events ics-outer-mark'));
+    if(o.pick){homeCellEvents(h,b,date,ctx.planCal);if(date<today)homeCellGold(b,data.study,date);}   // V10B-1·5: 오늘 탭 펼친 달 = 일정 미리보기 2줄 + 지난 날 집중 금빛
+    else{if(evs)b.append(h.el('span','●'+evs,'plan-cal-events'));if(outs)b.append(h.el('span','○'+outs,'plan-cal-events ics-outer-mark'));}
     grid.append(b);
   }
   if(o.tail)for(let i=1;i<=(7-(lead+n)%7)%7;i++)grid.append(otherCell(shiftMonth(ym,1)+'-0'+i));
@@ -788,6 +802,40 @@ export function homeDayEvents(events,outerItems,date){
   for(const o of outerItems??[])rows.push({time:o.time||'',title:o.title,event:null,outer:o});
   return rows.map((r,i)=>({...r,i})).sort((a,b)=>Number(Boolean(a.time))-Number(Boolean(b.time))||(a.time<b.time?-1:a.time>b.time?1:0)||Number(!a.event)-Number(!b.event)||a.i-b.i).map(({i,...r})=>r);
 }
+// ----- V10B (통제탑 2026-11-15, 소유자 r79 사용 불편): 펼친 달 칸 일정 미리보기 · 일정 종류 칩 · 금빛 농도 -----
+// 1) 펼친 달 칸: 그날 일정(homeDayEvents 순서 = 종일 위·시각 순) 최대 2줄 "09:00 제목"(한 줄 말줄임은 CSS) + 넘치면 "+n". 접은 폭(CSS 700px 이하)은 글자 대신 종류 색 점(최대 3)만.
+//    칸 단추의 aria-label이 이미 "일정 n개"를 읽으므로 미리보기는 그림(aria-hidden). 누르면 지금처럼 아래 목록이 그날로 바뀐다(o.pick).
+export const HOME_CELL_LINES=2,HOME_CELL_DOTS=3;
+function homeCellEvents(h,cell,date,cal){
+  const rows=homeDayEvents(cal?.events,cal?.outer?.on?.(date)??[],date);if(!rows.length)return;
+  const {el,add,svg}=h,box=el('span',null,'hc-ev'),kind=r=>r.event?String(r.event.kind):'OUTER';box.setAttribute('aria-hidden','true');
+  for(const r of rows.slice(0,HOME_CELL_LINES)){const line=add(el('span',null,'hc-ev-line'),r.time?el('span',r.time,'hc-ev-time'):null,el('span',r.title,'hc-ev-title'));line.dataset.kind=kind(r);box.append(line);}
+  if(rows.length>HOME_CELL_LINES)box.append(el('span','+'+(rows.length-HOME_CELL_LINES),'hc-ev-more'));
+  const k=Math.min(rows.length,HOME_CELL_DOTS),dots=svg('svg',{class:'hc-ev-dots',viewBox:'0 0 '+(k*8-2)+' 6',width:k*8-2,height:6});
+  rows.slice(0,k).forEach((r,i)=>dots.append(svg('circle',{class:'hc-ev-dot','data-kind':kind(r),cx:3+i*8,cy:3,r:3})));
+  add(box,dots);cell.append(box);
+}
+// 5) 금빛 농도: 오늘 집중 시간(담은 세션 분, 오늘 카드·벽돌과 같은 기준) → 0~4단계. 0 = 1시간 미만(금기 거의 없는 아이보리) · 1 = 1h · 2 = 3h · 3 = 5h · 4 = 8h 이상.
+//    앱이 화면 뿌리(<html data-gold>)에 적고 CSS가 바탕·머리띠 농도를 바꾼다. 펼친 달의 지난 날 칸도 그날 분으로 같은 단계(data-gold, 0이면 적지 않음 = 회색 빗금 그대로).
+export const GOLD_STEPS=Object.freeze([60,180,300,480]);
+export const goldLevel=min=>Number.isFinite(min)&&min>0?GOLD_STEPS.filter(s=>min>=s).length:0;
+export const dayFocusMinutes=(study,date,draft=null)=>daySessions(study,date,draft).reduce((s,x)=>s+x.minutes,0);
+function homeCellGold(cell,study,date){const lv=goldLevel(dayFocusMinutes(study,date));if(lv)cell.dataset.gold=String(lv);}
+// 3) 일정 종류 칩(앱 일정 시트가 그린다): 기본 4종(EVENT.kind 그대로) + 자주 쓰는 종류 6개 + 맨 끝 "직접 입력". 자주 쓰는 종류는 V8W1 직접 입력과 같은 자리(메모 첫 줄 "[종류] 시험", kind = 약속)에 저장한다(기록 구조·검증 변경 0).
+export const EVENT_KIND_BASE=Object.freeze([['DEADLINE','기한'],['APPOINTMENT','약속'],['REVIEW','검토'],['MILESTONE','중간 목표']]);   // 앱 LABEL과 같은 이름
+export const EVENT_KIND_PRESETS=Object.freeze(['시험','수업','병원','근무','기념일','기타']),EVENT_KIND_CUSTOM='직접 입력';
+// 저장된 일정 → 칩 상태 {sel, custom, base}. sel = 기본 4종 값 · 자주 쓰는 종류 글자 · '직접 입력', custom = 직접 쓴 글자,
+// base = 자주 쓰는/직접 쓴 종류를 저장할 때의 EVENT.kind(옛 기록이 이미 종류 글자를 가졌으면 그 kind 그대로, 아니면 약속).
+export function eventKindPick(kind,notes){
+  const own=splitEventNotes(notes).kind,preset=EVENT_KIND_PRESETS.includes(own);
+  return {sel:own?(preset?own:EVENT_KIND_CUSTOM):kind,custom:own&&!preset?own:'',base:own?kind:'APPOINTMENT'};
+}
+// 칩 상태 → 저장 값 {kind, own}(own = 메모 첫 줄 "[종류] …"에 넣을 글자, 없으면 ''). 직접 입력이 비었으면 종류 글자 없이 base.
+export function eventKindSave({sel,custom,base}){
+  if(sel===EVENT_KIND_CUSTOM)return {kind:base,own:String(custom??'')};
+  if(EVENT_KIND_PRESETS.includes(sel))return {kind:base,own:sel};
+  return {kind:sel,own:''};
+}
 // 고른 날의 계획 줄(시간대 순): 과목 · 시간대 · 세부내용 · 상태(안 함 · 조각 · 완료 n장, 오지 않은 날은 "계획"). 머리 = "계획 n개 중 m개 달성"(오늘까지) / "계획 n개"(뒤 날).
 export function homeDayPlans(life,study,date,today,{storage=null,draft=null}={}){
   const subjects=subjectMap(lifeDefs(life)),items=sortedItems(planOf(life,date)?.items??[]),future=date>today;
@@ -800,8 +848,9 @@ function progRow(h,{label,n,of},key){
   const {el,add,svg}=h,pct=v=>Math.round(v/of*100000)/1000+'%',id='hc-hatch-'+key;
   const bar=svg('svg',{class:'hc-prog-bar',width:'100%',height:10,'aria-hidden':'true'}),pat=svg('pattern',{id,width:6,height:6,patternUnits:'userSpaceOnUse',patternTransform:'rotate(45)'});
   pat.append(svg('rect',{class:'hc-hatch-bg',width:6,height:6}),svg('line',{class:'hc-hatch-line',x1:0,y1:0,x2:0,y2:6}));
-  add(bar,add(svg('defs'),pat),svg('rect',{class:'hc-prog-left',x:0,y:0,width:'100%',height:10}),n>1?svg('rect',{class:'hc-prog-past',x:0,y:0,width:pct(n-1),height:10,fill:'url(#'+id+')'}):null,svg('rect',{class:'hc-prog-today',x:pct(n-1),y:0,width:pct(1),height:10}));
-  const row=add(el('div',null,'hc-prog hc-prog-'+key),el('span',label,'hc-prog-label'),bar,add(el('span',null,'hc-prog-value'),el('strong',n+'/'+of+'일',null),el('span',' · '+(of-n)+'일 남음','hc-prog-left-text')));
+  // V10B-2 (0절 게이지 규칙): 남은 날 = 오른쪽 끝에 붙은 금 칸(처음엔 꽉 차 있고 왼쪽부터 깎인다), 지난 날 = 빗금 그대로, 오늘 = 금 칸. 글자 "15/30일 · 50%"(지난 몫, 오늘 포함).
+  add(bar,add(svg('defs'),pat),n<of?svg('rect',{class:'hc-prog-left',x:pct(n),y:0,width:pct(of-n),height:10}):null,n>1?svg('rect',{class:'hc-prog-past',x:0,y:0,width:pct(n-1),height:10,fill:'url(#'+id+')'}):null,svg('rect',{class:'hc-prog-today',x:pct(n-1),y:0,width:pct(1),height:10}));
+  const row=add(el('div',null,'hc-prog hc-prog-'+key),el('span',label,'hc-prog-label'),bar,add(el('span',null,'hc-prog-value'),el('strong',n+'/'+of+'일',null),el('span',' · '+Math.round(n/of*100)+'%','hc-prog-left-text')));
   row.dataset.n=String(n);row.dataset.of=String(of);
   return row;
 }
@@ -964,44 +1013,86 @@ function yearView(h,ctx,st,data){
     list.append(row);
   }
   add(box,list,el('p','달을 누르면 그 달 계획 · 주를 누르면 주 보기 · 채운 길이 = 하루 목표 '+barsText(ach.goalBricks)+' × 7일 대비 쌓은 벽돌 · ★ = 시험','muted small plan-year-note'));
-  add(box,add(el('div',null,'button-row'),button('월 보기에서 열기',()=>{choosePlanDate(st,'month',ym,ym!==today.slice(0,7));st.monthDates=false;setView(st,ctx,'MONTH');void ctx.rerender();},'secondary py-open-month')));
+  add(box,add(el('div',null,'button-row'),button('월 보기에서 열기',()=>{choosePlanDate(st,'month',ym,ym!==today.slice(0,7));st.monthDates=false;st.monthTable=false;setView(st,ctx,'MONTH');void ctx.rerender();},'secondary py-open-month')));
   return add(out,box);
 }
 
-// ----- 수능까지 보기 (A5) -----
-function gridSvg(h,cells){
-  const cell=22,gap=2,step=cell+gap,rows=Math.max(1,Math.ceil(cells.length/GRID_COLS)),W=GRID_COLS*step;
-  const s=h.svg('svg',{class:'plan-weekgrid',viewBox:'0 0 '+W+' '+rows*step,width:'100%',role:'img','aria-label':'남은 주 격자, 한 칸 = 1주'});
-  cells.forEach((c,i)=>{
-    const x=(i%GRID_COLS)*step,y=Math.floor(i/GRID_COLS)*step,g=h.svg('g',{class:'plan-wk ph'+c.phase+' '+c.state.toLowerCase()+(c.exams.length?' exam':''),'data-week':c.monday});
-    g.append(h.svg('rect',{class:'plan-wk-bg',x,y,width:cell,height:cell,rx:3}));
-    if(c.ratio>0)g.append(h.svg('rect',{class:'plan-wk-fill',x,y:y+cell*(1-c.ratio),width:cell,height:cell*c.ratio,rx:2}));
-    g.append(h.svg('rect',{class:'plan-wk-edge',x,y,width:cell,height:cell,rx:3}));
-    g.append(h.svg('title',{},short(c.monday)+' 주 · '+PHASES[c.phase]+(c.exams.length?' · '+c.exams.join(', '):'')+(c.state==='FUTURE'?'':' · 벽돌 '+c.value+' / '+c.target)));
-    s.append(g);
+// ----- 수능까지 보기 (A5 → V10D-2) -----
+// V10D-2 (소유자 2026-11-15 "52칸 격자와 굵은 검은 테두리 — 얼마나 남았는지 안 와닿는다"): 격자·레일 대신
+//   맨 위 큰 글자 "수능까지 D-368 · 52주 4일" + 한 줄 "전체의 3% 지남" → 가로 시간 막대 1개(0절 게이지 규칙: 처음 꽉 참, 왼쪽부터 깎임, 남은 몫은 오른쪽에 붙음, 오늘 표시는 왼쪽→오른쪽)
+//   구간 색(기본기·실력·실전·파이널) + 깃발(시험 이름·날짜·D-n) → 아래 달 한 줄(이번 달 ~ 수능 달, 달마다 "이 달 n주" 눈금, 누르면 그 달 계획 달력).
+// 전체(막대 왼쪽 끝) = 기록을 시작한 주의 월요일(옛 주 격자의 첫 칸과 같은 규칙, 기록이 없거나 오늘보다 늦으면 오늘) ~ 수능일. 계산만(시계·저장소·DOM 없음).
+// 구간: 수능을 뺀 시험일마다 다음 시기로(그 시험일 = 다음 시기의 첫날). 시험이 3개보다 많으면 파이널에 머문다(phaseOfWeek와 같은 상한).
+export const CSAT_MONTHS_MAX=24;
+const examLabel=x=>x.name.replace(/\(.*\)/,'');
+export function csatPlanModel(exams,today,ach){
+  const c=countdown(exams,today);
+  if(c.state==='NONE'||c.state==='AFTER')return null;
+  const target=c.target,end=target.date,first=ach?.hasRecords&&ach.weeks?.length?ach.weeks[0].monday:null,floor=shiftDay(end,-7*MAX_GRID_WEEKS);
+  let start=first&&first<today?first:today;if(start<floor)start=floor;
+  const total=Math.max(1,dDay(start,end)),passed=Math.min(total,Math.max(0,dDay(start,today))),at=d=>Math.min(1,Math.max(0,dDay(start,d)/total));
+  const marks=[...(exams?.items??[])].filter(x=>x.id!==target.id&&x.date<end).sort(byDate);
+  const phaseAt=d=>Math.min(3,marks.filter(x=>x.date<=d).length);
+  const cuts=[start,...marks.map(x=>x.date).filter(d=>d>start),end].filter((d,i,a)=>a.indexOf(d)===i);
+  const segments=cuts.slice(0,-1).map((from,k)=>({from,to:cuts[k+1],phase:phaseAt(from),x0:at(from),x1:at(cuts[k+1]),past:cuts[k+1]<=today}));
+  const flags=[...marks.filter(x=>x.date>=start),target].map(x=>({id:x.id,name:examLabel(x),date:x.date,dDay:dDay(today,x.date),past:x.date<today,csat:x.id===target.id,at:at(x.date)}));
+  const thisMonth=today.slice(0,7),lastMonth=end.slice(0,7),months=[];
+  for(let ym=thisMonth;ym<=lastMonth&&months.length<CSAT_MONTHS_MAX;ym=shiftMonth(ym,1)){
+    const mFirst=ym+'-01',mLast=ym+'-'+String(daysInMonth(ym)).padStart(2,'0'),weeks=[];
+    for(let w=mondayOf(mFirst);w<=mLast;w=shiftDay(w,7))if(weekName(w).ym===ym){const we=shiftDay(w,6);weeks.push({monday:w,state:we<today?'PAST':w>today?'FUTURE':'NOW'});}
+    months.push({ym,month:Number(ym.slice(5,7)),year:Number(ym.slice(0,4)),weeks,exams:(exams?.items??[]).filter(x=>x.date>=mFirst&&x.date<=mLast).sort(byDate).map(examLabel),state:ym===thisMonth?'NOW':'FUTURE',csat:ym===lastMonth});
+  }
+  return {name:examLabel(target),date:end,dDay:c.dDay,start,total,passed,left:total-passed,pct:passed/total*100,today,todayAt:at(today),segments,flags,months};
+}
+// "수능까지 D-368 · 52주 4일"(한 주가 안 되면 주 없이), 당일은 "수능 D-DAY".
+export function csatHeroText(m){
+  if(m.dDay<=0)return m.name+' D-DAY';
+  const w=Math.floor(m.dDay/7),r=m.dDay%7;
+  return m.name+'까지 D-'+m.dDay+(w?' · '+w+'주'+(r?' '+r+'일':''):'');
+}
+// "전체의 3% 지남". 하루라도 지났는데 반올림이 0이면 "1% 미만".
+export function csatPassedText(m){
+  const p=Math.round(m.pct);
+  return '전체의 '+(m.passed>0&&p===0?'1% 미만':m.dDay>0&&p>=100?'99% 넘게':p+'%')+' 지남';   // V10FIX L-03: 수능 전날까지는 반올림해도 "100%"라고 하지 않는다
+}
+// 막대 SVG: viewBox 없이 x를 %로(글자 크기는 화면 폭과 무관하게 CSS로). 깃발 두 층은 오른쪽(수능)부터 번갈아 → 이웃 깃발 글자가 겹치지 않는다.
+// 지나간 몫 = 회색 빗금(--cal-past 토큰, 디데이 게이지와 같은 무늬), 남은 몫 = 시기 색(왼쪽 끝이 오늘 표시에 붙어 오른쪽 끝 수능까지). 시기 이름은 막대 안 글자(색만으로 구분하지 않음).
+const CSAT_BAR={top:62,h:20,height:108};
+function csatBarSvg(h,m){
+  const {svg}=h,pct=v=>Math.round(v*100000)/1000+'%',{top,h:H}=CSAT_BAR,anchor=a=>a<0.08?'start':a>0.92?'end':'middle';
+  const s=svg('svg',{class:'pcs-bar',width:'100%',height:CSAT_BAR.height,role:'img','aria-label':csatHeroText(m)+' · '+csatPassedText(m)+' · '+m.flags.map(f=>f.name+' '+short(f.date)+(f.past?' 끝':' D-'+f.dDay)).join(' · ')});
+  const pat=svg('pattern',{id:'pcs-hatch',width:6,height:6,patternUnits:'userSpaceOnUse',patternTransform:'rotate(45)'});
+  pat.append(svg('rect',{class:'hc-hatch-bg',width:6,height:6}),svg('line',{class:'hc-hatch-line',x1:0,y1:0,x2:0,y2:6}));
+  s.append(h.add(svg('defs'),pat),svg('rect',{class:'pcs-past',x:0,y:top,width:'100%',height:H,fill:'url(#pcs-hatch)'}));
+  for(const g of m.segments){
+    const a=Math.max(g.x0,m.todayAt);
+    const r=svg('rect',{class:'pcs-seg ph'+g.phase,x:pct(a),y:top,width:pct(Math.max(0,g.x1-a)),height:H});r.dataset.phase=String(g.phase);r.dataset.from=g.from;s.append(r);
+  }
+  s.append(svg('rect',{class:'pcs-frame',x:0,y:top,width:'100%',height:H,rx:3}));
+  for(const g of m.segments)if(g.x1-g.x0>=0.06)s.append(svg('text',{class:'pcs-phase'+(g.past?' past':''),x:pct((g.x0+g.x1)/2),y:top+H/2+4,'text-anchor':'middle'},PHASES[g.phase]));
+  m.flags.forEach((f,k)=>{
+    const up=(m.flags.length-1-k)%2===1,ny=up?13:39,x=pct(f.at),cls=(f.csat?' csat':'')+(f.past?' past':'');
+    s.append(svg('line',{class:'pcs-pole'+cls,x1:x,y1:up?30:56,x2:x,y2:top}));
+    s.append(svg('text',{class:'pcs-flag'+cls,x,y:ny,'text-anchor':anchor(f.at)},f.name));
+    s.append(svg('text',{class:'pcs-flag-sub'+cls,x,y:ny+13,'text-anchor':anchor(f.at)},short(f.date)+' · '+(f.past?'끝':f.dDay===0?'D-DAY':'D-'+f.dDay)));
   });
+  const tx=pct(m.todayAt);
+  s.append(svg('line',{class:'pcs-today',x1:tx,y1:top-6,x2:tx,y2:top+H+6}),svg('text',{class:'pcs-today-label',x:tx,y:top+H+20,'text-anchor':anchor(m.todayAt)},'오늘'));
   return s;
 }
-function railSvg(h,exams,today,ach){
-  const target=csatTarget(exams),W=340,x0=14,x1=326,end=dayNumber(target.date),start=dayNumber(today),span=Math.max(1,end-start);
-  const xOf=d=>x0+(x1-x0)*Math.min(1,Math.max(0,(dayNumber(d)-start)/span));
-  const s=h.svg('svg',{class:'plan-rail',viewBox:'0 0 '+W+' 92',width:'100%',role:'img','aria-label':'오늘부터 수능까지 시험 레일'});
-  const marks=exams.items.filter(x=>x.id!==target.id&&x.date>=today&&x.date<target.date).sort(byDate);
-  const cuts=[today,...marks.map(x=>x.date),target.date];
-  const firstPhase=phaseOfWeek(exams,mondayOf(today));
-  cuts.slice(0,-1).forEach((a,k)=>{
-    const ph=Math.min(3,firstPhase+k),xa=xOf(a),xb=xOf(cuts[k+1]);
-    s.append(h.svg('rect',{class:'plan-rail-seg ph'+ph,x:xa,y:44,width:Math.max(1,xb-xa),height:10}));
-  });
-  s.append(h.svg('line',{class:'plan-rail-today',x1:x0,y1:36,x2:x0,y2:62}));
-  s.append(h.svg('text',{class:'plan-rail-name',x:x0,y:30,'text-anchor':'start'},'오늘'));
-  [...marks,target].forEach((x,k)=>{
-    const px=xOf(x.date),csat=x.id===target.id;
-    s.append(h.svg('circle',{class:'plan-rail-dot'+(csat?' csat':''),cx:px,cy:49,r:csat?7:5}));
-    s.append(h.svg('text',{class:'plan-rail-name',x:px,y:k%2?18:30,'text-anchor':csat?'end':'middle'},x.name.replace(/\(.*\)/,'')));
-    s.append(h.svg('text',{class:'plan-rail-dday',x:px,y:76,'text-anchor':csat?'end':'middle'},'D-'+dDay(today,x.date)));
-  });
-  return s;
+function csatMonthsNode(h,ctx,st,m){
+  const {el,add,button}=h,row=el('div',null,'pcs-months');row.setAttribute('role','group');row.setAttribute('aria-label','이번 달부터 '+m.name+' 달까지, 달을 누르면 그 달 계획 달력');
+  for(const mo of m.months){
+    const b=button(null,()=>{choosePlanDate(st,'month',mo.ym,mo.ym!==m.today.slice(0,7));st.monthDates=false;st.monthTable=false;setView(st,ctx,'MONTH');void ctx.rerender();},'pcs-month'+(mo.state==='NOW'?' current':'')+(mo.csat?' csat':''));
+    b.dataset.ym=mo.ym;b.dataset.navOnly='1';if(mo.state==='NOW')b.setAttribute('aria-current','date');
+    b.setAttribute('aria-label',mo.year+'년 '+mo.month+'월 · 이 달 '+mo.weeks.length+'주'+(mo.state==='NOW'?' · 이번 달 · 지난 주 '+mo.weeks.filter(w=>w.state==='PAST').length+'개':'')+(mo.exams.length?' · '+mo.exams.join(', '):'')+' · 그 달 계획 달력으로');
+    // 연도 = 숫자 + "년"(접힘 폭은 "년"을 숨겨 숫자가 한 줄에, CSS)
+    const ticks=el('span',null,'pcs-ticks');ticks.setAttribute('aria-hidden','true');
+    for(const w of mo.weeks){const t=el('span',null,'pcs-tick '+w.state.toLowerCase());t.dataset.week=w.monday;ticks.append(t);}
+    add(b,mo.month===1||mo===m.months[0]?add(el('small',null,'pcs-month-year'),el('span',String(mo.year)),el('span','년','pcs-month-year-unit')):null,el('strong',mo.month+'월','pcs-month-name'),add(el('span',null,'pcs-month-weeks'),el('span','이 달 ','pcs-month-pre'),el('span',mo.weeks.length+'주')),ticks,mo.exams.length?el('span','★'+mo.exams[0]+(mo.exams.length>1?' +'+(mo.exams.length-1):''),'pcs-month-exam'):null);
+    row.append(b);
+  }
+  return row;
 }
 function wallSvg(h,cap){
   const cols=24,rows=5,total=cols*rows,all=cap.stacked+cap.left;
@@ -1017,17 +1108,17 @@ function csatView(h,ctx,st,data){
   const {ach,today,exams}=data,c=countdown(exams,today),out=h.el('section',null,'plan-csat');
   if(c.state==='NONE'){h.add(out,h.el('p','시험 일정이 없어 남은 시간을 그릴 수 없습니다.','muted small'));return out;}
   if(c.state==='AFTER'){h.add(out,h.el('p',c.target.name+'이 지났습니다 · 남은 시간 화면은 시험 일정을 새로 넣으면 다시 그려집니다.','plan-card notice'));return out;}
-  const cells=weekGrid(exams,today,ach),cap=capacity(exams,today,ach);
-  const grid=h.el('section',null,'plan-card');
-  h.add(grid,h.el('h3','남은 '+c.weeksLeft+'주 · 한 칸 = 1주 / 채운 칸 = 쌓은 벽돌'),gridSvg(h,cells));
-  const legend=h.el('div',null,'plan-legend');for(const [i,name] of PHASES.entries())h.add(legend,h.el('span',name,'plan-legend-item ph'+i));
-  h.add(grid,legend);
+  const cap=capacity(exams,today,ach),m=csatPlanModel(exams,today,ach);
+  // V10D-2: 큰 글자 + 지난 몫 한 줄 + 시간 막대(구간 색·깃발·오늘) + 막대 설명 + 달 한 줄. 옛 주 격자·시험 레일은 그리지 않는다(weekGrid 계산은 남김).
+  const hero=h.el('section',null,'plan-card pcs-hero');hero.dataset.start=m.start;hero.dataset.total=String(m.total);hero.dataset.passed=String(m.passed);
+  h.add(hero,h.el('h3',csatHeroText(m),'pcs-title'),h.el('p',csatPassedText(m),'pcs-passed'),csatBarSvg(h,m),
+    h.el('p','막대 = '+short(m.start)+(m.start<today?' 기록 시작':' 오늘')+' ~ '+short(m.date)+' '+m.name+' · '+m.total+'일 · 지난 날만큼 왼쪽부터 깎여요','muted small pcs-note'),
+    csatMonthsNode(h,ctx,st,m),h.el('p','달을 누르면 그 달 계획 달력 · 눈금 1칸 = 1주(그 주 목요일이 든 달)','muted small pcs-months-note'));
   const feel=h.el('div',null,'plan-feel');
   h.add(feel,h.add(h.el('div',null,'plan-feel-cell'),h.el('strong',c.weekendsLeft+'번'),h.el('span','남은 주말')),h.add(h.el('div',null,'plan-feel-cell'),h.el('strong',c.examsLeft+'번'),h.el('span','남은 모의고사')),h.add(h.el('div',null,'plan-feel-cell'),h.el('strong',hourShareText(c.hoursLeft)),h.el('span','오늘 1시간의 몫'),h.el('small','남은 공부 가능 시간 '+c.hoursLeft.toLocaleString('ko-KR')+'시간(하루 '+STUDY_HOURS_PER_DAY+'h)','muted')));
-  const rail=h.el('section',null,'plan-card');h.add(rail,h.el('h3','시험 레일 · '+c.target.name+' D-'+c.dDay),railSvg(h,exams,today,ach),h.el('p','남은 일요일 '+c.sundaysLeft+'번 · 구간 색은 시기(기본기→파이널)가 진해지는 순서입니다.','muted small'));
   const items=planItemsDone(data.life,data.study,'0000-01-01',today,today,ctx.storage??null,studyDraftOf(ctx,today)),itemsText=itemsDoneText(items);   // V6A: 지금까지 계획 줄 n개 중 m개
   const wall=h.el('section',null,'plan-card');h.add(wall,h.el('h3','벽돌 용량 벽'),wallSvg(h,cap),h.el('p',cap.days+'일 × '+cap.goal+'장 = '+cap.total.toLocaleString('ko-KR')+'장 쌓을 수 있어요 · 지금까지 '+barsText(cap.stacked)+' 쌓음'+(itemsText?' · 지금까지 '+itemsText:''),'plan-sum'));
-  h.add(out,grid,feel,rail,wall);
+  h.add(out,hero,feel,wall);
   return out;
 }
 
@@ -1070,6 +1161,7 @@ function openPlanEditor(ctx,st,date,{seed=[],onSaved=null}={}){
   };
   // V6F (지시서 3): 앱이 ctx.planAutoSave를 켜면 줄을 고칠 때마다(과목·시간대 고르기, 세부내용 칸을 떠날 때, 삭제, 어제 복사) 바로 저장하고 시트는 열어 둔다. "저장됨 · 되돌리기"(1회).
   // 저장은 아래 "저장" 핸들러 하나(save)가 auto 모드로 한다(쓰기 한 곳 규칙 그대로). 세부내용이 빈 새 줄처럼 규칙에 아직 안 맞으면 저장하지 않고 "아직 저장 안 됨". 저장 중에 또 고치면 끝난 뒤 한 번 더.
+  const PLAN_AUTO_RETRY=20,PLAN_AUTO_WAIT=300,PLAN_AUTO_BUSY='아직 저장 안 됨 · 다른 저장이 길어져요 · 한 번 더 고치면 저장돼요';   // V10FIX M-14
   const saved=el('p',null,'notice plan-editor-saved');saved.hidden=true;let saving=false,again=false,undoItems=null,autoMode=null;
   const showSaved=(text,withUndo)=>{saved.replaceChildren(el('span',text));if(withUndo&&undoItems)add(saved,button(PLAN_UNDO,()=>{const items=undoItems;undoItems=null;draft.splice(0,draft.length,...structuredClone(items));draw();autoSave(true);},'secondary plan-editor-undo'));saved.hidden=false;};
   function autoSave(undoing=false){if(!ctx.planAutoSave)return;if(saving){again=true;return;}autoMode={undoing};save();}
@@ -1081,7 +1173,8 @@ function openPlanEditor(ctx,st,date,{seed=[],onSaved=null}={}){
     try{validateLifeData('PLAN_DAY',date,mine);}catch(e){if(auto)showSaved('아직 저장 안 됨 · 세부내용을 채우면 저장돼요',false);else showErr(e?.code);return;}
     if(auto&&stable(mine)===stable(base??{date,items:[]}))return;
     if(!auto)dlg?.close?.();else saving=true;
-    void ctx.perform(async()=>{
+    // V10FIX M-14: 다른 저장이 진행 중이면 perform이 이 저장을 실행하지 않는다(false). 그때 saving이 true로 남아 이후 고친 내용이 저장되지 않았다 → 풀고 잠시 뒤 다시 시도(최대 PLAN_AUTO_RETRY번, 그 뒤 "아직 저장 안 됨").
+    const ran=ctx.perform(async()=>{
       if(!auto){st.message=null;st.error=false;st.notices=[];}
       let sealed=false;
       try{
@@ -1100,7 +1193,9 @@ function openPlanEditor(ctx,st,date,{seed=[],onSaved=null}={}){
       if(auto){if(again){again=false;autoSave();}return;}
       if(sealed&&!ctx.locked?.()){note.hidden=false;dlg=ctx.sheet?.('하루 계획 편집',body)??null;}   // 임시 저장은 성공이 아니다: 시트와 입력을 그대로 다시 연다(H37-P1). 잠겼으면 열지 않는다(열린 모달은 로그인 칸을 막는다, FIX38)
     });
+    if(auto)void Promise.resolve(ran).then(r=>{if(r!==false){retries=0;return;}saving=false;again=false;if(++retries>PLAN_AUTO_RETRY){retries=0;showSaved(PLAN_AUTO_BUSY,false);return;}setTimeout(()=>{autoMode=auto;save();},PLAN_AUTO_WAIT);});
   };
+  let retries=0;
   // 단추는 줄 목록 위에 둔다(줄이 많아 시트가 스크롤돼도 "저장"이 보인다).
   add(body,el('p',dateLabel(date)+' 계획 · 줄 하나 = 과목 + 세부내용 + 시간대 · 벽돌은 공부 벽돌에서 그 과목을 공부하면 자동으로 채워져요','muted small'),
     add(el('div',null,'buttons'),button('줄 추가',addRow,'secondary'),button('어제 계획 복사',copyYesterday,'secondary'),button(ctx.planAutoSave?'닫기':'저장',ctx.planAutoSave?()=>dlg?.close?.():save,'primary')),err,note,saved,rows);

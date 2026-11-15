@@ -8,6 +8,7 @@ import {budgetStatus,monthInsight,vaultBricks} from './fin-plan.mjs';
 import {fixedPlan,fixedSchedule,monthForecast,forecastNode,TIGHT_PCT} from './fin-forecast.mjs';
 import {recurringKey} from './fin-recurring.mjs';
 import {analysisCards} from './fin-analysis.mjs';
+import {INVEST_TAG,isInvestLine} from './fin-charts.mjs';   // V10E
 
 export const FEEL_LEVEL=Object.freeze({DANGER:'위험',CAUTION:'주의',ROOM:'여유'});
 export const DANGER_PCT=70n,AVG_MONTHS=3,ACTION_DAYS=7,MIN_COUNT_LINES=3;
@@ -642,7 +643,7 @@ const weekdayMon=date=>(new Date(Date.UTC(Number(date.slice(0,4)),Number(date.sl
 export function txnCalendar(lines,month,today){
   const days=daysOf(month),byDay=new Map();
   for(const l of lines){
-    if(l.month!==month||!CONSUMPTION.has(l.kind))continue;
+    if(l.month!==month||!CONSUMPTION.has(l.kind)||isInvestLine(l))continue;   // V10E: 투자 손익은 소비가 아니다(거래 목록 list에는 함께 온다)
     const d=Number(l.date.slice(8,10)),e=byDay.get(d)??{net:0n,count:0,unknown:0};
     if(l.net===null)e.unknown++;else{e.net+=l.net;e.count++;}
     byDay.set(d,e);
@@ -683,7 +684,7 @@ export function txnDayNode(h,date,lines,{name,cat,kind}){
   ['시각','가맹점','분류','금액'].forEach((x,i)=>h.add(head,h.el('th',x,i===3?'num':null)));
   for(const l of mine){
     const won=l.net===null?'모름':(l.kind==='INCOME'?'+':'')+formatWon(l.net),k=l.kind==='EXPENSE'?'':kind(l)+' ';
-    h.add(body,h.add(h.el('tr'),h.el('td','-','txn-day-time'),h.el('td',name(l)),h.el('td',l.category?cat(l):'-'),h.el('td',k+won,'num')));
+    h.add(body,h.add(h.el('tr'),h.el('td','-','txn-day-time'),h.el('td',name(l)),h.el('td',l.category?cat(l):'-'),h.el('td',k+won,'num'+moneySideClass(l))));
   }
   return h.add(box,h.add(h.el('div',null,'table-wrap'),h.add(h.el('table',null,'fin-table txn-day-table'),h.add(h.el('thead'),head),body)),h.el('p','시각은 거래 기록에 없어 표시하지 않습니다.','muted small'));
 }
@@ -711,6 +712,138 @@ export function txnCalendarNode(h,cal,{lines,picked=null,onPick=null,name,cat,ki
   TXN_TIER_TEXT.forEach((x,i)=>h.add(legend,h.add(h.el('li',null,'t'+(i+1)),h.el('span','가','txn-cal-sample'),h.el('span',x))));
   h.add(legend,h.add(h.el('li',null,'ph-past'),h.el('span','','swatch txn-cal-swatch-past'),h.el('span','지난 날(회색 빗금)')));
   const box=h.add(h.el('div',null,'txn-cal'),grid,legend,detail);
+  show(now);
+  return box;
+}
+
+// ---------- V10E 돈 달력 메인 + 투자 손익 (소유자 V10 E, 2026-11-15) ----------
+// 색 규칙(V10 0절): 나간 돈·손실 = 파랑(money-out), 들어온 돈·수익 = 빨강(money-in). 색만으로 가르지 않게 나간 돈 "-", 들어온 돈 "+"를 붙인다.
+// 계산만(저장 0). 줄은 prepare().allLines(투자 손익 포함). 나간 돈 = 지출(투자 손실 포함), 들어온 돈 = 수입(투자 수익 포함) + 환불. 이체·선불 충전은 둘 다 아니다.
+export const INVEST_SIDES=Object.freeze({LOSS:'손실',GAIN:'수익'});
+export const INVEST_SUB='투자 손익',MONEY_CAL_ITEMS=2;
+const plainWon=n=>formatWon(n).replace(/원$/,'');
+const FLOW=new Set(['EXPENSE','REFUND','INCOME']);
+// 줄 하나가 나간 돈(OUT)인지 들어온 돈(IN)인지. 이체·선불·모름 = null.
+export function moneySide(l){
+  if(l.net===null||!FLOW.has(l.kind))return null;
+  return l.kind==='EXPENSE'&&l.net>=0n?'OUT':'IN';
+}
+const moneyAbs=l=>l.net<0n?-l.net:l.net;
+export const moneySideClass=l=>{const s=moneySide(l);return s===null?'':s==='OUT'?' money-out':' money-in';};
+export const investLabel=l=>l.kind==='EXPENSE'?'투자 손실':'투자 수익';
+// 칸 글자: full = "-12,000"/"+30,000"(원 생략), short = "-1.2만"/"+38만"(접힌 폭 한 칸에 들게 10만~1억 미만은 만 단위 반올림 정수)
+export const moneyShort=won=>won>=100000n&&won<100000000n?String((won+5000n)/10000n)+'만':txnShort(won);
+export const moneyCellText=(won,side)=>{const s=side==='OUT'?'-':'+';return {full:s+plainWon(won),short:s+moneyShort(won)};};
+// lines = 이 달을 포함한 줄(allLines). 칸 = {date,day,weekday,phase,out,in,unknown,count,items}. out/in = 아는 금액 합(없으면 null), items = 금액 큰 순 최대 2줄.
+export function moneyCalendar(lines,month,today){
+  const days=daysOf(month),byDay=new Map();
+  for(const l of lines){
+    if(l.month!==month||!FLOW.has(l.kind))continue;
+    const d=Number(l.date.slice(8,10)),e=byDay.get(d)??{out:null,in:null,unknown:0,count:0,flows:[]};
+    const side=moneySide(l);
+    if(side===null)e.unknown++;
+    else{const w=moneyAbs(l);if(side==='OUT')e.out=(e.out??0n)+w;else e.in=(e.in??0n)+w;e.count++;e.flows.push(l);}
+    byDay.set(d,e);
+  }
+  const cells=[];
+  for(let d=1;d<=days;d++){
+    const date=month+'-'+pad(d),e=byDay.get(d);
+    const items=(e?.flows??[]).slice().sort((a,b)=>{const x=moneyAbs(a),y=moneyAbs(b);return x===y?a.key.localeCompare(b.key):x>y?-1:1;}).slice(0,MONEY_CAL_ITEMS);
+    cells.push({date,day:d,weekday:weekdayMon(date),phase:date<today?'PAST':date===today?'TODAY':'FUTURE',out:e?.out??null,in:e?.in??null,unknown:e?.unknown??0,count:e?.count??0,items});
+  }
+  const lead=cells[0].weekday,slots=[...Array(lead).fill(null),...cells];
+  while(slots.length%7)slots.push(null);
+  const weeks=[];
+  for(let i=0;i<slots.length;i+=7)weeks.push(slots.slice(i,i+7));
+  return {month,days,lead,cells,weeks};
+}
+// 월 요약: 생활 지출(예산 판단용, 투자 손익 뺌) · 수입(투자 수익 뺌) · 투자 손익(손실·수익·순). 모름은 0이 아니다(known=false면 "모름").
+export function moneyMonthSummary(lines,month){
+  const s={living:{spend:0n,refund:0n,net:0n,lines:0,unknown:0},income:{total:0n,lines:0,unknown:0},invest:{loss:0n,gain:0n,net:0n,count:0,unknown:0}};
+  for(const l of lines){
+    if(l.month!==month||!FLOW.has(l.kind))continue;
+    if(isInvestLine(l)){
+      if(l.net===null){s.invest.unknown++;continue;}
+      if(l.kind==='EXPENSE')s.invest.loss+=l.net;else s.invest.gain+=l.net;
+      s.invest.count++;continue;
+    }
+    if(l.kind==='INCOME'){if(l.net===null)s.income.unknown++;else{s.income.total+=l.net;s.income.lines++;}continue;}
+    if(l.net===null){s.living.unknown++;continue;}
+    if(l.kind==='REFUND')s.living.refund+=-l.net;else s.living.spend+=l.net;
+    s.living.net+=l.net;s.living.lines++;
+  }
+  s.invest.net=s.invest.gain-s.invest.loss;
+  return s;
+}
+// 요약 글자. 생활 지출: 줄 없음 = "자료 없음", 모름 줄만 = "모름". 투자 손익: 순이 +면 수익(빨강), -면 손실(파랑).
+export function moneySummaryText(s){
+  const living=s.living.lines?formatWon(s.living.net):s.living.unknown?'모름':'자료 없음';
+  const income=s.income.lines?'+'+formatWon(s.income.total):s.income.unknown?'모름':'없음';
+  const iv=s.invest,investSide=iv.net>0n?'IN':iv.net<0n?'OUT':null;
+  const invest=!iv.count?(iv.unknown?'모름':'기록 없음'):iv.net===0n?'0원':(iv.net>0n?'+':'-')+formatWon(iv.net<0n?-iv.net:iv.net)+' '+(iv.net>0n?INVEST_SIDES.GAIN:INVEST_SIDES.LOSS);
+  return {living,income,invest,investSide,investFoot:'손실 '+formatWon(iv.loss)+' · 수익 '+formatWon(iv.gain)+(iv.unknown?' · 모름 '+iv.unknown+'건':'')};
+}
+export function moneySummaryNode(h,s){
+  const t=moneySummaryText(s),chip=(label,value,cls,foot)=>h.add(h.el('div',null,'mcal-sum-item '+cls),h.el('span',label,'mcal-sum-label'),h.el('strong',value,'mcal-sum-value'),foot?h.el('span',foot,'mcal-sum-foot'):null);
+  return h.add(h.el('div',null,'mcal-sum'),
+    chip('생활 지출',t.living,'money-out','예산 판단 · 투자 손익 뺌'),
+    chip('수입',t.income,'money-in',null),
+    chip('투자 손익',t.invest,t.investSide==='IN'?'money-in':t.investSide==='OUT'?'money-out':'money-zero',t.investFoot));
+}
+// 빠른 입력 "투자 손익" → buildTxn 입력값. 손실 = 지출·금융비용, 수익 = 수입·이자·배당. 둘 다 세부 분류 "투자 손익" + 태그 '투자손익'(기존 칸만).
+// 가맹점 칸 = "투자 손실"/"투자 수익": 이 표시를 모르는 옛 앱(r79)의 거래 목록에서도 무엇인지 읽힌다.
+export function investTxnInput({side,amount,accountId,memo='',date}){
+  const gain=side==='GAIN';
+  return {date,kind:side==='GAIN'||side==='LOSS'?(gain?'INCOME':'EXPENSE'):'',amount,accountId,toAccountId:'',category:gain?'INTEREST':'FINANCE_FEE',subcategory:INVEST_SUB,merchant:gain?'투자 수익':'투자 손실',memo,tags:INVEST_TAG,installments:'',currency:'',originalAmount:''};
+}
+const moneyCellClass=(c,picked)=>'mcal-day ph-'+c.phase.toLowerCase()+(c.date===picked?' picked':'');
+const moneyCellLabel=c=>c.date+(c.phase==='TODAY'?' 오늘':'')+' · '+(c.out===null&&c.in===null?(c.unknown?'실제 금액 모름 '+c.unknown+'건':'거래 없음')
+  :[c.out!==null?'나간 돈 '+formatWon(c.out):null,c.in!==null?'들어온 돈 '+formatWon(c.in):null].filter(Boolean).join(' · ')+(c.unknown?' · 모름 '+c.unknown+'건':''));
+// 그날 내역: 이름 · 분류 · 금액(나간 돈 파랑 "-", 들어온 돈 빨강 "+", 이체·선불은 회색 그대로). name(l)·cat(l)·kind(l)은 부른 쪽(가리기 설정)이 준다.
+export function moneyDayNode(h,date,lines,{name,cat,kind}){
+  const mine=lines.filter(l=>l.date===date),c=moneyCalendar(mine,date.slice(0,7),date).cells[Number(date.slice(8,10))-1];
+  const sum=[c.out!==null?'나간 돈 '+formatWon(c.out):null,c.in!==null?'들어온 돈 '+formatWon(c.in):null,c.unknown?'모름 '+c.unknown+'건':null].filter(Boolean);
+  const box=h.add(h.el('div',null,'mcal-dayview'),h.el('h3',date+' ('+TXN_WEEKDAYS[c.weekday]+') · '+(sum.length?sum.join(' · '):'거래 없음')+' · '+mine.length+'건','mcal-day-title'));
+  if(!mine.length)return h.add(box,h.el('p','이 날 거래가 없습니다.','muted small'));
+  const head=h.el('tr'),body=h.el('tbody');
+  ['이름','분류','금액'].forEach((x,i)=>h.add(head,h.el('th',x,i===2?'num':null)));
+  for(const l of mine){
+    const side=moneySide(l),inv=isInvestLine(l);
+    const won=l.net===null?'모름':side==='OUT'?'-'+formatWon(moneyAbs(l)):side==='IN'?'+'+formatWon(moneyAbs(l)):formatWon(l.net);
+    const k=inv||l.kind==='EXPENSE'?'':kind(l)+' ';   // 투자 손익은 이름 칸이 이미 "투자 손실/수익"
+    h.add(body,h.add(h.el('tr'),h.el('td',inv?investLabel(l):name(l)||(l.category?cat(l):kind(l))),h.el('td',l.category?cat(l):'-'),h.el('td',k+won,'num'+moneySideClass(l))));
+  }
+  return h.add(box,h.add(h.el('div',null,'table-wrap'),h.add(h.el('table',null,'fin-table mcal-day-table'),h.add(h.el('thead'),head),body)));
+}
+// 달력(월요일 시작). 칸 = 날짜 · 나간 돈(파랑) · 들어온 돈(빨강) · 큰 항목 1~2줄 "점심 8,000". 접힌 폭(≤420)은 CSS가 합계만 남긴다.
+// 칸을 누르면 그 칸만 고름 표시를 바꾸고 아래에 그날 내역(다시 그리기 없음). onPick(date)는 부른 쪽이 고른 날을 기억할 때 쓴다.
+export function moneyCalendarNode(h,cal,{lines,picked=null,onPick=null,name,cat,kind}){
+  const grid=h.el('div',null,'mcal-grid'),detail=h.el('div',null,'mcal-detail'),buttons=[];
+  grid.setAttribute('role','group');grid.setAttribute('aria-label',cal.month+' 돈 달력 · 월요일 시작');
+  for(const w of TXN_WEEKDAYS)h.add(grid,h.el('span',w,'mcal-wd'));
+  let now=picked&&picked.startsWith(cal.month+'-')?picked:null;
+  const itemName=l=>isInvestLine(l)?investLabel(l):name(l)||(l.category?cat(l):kind(l));
+  const show=date=>{
+    now=date;
+    for(const [b,c] of buttons){b.className=moneyCellClass(c,now);b.setAttribute('aria-pressed',String(c.date===now));}
+    detail.replaceChildren(...(now?[moneyDayNode(h,now,lines,{name,cat,kind})]:[h.el('p','날짜를 누르면 그날 내역을 보여 줍니다.','muted small')]));
+  };
+  for(const w of cal.weeks)for(const c of w){
+    if(!c){h.add(grid,h.el('span','','mcal-blank'));continue;}
+    const b=h.button('',()=>{show(c.date);onPick?.(c.date);},moneyCellClass(c,now));
+    b.setAttribute('aria-label',moneyCellLabel(c));b.setAttribute('aria-pressed',String(c.date===now));b.setAttribute('data-phase',c.phase);
+    const amt=(won,side)=>{const t=moneyCellText(won,side);return h.add(h.el('span',null,'mcal-amt '+(side==='OUT'?'mcal-out money-out':'mcal-in money-in')),h.el('span',t.full,'mcal-full'),h.el('span',t.short,'mcal-short'));};
+    h.add(b,h.add(h.el('span',null,'mcal-top'),h.el('span',String(c.day),'mcal-num'),c.phase==='TODAY'?h.el('span','오늘','mcal-today'):null),
+      c.out!==null?amt(c.out,'OUT'):null,c.in!==null?amt(c.in,'IN'):null,
+      c.unknown?h.el('span',c.out===null&&c.in===null?'모름':'+모름','mcal-unk'):null,
+      ...c.items.map(l=>{const side=moneySide(l);return h.el('span',itemName(l)+' '+(side==='IN'?'+':'')+plainWon(moneyAbs(l)),'mcal-item'+moneySideClass(l));}));
+    buttons.push([b,c]);h.add(grid,b);
+  }
+  const legend=h.add(h.el('ul',null,'fin-legend mcal-legend'),
+    h.add(h.el('li'),h.el('span','-','mcal-sample money-out'),h.el('span','나간 돈·손실(파랑)')),
+    h.add(h.el('li'),h.el('span','+','mcal-sample money-in'),h.el('span','들어온 돈·수익(빨강)')),
+    h.add(h.el('li',null,'ph-past'),h.el('span','','swatch mcal-swatch-past'),h.el('span','지난 날(회색 빗금)')));
+  const box=h.add(h.el('div',null,'mcal'),grid,legend,detail);
   show(now);
   return box;
 }

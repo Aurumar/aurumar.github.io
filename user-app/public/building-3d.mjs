@@ -3,7 +3,9 @@
 // 배경은 캔버스를 투명하게 지우고 CSS의 아이보리→금 그라데이션이 비친다. 바닥 = 아이보리 원판 + 접지 그림자. 금속 금 재질은 코드로 만든 스튜디오 환경맵을 비춘다.
 // 자동 회전: 40초에 한 바퀴(spinStep), 누르거나 끌면 멈추고 "다시 돌리기". 움직임 줄이기면 돌지 않는다(멈춘 그림).
 import {WebGLRenderer,Scene,PerspectiveCamera,HemisphereLight,DirectionalLight,BoxGeometry,CylinderGeometry,ConeGeometry,CircleGeometry,MeshStandardMaterial,MeshBasicMaterial,Mesh,Group,EdgesGeometry,LineBasicMaterial,LineSegments,Color,DataTexture,RGBAFormat,UnsignedByteType,LinearFilter,SRGBColorSpace,EquirectangularReflectionMapping,PMREMGenerator} from './three.module.js';
-import {skyAt,envTexels,TEX,CONTACT_SHADOW,shadowTexels,spinStep,warmGround,BACKDROP} from './tower-3d-layout.mjs';   // 환경맵 지평선만 배경 금(BACKDROP.mid)
+import {skyAt,envTexels,TEX,CONTACT_SHADOW,shadowTexels,spinStep,warmGround,BACKDROP,renderPixelRatio,isCoarsePointer,TOWER_GOLD} from './tower-3d-layout.mjs';   // 환경맵 지평선만 배경 금(BACKDROP.mid)
+// V10F: 누르고 있는 동안만 회전 멈춤(떼면 다시 돈다), 화소 배율(PC 1.5~2·폰 ≤1.5), 둥근 부품 28 → 48조각, 떠 있는 아이보리 원판 → 낮은 금 테두리 받침(수집 터).
+export const BUILD_PLINTH=Object.freeze({h:0.16,rim:0.07,top:'#F6EEDA',gold:TOWER_GOLD.mid});
 import {buildingParts,partsBounds,PART_COLORS,METAL} from './buildings.mjs';
 
 const ROTATE_PER_PX=0.01,FOV=32,PHI=0.32;
@@ -36,7 +38,7 @@ export function mountBuilding3d({doc,slot,fallback,id,locked=false}){
   canvas.addEventListener('webglcontextlost',()=>{if(!disposed)toFallback('CONTEXT_LOST');});
   try{renderer=new WebGLRenderer({canvas,context:gl,antialias:true,alpha:true});}catch{toFallback('RENDERER_FAILED');return null;}
   renderer.setClearColor(0x000000,0);   // 투명: CSS 아이보리→금 그라데이션이 배경
-  renderer.setPixelRatio(Math.min(win.devicePixelRatio||1,2));
+  const ratio=renderPixelRatio({dpr:win.devicePixelRatio,coarse:isCoarsePointer(win)});renderer.setPixelRatio(ratio);slot.dataset.pixelRatio=String(ratio);
   const scene=new Scene(),camera=new PerspectiveCamera(FOV,1,0.1,200),sky=skyAt(13);
   // 스튜디오 환경맵(탑과 같은 계산, 지평선 색만 배경 금빛): 금속 금 면이 밝은 금으로 비친다.
   const eq=own(new DataTexture(envTexels({...sky,bottom:BACKDROP.mid}),TEX.env[0],TEX.env[1],RGBAFormat,UnsignedByteType));
@@ -51,7 +53,7 @@ export function mountBuilding3d({doc,slot,fallback,id,locked=false}){
     return mats.get(c);
   };
   const parts=buildingParts(id),bounds=partsBounds(parts),model=new Group();
-  const geo={box:own(new BoxGeometry(1,1,1)),cyl:own(new CylinderGeometry(1,1,1,28)),cone:own(new ConeGeometry(1,1,28)),pyr:own(new ConeGeometry(1,1,4))};
+  const geo={box:own(new BoxGeometry(1,1,1)),cyl:own(new CylinderGeometry(1,1,1,48)),cone:own(new ConeGeometry(1,1,48)),pyr:own(new ConeGeometry(1,1,4))};
   geo.pyr.rotateY(Math.PI/4);
   // V8LOW L-23: 잠긴 건물(예상도)은 아이보리 반투명(0.55)이라 아이보리 바탕에 녹아 흐렸다 → 따뜻한 회색 면(0.8) + 진한 윤곽선. 색은 그대로 "색 없는 예상도".
   const edgeMat=locked?own(new LineBasicMaterial({color:LOCKED_3D.edge})):null,edgeGeo=locked?{}:null;
@@ -66,7 +68,12 @@ export function mountBuilding3d({doc,slot,fallback,id,locked=false}){
   const R=bounds.radius*1.25;
   const n=CONTACT_SHADOW.size,shadowTex=own(new DataTexture(shadowTexels(n),n,n,RGBAFormat,UnsignedByteType));shadowTex.magFilter=shadowTex.minFilter=LinearFilter;shadowTex.needsUpdate=true;
   // V8FIX H-01: 흐림은 map의 알파로 준다(three는 alphaMap의 G 채널을 읽어 RGB 255 질감이면 단단한 원판이 된다).
-  const floor=new Mesh(own(new CircleGeometry(R,64)),own(new MeshBasicMaterial({color:PART_COLORS.ivory,map:shadowTex,alphaMap:shadowTex,transparent:true,opacity:0.9,depthWrite:false})));floor.rotation.x=-Math.PI/2;floor.position.y=-0.01;scene.add(floor);
+  const floor=new Mesh(own(new CircleGeometry(R,64)),own(new MeshBasicMaterial({color:PART_COLORS.ivory,map:shadowTex,alphaMap:shadowTex,transparent:true,opacity:0.9,depthWrite:false})));floor.rotation.x=-Math.PI/2;floor.position.y=-BUILD_PLINTH.h-0.01;scene.add(floor);
+  // V10F 수집 터: 건물 발밑에 낮은 받침(아이보리 윗면 + 옆면 금 테, 두께 0.16) — 원판이 허공에 뜬 듯하던 것 대신 "전시대". 윗면이 y=0이라 부품 위치는 그대로.
+  const plinthR=bounds.radius*1.08,P=BUILD_PLINTH,rimMat=own(new MeshStandardMaterial({color:P.gold,metalness:1,roughness:0.3,envMap:env}));
+  const plinth=new Mesh(own(new CylinderGeometry(plinthR,plinthR+0.05,P.h-P.rim,96)),[rimMat,own(new MeshStandardMaterial({color:P.top,roughness:0.35,metalness:0,envMap:env})),rimMat]);plinth.position.y=-(P.h-P.rim)/2;
+  const rim=new Mesh(own(new CylinderGeometry(plinthR+0.09,plinthR+0.12,P.rim,96)),rimMat);rim.position.y=-P.h+P.rim/2;scene.add(plinth,rim);
+  slot.dataset.plinth='1';
   const contact=new Mesh(own(new CircleGeometry(bounds.radius*1.05,48)),own(new MeshBasicMaterial({color:CONTACT_SHADOW.color,map:shadowTex,alphaMap:shadowTex,transparent:true,opacity:CONTACT_SHADOW.opacity+0.1,depthWrite:false})));contact.rotation.x=-Math.PI/2;contact.position.y=0.005;scene.add(contact);
   // 빛 2개: 반구광(땅 = 금 반사) + 왼쪽 위 키 라이트. 금속은 환경맵이 밝기를 만든다.
   const hemi=new HemisphereLight(sky.hemi.sky,warmGround(sky.hemi.ground),1.6),key=new DirectionalLight('#FFF8EC',2.2);key.position.set(-4,9,7);scene.add(hemi,key);
@@ -80,7 +87,7 @@ export function mountBuilding3d({doc,slot,fallback,id,locked=false}){
   const draw=now=>{
     raf=0;if(disposed)return;
     let moving=false;
-    if(spin&&showing()){if(spinLast!==null)theta+=spinStep((now-spinLast)/1000);spinLast=now;moving=true;}else spinLast=null;
+    if(spin&&showing()){if(dragging)spinLast=null;else{if(spinLast!==null)theta+=spinStep((now-spinLast)/1000);spinLast=now;moving=true;}}else spinLast=null;   // V10F: 누르는 동안(dragging)은 쉰다
     aim();
     try{renderer.render(scene,camera);}catch{toFallback('RENDER_FAILED');return;}
     frames++;slot.dataset.frames=String(frames);
@@ -95,9 +102,11 @@ export function mountBuilding3d({doc,slot,fallback,id,locked=false}){
   let onScreen=true;
   const showing=()=>onScreen&&Boolean(canvas.clientWidth&&canvas.clientHeight)&&doc.visibilityState==='visible';
   const stopSpin=()=>{spin=false;spinLast=null;paintSpin();};
-  canvas.addEventListener('pointerdown',e=>{stopSpin();canvas.setPointerCapture?.(e.pointerId);dragging={x:e.clientX};});
+  // V10F: 누르고 있는 동안만 쉰다(dragging이 있는 동안). 떼면 그 자리부터 다시 돈다. 화살표 키는 예전처럼 멈추고 "다시 돌리기".
+  canvas.addEventListener('pointerdown',e=>{spinLast=null;canvas.setPointerCapture?.(e.pointerId);dragging={x:e.clientX};slot.dataset.hold='1';});
   canvas.addEventListener('pointermove',e=>{if(!dragging)return;theta-=(e.clientX-dragging.x)*ROTATE_PER_PX;dragging.x=e.clientX;invalidate();});
-  const up=()=>{dragging=null;};canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);
+  const up=()=>{dragging=null;spinLast=null;slot.dataset.hold='0';if(spin)invalidate();};canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);
+  canvas.addEventListener('lostpointercapture',()=>{if(dragging)up();});   // V10FIX M-16: 잡기를 잃으면 멈춤을 푼다
   canvas.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();stopSpin();theta+=e.key==='ArrowRight'?0.2:-0.2;invalidate();}});
   if(spinBtn){spinBtn.type='button';spinBtn.className='lb-chip bd-3d-spin';spinBtn.textContent='다시 돌리기';spinBtn.setAttribute('aria-label','건물 다시 천천히 돌리기');spinBtn.addEventListener('click',()=>{spin=true;spinLast=null;paintSpin();invalidate();});}
   paintSpin();

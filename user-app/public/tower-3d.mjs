@@ -6,11 +6,13 @@
 // T2C: 네 모퉁이 탑(누르면 영역 시트, 레벨이 오른 뒤 처음 보면 맥동)·업적 장식·현판 칭호 글자(같은 SVG 겹침층).
 // DS6: 쌓은 벽돌 = 금속 금(환경맵 반사 + 해), 나이 3단계(오늘 빛 번짐·이번 주·지난 주), 아이보리 줄눈·구조벽, 대리석 단상, 금 예상도 선, 크레인, 꼭대기 태양 바퀴.
 // V6C: 금 3단 질감 + 스튜디오 환경(대비) + gold-shadow 줄눈 선(습관 벽돌 날은 색만 다름) + 아이보리 바닥·하늘 + 가는 청동 크레인 + 위로 옅어지는 예상도 선 + 꼭대기 작은 금빛 점광. 광원 3개(반구광·해·점광), 보조광 없음.
-import {WebGLRenderer,Scene,PerspectiveCamera,HemisphereLight,DirectionalLight,PointLight,BoxGeometry,ConeGeometry,SphereGeometry,CircleGeometry,CylinderGeometry,TorusGeometry,ExtrudeGeometry,Shape,BufferGeometry,BufferAttribute,MeshStandardMaterial,MeshBasicMaterial,PointsMaterial,LineBasicMaterial,InstancedMesh,Mesh,Points,LineSegments,Group,Object3D,Color,Fog,DataTexture,RGBAFormat,UnsignedByteType,RepeatWrapping,LinearFilter,LinearMipmapLinearFilter,SRGBColorSpace,EquirectangularReflectionMapping,PMREMGenerator,PCFSoftShadowMap,BackSide,Raycaster,Vector2,Vector3} from './three.module.js';
+import {WebGLRenderer,Scene,PerspectiveCamera,HemisphereLight,DirectionalLight,PointLight,BoxGeometry,ConeGeometry,SphereGeometry,CircleGeometry,CylinderGeometry,TorusGeometry,ExtrudeGeometry,Shape,BufferGeometry,BufferAttribute,MeshStandardMaterial,MeshBasicMaterial,PointsMaterial,InstancedMesh,Mesh,Points,Group,Object3D,Color,Fog,DataTexture,RGBAFormat,UnsignedByteType,RepeatWrapping,LinearFilter,LinearMipmapLinearFilter,SRGBColorSpace,EquirectangularReflectionMapping,PMREMGenerator,PCFSoftShadowMap,BackSide,Raycaster,Vector2,Vector3} from './three.module.js';
 import {towerScene,quality3d,framesTooSlow,initialCamera,clampCamera,cameraPosition,FOV,GOLD,BRICK_W,BRICK_D,BRICK_GAP,ROW_H,TEX,WALL_TILE,brickTexels,wallTexels,groundTexels,envTexels,skyAt,starField,flyAt,flyFrom,dustAt,flashAt,shakeAt,autoRotateAt,AUTO_ROTATE_SECONDS,DUST_POINTS,DUST_SECONDS,FLASH_SECONDS,SHAKE_SECONDS,TIERS,START_TIER,nextTier,p50,p95,GROUND_R,SKY_R,fogRange,shadowBox,
   COLS,DEPTH,PHI,CRANE_UP,SPARKS,DONE_ROOF_DROP,blueprint,houseTop,wholeCamera,gateCamera,isTallHouse,startView,flyFirst,settleCamera,spinKeepsFront,WHOLE_VIEW_PAD,craneRows,completionAt,sparkAt,BONUS_SPARKS,BONUS_BURST_SECONDS,bonusFresh,bonusSparkAt,withBadges,houseLabels,towersToPulse,pulseAt,PULSE_SECONDS,
-  BRICK_MATERIALS,MORTAR_IVORY,brickTint,BLUEPRINT_STYLE,blueprintFade,DAIS,TOWER_GOLD,JOINT,jointRows,TOP_GLOW,topGlow,glowPulse,sunWheel,daisTexels,MARBLE,MORTAR_GLOW,CHAMPAGNE_WALL,BLACK_MARBLE,goldFrame,isGoldRow,isShadeFace,shadeWalls,
-  backdropAt,warmGround,CONTACT_SHADOW,shadowTexels,spinStep} from './tower-3d-layout.mjs';
+  BRICK_MATERIALS,MORTAR_IVORY,brickTint,DAIS,TOWER_GOLD,JOINT,jointRows,TOP_GLOW,topGlow,glowPulse,sunWheel,daisTexels,MARBLE,MORTAR_GLOW,CHAMPAGNE_WALL,BLACK_MARBLE,goldFrame,isGoldRow,isShadeFace,shadeWalls,
+  backdropAt,warmGround,CONTACT_SHADOW,shadowTexels,spinStep,renderPixelRatio,isCoarsePointer,v10fTint,scaffoldOf,smallCrane,ROW_H as JOINT_ROW} from './tower-3d-layout.mjs';
+// V10F: 누르고 있는 동안만 회전 멈춤(떼면 다시 돈다), 화소 배율(PC 1.5~2·폰 ≤1.5), 그림자 지도 2배, MID도 둥근 벽돌, 빈 칸 판에 벽돌 줄눈, 짙은 금 받침·샴페인 금 모퉁이 탑·잔디 정원,
+// 예상도(전체 높이 선·반투명 유리) 대신 다음 한 층 금 골조 + 작은 금 크레인.
 // V8W6: 배경 = 지평선 아이보리 → 위 금 그라데이션(하늘 구, 안개는 V7T 그대로), 바닥 그림자(접지 원판), 반구광 땅 색을 은은한 금 반사로. 자동 회전은 40초에 한 바퀴, 손대면 멈추고 "다시 돌리기".
 // 3D 무대(슬롯)는 첫 장면을 그린 뒤에만 보인다(그 전에는 대체 화면 그대로): 첫 장면 전 빈 캔버스가 흰 상자로 보이지 않게.
 
@@ -43,23 +45,8 @@ function worldBoxes(rows,tile){
   if(colored)g.setAttribute('color',new BufferAttribute(new Float32Array(col),3));
   g.setIndex(idx);return g;
 }
-// 완공 예상도 선: 빈 층 상자 윤곽 + 시즌 경계 띠(조금 크게) + 완공 지붕(사각뿔)·깃대. V6C: 정점 색이 높이에 따라 선 색 → 배경색(fade)으로 옅어진다.
-function blueprintLines(bp,ink,bg){
-  const seg=[],line=(a,b)=>seg.push(...a,...b);
-  const rect=(y,hx,hz)=>{const P=[[-hx,y,-hz],[hx,y,-hz],[hx,y,hz],[-hx,y,hz]];for(let i=0;i<4;i++)line(P[i],P[(i+1)%4]);};
-  for(const r of bp.rows){const hx=r.sx/2,hz=r.sz/2,y0=r.y-r.sy/2;rect(y0,hx,hz);for(const [x,z] of [[-hx,-hz],[hx,-hz],[hx,hz],[-hx,hz]])line([x,y0,z],[x,y0+r.sy,z]);}
-  const hx=COLS/2+0.15,hz=DEPTH/2+0.15;rect(bp.top,hx,hz);
-  for(const b of bp.boundaries)rect(b.y,hx+0.6,hz+0.6);
-  if(bp.cone){   // V7E: 빈 집의 1층 예상도는 완공 지붕 선이 없다
-    const apex=[0,bp.top+bp.cone.h,0],h=bp.cone.r/Math.SQRT2;
-    for(const [x,z] of [[-h,-h],[h,-h],[h,h],[-h,h]])line([x,bp.top,z],apex);
-    line(apex,[0,apex[1]+2,0]);
-  }
-  const a=new Color(ink),b=new Color(bg),c=new Color(),col=new Float32Array(seg.length);
-  for(let i=0;i<seg.length;i+=3){c.copy(a).lerp(b,blueprintFade(seg[i+1],bp));col.set([c.r,c.g,c.b],i);}
-  const g=new BufferGeometry();g.setAttribute('position',new BufferAttribute(new Float32Array(seg),3));g.setAttribute('color',new BufferAttribute(col,3));return g;
-}
-// HIGH 등급의 둥근 모서리 벽돌(약 60삼각형). 진짜 벽돌 크기로 만든 뒤 1×1×1로 줄여서 인스턴스 크기를 그대로 곱한다.
+// V10F: 완공 예상도 선(blueprintLines, 전체 높이 1px 선)은 없앴다 — 공사 중 맨 위층 금 골조(scaffoldOf)가 대신한다.
+// HIGH·MID 등급의 둥근 모서리 벽돌(약 60삼각형). 진짜 벽돌 크기로 만든 뒤 1×1×1로 줄여서 인스턴스 크기를 그대로 곱한다.
 export function roundedBrick(){
   const sy=ROW_H-BRICK_GAP,b=0.018,r=0.03,w=BRICK_W-2*b,h=sy-2*b,x0=-w/2,y0=-h/2,s=new Shape();
   s.moveTo(x0+r,y0);s.lineTo(x0+w-r,y0);s.quadraticCurveTo(x0+w,y0,x0+w,y0+r);s.lineTo(x0+w,y0+h-r);s.quadraticCurveTo(x0+w,y0+h,x0+w-r,y0+h);
@@ -76,7 +63,7 @@ export function roundedBrick(){
 
 export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor=null,onArea=null,hour=12,titleTier=null,titleName=null,badges=null}){
   active?.dispose();
-  const win=doc.defaultView,data=withBadges(towerScene(ach,{seasons,titleTier}),badges,{titleName}),sky=skyAt(hour),bp=blueprint(data,seasons),peak=houseTop(data,bp),room={height:peak};
+  const win=doc.defaultView,data=withBadges(towerScene(ach,{seasons,titleTier}),badges,{titleName}),sky=skyAt(hour),scaf=scaffoldOf(blueprint(data,seasons)),bp=scaf?.bp??null,peak=houseTop(data,bp),room={height:peak};
   // 안개는 예상도 꼭대기까지 기준, 대지는 안개 끝보다 넓게: "집 전체"로 멀리서 봐도 원판 가장자리가 하늘에 녹는다.
   const fog=fogRange(room),groundR=Math.max(GROUND_R,fog.far*1.5);
   const setMode=(mode,why)=>{slot.dataset.mode=mode;slot.dataset.reason=why;};
@@ -112,7 +99,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   const dispose=()=>{
     if(disposed)return;disposed=true;if(active===handle)active=null;
     if(raf)win.cancelAnimationFrame(raf);
-    observer?.disconnect();watcher?.disconnect();seer?.disconnect();
+    observer?.disconnect();watcher?.disconnect();seer?.disconnect();win.removeEventListener?.('blur',dropPointers);
     canvas.removeEventListener('webglcontextlost',onLost);doc.removeEventListener?.('visibilitychange',onVisible);
     for(const o of owned)o.dispose();
     renderer?.dispose();if(!gl.isContextLost())renderer?.forceContextLoss();
@@ -131,7 +118,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   const scene=new Scene(),camera=new PerspectiveCamera(FOV,1,0.1,4000),dummy=new Object3D(),tint=new Color();
   const own=x=>{owned.push(x);return x;};
   const cube=own(new BoxGeometry(1,1,1)),cone=own(new ConeGeometry(1,1,4));
-  const texStart=win.performance.now(),aniso=Math.min(4,renderer.capabilities.getMaxAnisotropy());
+  const texStart=win.performance.now(),aniso=Math.min(8,renderer.capabilities.getMaxAnisotropy());   // V10F: 4 → 8(비스듬한 벽 질감이 덜 뭉개진다)
   const texture=(px,[w,h],repeat=1)=>{
     const t=own(new DataTexture(px,w,h,RGBAFormat,UnsignedByteType));
     t.wrapS=t.wrapT=RepeatWrapping;t.magFilter=LinearFilter;t.minFilter=LinearMipmapLinearFilter;t.generateMipmaps=true;t.anisotropy=aniso;t.colorSpace=SRGBColorSpace;t.repeat.set(repeat,repeat);t.needsUpdate=true;return t;
@@ -150,7 +137,12 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   // V7T: 레몬색으로 뜨던 빈 칸(파랑 0.85까지 빼고 GOLD 발광) → 파랑은 MORTAR_GLOW.blue만큼만 빼고 밝은 금(light)으로 은은하게.
   // V7T2: 빈 칸 줄눈 판도 쌓인 층의 구조벽 바깥면이라 흰색 대신 옅은 샴페인 금 금속(구조벽과 같은 값, 환경맵). 습관 빛(발광)은 그대로.
   const mortarMat=own(new MeshStandardMaterial({color:CORE,roughness:CHAMPAGNE_WALL.roughness,metalness:CHAMPAGNE_WALL.metalness,emissive:TOWER_GOLD.light,emissiveIntensity:0.5+1.1*sky.glow}));
-  mortarMat.onBeforeCompile=sh=>{sh.fragmentShader=sh.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n\ttotalEmissiveRadiance *= 1.0 - vColor.b;');};
+  // V10F 빈 칸 판 벽돌 줄눈: 판 안 위치(아래·왼쪽에서 잰 길이 = 상자 좌표 × 인스턴스 크기)로 줄 높이마다 가로 줄눈, 칸 가장자리에 세로 줄눈을 짙게(fwidth로 계단 없이). 질감·파일 없음.
+  mortarMat.onBeforeCompile=sh=>{
+    sh.vertexShader='varying vec2 vLbCell;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n\tvLbCell=vec2((position.x+0.5)*length(instanceMatrix[0].xyz),(position.y+0.5)*length(instanceMatrix[1].xyz));');
+    sh.fragmentShader='varying vec2 vLbCell;\n'+sh.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n\ttotalEmissiveRadiance *= 1.0 - vColor.b;')
+      .replace('#include <color_fragment>','#include <color_fragment>\n\t{float r='+JOINT_ROW.toFixed(2)+';float dy=abs(fract(vLbCell.y/r+0.5)-0.5)*r,dx=min(vLbCell.x,1.0-vLbCell.x),w=fwidth(vLbCell.y)+fwidth(vLbCell.x);\n\tfloat j=1.0-smoothstep(0.022,0.022+w,min(dy,dx));diffuseColor.rgb*=1.0-0.22*j;}');
+  };
   // V6C 줄눈 선 판(벽돌 뒤): gold-shadow, 습관 벽돌 날은 JOINT.habit. 틈으로만 보이는 가는 선이라 조명 계산 없는 재질(가장 싸다), 벽돌 다음에 그려 가려진 픽셀은 깊이 검사로 건너뛴다.
   const jointMat=own(new MeshBasicMaterial({color:0xffffff}));
   // V7T2: 구조벽 = 옅은 샴페인 금 금속(환경맵). 금 뼈대 묶음 = 정점 색 × 금속(환경맵): 금 정점은 금속 금, 검은 대리석 정점은 거의 검고 환경맵만 은은하게 비친다(셰이더 치환 추가 없음, T2A-7).
@@ -202,7 +194,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   const jointAt=new Map(joints.map((r,i)=>[r.floor+':'+r.col,i]));
   slot.dataset.joints=String(joints.length);slot.dataset.habitJoints=String(joints.filter(r=>r.habit).length);
   const coreMesh=new Mesh(own(worldBoxes(shadeWalls(data.cores),WALL_TILE)),coreMat);coreMesh.castShadow=coreMesh.receiveShadow=true;scene.add(coreMesh);
-  const frameMesh=new Mesh(own(worldBoxes(goldFrame(data,[...data.plain,...data.badgeRows].filter(isGoldRow)),WALL_TILE)),frameMat);frameMesh.castShadow=frameMesh.receiveShadow=true;scene.add(frameMesh);   // V7T2: 옛 바닥판 묶음 자리(드로우콜 그대로)
+  const frameMesh=new Mesh(own(worldBoxes(v10fTint(goldFrame(data,[...data.plain,...data.badgeRows].filter(isGoldRow))),WALL_TILE)),frameMat);frameMesh.castShadow=frameMesh.receiveShadow=true;scene.add(frameMesh);   // V7T2: 옛 바닥판 묶음 자리(드로우콜 그대로)
   instanced(cube,windowMat,data.windows,fixed('#FFFFFF'));
   const dark=new Color(MORTAR_DARK),gold=new Color(GOLD);
   instanced(cube,glow,data.bands,r=>tint.copy(dark).lerp(gold,r.brightness));
@@ -211,7 +203,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   instanced(cone,trimMat,data.spire,fixed('#FFFFFF'),{cast:true});
   // T2B 성 부품: 장면이 정지해 있으니 돌·단색 상자는 묶음마다 한 도형으로 합친다(드로우콜 1개씩).
   const merged=(rows,mat,parent=scene)=>{if(!rows.length)return null;const m=new Mesh(own(worldBoxes(rows,WALL_TILE)),mat);m.castShadow=m.receiveShadow=true;parent.add(m);return m;};
-  merged(data.stone.filter(r=>!r.base),stoneMat);merged([...data.plain,...data.badgeRows].filter(r=>!isGoldRow(r)),plainMat);   // T2C 업적 장식은 단색 묶음에 합친다. V7T2: 기단·계단(base)·금 문·현판은 금 뼈대 묶음
+  merged(v10fTint(data.stone.filter(r=>!r.base)),stoneMat);merged(v10fTint([...data.plain,...data.badgeRows].filter(r=>!isGoldRow(r))),plainMat);   // V10F: 흰 모퉁이 탑·받침판 → 샴페인 금 돌, 흰 화단 → 잔디·모래   // T2C 업적 장식은 단색 묶음에 합친다. V7T2: 기단·계단(base)·금 문·현판은 금 뼈대 묶음
   instanced(cube,windowMat,data.glass,fixed('#FFFFFF'));
   instanced(cone,ornMat,data.ornaments,r=>tint.set(r.color),{cast:true});
   instanced(cube,leafMat,data.flowers,r=>tint.set(r.color));
@@ -225,7 +217,8 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   }
   merged(data.crest,plainMat,roofGroup);
   // 크레인: 공사 중이면 서 있고, 완공 순간에는 서 있다가 땅으로 내려간다. 금속 재질(V6C: 짙은 청동 가는 선 + 금 갈고리).
-  const craneMesh=merged(celebrate?craneRows(data.height):data.crane,craneMat);
+  // V10F: 공사 중(골조가 있으면)은 집 높이 + 4짜리 땅 크레인 대신 골조 위 작은 금 크레인. 완공 순간 연출은 그대로.
+  const craneMesh=merged(celebrate?craneRows(data.height):scaf?smallCrane(scaf.bp.roof):data.crane,craneMat);
   // DS6 상표 태양 바퀴: 고리 1개 + 살·축·받침 기둥 한 묶음(드로우콜 2). 금 재질(V6C 매끈한 금), 그림자 없음.
   const wheel=sunWheel(data);
   if(wheel){
@@ -241,14 +234,9 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
     sparkGeo=own(new BufferGeometry());sparkPos=new Float32Array(SPARKS*3).fill(-1000);sparkGeo.setAttribute('position',new BufferAttribute(sparkPos,3));
     const sparks=new Points(sparkGeo,own(new PointsMaterial({color:GOLD,size:0.16,transparent:true,opacity:0.95,depthWrite:false})));sparks.frustumCulled=false;scene.add(sparks);
   }
-  // 완공 예상도(DS6 → V6C): 진한 금 선(불투명도 0.4, 위로 갈수록 하늘 아래색으로 옅어짐) + 아이보리 반투명 유리(0.05). 안개를 받지 않는다(멀리 있는 예상 꼭대기도 보이게). LOW 등급은 선만.
-  let bpFaces=null;
-  if(bp){
-    const B=BLUEPRINT_STYLE;
-    const lines=new LineSegments(own(blueprintLines(bp,B.line,sky.bottom)),own(new LineBasicMaterial({vertexColors:true,transparent:true,opacity:B.lineOpacity,depthWrite:false,fog:false})));lines.frustumCulled=false;scene.add(lines);
-    bpFaces=new Mesh(cube,own(new MeshBasicMaterial({color:B.glass,transparent:true,opacity:B.glassOpacity,depthWrite:false,fog:false})));
-    bpFaces.position.set(0,(bp.roof+bp.top)/2,0);bpFaces.scale.set(COLS+0.3,Math.max(0.01,bp.top-bp.roof),DEPTH+0.3);bpFaces.renderOrder=1;scene.add(bpFaces);
-  }
+  // V10F 공사 중 맨 위층(소유자 "흰 판·와이어 골조가 어색"): 예상도 선(1px)·아이보리 반투명 유리 대신 다음 한 층 자리에 얇은 금 골조(매끈한 금 상자, 그림자 드리움). 빈 집은 받침 위 1층 골조.
+  if(scaf)instanced(cube,trimMat,scaf.rows,fixed('#FFFFFF'),{cast:true});
+  slot.dataset.scaffold=scaf?String(scaf.rows.length):'0';
   // 글자 표지: 현판 칭호·머릿돌·예상도 시즌 경계(이름 · D-n)·지난 시즌 현판·완공 현판(houseLabels가 최대 MAX_LABELS개로 고른다).
   const labels=!tags?[]:houseLabels(data,bp).map(l=>{
     const t=doc.createElementNS(SVG_NS,'text');t.setAttribute('class','tower-3d-tag tower-3d-tag-'+l.kind.toLowerCase());t.setAttribute('visibility','hidden');t.textContent=l.text;tags.append(t);
@@ -341,10 +329,10 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   const touchMeshes=()=>{for(const s of sets)if(s.mesh)s.mesh.instanceMatrix.needsUpdate=true;};
 
   // 등급: MID로 시작, 프레임 시간으로 한 번 올리거나 한 단계씩 내린다.
-  let tier=null,promoted=false,rounded=null,env=null,shadowDirty=true;
+  let tier=null,promoted=false,rounded=null,env=null,shadowDirty=true;const coarse=isCoarsePointer(win);
   const applyTier=name=>{
     const T=TIERS[name];tier=name;
-    renderer.setPixelRatio(Math.min(win.devicePixelRatio||1,T.pixelRatio));
+    const ratio=renderPixelRatio({dpr:win.devicePixelRatio,coarse,tier:T.pixelRatio});renderer.setPixelRatio(ratio);slot.dataset.pixelRatio=String(ratio);   // V10F: PC 1.5~2(초과 표본)·폰 ≤1.5
     const on=T.shadow>0;
     if(renderer.shadowMap.enabled!==on){renderer.shadowMap.enabled=on;for(const m of lit)m.needsUpdate=true;}
     sun.castShadow=on;
@@ -359,7 +347,6 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
     for(const m of [brickMat,halfMat,goldMat,todayMat,trimMat,craneMat,ornMat]){m.envMap=T.env?env:null;m.needsUpdate=true;}
     for(const m of [roofMat,daisMat,daisSideMat]){m.envMap=T.env?env:null;m.needsUpdate=true;}   // V7T: 금 지붕·광택 대리석 단상도 같은 스튜디오를 비춘다
     for(const m of [coreMat,mortarMat,frameMat]){m.envMap=T.env?env:null;m.needsUpdate=true;}   // V7T2: 샴페인 금 구조벽·빈 칸 판·금 뼈대(처마·기둥·문·현판·검은 대리석 받침)
-    if(bpFaces)bpFaces.visible=name!=='LOW'||Boolean(bp.empty);   // V7E: 빈 집의 1층 예상도(아이보리 반투명)는 LOW 등급에서도 보인다(상자 1개)
     stars.visible=T.stars&&sky.stars>0.02;
     if(dust)dust.visible=T.dust;
     if(burst)burst.visible=T.dust;
@@ -388,6 +375,11 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   if(spinBtn){spinBtn.type='button';spinBtn.className='lb-chip tower-3d-spin';spinBtn.textContent='다시 돌리기';spinBtn.setAttribute('aria-label','3D 탑 다시 천천히 돌리기');spinBtn.addEventListener('click',()=>{spin=true;spinLast=null;paintSpin();invalidate();});views.append(spinBtn);}
   slot.dataset.spin=spin?'on':'off';
   const stopSpin=()=>{spin=false;spinLast=null;settle=null;paintSpin();};
+  // V10F 1 (소유자 "한 번 누르면 계속 멈춘다"): 캔버스를 누르고 있는 동안(손가락·마우스가 하나라도 닿아 있음)만 쉬고, 다 떼면 그 자리부터 다시 돈다. 끌어 돌리기·두 손가락 확대는 그대로.
+  // 휠·화살표·보기 칩은 "그 자리에서 보기"라 예전처럼 멈추고 "다시 돌리기"가 보인다.
+  let held=false;
+  const holdSpin=()=>{held=true;spinLast=null;settle=null;slot.dataset.hold='1';};
+  const releaseSpin=()=>{held=false;spinLast=null;slot.dataset.hold='0';if(spin)invalidate();};
   paintSpin();
   // 탭을 가렸다 돌아오면 다시 그린다(가려진 동안은 프레임을 요청하지 않는다).
   const onVisible=()=>{if(doc.visibilityState==='visible'&&spin)invalidate();};
@@ -413,7 +405,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
     if(!started)started=now;
     const t=(now-started)/1000;
     let moving=false;
-    if(spin){
+    if(spin&&!held){
       if(!showing())spinLast=null;   // 가려진 동안(탭 숨김·숨은 칸·화면 밖)은 쉬고(onVisible·크기·화면 진입이 다시 깨운다), 돌아오면 그 자리부터 이어 돈다
       else{if(spinLast!==null)cam.theta+=spinStep((now-spinLast)/1000);spinLast=now;moving=true;}
     }
@@ -524,7 +516,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   const open=f=>{const w=data.floors[f]?.week;if(w)onFloor?.(w);};
   let down=null,pinch=0;
   canvas.addEventListener('pointerdown',e=>{
-    stopSpin();
+    holdSpin();
     canvas.setPointerCapture?.(e.pointerId);pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
     dragging=true;
     down=pointers.size===1?{x:e.clientX,y:e.clientY,at:e.timeStamp,moved:0}:null;
@@ -547,9 +539,14 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   const release=e=>{
     pointers.delete(e.pointerId);if(!pointers.size){dragging=false;lastT=0;}
     if(e.type==='pointerup'&&down&&down.moved<TAP_PX&&e.timeStamp-down.at<TAP_MS&&pointers.size===0){const p=pick(e.clientX,e.clientY);if(p?.area)onArea(p.area);else if(p){select(p.floor);open(p.floor);}}
+    if(!pointers.size)releaseSpin();   // V10F: 다 떼면 다시 돈다
     down=null;pinch=0;invalidate();
   };
   canvas.addEventListener('pointerup',release);canvas.addEventListener('pointercancel',release);
+  // V10FIX M-16: 포인터 잡기를 잃거나(lostpointercapture) 창이 가려지면(blur·숨김) 누른 포인터를 비우고 멈춤을 푼다(멈춘 채 남지 않게, 다음 끌기가 확대로 읽히지 않게).
+  canvas.addEventListener('lostpointercapture',e=>{if(pointers.has(e.pointerId))release(e);});
+  function dropPointers(){if(!pointers.size&&!held)return;pointers.clear();dragging=false;lastT=0;down=null;pinch=0;releaseSpin();invalidate();}
+  win.addEventListener?.('blur',dropPointers);
   canvas.addEventListener('wheel',e=>{e.preventDefault();stopSpin();cam.dist*=Math.exp(e.deltaY*ZOOM_PER_WHEEL);invalidate();},{passive:false});
   canvas.addEventListener('keydown',e=>{
     const k=e.key;let used=true;

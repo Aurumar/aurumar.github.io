@@ -2,7 +2,7 @@
 // 이 모듈은 어떤 기록도 쓰지 않고 시계·난수·저장소·네트워크를 쓰지 않는다. 같은 입력이면 어느 기기에서나 같은 결과다.
 // 입력의 날짜별 LIFE_DAY는 최신 카드 하나뿐이다(이력 revision을 세지 않는다). 공부 세션은 COMPLETED만 센다.
 // 설계: AUTOPILOT\tasks\B42_ACHIEVE_TOWER.md(숫자 최우선), ADDENDUM A2·A7.
-import {brickOf,entryDone,lifeDefs,dayNumber,shiftDay,subjectOfSession,habitPinned,habitState,DEFAULT_DAILY_GOAL_BRICKS,HABIT_EPOCH,lifeRecordEmpty} from './life-model.mjs';
+import {brickOf,entryDone,entryExcused,entryUncounted,mealMissed,isMealHabit,lifeDefs,dayNumber,shiftDay,subjectOfSession,habitPinned,habitState,DEFAULT_DAILY_GOAL_BRICKS,HABIT_EPOCH,lifeRecordEmpty} from './life-model.mjs';
 // V6B 습관 벽돌·행동 경험치 (통제탑 V6B A4). 쌓인 기록에서 다시 계산하는 투영이라 완료를 되돌리면(완료→못함·지움) 경험치·벽돌도 같이 사라진다(이중 지급 없음).
 // 습관 벽돌 1장 = 그날 고정한 매일 습관(숨김·복구·주 단위 목표 제외)과 켜 둔 기본 행동(몸 돌보기 등, 코어 행동 기록)이 모두 "완료"(일부·못함·기록 없음은 아님).
 // 공부 벽돌(bricks·value·목표·업적·아바타)과 섞지 않는다: days[i].habitBrick, week.habitBricks, habitBricks에만 있다. 탑 줄눈 색은 HABIT_BRICK_JOINT(V6C가 그린다).
@@ -171,19 +171,21 @@ function compute(life,study,today,money=null){
   };
 
   // 습관별 누적(난이도 계산을 하루 O(1)로). 카드가 없는 날과 카드에 그 습관이 없는 날은 똑같이 "안 한 날"이다.
-  const hStat=defs.habits.map(h=>({h,weekly:h.target.per==='WEEK'&&h.target.count!==null,prefix:new Int32Array(n+1),firstEntry:-1}));
+  // V10FIX L-12: "해 없음"(entryExcused) 날은 따로 센다(ex) — AUTO 난이도의 분모에서 빼고 분자에도 넣지 않는다(실패로 세지 않음).
+  const hStat=defs.habits.map(h=>({h,weekly:h.target.per==='WEEK'&&h.target.count!==null,prefix:new Int32Array(n+1),ex:new Int32Array(n+1),firstEntry:-1}));
   for(const st of hStat){
     for(let i=0;i<n;i++){
-      const e=parsed[i].card&&Object.hasOwn(parsed[i].card.habits,st.h.id)?parsed[i].card.habits[st.h.id]:null,done=entryDone(st.h,e);
+      const e=parsed[i].card&&Object.hasOwn(parsed[i].card.habits,st.h.id)?parsed[i].card.habits[st.h.id]:null,excused=entryUncounted(st.h,e),done=!excused&&entryDone(st.h,e);   // V10FIX2: 끼니 ✕도 해 없음처럼 뺀다
       if(done&&st.firstEntry<0)st.firstEntry=i;
       st.prefix[i+1]=st.prefix[i]+(done?(st.weekly?e.count:1):0);
+      st.ex[i+1]=st.ex[i]+(excused?1:0);
     }
   }
   // AUTO 난이도: 그날 이전 최근 28일(그 습관의 첫 기록부터) 성공률. 기록이 7일 미만이면 2. 주 단위 목표는 (횟수 합) / (목표 × 일수/7). 그날 값은 넣지 않아 지난 XP가 뒤의 기록으로 바뀌지 않는다.
   const difficultyAt=(st,i)=>{
     if(st.h.difficulty!=='AUTO')return st.h.difficulty;
     if(st.firstEntry<0||i-st.firstEntry<AUTO_MIN_DAYS)return AUTO_DEFAULT;
-    const lo=Math.max(i-AUTO_WINDOW,st.firstEntry),span=i-lo,sum=st.prefix[i]-st.prefix[lo];
+    const lo=Math.max(i-AUTO_WINDOW,st.firstEntry),span=Math.max(1,i-lo-(st.ex[i]-st.ex[lo])),sum=st.prefix[i]-st.prefix[lo];
     return st.weekly?difficultyFromRate(sum*7,st.h.target.count*span):difficultyFromRate(sum,span);
   };
 
@@ -192,11 +194,18 @@ function compute(life,study,today,money=null){
   const doneOf=(i,h)=>{const c=parsed[i].card;return Boolean(c&&Object.hasOwn(c.habits,h.id)&&entryDone(h,c.habits[h.id]));};
   const recoveryHabits=defs.habits.filter(h=>h.kind==='RECOVERY'),recoveryWeeks=new Set();
   const visibleDone=new Array(n),qualified=new Array(n);
-  const coreAt=new Array(n);for(let i=0;i<n;i++)coreAt[i]=basisAt(dates[i],parsed[i].card)?.all??core;   // FIX68 (F2): 그날 기준의 보이는 매일 습관(없으면 지금 목록)
+  // V10C-3: 그날 '어쩔 수 없음'(해 없음)으로 적은 습관은 그날 분모에서 뺀다(완료로도 못함으로도 세지 않아 연속·완벽한 날·퀘스트가 끊기지 않는다).
+  const excusedOf=(i,h)=>{const c=parsed[i].card;return Boolean(c&&Object.hasOwn(c.habits,h.id)&&entryExcused(h,c.habits[h.id]));};
+  const coreAt=new Array(n);for(let i=0;i<n;i++)coreAt[i]=(basisAt(dates[i],parsed[i].card)?.all??core).filter(h=>!excusedOf(i,h));   // FIX68 (F2): 그날 기준의 보이는 매일 습관(없으면 지금 목록)
+  // V10FIX2 (소유자 "끼니X는 달성률에넣지마"): 그날 셈 목록(countAt) = coreAt에서 끼니 ✕도 뺀 것 — 연속 50% 판정·완벽한 날·하루 칸 수(visibleTotal)의 분모.
+  // 퀘스트 고르기(pickHabit)는 coreAt 그대로(✕를 눌러도 오늘 퀘스트가 바뀌지 않게).
+  const mealMissOf=(i,h)=>{const c=parsed[i].card;return Boolean(c&&Object.hasOwn(c.habits,h.id)&&mealMissed(h,c.habits[h.id]));};
+  const countAt=new Array(n);
   for(let i=0;i<n;i++){
-    let vd=0;for(const h of coreAt[i])if(doneOf(i,h))vd++;
+    const count=countAt[i]=coreAt[i].filter(h=>!mealMissOf(i,h));
+    let vd=0;for(const h of count)if(doneOf(i,h))vd++;
     visibleDone[i]=vd;
-    qualified[i]=parsed[i].value2>0||(Boolean(parsed[i].card)&&coreAt[i].length>0&&vd*2>=coreAt[i].length);
+    qualified[i]=parsed[i].value2>0||(Boolean(parsed[i].card)&&count.length>0&&vd*2>=count.length);
     if(recoveryHabits.some(h=>doneOf(i,h)))recoveryWeeks.add(weekOf(i));
   }
   const streakAt=new Array(n),bridged=new Array(n).fill(false),bridgeUsed=new Set();
@@ -314,7 +323,7 @@ function compute(life,study,today,money=null){
     }
     const allDone=ids=>ids.every(id=>{const h=byId.get(id);return Boolean(h&&doneOf(i,h));});
     let comboXp=0;
-    const morning=allDone(MORNING_IDS),studyRoutine=allDone(COMMUTE_IDS)&&p.bricks>=STUDY_ROUTINE_BRICKS,perfect=Boolean(p.card)&&coreAt[i].length>0&&visibleDone[i]===coreAt[i].length;
+    const morning=allDone(MORNING_IDS),studyRoutine=allDone(COMMUTE_IDS)&&p.bricks>=STUDY_ROUTINE_BRICKS,perfect=Boolean(p.card)&&countAt[i].length>0&&visibleDone[i]===countAt[i].length;
     if(morning){comboXp+=XP.COMBO_MORNING;areaXp.BODY+=XP.COMBO_MORNING;note('BODY',date,'아침 콤보',XP.COMBO_MORNING);}
     if(studyRoutine){comboXp+=XP.COMBO_STUDY;areaXp.HEAD+=XP.COMBO_STUDY;note('HEAD',date,'공부 루틴 콤보',XP.COMBO_STUDY);}
     if(perfect)comboXp+=XP.COMBO_PERFECT;                                // 완벽한 날은 특정 영역 소속이 아니다(하루 XP에만 더한다)
@@ -371,7 +380,8 @@ function compute(life,study,today,money=null){
     if(date>=HABIT_EPOCH){
       const outs=actionDays?.[date]??null,fixed=basisAt(date,p.card),dayCore=fixed?.core??pinnedCore,dayActs=fixed?.acts??acts;
       for(const a of dayActs){const o=outs?.[a.actionId];const x=o==='COMPLETE'?HABIT_XP.ACTION_DONE:o==='PARTIAL'?HABIT_XP.ACTION_PART:0;if(x){const area=actionArea(a.domain);actionXp+=x;areaXp[area]+=x;note(area,date,a.name,x);}}
-      habitBrick=dayCore.length+dayActs.length>0&&dayCore.every(h=>Boolean(p.card)&&habitState(h,Object.hasOwn(p.card.habits,h.id)?p.card.habits[h.id]:null)==='done')&&dayActs.every(a=>outs?.[a.actionId]==='COMPLETE');
+      // V10FIX2: 습관 벽돌 판정에서도 끼니 ✕ = 해 없음(skip)처럼(막지 않음)
+      habitBrick=dayCore.length+dayActs.length>0&&dayCore.every(h=>{if(!p.card)return false;const e=Object.hasOwn(p.card.habits,h.id)?p.card.habits[h.id]:null;return ['done','skip'].includes(habitState(h,e))||mealMissed(h,e);})&&dayActs.every(a=>outs?.[a.actionId]==='COMPLETE');
       if(habitBrick){bonusXp+=HABIT_XP.BRICK;earned.push('HABIT_BRICK');habitBrickTotal++;}
       if(habitBrick||actionXp)habitAny=true;
     }
@@ -388,7 +398,7 @@ function compute(life,study,today,money=null){
       s.bricks+=pt.bricks;s.pieces+=pt.pieces;week.subjects.set(key,s);
     }
     days[i]={date,card:Boolean(p.card),habitXp,brickXp:p.brickXp,comboXp,bonusXp,ignite:p.ignite,boss,morning,studyRoutine,perfect,raw,mult10,xp,streak:streakAt[i],bridged:bridged[i],qualified:qualified[i],
-      bricks:p.bricks,pieces:p.pieces,gold:p.gold,gems:p.gems,value:p.value2/2,visibleDone:visibleDone[i],visibleTotal:coreAt[i].length,goal:goalAt(i),earned,daily,parts:p.parts,reviews:p.reviews,mistakes:p.mistakes};
+      bricks:p.bricks,pieces:p.pieces,gold:p.gold,gems:p.gems,value:p.value2/2,visibleDone:visibleDone[i],visibleTotal:countAt[i].length,goal:goalAt(i),earned,daily,parts:p.parts,reviews:p.reviews,mistakes:p.mistakes};
     if(anyDiary)Object.assign(days[i],{diary:Boolean(dy),weekReview:reviewAt[i],diaryXp,diaryStreak:diaryStreakAt[i],small:smallWeight});
     if(habitBrick||actionXp)Object.assign(days[i],{habitBrick,actionXp});
   }
@@ -497,7 +507,7 @@ export function actionDaysFrom(changes){
   return out;
 }
 const ACTION_STATE={COMPLETE:'done',PARTIAL:'part',NOT_DONE:'miss'};
-export const BOARD_STATES=Object.freeze(['done','part','miss','none']);
+export const BOARD_STATES=Object.freeze(['done','part','miss','none','skip']);   // V10C-3: skip = 어쩔 수 없음(해 없음) — 달성률·연속 분모에서 빠지고 연속을 끊지 않는다
 // 성취표: 행 = 습관(기본 행동 먼저, 그다음 숨기지 않은 습관 — 고정 먼저), 열 = dates. 칸 = done·part·miss·none(none은 못함으로 세지 않는다).
 // 행 끝: rate = 기록한 칸만으로 (완료 + 일부×0.5) / 기록 수(오늘까지), 기록이 없으면 null. streak = 오늘(기록 없으면 어제)부터 거꾸로 연속 완료 일수.
 // 주 단위 목표 습관(운동 등)은 week = {count,target}(그 주 횟수/목표)도 준다. 맨 아래 days = 날짜별 (완료 + 일부×0.5) / 기록 수.
@@ -513,11 +523,14 @@ export function habitBoard({life=null,actionDefs=[],actionDays={},dates,today}){
   const dayScore=new Map(dates.map(d=>[d,{score:0,recorded:0}]));
   for(const r of rows){
     const at=stateOf(r);r.cells=dates.map(date=>({date,state:date>today?'none':at(date),future:date>today}));
+    // V10FIX2 (소유자 2026-11-15 "끼니X는 달성률에넣지마"): 끼니 행의 ✕(miss)는 해 없음(skip)처럼 달성률 분자·분모·날짜별 칸 수에서 빼고 연속도 끊지 않는다. 칸 상태·✕ 수(missed)는 그대로.
+    const meal=r.kind==='LIFE'&&isMealHabit(r.h),out=s=>s==='skip'||meal&&s==='miss';
     let score=0,recorded=0;
-    for(const c of r.cells){if(c.future||c.state==='none')continue;recorded++;const s=c.state==='done'?1:c.state==='part'?0.5:0;score+=s;const ds=dayScore.get(c.date);ds.score+=s;ds.recorded++;}
+    for(const c of r.cells){if(c.future||c.state==='none'||out(c.state))continue;recorded++;const s=c.state==='done'?1:c.state==='part'?0.5:0;score+=s;const ds=dayScore.get(c.date);ds.score+=s;ds.recorded++;}
     r.rate=recorded?Math.round(score*100/recorded):null;r.recorded=recorded;
     let day=at(today)==='none'?shiftDay(today,-1):today,run=0;
-    while(at(day)==='done'&&run<4000){run++;day=shiftDay(day,-1);}
+    for(let k=0;k<4000;k++){const s=at(day);if(s==='done')run++;else if(!out(s))break;day=shiftDay(day,-1);}   // V10C-3: 해 없음(skip)은 세지 않고 건너뛴다(V10FIX2: 끼니 ✕도)
+    r.missed=r.cells.filter(c=>!c.future&&c.state==='miss').length;   // V10C-2: 안 먹음(못함) 수 — 미기록(none)과 따로
     r.streak=run;
     if(r.kind==='LIFE'&&r.h.kind==='COUNT'&&r.h.target.per==='WEEK'&&r.h.target.count!==null){
       const monday=mondayOf(today);let count=0;for(let d=monday;d<=today;d=shiftDay(d,1))count+=entry(r.h,d)?.done?entry(r.h,d).count??0:0;

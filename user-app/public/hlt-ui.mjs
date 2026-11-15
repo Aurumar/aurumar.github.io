@@ -152,7 +152,8 @@ export function viewCard(st,fs){try{return shownCard(fs,st.ports?.latest?.(fs.ca
 // V8FIX M-03: base(화면을 그릴 때 읽은 값)를 주면(지금은 "내 약 설정" 저장) 재시도 때 최신 위에 내가 바꾼 칸만 얹는다(life-flow mergeDefinition과 같은 방식).
 // 다른 기기가 바꾼 칸(숨김 enabled·삭제 removed 등)은 내가 안 바꿨으면 그대로 남는다. 얹을 것이 없으면 쓰지 않는다.
 export async function saveProfile(ctx,key,mine,heads,reason,{field=null,base=null}={}){
-  try{await ctx.entity('HLT_PROFILE',key,mine,heads,reason);}
+  // V10C-1: 쓰기 결과(LOCAL_DRAFT = 이 기기 임시 저장)를 부른 쪽에 돌려준다(화면 문구용).
+  try{return await ctx.entity('HLT_PROFILE',key,mine,heads,reason);}
   catch(e){
     if(e?.code!=='STALE_HEADS'||!ctx.reload)throw e;
     await ctx.reload();const latest=ctx.getWhole().hlt.profiles.find(p=>p.key===key);
@@ -162,9 +163,9 @@ export async function saveProfile(ctx,key,mine,heads,reason,{field=null,base=nul
       const out={...latest.data};
       for(const k of Object.keys(mine))if(mine[k]!==base[k])out[k]=mine[k];
       if(Object.keys(out).every(k=>out[k]===latest.data[k]))return;
-      await ctx.entity('HLT_PROFILE',key,out,latest.heads,reason);return;
+      return await ctx.entity('HLT_PROFILE',key,out,latest.heads,reason);
     }
-    await ctx.entity('HLT_PROFILE',key,field?{...latest.data,[field]:mine[field]}:mine,latest.heads,reason);
+    return await ctx.entity('HLT_PROFILE',key,field?{...latest.data,[field]:mine[field]}:mine,latest.heads,reason);
   }
 }
 
@@ -548,6 +549,9 @@ export const EASY_TEXT=Object.freeze({meds:'약 복용',medsSub:'내 약을 누�
   setupSame:'바뀐 것이 없어요.',hidePending:'이 약의 아직 안 쌓은 복용을 먼저 쌓지 못해 숨기지 않았어요 · "카드 쌓기"로 쌓은 뒤 다시 숨기세요.',noMeds:'내 약이 없어요 · "내 약 설정"에서 처음 한 번 이름과 용량을 넣으세요(앱이 약 이름을 미리 넣지 않아요).',
   doseAgain:'1분 안에 같은 약을 이미 기록했어요 · 한 번 더 먹은 것이면 칩을 다시 누르세요.',
   pickDose:'용량 고르기',custom:'직접 입력',setup:'내 약 설정',setupClose:'내 약 설정 닫기',setupAdd:'내 약 추가',setupSaved:'내 약을 저장했어요.',setupAdded:'내 약을 추가했어요.',
+  setupDraft:'아직 서버에 연결되지 않아 이 기기에 임시 저장했어요 · 연결되어 쌓이면 약 칩이 생겨요.',pendingBadge:'임시 저장',   // V10C-1
+  pendingNote:'"임시 저장" 약은 이 기기에만 있어요 · 연결되면 더보기 > 연결 · 장치의 임시 저장 목록에서 쌓을 수 있어요(앱을 다시 열면 이 줄은 그 목록에서만 보여요).',
+  sealedMeds:n=>'이 기기에 아직 쌓지 않은 항목 편집 임시 저장이 '+n+'건 있어요 · 연결 전에 추가한 약은 사라지지 않고 여기 들어 있어요 · 연결되면 더보기 > 연결 · 장치의 임시 저장 목록에서 [승인하고 쌓기]를 누르면 이 목록에 생겨요(다시 추가하지 않아도 돼요).',   // V10FIX H-02
   setupSub:'처음 한 번만 넣으면 그 뒤로는 칩만 누르면 돼요 · 숨긴 약은 칩에서 빠지고 지난 기록은 그대로예요 · 용량 칩은 여기 용량과 기록에 쓴 용량으로 만들어져요.',
   state:'지금 상태',stateSub:'0 없음 ~ 4 아주 심함 · 누르면 지금 시각으로 기록 · 하루에 여러 번 가능',memo:'메모 한 줄 (선택, 그날 메모 칸에 붙어요)',
   saved:'기록했어요',kept:'임시 입력에 넣었어요 · "카드 쌓기"로 쌓으세요',batched:'이 기기에 넣었어요 · 5분 안에 자동으로 쌓여요',timeline:'하루 타임라인',summary:'심해지는 시간대 (최근 14일)',few:'자료 부족',
@@ -615,27 +619,67 @@ export async function stackPendingDoses(st,key){
   return true;
 }
 // 내 약 설정: 이름 1칸 + 용량 + 단위 + 숨기기/다시 보이기(기존 enabled 칸). 용량 칩 여러 개·순서 바꾸기는 저장할 칸이 없어 하지 않았다(REPORT 소유자 확인 필요).
+// V10C-1 (소유자 2026-11-15 "내 약에 입력했더니 사라졌다"): ① 용량 칸에 "10mg"·"1정"처럼 단위를 붙여 쓰면 숫자 검사에 걸려 거절되고, 문구는 화면 맨 위에만 떴으며,
+// 다시 그리면서 적던 이름·용량 칸이 빈칸으로 돌아갔다(입력값을 상태에 두지 않음). ② 쓰기 준비가 안 된 때(연결 전·다른 기기가 쓰는 중) 추가는 이 기기 임시 저장(봉인)으로만 가서
+// 금고 투영(목록)에 없어 보이지 않았다. → 단위 붙여쓰기를 읽고, 적던 값을 상태(st.medForm)에 두고, 결과·오류를 이 칸 안에 보이고, 임시 저장된 약은 "임시 저장" 줄로 보인다(저장 칸·기록 모양 그대로).
+export const DOSE_UNIT_WORDS=Object.freeze({mg:'mg',ml:'mL',정:'tablet',알:'tablet',캡슐:'capsule'});
+// "10" · "10mg" · "10 mg" · "1정" · "0.5 정" · "5ml" → {amount, unit|null}. 숫자가 아니면 amount NaN.
+export function parseDoseText(text){
+  const m=/^\s*(\d+(?:\.\d+)?)\s*([A-Za-z가-힣]*)\s*$/.exec(String(text??''));
+  if(!m)return {amount:NaN,unit:null};
+  const u=m[2]?DOSE_UNIT_WORDS[m[2].toLowerCase()]??DOSE_UNIT_WORDS[m[2]]??undefined:null;
+  return u===undefined?{amount:NaN,unit:null}:{amount:Number(m[1]),unit:u};
+}
+// V10FIX H-01: 편집 칸 값에 처음 읽은 값(base)을 같이 둔다. 다른 기기가 그 약을 고쳐 금고 값이 base와 달라지면 손대지 않은 칸은 새 값으로 다시 채우고
+// 손댄 칸만 남긴다. 그래서 손대지 않고 [저장]을 눌러도 옛 값으로 다른 기기의 수정을 되돌리지 않는다.
+const medFields=d=>({name:d.label,amt:String(d.defaultAmount),unit:d.unit});
+// V10FIX H-02: 초안 목록 가운데 아직 안 쌓은 "항목 편집" 초안(종류 표시·본문이 없는 것 = 약·습관 설정 같은 정의 편집) 수.
+export const sealedEntityCount=list=>(Array.isArray(list)?list:[]).filter(d=>d?.type==='ENTITY'&&d.status==='LOCAL_DRAFT'&&!d.entity&&!d.body&&!d.conflict).length;
+export function medEditFor(edits,key,d){
+  const now=medFields(d),e=edits[key]??={...now,base:now};
+  if(!e.base)e.base={name:e.name,amt:e.amt,unit:e.unit};
+  const keys=Object.keys(now);
+  if(keys.some(k=>e.base[k]!==now[k])){for(const k of keys)if(e[k]===e.base[k])e[k]=now[k];e.base=now;}
+  return e;
+}
 function medSetup(h,ctx,st){
   const {el,add,button,hint,input,select}=h,raw=st.raw;
-  const save=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{await fn();}catch(e){st.message=hltErrorText(e?.code);st.error=true;}await prepareHealth(ctx,st);await ctx.rerender();});
+  const form=st.medForm??={name:'',amt:'',unit:'mg'},edits=st.medEdit??={};
+  const save=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;st.medNote=null;try{await fn();}catch(e){st.message=hltErrorText(e?.code);st.error=true;}if(st.message)st.medNote={text:st.message,error:st.error};await prepareHealth(ctx,st);await ctx.rerender();});
   const fail=code=>{throw Object.assign(new Error(code),{code});};
-  const read=(name,amt,unit)=>{const label=name.value.trim(),v=num(amt.value);if(!label||[...label].length>MAX_LABEL)fail('INVALID_HLT_TEXT');if(!(v>0&&v<=MAX_AMOUNT))fail('INVALID_HLT_DOSE');return {label,defaultAmount:v,unit:unit.value};};
+  const read=(name,amt,unit)=>{const label=name.value.trim(),v=parseDoseText(amt.value);if(!label||[...label].length>MAX_LABEL)fail('INVALID_HLT_TEXT');if(!(v.amount>0&&v.amount<=MAX_AMOUNT))fail('INVALID_HLT_DOSE');return {label,defaultAmount:v.amount,unit:v.unit??unit.value};};
   const unitSel=(v,label)=>{const s=select(UNITS.map(u=>[u,unitText(u)]),v);s.setAttribute('aria-label',label);return s;};
+  const keep=(node,obj,k)=>{node.addEventListener('input',()=>{obj[k]=node.value;});node.addEventListener('change',()=>{obj[k]=node.value;});return node;};
   const box=add(el('div',null,'hlt-med-setup'),el('h3',EASY_TEXT.setup,'panel-title'),hint(EASY_TEXT.setupSub));
+  if(st.medNote)add(box,el('p',st.medNote.text,st.medNote.error?'notice error hlt-med-note':'notice hlt-med-note'));   // V10C-1: 결과·오류를 누른 자리 바로 위에
   for(const p of raw.profiles.filter(x=>x.data.kind==='MED'&&!x.data.removed&&(st.showPrivate||!x.data.private))){
-    const d=p.data,name=input(d.label,{maxlength:String(MAX_LABEL),'aria-label':'약 이름'}),amt=input(String(d.defaultAmount),{inputmode:'decimal','aria-label':'평소 용량'}),unit=unitSel(d.unit,'단위');
+    const d=p.data,e=medEditFor(edits,p.key,d);
+    const name=keep(input(e.name,{maxlength:String(MAX_LABEL),'aria-label':'약 이름'}),e,'name'),amt=keep(input(e.amt,{inputmode:'decimal','aria-label':'평소 용량'}),e,'amt'),unit=keep(unitSel(e.unit,'단위'),e,'unit');
     // V8FIX M-03·L-18: 바뀐 칸이 없으면 쓰지 않는다(연산 0). 다른 기기와 겹치면 바꾼 칸만 얹는다(base). 단위·용량이 바뀌면 이 화면에서 고른 칩은 비운다.
     const row=add(el('div',null,'hlt-med-setup-row'+(d.enabled?'':' hlt-med-hidden')),name,amt,unit,
-      button('저장',save(async()=>{const v=read(name,amt,unit);if(Object.keys(v).every(k=>v[k]===d[k])){st.message=EASY_TEXT.setupSame;return;}await saveProfile(ctx,p.key,{...d,...v},p.heads,'내 약 설정',{base:d});if(st.medDose)delete st.medDose[p.key];st.message=EASY_TEXT.setupSaved;})),
+      button('저장',save(async()=>{const v=read(name,amt,unit);if(Object.keys(v).every(k=>v[k]===d[k])){st.message=EASY_TEXT.setupSame;delete edits[p.key];return;}const r=await saveProfile(ctx,p.key,{...d,...v},p.heads,'내 약 설정',{base:d});if(st.medDose)delete st.medDose[p.key];delete edits[p.key];st.message=r?.status==='LOCAL_DRAFT'?EASY_TEXT.setupDraft:EASY_TEXT.setupSaved;})),
       // V8FIX M-04: 숨기기 전에 이 약의 아직 안 쌓은 복용(이 기기 초안)을 먼저 쌓는다. 숨긴 뒤에는 그 복용이 든 카드 전체가 HLT_PROFILE_DISABLED로 거절되기 때문(금고 규칙은 그대로).
       button(d.enabled?'숨기기':'다시 보이기',save(async()=>{if(d.enabled&&!(await stackPendingDoses(st,p.key))){st.message=EASY_TEXT.hidePending;st.error=true;return;}await saveProfile(ctx,p.key,{...d,enabled:!d.enabled},p.heads,d.enabled?'내 약 숨기기':'내 약 다시 보이기',{field:'enabled'});})),
       d.enabled?null:el('span','숨김','hlt-med-badge'));
     row.dataset.med=p.key;add(box,row);
   }
-  const name=input('',{maxlength:String(MAX_LABEL),placeholder:'약 이름','aria-label':'새 약 이름'}),amt=input('',{inputmode:'decimal',placeholder:'용량','aria-label':'새 약 용량'}),unit=unitSel('mg','새 약 단위');
+  // V10C-1: 임시 저장(쓰기 준비 전)으로 들어간 새 약. 금고에 쌓이면(목록에 key가 생기면) 이 줄은 사라진다. 칩은 금고에 생긴 뒤에만(없는 약을 가리키는 복용은 거절되므로).
+  st.medPending=(st.medPending??[]).filter(x=>!raw.profiles.some(p=>p.key===x.key));
+  for(const x of st.medPending){const r=add(el('div',null,'hlt-med-setup-row hlt-med-pending'),el('strong',x.label,'hlt-med-pending-name'),el('span',amountText(x.defaultAmount)+unitText(x.unit)),el('span',EASY_TEXT.pendingBadge,'hlt-med-badge'));r.dataset.med=x.key;add(box,r);}
+  if(st.medPending.length)add(box,hint(EASY_TEXT.pendingNote));
+  // V10FIX H-02: 앱을 다시 열면 위 줄(이번 실행 메모리)은 없어진다. 약은 이 기기 임시 저장(봉인 초안)에 그대로 있으므로, 초안 목록에서 아직 안 쌓은 항목 편집 초안 수를 읽어
+  // "어디서 쌓는지"를 이 칸 안에 알린다. 초안 목록은 약 이름·값을 돌려주지 않는다(FIX49-P10 경계 그대로) → 수만 보인다. 서버 호출 없음(이 기기 초안 저널 읽기).
+  if(ctx.canDrafts?.()&&typeof ctx.draftList==='function'){
+    const line=el('p','','notice hlt-med-sealed');line.hidden=true;add(box,line);
+    void Promise.resolve().then(()=>ctx.draftList()).then(r=>{const n=sealedEntityCount(r?.drafts);line.textContent=n&&!st.medPending.length?EASY_TEXT.sealedMeds(n):'';line.hidden=!line.textContent;}).catch(()=>{});
+  }
+  const name=keep(input(form.name,{maxlength:String(MAX_LABEL),placeholder:'약 이름','aria-label':'새 약 이름'}),form,'name'),amt=keep(input(form.amt,{inputmode:'decimal',placeholder:'용량 (예: 10 또는 10mg)','aria-label':'새 약 용량'}),form,'amt'),unit=keep(unitSel(form.unit,'새 약 단위'),form,'unit');
   add(box,add(el('div',null,'hlt-med-setup-row hlt-med-setup-new'),name,amt,unit,button(EASY_TEXT.setupAdd,save(async()=>{
     const v=read(name,amt,unit),key='med-'+ctx.uid().slice(0,12);
-    await ctx.entity('HLT_PROFILE',key,{key,kind:'MED',...v,enabled:true,private:false,removed:false},[],'내 약 추가');st.message=EASY_TEXT.setupAdded;
+    const r=await ctx.entity('HLT_PROFILE',key,{key,kind:'MED',...v,enabled:true,private:false,removed:false},[],'내 약 추가');
+    st.medForm={name:'',amt:'',unit:v.unit};   // 저장(또는 임시 저장)된 뒤에만 칸을 비운다 · 거절이면 적던 값이 그대로 남는다
+    if(r?.status==='LOCAL_DRAFT'){st.medPending=[...(st.medPending??[]),{key,...v}];st.message=EASY_TEXT.setupDraft;}
+    else st.message=EASY_TEXT.setupAdded;
   }),'primary')));
   return box;
 }

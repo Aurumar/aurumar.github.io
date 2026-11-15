@@ -85,7 +85,7 @@ function commitPlan(ctx,state,date,change,okText,before=()=>{},reopen=null,undoi
       else{
         const r=await savePlanDay(ctx,{date,base,mine});
         if(r.sealed){sealed=true;state.sealedAs=key;state.notices=r.notices.filter(n=>n.code!=='PLAN_LOCAL_DRAFT');}
-        else{state.sealedAs=null;state.message=r.status==='SAVED'?okText:'이미 같은 계획이 저장되어 있습니다.';state.notices=r.notices;state.undo=r.status==='SAVED'&&!undoing?{date,items:structuredClone(base?.items??[])}:null;}   // V6F (지시서 3): 되돌리기 1회
+        else{state.sealedAs=null;state.message=r.status==='SAVED'?okText:'이미 같은 계획이 저장되어 있습니다.';state.notices=r.notices;state.undo=r.status==='SAVED'&&!undoing?{date,items:structuredClone(base?.items??[]),drafted:Boolean(r.drafted)}:null;}   // V10FIX L-21: 이 기기 초안(drafted)이면 "저장됨" 대신 "이 기기에 저장됨"   // V6F (지시서 3): 되돌리기 1회
       }
       if(sealed)state.message=SEALED_TEXT;
     }
@@ -181,7 +181,7 @@ function drawTodayPlan(ctx,{date=null,today=null,focus=null,draft=null,focusMess
   add(out,add(el('div',null,'pt-head'),el('h3',m.title,'pt-title'),m.head?el('span',m.head,'pt-sum'):null,m.empty?null:plus));
   if(state.message&&state.date===d){
     const msg=add(el('p',state.message,state.error?'notice error pt-message':'notice pt-message'));
-    if(state.undo?.date===d){const u=state.undo;add(msg,el('span',' · 저장됨 ','pt-saved'),button('되돌리기',()=>{state.undo=null;const code=commitPlan(ctx,state,d,()=>structuredClone(u.items),'저장 전 계획으로 되돌렸습니다.',()=>{},null,true);if(code){Object.assign(state,{date:d,message:planErrorText(code),error:true,notices:[]});void ctx.rerender();}},'secondary pt-undo'));}
+    if(state.undo?.date===d){const u=state.undo;add(msg,el('span',u.drafted?' · 이 기기에 저장됨 ':' · 저장됨 ','pt-saved'),button('되돌리기',()=>{state.undo=null;const code=commitPlan(ctx,state,d,()=>structuredClone(u.items),'저장 전 계획으로 되돌렸습니다.',()=>{},null,true);if(code){Object.assign(state,{date:d,message:planErrorText(code),error:true,notices:[]});void ctx.rerender();}},'secondary pt-undo'));}
     add(out,msg);
   }
   if(state.date===d)for(const n of state.notices??[])add(out,el('p',PLAN_NOTICE_TEXT[n.code]??'알림을 읽지 못했어요'+' · 문의 코드 ▾\u2060'+n.code+'\u2060','notice pt-notice'));

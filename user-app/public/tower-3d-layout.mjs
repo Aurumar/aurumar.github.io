@@ -224,7 +224,7 @@ export function towerScene(ach,{seasons=null,titleTier=null}={}){
   // 정원(일정이 있을 때만): 그 전엔 흙 마당·새싹·묘목, 정원 시즌이 지나면 잔디·자갈길·횃불·꽃·나무. 꽃 = 완벽한 날 수(≤64), 나무 = 금벽돌 10장당 1그루(≤16).
   if(parts.FOUNDATION&&seasons?.length){
     const open=parts.GARDEN,tag={part:'GARDEN'},beds=[[-7.6,1,4.2,10],[7.6,1,4.2,10],[-3.4,8.2,3.6,5.2],[3.4,8.2,3.6,5.2]];
-    for(const [x,z,w,d] of beds)plain.push(box(x,0.03,z,w,0.06,d,{color:open?KIT.lawn:KIT.dirt,...tag}));
+    for(const [x,z,w,d] of beds)plain.push(box(x,0.03,z,w,0.06,d,{color:open?KIT.lawn:KIT.dirt,...tag,bed:true}));   // V10F: bed = 화면이 정원 색(v10fTint)으로 칠한다
     if(open){
       plain.push(box(0,0.025,8.6,1.8,0.05,7.6,{color:KIT.path,...tag}));
       for(const z of [6.2,9.8])for(const sx of [-1,1]){plain.push(box(sx*1.3,0.55,z,0.1,1.1,0.1,{color:KIT.post,...tag}));flames.push(box(sx*1.3,1.2,z,0.18,0.24,0.18,{color:KIT.flame,...tag}));}
@@ -679,9 +679,10 @@ export const AUTO_ROTATE_RAD=6*Math.PI/180,AUTO_ROTATE_SECONDS=20;
 export const autoRotateAt=t=>AUTO_ROTATE_RAD*Math.max(0,Math.min(AUTO_ROTATE_SECONDS,t));
 
 // ---------- T2A 성능 등급: MID로 시작, 60프레임 p95<18ms면 HIGH로 한 번만 올리고, 30프레임 p95>24ms면 한 단계씩 내린다. SVG 판정(quality3d·framesTooSlow)은 따로 ----------
+// V10F: 그림자 지도 HIGH 2048 → 4096·MID 1024 → 2048(큰 집에서 그림자 계단·번짐), 둥근 모서리 벽돌을 MID에도(각진 상자 = "저퀄"). LOW는 그대로.
 export const TIERS=Object.freeze({
-  HIGH:Object.freeze({shadow:2048,pixelRatio:2,rounded:true,stars:true,dust:true,env:true}),
-  MID:Object.freeze({shadow:1024,pixelRatio:1.5,rounded:false,stars:true,dust:true,env:true}),
+  HIGH:Object.freeze({shadow:4096,pixelRatio:2,rounded:true,stars:true,dust:true,env:true}),
+  MID:Object.freeze({shadow:2048,pixelRatio:1.5,rounded:true,stars:true,dust:true,env:true}),
   LOW:Object.freeze({shadow:0,pixelRatio:1,rounded:false,stars:false,dust:false,env:true}),   // 환경맵은 작아서(16px) LOW도 켠다: 없으면 금속 금벽돌이 검게 보인다
 });
 export const START_TIER='MID',PROMOTE_FRAMES=60,PROMOTE_P95_MS=18,DEMOTE_FRAMES=30,DEMOTE_P95_MS=24;
@@ -727,3 +728,54 @@ export function shadowTexels(n=CONTACT_SHADOW.size){
 // 한 프레임 각도 = 2π × dt / 40. 탭을 가렸다 돌아오는 등 긴 틈(dt > 0.1초)은 0.1초로 자른다(한 번에 휙 돌지 않게).
 export const SPIN_TURN_SECONDS=40,SPIN_MAX_STEP=0.1;
 export const spinStep=dt=>Number.isFinite(dt)&&dt>0?2*Math.PI*Math.min(dt,SPIN_MAX_STEP)/SPIN_TURN_SECONDS:0;
+
+// ---------- V10F 탑·우주 3D 화질과 조작 (설계 V10 F, 소유자 r79 "저화질·저퀄·한 번 누르면 계속 멈춘다") ----------
+// 1) 누르고 있는 동안만 멈춤: 화면 파일이 손가락·마우스가 닿아 있는 동안(hold)만 자동 회전을 쉬고, 다 떼면 그 자리부터 다시 돈다(끌어 돌리기는 그대로).
+// 2) 화소 배율: 캔버스 그림 크기 = 화면 크기 × 배율. 예전에는 min(기기 배율, 등급) → PC(배율 1)는 1배(계단 모서리), 폰은 등급 1.5에 묶였다.
+//    이제 PC는 상한 2·최소 1.5(초과 표본으로 가는 선·줄눈이 부드럽다), 폰(굵은 포인터)은 상한 1.5. 등급(LOW 1 등)이 더 낮으면 등급을 따른다.
+export const DEVICE_PIXEL_CAP=Object.freeze({pc:2,phone:1.5}),PC_SUPERSAMPLE=1.5;
+export function renderPixelRatio({dpr=1,coarse=false,tier=Infinity}={}){
+  const d=Number.isFinite(dpr)&&dpr>0?dpr:1,cap=coarse?DEVICE_PIXEL_CAP.phone:DEVICE_PIXEL_CAP.pc;
+  return Math.min(Number.isFinite(tier)?tier:cap,cap,coarse?d:Math.max(d,PC_SUPERSAMPLE));
+}
+export const isCoarsePointer=win=>Boolean(win?.matchMedia?.('(pointer: coarse)')?.matches);
+// 화면이 느리면(30프레임 p95 > 33ms, 약 30fps 미만) 우주·건물은 배율을 1로 한 단계 낮춘다. 탑은 기존 등급(nextTier)이 같은 일을 한다.
+export const FPS_FLOOR_MS=33,FPS_WINDOW=30;
+export const tooSlowFor30=deltas=>deltas.length>=FPS_WINDOW&&p95(deltas.slice(-FPS_WINDOW))>FPS_FLOOR_MS;
+// 3) 탑 재질(3D만, 2.5D 대체 화면은 그대로): 검은 대리석 받침 → 짙은 금 받침, 흰 모퉁이 탑·흰 받침판 → 샴페인 금 돌, 흰 화단 판 → 부드러운 잔디·모래 정원.
+export const V10F_TOWER=Object.freeze({plinth:TOWER_GOLD.deep,pad:'#E9D9AE',towerStone:CHAMPAGNE_WALL.color,lawn:'#C9D9A6',dirt:'#E8DCC0'});
+export function v10fTint(rows){
+  return rows.map(r=>{
+    const c=r.color===BLACK_MARBLE.body?V10F_TOWER.plinth:r.pad?V10F_TOWER.pad:r.part==='TOWER'&&r.color===KIT.frame?V10F_TOWER.towerStone:r.bed?(r.color===KIT.lawn?V10F_TOWER.lawn:V10F_TOWER.dirt):null;
+    return c?{...r,color:c}:r;
+  });
+}
+// 공사 중 맨 위층: 예상도(전체 높이 선·반투명 유리) 대신 다음 한 층 자리에 얇은 금 골조(기둥·보 상자, 굵기 0.06) + 작은 금 크레인. 시즌 표지는 그 층 안의 것만.
+export const SCAFFOLD=Object.freeze({t:0.06,color:TOWER_GOLD.mid,step:1.75});
+export function scaffoldOf(bp){
+  if(!bp)return null;
+  const T=SCAFFOLD.t,y0=bp.roof,h=bp.floorH,hx=COLS/2+SLAB_OUT,hz=DEPTH/2+SLAB_OUT,rows=[],n=Math.max(1,Math.round(2*hx/SCAFFOLD.step));
+  const along=Array.from({length:n+1},(_,i)=>-1+2*i/n);   // -1~1 등간격(모서리 포함)
+  for(const u of along)for(const s of [-1,1])rows.push(box(u*hx,y0+h/2,s*hz,T,h,T,{}));   // 앞·뒤 기둥
+  for(const u of along.slice(1,-1))for(const s of [-1,1])rows.push(box(s*hx,y0+h/2,u*hz,T,h,T,{}));   // 옆 기둥(모서리 제외)
+  for(const y of [y0+h,y0+h/2])rows.push(box(0,y,hz,2*hx,T,T,{}),box(0,y,-hz,2*hx,T,T,{}),box(hx,y,0,T,T,2*hz,{}),box(-hx,y,0,T,T,2*hz,{}));   // 위·가운데 보
+  const top=y0+h+SLAB_H;
+  return {rows,top,bp:{...bp,top,cone:null,boundaries:bp.boundaries.filter(b=>b.y<=top)}};
+}
+// 작은 크레인: 골조 뒤 왼쪽 모서리 위, 돛대 2.4·팔 3.2(옛 땅 크레인은 집 높이 + 4·팔 14). 금 + 갈고리.
+export function smallCrane(roof){
+  const x=-(COLS/2-0.4),z=-(DEPTH/2-0.4),top=roof+2.4,c=TOWER_GOLD;
+  return [box(x,roof+1.2,z,0.12,2.4,0.12,{color:c.deep}),box(x+1.2,top,z,3.2,0.1,0.1,{color:c.mid}),box(x-0.5,top-0.08,z,0.5,0.24,0.3,{color:c.deep}),
+    box(x+2.4,top-0.55,z,0.02,0.9,0.02,{color:c.line}),box(x+2.4,top-1.05,z,0.12,0.1,0.12,{color:c.hi})];
+}
+// 4) 우주: 빛무리·붉은 빛 테 질감(n×n 알파, 가운데 = 0.5). glow = 가운데 밝고 바깥으로 부드럽게, ring = 반지름 0.62 둘레만 밝은 고리(복습 필요).
+export const HALO_SPRITE=Object.freeze({size:64,ringR:0.62,ringW:0.12});
+export function glowTexels(kind='glow',n=HALO_SPRITE.size){
+  const px=new Uint8Array(n*n*4),R=HALO_SPRITE;
+  for(let y=0;y<n;y++)for(let x=0;x<n;x++){
+    const d=Math.hypot((x+0.5)/n-0.5,(y+0.5)/n-0.5)*2,i=(y*n+x)*4;
+    const a=kind==='ring'?Math.exp(-(((d-R.ringR)/R.ringW)**2))*clamp01((1-d)/0.08)+0.25*smooth(clamp01(1-d)):smooth(clamp01(1-d))**2.2;
+    px[i]=px[i+1]=px[i+2]=255;px[i+3]=Math.round(clamp01(a)*255);
+  }
+  return px;
+}

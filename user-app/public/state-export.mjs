@@ -5,12 +5,13 @@
 // 8절(공부 요약: 과목명과 숫자만)·9절(건강 요약: 수면·걸음 평균과 기록 일수만)은 토글이 기본 꺼짐이고, 소유자가 켠 절만 단추 내보내기와 쌓기 뒤 자동 내보내기에 들어간다(토글을 켠 것이 동의, 통제탑 결정 B61).
 // 시험 점수·등급(life.results)·주간 목표(life.goals)·칭호(life.profile)·책 이름과 쪽 번호는 읽지 않는다(통제탑 결정 D46 ★4, 넣으면 외부 AI 전송 범위 변경). 형식 v1 그대로다.
 // 형식 정본: AUTOPILOT\design\STATE_FORMAT_V1.md (8·9절 범위는 작업 B47 지시서가 정한다).
-import {lifeDefs,entryDone,nearestExam,dDay,shiftDay,kstDate,hhmmFromIso,subjectOfSession,diaryOpenDate,examStatusOf} from './life-model.mjs';
+import {lifeDefs,entryDone,entryUncounted,nearestExam,dDay,shiftDay,kstDate,hhmmFromIso,subjectOfSession,diaryOpenDate,examStatusOf} from './life-model.mjs';
 import {achieve,SUBJECT_BY_CODE,studyBricks,smallWeight} from './life-achieve.mjs';
 import {todayPlanModel} from './plan-today.mjs';
 import {readPlanMarks} from './life-plan.mjs';
 import {moneyFacts} from './life-money-facts.mjs';
 import {csatTarget} from './life-plan.mjs';
+import {ddayGauge,splitEventNotes} from './life-plan.mjs';   // V10B-6: 위젯 dday·events 칸
 import {feelOfFin,feelExport,feelExportText,feelTodayOf} from './fin-feel.mjs';
 import {STACK_DONE} from './life-flow.mjs';
 import {projectStudy} from './study-projection.mjs';
@@ -69,8 +70,11 @@ export function habitWindow(life,today,days=WINDOW_DAYS){
     let goal,done;
     if(h.kind==='RECOVERY'){goal=1;done=Math.min(1,entries.filter(e=>entryDone(h,e)).length);}                       // 복구는 주 1번이 목표(연속을 이어 주는 습관)
     else if(h.target.per==='WEEK'){goal=h.target.count??1;const sum=entries.reduce((s,e)=>s+(entryDone(h,e)?(h.kind==='COUNT'?e.count??0:1):0),0);done=Math.min(goal,sum);}
-    else{goal=span;done=entries.filter(e=>entryDone(h,e)).length;}
-    rows.push({name:clean(h.name),done,goal});
+    // V10FIX M-04: "해 없음"(어쩔 수 없음, entryExcused) 날은 성취표·달성 엔진과 같게 분모에서 뺀다(안 한 날로 세지 않음).
+    // V10FIX2 (소유자 2026-11-15 "끼니X는 달성률에넣지마"): 끼니 ✕도 해 없음처럼 분모·분자에서 뺀다(entryUncounted). 미기록은 그대로 분모에 남는다.
+    else{const excused=entries.filter(e=>entryUncounted(h,e)).length;goal=span-excused;done=entries.filter(e=>entryDone(h,e)&&!entryUncounted(h,e)).length;}
+    // V10FIX M-05: 끼니 ✕(안 먹음 = done:false 줄)를 미기록과 구분해 따로 센다(missed, 주간 리뷰 "· ✕ n").
+    rows.push({name:clean(h.name),done,goal,missed:entries.filter(e=>e&&e.done===false).length});
   }
   return rows;
 }
@@ -333,7 +337,7 @@ export function renderStateExport(root,ctx){
 // 칸은 DW1 설계안 형식 그대로(host widget-status-writer.mjs WIDGET_KEYS와 같다, 시험이 대조). 값은 화면이 이미 쓰는 계산(achieve·오늘 계획 카드·칭호)에서만 가져온다.
 // 일기 글·내일 한 가지·금액·잔고·계좌·건강 수치·과목 이름·할 일 글자 칸은 없다. 일기는 엔진 결과(achieve 하루 줄)의 "그날 일기 있음"만 본다(일기 기록을 직접 읽지 않는다).
 // 이 모듈은 파일을 쓰지 않고 시계·타이머를 쓰지 않는다: now·칭호·마지막 동기화 시각은 부른 쪽(app.mjs)이 넘기고, 쓰는 때(앱 열 때·저장 뒤 30초·04:00 일기 날짜 넘김·종료)도 app.mjs가 정한다.
-export const WIDGET_FILE_KEYS=Object.freeze(['v','device','exported_at','diary_day','level','xp','xp_next','title','bricks_total','bricks_week','streak_days','diary_done','plan_done','plan_total','last_sync_at','bricks_today','bricks_goal_day','focus_min_by_hour_7d','focus']);   // EXP1: 뒤 3칸 추가(앞 15칸 이름·뜻·순서 그대로). V9B: 맨 뒤 focus 1칸(집중 상태, 앞 18칸 그대로)
+export const WIDGET_FILE_KEYS=Object.freeze(['v','device','exported_at','diary_day','level','xp','xp_next','title','bricks_total','bricks_week','streak_days','diary_done','plan_done','plan_total','last_sync_at','bricks_today','bricks_goal_day','focus_min_by_hour_7d','focus','dday','events']);   // EXP1: 뒤 3칸 추가(앞 15칸 이름·뜻·순서 그대로). V9B: 맨 뒤 focus 1칸(집중 상태, 앞 18칸 그대로). V10B-6: 맨 뒤 dday·events 2칸(앞 19칸 그대로)
 export const WIDGET_FILE_DEVICES=Object.freeze(['PC','LAPTOP']);
 export const WIDGET_FILE_ROUTE='/api/widget-status',WIDGET_FILE_WAIT_MS=30000,WIDGET_TITLE_MAX=20;
 export const WIDGET_SWITCH_KEYS=Object.freeze({on:'lb.widget.file',laptop:'lb.widget.laptop'});
@@ -379,7 +383,7 @@ export const sameFocus=(a,b)=>Boolean(a)===Boolean(b)&&(!a||a.running===b.runnin
 // 읽는 쪽(비서단) 규칙: focus.running이 true여도 exported_at이 FOCUS_STALE_MS(10분)보다 오래됐으면 "앱 꺼짐 · 모름"으로 본다.
 export const FOCUS_REFRESH_MS=5*60000,FOCUS_STALE_MS=10*60000;
 export const focusStale=(last,nowIso)=>Boolean(last?.focus?.running)&&!(Date.parse(nowIso)-Date.parse(last.exported_at)<FOCUS_REFRESH_MS);
-export function widgetStatusOf({life=null,study=null,fin=null,money=null,now,device='PC',title=null,lastSyncAt=null,marks=null,planStorage=null,timer=null}){
+export function widgetStatusOf({life=null,study=null,fin=null,money=null,now,device='PC',title=null,lastSyncAt=null,marks=null,planStorage=null,timer=null,events=null}){
   const at=isoOf(now);if(!at)throw new Error('BAD_NOW');
   const today=kstDate(at),diaryDay=diaryOpenDate(at);
   const ach=life?guard(()=>achieve({life,study,fin,today,money})):null,top=ach?.levels?.[ach.topArea]??null;
@@ -389,13 +393,52 @@ export function widgetStatusOf({life=null,study=null,fin=null,money=null,now,dev
     level:top?.level??null,xp:top?.into??null,xp_next:top?.need??null,title:ach&&typeof title==='function'?titleText(guard(()=>title(ach))):null,
     bricks_total:ach?guard(()=>studyBricks(ach.weeks)+smallWeight(ach.weeks)):null,bricks_week:ach?.currentWeek?.value??null,streak_days:ach?.streak?.days??null,
     diary_done:Boolean(day?.diary),plan_done:plan?.achievedMarked??plan?.achieved??null,plan_total:plan?.planned??null,last_sync_at:isoOf(lastSyncAt),
-    bricks_today:ach?.todayDay?.value??null,bricks_goal_day:ach?.goalBricks??null,focus_min_by_hour_7d:guard(()=>focusMinByHour(study,today)),focus:focusFromTimer(timer)};
+    bricks_today:ach?.todayDay?.value??null,bricks_goal_day:ach?.goalBricks??null,focus_min_by_hour_7d:guard(()=>focusMinByHour(study,today)),focus:focusFromTimer(timer),
+    dday:life?guard(()=>widgetDday(lifeDefs(life).exams,today)):null,events:guard(()=>widgetEvents(events,today))};
 }
 // FIX58Q (HUNT55 HS2): 잠금·로그아웃 때 바로 덮어쓰는 빈 숫자 파일. 칸은 지금 WIDGET_FILE_KEYS 전부: 숫자·칭호·마지막 동기화·EXP1 새 3칸은 null, 일기 false. 어느 프로필의 숫자도 싣지 않는다.
 export function widgetLockedStatus({now,device='PC'}){return widgetStatusOf({now,device});}
+// V10B-6 일정 칸(PC 비서단 위젯 V10H2가 읽는다). 앱 기록에서 계산만 한다(저장 0).
+// dday = 다가올 시험(앱 시험 일정 그대로, 날짜 순) 최대 3개, 수능이 셋 밖이면 셋째 자리를 수능으로. label = 시험 이름(괄호 뺌, 12자), date = 시험일, start = 디데이 게이지 구간 시작(ddayGauge, 화면과 같은 값).
+// events = 이번 달 1일 ~ 다음 달 말일의 일정 기록(EVENT, 반복은 펼침) 최대 60개: 날짜·시각(종일이면 null)·제목 12자·종류(직접 쓴 종류 글자, 없으면 기본 종류 이름).
+//   메모·장소·영역·계획 연결은 넣지 않는다. 건강·돈 영역(B·E) 일정은 빼고, 종류가 "병원"이면 제목 대신 "병원 일정"(진료·약 내용이 제목에 있을 수 있어서).
+//   60개가 넘으면 오늘부터의 일정을 먼저 담고 남는 자리에 지난 일정(가까운 날 먼저)을 담는다. 날짜·시각 순으로 내보낸다.
+//   V10FIX2 (소유자 2026-11-15 "위젯달력은 계획말고 내가해야하는 일정만넣어"): 직접 만든 일정 기록(EVENT)만 넣는다. 계획에서 나온 줄(PLAN 기한·검토·중간 목표, 달력 펼침의 source PLAN)은
+//   넣지 않는다 — 앱이 넘기는 값이 whole.events(EVENT 기록)이고, data가 없거나 date가 없는 줄은 건너뛴다. 앱 안 달력의 계획 표시는 그대로.
+export const WIDGET_DDAY_MAX=3,WIDGET_EVENT_MAX=60,WIDGET_LABEL_MAX=12,WIDGET_KIND_MAX=20;
+export const WIDGET_EVENT_KIND=Object.freeze({DEADLINE:'기한',APPOINTMENT:'약속',REVIEW:'검토',MILESTONE:'중간 목표'});
+export const WIDGET_HIDDEN_DOMAINS=Object.freeze(['B','E']),WIDGET_HOSPITAL='병원',WIDGET_HOSPITAL_TITLE='병원 일정';
+const shortText=(v,max)=>typeof v==='string'&&v.isWellFormed()?clean(v,max).trim():'';
+// V10FIX M-08: 진료·약 낱말. "약속"의 약은 빼고, 한 글자 "약"은 낱말 첫머리일 때만(약 A·약국 등).
+export const WIDGET_MEDICAL=/병원|진료|처방|치료|검진|진찰|의원|클리닉|치과|약국|복약|투약|상담|입원|수술|주사|(?:^|[^가-힣])약(?!속)/;
+export const widgetMedical=v=>typeof v==='string'&&WIDGET_MEDICAL.test(v);
+export function widgetDday(exams,today){
+  const up=[...(exams?.items??[])].filter(x=>dateOK(x?.date)&&x.date>=today).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:a.id<b.id?-1:a.id>b.id?1:0);
+  const fin=csatTarget(exams),pick=up.slice(0,WIDGET_DDAY_MAX);
+  if(fin&&fin.date>=today&&!pick.some(x=>x.id===fin.id)&&pick.length===WIDGET_DDAY_MAX)pick[WIDGET_DDAY_MAX-1]=fin;
+  return pick.map(x=>{const label=shortText(String(x.name??'').replace(/\(.*\)/,''),WIDGET_LABEL_MAX),g=ddayGauge(exams,{id:x.id,role:'next',name:label},today);return label&&g?{label,date:x.date,start:g.start}:null;}).filter(Boolean);
+}
+export function widgetEvents(events,today){
+  if(!Array.isArray(events))return null;
+  const from=today.slice(0,7)+'-01',next=shiftDay(from,32).slice(0,7),to=shiftDay(shiftDay(next+'-01',32).slice(0,7)+'-01',-1),rows=[];
+  for(const e of events){
+    const d=e?.data;if(!d||d.deleted||WIDGET_HIDDEN_DOMAINS.includes(d.domain)||!dateOK(d.date))continue;
+    const own=shortText(splitEventNotes(d.notes).kind,WIDGET_KIND_MAX);let kind=own||WIDGET_EVENT_KIND[d.kind];if(!kind)continue;
+    // V10FIX M-08 (설계 B6 "약 내용은 넣지 않는다", 새지 않는 쪽 우선): 직접 쓴 종류나 제목(자르기 전 전체)에 진료·약 낱말이 있으면 제목 대신 "병원 일정", 종류도 "병원"으로.
+    const medical=own===WIDGET_HOSPITAL||widgetMedical(own)||widgetMedical(d.title);
+    const title=medical?WIDGET_HOSPITAL_TITLE:shortText(d.title,WIDGET_LABEL_MAX);if(!title)continue;
+    if(medical&&own)kind=WIDGET_HOSPITAL;
+    const time=!d.allDay&&typeof d.time==='string'&&/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(d.time)?d.time:null;
+    const r=d.recurrence,count=r?r.count:1,step=r?r.interval*(r.frequency==='WEEKLY'?7:1):0;
+    for(let i=0;i<count;i++){const date=shiftDay(d.date,i*step);if(date>to)break;if(date>=from)rows.push({date,time,title,kind});}
+  }
+  const order=(a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.time??'')<(b.time??'')?-1:(a.time??'')>(b.time??'')?1:a.title<b.title?-1:a.title>b.title?1:0;
+  const ahead=rows.filter(x=>x.date>=today).sort(order),past=rows.filter(x=>x.date<today).sort(order).reverse();
+  return [...ahead.slice(0,WIDGET_EVENT_MAX),...past.slice(0,Math.max(0,WIDGET_EVENT_MAX-ahead.length))].sort(order);
+}
 // 쓰는 때 정하기(순수). last = 마지막으로 쓴 값(없으면 null), next = 지금 값, reason = 'open'|'change'|'day'|'close'.
 // 처음·종료·일기 날짜가 바뀐 때는 바로(NOW), 내용이 같으면(시각 빼고) 건너뜀(SKIP), 그 밖의 바뀜은 부른 쪽이 WIDGET_FILE_WAIT_MS 뒤에 쓴다(LATER).
-const sameValue=(x,y)=>Array.isArray(x)&&Array.isArray(y)?x.length===y.length&&x.every((v,i)=>v===y[i]):x&&y&&typeof x==='object'&&typeof y==='object'?sameFocus(x,y):x===y;   // EXP1: 배열 칸은 값으로 비교. V9B: focus 칸(객체)도 값으로 비교
+const sameValue=(x,y)=>Array.isArray(x)&&Array.isArray(y)?x.length===y.length&&x.every((v,i)=>v===y[i]||JSON.stringify(v)===JSON.stringify(y[i])):x&&y&&typeof x==='object'&&typeof y==='object'?sameFocus(x,y):x===y;   // EXP1: 배열 칸은 값으로 비교. V9B: focus 칸(객체)도 값으로 비교. V10B: dday·events 배열의 칸(객체)도 값으로
 const sameButTime=(a,b)=>WIDGET_FILE_KEYS.every(k=>k==='exported_at'||sameValue(a[k],b[k]));
 export function widgetWriteWhen(last,next,reason){
   if(!next)return 'SKIP';

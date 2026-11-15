@@ -74,7 +74,8 @@ export class StudyFlow{
       const started=(await this.state(date)).card.sessions.filter(x=>x.state==='STARTED');
       if(!started.length)continue;
       const pick=started.reduce((a,b)=>((b.at??'')>=(a.at??'')?b:a));
-      return this.updateRow(date,'sessions',{...pick,state:'COMPLETED',confirmedMin,...(restartLocator!==undefined?{restartLocator}:{})});
+      // V10FIX M-06: 끝낸 세션의 at = 끝 시각(지금). 세션 칸 규칙(구간 [at − 분, at])과 같게 — 시작 시각으로 남으면 목록·위젯 시각이 공부한 분만큼 앞당겨 보였다.
+      return this.updateRow(date,'sessions',{...pick,state:'COMPLETED',confirmedMin,at:now,...(restartLocator!==undefined?{restartLocator}:{})});
     }
     throw err('NO_STARTED_SESSION');
   }

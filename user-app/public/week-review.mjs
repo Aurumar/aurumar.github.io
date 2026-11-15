@@ -62,7 +62,7 @@ export function weekReviewStats({life=null,study=null,monday,today}){
   // 진행 중인 주(오늘이 월~토)는 월요일~오늘만 센다. 아직 오지 않은 날을 안 한 날로 세지 않는다(FIX50B C4: 습관, FIX51B C1: 계획 실행률). 지난 주·일요일은 7일 그대로.
   const habitEnd=today>=monday&&today<sunday?today:sunday,habitDays=dates.indexOf(habitEnd)+1;
   const plan=weekSummary(life,ach,monday,habitDays);
-  const habits=habitWindow(life,habitEnd,habitDays)??[],habitGoal=habits.reduce((s,r)=>s+r.goal,0),habitDone=habits.reduce((s,r)=>s+r.done,0);
+  const habits=habitWindow(life,habitEnd,habitDays)??[],habitGoal=habits.reduce((s,r)=>s+r.goal,0),habitDone=habits.reduce((s,r)=>s+r.done,0),habitMissed=habits.reduce((s,r)=>s+(r.missed??0),0);   // V10FIX M-05: ✕(안 함으로 적은 칸)는 미기록과 따로
   const diaryRows=(life?.diaries??[]).filter(x=>inWeek(x.date)),diaryBy=new Map(diaryRows.map(x=>[x.date,x.data]));
   const cardBy=new Map((life?.days??[]).filter(x=>inWeek(x.date)).map(x=>[x.date,x.data]));
   const days=dates.map(date=>{const d=diaryBy.get(date)??null,c=cardBy.get(date)??null;return {date,score:d?.score??null,mood:Number.isInteger(c?.mood)?c.mood:null,written:Boolean(d&&diaryWritten(d))};});
@@ -70,7 +70,7 @@ export function weekReviewStats({life=null,study=null,monday,today}){
   const diaries=diaryRows.map(x=>x.data),lastNext=reviewRow(life,shiftDay(monday,-7))?.data.next;
   return {monday,sunday,days,
     study:study?{minutes:weekMinutes(study,monday,today),prevMinutes:weekMinutes(study,shiftDay(monday,-7),today),bricks:w?.bricks??0,pieces:w?.pieces??0}:null,
-    planRate:plan.rate,planned:plan.planned,habits,habitDays,habitGoal,habitDone,habitRate:habitGoal>0?habitDone/habitGoal:null,
+    planRate:plan.rate,planned:plan.planned,habits,habitDays,habitGoal,habitDone,habitMissed,habitRate:habitGoal>0?habitDone/habitGoal:null,
     diaryDays:days.filter(d=>d.written).length,good:chipTop(diaries,'good',DIARY_GOOD_CHIPS),bad:chipTop(diaries,'bad',DIARY_BAD_CHIPS),
     avg,low:scores.length>=LOW_MIN_DAYS&&avg<=LOW_AVG,lastNext:hasVisibleText(lastNext)?lastNext.trim():''};   // 보이는 글자가 없으면 줄을 그리지 않는다(FIX51B B3)
 }
@@ -147,7 +147,7 @@ export function openWeekReview(ctx,{monday=null,today=null}={}){
       add(body,add(el('div',null,'ss-cells wr-cells'),
         s.study?cell(WR.study,hoursText(s.study.minutes),brickLine(s.study)+' · '+compareLine(s.study.minutes,s.study.prevMinutes)):cell(WR.study,'-',WR.noStudy),
         cell(WR.plan,rateText(s.planRate),s.planned>0?null:WR.noPlan),
-        cell(WR.habit,s.habitRate===null?'-':Math.round(s.habitRate*100)+'%',s.habitGoal>0?(s.habitDays<7?s.habitDays+'일 중 · ':'')+s.habitDone+' / '+s.habitGoal+'칸':null),
+        cell(WR.habit,s.habitRate===null?'-':Math.round(s.habitRate*100)+'%',s.habitGoal>0?(s.habitDays<7?s.habitDays+'일 중 · ':'')+s.habitDone+' / '+s.habitGoal+'칸'+(s.habitMissed?' · ✕ '+s.habitMissed:''):null),
         cell(WR.diary,s.diaryDays+'일',s.habitDays+'일 중')));   // 계획·습관과 같은 창(FIX51B C2). 지난 주·일요일은 7일 중
       add(body,el('h3',WR.graph,'wr-sub'));
       if(s.days.some(x=>x.score!==null||x.mood!==null))add(body,graphNode(ctx.document??globalThis.document,s.days),el('p',WR.legend,'muted small wr-legend'));

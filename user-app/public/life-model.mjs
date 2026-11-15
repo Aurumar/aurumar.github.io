@@ -418,10 +418,23 @@ export function entryDone(h,e){
 export const HABIT_UNPIN_ORDER=500;
 export const habitPinned=h=>Number.isInteger(h?.order)&&h.order<HABIT_UNPIN_ORDER;
 // V6B 성취표 칸 4상태: done(완료, 금 채움) · part(일부, 반 채움) · miss(못함, 음각) · none(기록 없음, 빈칸 — 못함으로 세지 않는다).
+// V10C-3: + skip(해 없음 등 어쩔 수 없음 — 완료도 못함도 아니고 달성률·연속의 분모에서 빠진다).
 // 못함 = 그날 카드에 done:false로 남긴 줄(기존 칸 그대로, 값 칸은 모두 null). 일부 = 분·횟수 목표가 있는데 못 미친 완료.
+// V10C-3 (소유자 2026-11-15): 햇볕 "오늘 해 없음(비·흐림)" = 실패도 성공도 아닌 "어쩔 수 없음". 칸 모양 그대로 {done:true, minutes:0}(지금 화면은 0분을 만들지 않는다:
+// 칩은 목표 분, 직접 입력은 1~1440). 옛 빌드는 entryDone 거짓 → habitState 'none'(기록 없음, 못함으로 세지 않음)으로 읽는다. 검사기는 예전부터 minutes 0을 받는다.
+export const NO_SUN_ENTRY=Object.freeze({done:true,at:null,minutes:0,count:null});
+export const entryExcused=(h,e)=>Boolean(e)&&e.done===true&&h?.kind==='DURATION'&&e.minutes===0&&e.count===null;
+// V10C-2: 끼니(아침·점심·저녁, 기본 습관 id) = 누를 때마다 미기록 → 먹음 → 안 먹음(✕) → 미기록. 안 먹음 = 기존 못함 칸(MISSED_ENTRY) 그대로.
+export const MEAL_HABIT_IDS=Object.freeze(['hb-breakfast','hb-lunch','hb-dinner']);
+export const isMealHabit=h=>Boolean(h)&&h.kind==='TIME'&&MEAL_HABIT_IDS.includes(h.id);
+// V10FIX2 (소유자 2026-11-15 "끼니X는 달성률에넣지마"): 끼니 ✕(안 먹음 = done:false 줄)는 해 없음처럼 달성률의 분자·분모에서 뺀다(미기록 규칙은 그대로).
+// 칸 상태(habitState 'miss' = 화면 ✕)와 ✕ 수 세기는 그대로 — 계산하는 곳(성취표·달성 엔진·habitWindow·AUTO 난이도)만 entryUncounted로 거른다.
+export const mealMissed=(h,e)=>isMealHabit(h)&&Boolean(e)&&e.done===false;
+export const entryUncounted=(h,e)=>entryExcused(h,e)||mealMissed(h,e);
 export function habitState(h,e){
   if(!e)return 'none';
   if(!e.done)return 'miss';
+  if(entryExcused(h,e))return 'skip';   // V10C-3
   if(!entryDone(h,e))return 'none';
   if(h.kind==='DURATION'&&h.target.minutes!==null&&e.minutes<h.target.minutes)return 'part';
   if(h.kind==='COUNT'&&h.target.per==='DAY'&&h.target.count!==null&&e.count<h.target.count)return 'part';

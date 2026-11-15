@@ -8,7 +8,7 @@ import {sheet} from './ui-kit.mjs';
 import {LifeFlow,createLifePorts,DIARY_KIND,STACK_DONE,shownCard} from './life-flow.mjs';
 import {PLAN_NOTICE_TEXT,planErrorText} from './life-plan.mjs';
 import {DIARY_GOOD_CHIPS,DIARY_BAD_CHIPS,MAX_DIARY_GOOD,MAX_DIARY_BAD,MAX_DIARY_TEXT,MAX_DIARY_TOMORROW,
-  emptyDiary,recordsDoorState,lifeDefs,entryDone,sumBricks,shiftDay,kstDate,diaryOpenDate} from './life-model.mjs';
+  emptyDiary,recordsDoorState,lifeDefs,entryDone,entryExcused,sumBricks,shiftDay,kstDate,diaryOpenDate} from './life-model.mjs';
 
 // 칩 글자(저장은 id만, D49 2.2). short = 칩 단추, full = 읽어 주는 글. 모르는 id(앞으로 생길 칩)는 "다른 항목".
 export const GOOD_CHIP_TEXT=Object.freeze({focus:['집중','집중이 잘 됨'],wrong:['오답','오답을 제대로 봄'],hard:['버팀','어려운 걸 버팀'],start:['시작','미룬 일을 시작함'],calm:['마음','마음을 다스림'],
@@ -142,6 +142,7 @@ export function autoFacts({defs,card=null,studyCard=null,plan=null,health=null})
   for(const id of FACT_HABITS){
     const h=defs.habits.find(x=>x.id===id);if(!h||h.hidden)continue;
     const e=card?.habits?.[id]??null;
+    if(entryExcused(h,e)){has(id,h.name+' 해 없음');continue;}   // V10C-3: 해 없음(비·흐림)은 기록 없음이 아니다
     if(!entryDone(h,e)){none(id,h.name);continue;}
     has(id,h.name+' '+(h.kind==='TIME'?e.at:h.kind==='DURATION'?e.minutes+'분':h.kind==='COUNT'?e.count+'회':'했음'));
   }

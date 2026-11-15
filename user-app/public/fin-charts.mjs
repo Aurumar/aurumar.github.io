@@ -3,9 +3,14 @@
 // 이체는 소비가 아니다. 선불 전환·미배분 잔액·순액 모름은 소비 합계에 넣지 않고 따로 센다. 자료 없는 달은 0원이 아니라 "자료 없음".
 import {shiftMonth,monthSpan,monthOK,formatWon} from './fin-ledger.mjs';
 
+// V10E: 투자 손익 = 태그 '투자손익'이 붙은 지출(손실)·수입(수익). 새 분류 값·새 기록 종류 없이 기존 거래 구조(태그) 안에서 가른다.
+// lines(예산·그래프·진단이 읽는 생활 돈)에서는 빼고 invest에 따로 둔다. allLines = 둘 다(거래 목록·돈 달력). 잔액(fin.lines)은 그대로 모두 반영.
+export const INVEST_TAG='투자손익';
+export const isInvestLine=l=>(l.kind==='EXPENSE'||l.kind==='INCOME')&&Array.isArray(l.tags)&&l.tags.includes(INVEST_TAG);
 export function prepare(fin){
+  const all=fin.lines.map(l=>({...l,net:l.net===null?null:BigInt(l.net)}));
   return {
-    lines:fin.lines.map(l=>({...l,net:l.net===null?null:BigInt(l.net)})),
+    lines:all.filter(l=>!isInvestLine(l)),allLines:all,invest:all.filter(isInvestLine),
     residuals:fin.residuals.map(r=>({...r,net:BigInt(r.net)})),
     accounts:new Map(fin.accounts.map(a=>[a.id,a.data])),
     labels:fin.labels,
