@@ -721,6 +721,7 @@ export function txnCalendarNode(h,cal,{lines,picked=null,onPick=null,name,cat,ki
 // 계산만(저장 0). 줄은 prepare().allLines(투자 손익 포함). 나간 돈 = 지출(투자 손실 포함), 들어온 돈 = 수입(투자 수익 포함) + 환불. 이체·선불 충전은 둘 다 아니다.
 export const INVEST_SIDES=Object.freeze({LOSS:'손실',GAIN:'수익'});
 export const INVEST_SUB='투자 손익',MONEY_CAL_ITEMS=2;
+export const MONEY_CAL_SUM_NOTE='칸의 나간 돈 = 투자 손실 포함 · 들어온 돈 = 환불·투자 수익 포함 · 위 "생활 지출" = 지출 − 환불(투자 손익 뺌)이라 칸 합과 다를 수 있어요';
 const plainWon=n=>formatWon(n).replace(/원$/,'');
 const FLOW=new Set(['EXPENSE','REFUND','INCOME']);
 // 줄 하나가 나간 돈(OUT)인지 들어온 돈(IN)인지. 이체·선불·모름 = null.
@@ -777,16 +778,17 @@ export function moneyMonthSummary(lines,month){
 }
 // 요약 글자. 생활 지출: 줄 없음 = "자료 없음", 모름 줄만 = "모름". 투자 손익: 순이 +면 수익(빨강), -면 손실(파랑).
 export function moneySummaryText(s){
-  const living=s.living.lines?formatWon(s.living.net):s.living.unknown?'모름':'자료 없음';
+  // V11B L-24: 환불이 더 많아 음수인 달은 "-" 대신 "환불이 n원 더 많음", 그 경우·모름·자료 없음은 중립 색(livingSide null)
+  const living=s.living.lines?(s.living.net<0n?'환불이 '+formatWon(-s.living.net)+' 더 많음':formatWon(s.living.net)):s.living.unknown?'모름':'자료 없음',livingSide=s.living.lines&&s.living.net>0n?'OUT':null;
   const income=s.income.lines?'+'+formatWon(s.income.total):s.income.unknown?'모름':'없음';
   const iv=s.invest,investSide=iv.net>0n?'IN':iv.net<0n?'OUT':null;
   const invest=!iv.count?(iv.unknown?'모름':'기록 없음'):iv.net===0n?'0원':(iv.net>0n?'+':'-')+formatWon(iv.net<0n?-iv.net:iv.net)+' '+(iv.net>0n?INVEST_SIDES.GAIN:INVEST_SIDES.LOSS);
-  return {living,income,invest,investSide,investFoot:'손실 '+formatWon(iv.loss)+' · 수익 '+formatWon(iv.gain)+(iv.unknown?' · 모름 '+iv.unknown+'건':'')};
+  return {living,livingSide,income,invest,investSide,investFoot:'손실 '+formatWon(iv.loss)+' · 수익 '+formatWon(iv.gain)+(iv.unknown?' · 모름 '+iv.unknown+'건':'')};
 }
 export function moneySummaryNode(h,s){
   const t=moneySummaryText(s),chip=(label,value,cls,foot)=>h.add(h.el('div',null,'mcal-sum-item '+cls),h.el('span',label,'mcal-sum-label'),h.el('strong',value,'mcal-sum-value'),foot?h.el('span',foot,'mcal-sum-foot'):null);
   return h.add(h.el('div',null,'mcal-sum'),
-    chip('생활 지출',t.living,'money-out','예산 판단 · 투자 손익 뺌'),
+    chip('생활 지출',t.living,t.livingSide==='OUT'?'money-out':'money-zero','예산 판단 · 투자 손익 뺌'),
     chip('수입',t.income,'money-in',null),
     chip('투자 손익',t.invest,t.investSide==='IN'?'money-in':t.investSide==='OUT'?'money-out':'money-zero',t.investFoot));
 }
@@ -842,7 +844,8 @@ export function moneyCalendarNode(h,cal,{lines,picked=null,onPick=null,name,cat,
   const legend=h.add(h.el('ul',null,'fin-legend mcal-legend'),
     h.add(h.el('li'),h.el('span','-','mcal-sample money-out'),h.el('span','나간 돈·손실(파랑)')),
     h.add(h.el('li'),h.el('span','+','mcal-sample money-in'),h.el('span','들어온 돈·수익(빨강)')),
-    h.add(h.el('li',null,'ph-past'),h.el('span','','swatch mcal-swatch-past'),h.el('span','지난 날(회색 빗금)')));
+    h.add(h.el('li',null,'ph-past'),h.el('span','','swatch mcal-swatch-past'),h.el('span','지난 날(회색 빗금)')),
+    h.el('li',MONEY_CAL_SUM_NOTE,'mcal-legend-note'));   // V11B L-22: 칸 합 ≠ 월 요약 "생활 지출"인 이유를 범례에 적는다
   const box=h.add(h.el('div',null,'mcal'),grid,legend,detail);
   show(now);
   return box;

@@ -345,7 +345,8 @@ export function renderTower(root,ctx,st){
   if(ach.hasRecords)add(out,el('p',brickTotalText(ach.weeks)+' · 보너스 ✦'+ach.bonusTotal.toLocaleString('en-US'),'tower-bonus-total muted small'));   // Q1B: 나란히만 보인다(합친 숫자 없음). FIX49C: 작은 벽돌 무게 포함
   if(week.bridgeHeavy)add(out,el('p',BRIDGE_NOTICE,'notice tower-bridge'));
   // T2A: 3D 하늘·해는 지금 KST 시각(시, 소수)으로 정한다. 배치 계산은 시계를 쓰지 않으므로 여기서 넘긴다.
-  const kst=new Date(Date.parse(ctx.now())+KST_HOUR_MS),hour=kst.getUTCHours()+kst.getUTCMinutes()/60;
+  // V11FIX N-1: 하늘은 15분 단계로 묶는다(T2A-5 이웃 시각 15분 색 차이 상한과 같은 간격). 분마다 바뀌던 3D 키 때문에 같은 데이터도 1분 넘게 지나 저장하면 장면을 통째로 다시 지었다.
+  const kst=new Date(Date.parse(ctx.now())+KST_HOUR_MS),hour=kst.getUTCHours()+Math.floor(kst.getUTCMinutes()/15)/4;
   if(!ach.hasRecords){
     add(out,el('p',EMPTY_TEXT,'tower-empty'));
     // V7E (2026-11-13 소유자 "3D가 사라지고 2D에 아무것도 안 보인다"): 0층이어도 받침·바닥·1층 예상도를 3D로, 3D가 안 되면 같은 그림을 2.5D로 보인다(빈 칸 없음).
@@ -389,6 +390,9 @@ export function renderTower(root,ctx,st){
   return out;
 }
 // 3D 탑(B44A): SVG를 먼저 그려 두고, WebGL2가 있으면 3D가 첫 장면을 그린 뒤에만 SVG를 숨긴다. 실패하면 SVG 그대로(같은 데이터). V7E: 빈 집도 같은 길.
+// V11A 3D 호스트: 한 번 불러온 3D 모듈을 기억해, 살아 있는 3D가 있으면 기다리지 않고 같은 차례에 새 칸으로 옮겨 붙인다(데이터가 바뀌었으면 장면만 갱신, 첫 프레임 전 2.5D 깜박임 0). 없을 때만 예전처럼 불러와 새로 만든다.
+let tower3d=null;
 function mountTower3dLater({doc,slot,scroller,...opts}){
-  if(globalThis.WebGL2RenderingContext)import('./tower-3d.mjs').then(m=>{if(scroller.isConnected)m.mountTower3d({doc,slot,fallback:scroller,...opts});}).catch(()=>{slot.dataset.mode='svg';slot.dataset.reason='IMPORT_FAILED';});
+  if(tower3d?.adoptTower3d({doc,slot,fallback:scroller,...opts}))return;
+  if(globalThis.WebGL2RenderingContext)import('./tower-3d.mjs').then(m=>{tower3d=m;if(scroller.isConnected)m.mountTower3d({doc,slot,fallback:scroller,...opts});}).catch(()=>{slot.dataset.mode='svg';slot.dataset.reason='IMPORT_FAILED';});
 }

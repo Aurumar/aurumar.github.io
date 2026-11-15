@@ -16,6 +16,9 @@ export const PLANET_SCALE=0.36,PLANET_RING=1.7,PLANET_TILT=0.45,PLANET_MATERIAL=
 export const planetRadius=c=>Math.round(c.radius*PLANET_SCALE*1e4)/1e4;
 export const planetsOf=data=>data.clusters.filter(c=>c.count>0);
 let active=null;
+// V11A 3D 호스트 (V10HUNT M-12): 탑(tower-3d adoptTower3d)과 같은 규칙. 다시 그리면 살아 있는 칸을 새 자리 표시 칸에 옮겨 붙이고, 우주 배치(data 전부)가 바뀌었을 때만 같은 캔버스·문맥에 다시 짓는다.
+const sceneKey=data=>JSON.stringify(data);
+export function adoptUniverse3d(opts){return Boolean(active?.adopt(opts));}
 
 const tanHalf=()=>Math.tan(FOV/2*Math.PI/180);
 const fitDist=(bound,aspect)=>bound/Math.sin(Math.atan(tanHalf()*Math.min(1,Math.max(0.3,aspect))))*1.05;
@@ -33,13 +36,14 @@ export function universePosition(cam){
   return {x:Math.sin(cam.theta)*flat,y:Math.sin(cam.phi)*cam.dist,z:Math.cos(cam.theta)*flat};
 }
 
-export function mountUniverse3d({doc,slot,fallback,data,onNode=null,onPlanet=null,st=null}){
+// keep(V11A, 안에서만): 다시 지을 때 이어 쓰는 캔버스·문맥·그리개·배율·카메라.
+export function mountUniverse3d({doc,slot,fallback,data,onNode=null,onPlanet=null,st=null,keep=null}){
   active?.dispose();
-  const win=doc.defaultView;
+  const win=doc.defaultView,sceneKeyNow=keep?.key??sceneKey(data);
   const setMode=(mode,why)=>{slot.dataset.mode=mode;slot.dataset.reason=why;};
   const why=quality3d({cores:win.navigator?.hardwareConcurrency,memoryGb:win.navigator?.deviceMemory,instances:data.nodes.length+data.links.length});
   if(why!=='OK'){setMode('svg',why);return null;}
-  const canvas=doc.createElement('canvas');
+  const canvas=keep?.canvas??doc.createElement('canvas');
   const planets=planetsOf(data),example=Boolean(data.example);
   canvas.className='universe-3d-canvas'+(example?' universe-example-canvas':'');canvas.tabIndex=0;canvas.setAttribute('role','application');
   canvas.setAttribute('aria-label',(example?'3D 예시 우주, ':'3D 지식 우주, ')+'행성 '+planets.length+'개 별 '+data.nodes.length+'개. 화살표로 돌리고 플러스 마이너스로 확대합니다. 같은 내용을 2D 그림으로도 볼 수 있습니다');
@@ -55,26 +59,47 @@ export function mountUniverse3d({doc,slot,fallback,data,onNode=null,onPlanet=nul
   const key=doc.createElement('ul');key.className='universe-3d-key';
   for(const [k,text] of UNIVERSE_KEY){const li=doc.createElement('li');li.className='universe-3d-key-item universe-3d-key-'+k;const mark=doc.createElement('span');mark.className='universe-3d-key-mark';mark.setAttribute('aria-hidden','true');li.append(mark,doc.createTextNode(text));key.append(li);}
   let disposed=false,raf=0,renderer=null,started=0,lastT=0,prevT=0,dragging=false,frames=0;
-  const deltas=[],owned=[],pointers=new Map();
+  const deltas=[],owned=[],pointers=new Map(),heard=[];   // heard(V11A): 이 장면이 캔버스에 단 듣개
   const reduced=Boolean(win.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
   let observer=null,watcher=null,seer=null,onScreen=true;   // V10FIX M-09: 화면 진입 판정(탑과 같은 IntersectionObserver)
-  const dispose=()=>{
+  // V11A: soft = 장면만 치운다(캔버스·문맥·그리개는 다음 장면이 이어 쓴다).
+  const dispose=soft=>{
     if(disposed)return;disposed=true;if(active===handle)active=null;
     if(raf)win.cancelAnimationFrame(raf);
     observer?.disconnect();watcher?.disconnect();seer?.disconnect();win.removeEventListener?.('blur',dropPointers);
     canvas.removeEventListener('webglcontextlost',onLost);doc.removeEventListener('visibilitychange',onVisible);
+    for(const a of heard)canvas.removeEventListener(...a);
     for(const o of owned)o.dispose();
+    if(soft===true)return;
     renderer?.dispose();if(!gl.isContextLost())renderer?.forceContextLoss();
     canvas.remove();hint.remove();tag?.remove();stage.remove();key.remove();
   };
   const toFallback=reason=>{dispose();fallback.hidden=false;slot.hidden=true;setMode('svg',reason);};
   const onLost=()=>toFallback('CONTEXT_LOST');
   const onVisible=()=>invalidate();
-  const handle={dispose,canvas};
+  // V11A 3D 호스트(탑 adopt와 같은 순서): 칸 옮기기 → 대체 그림·누르면 여는 시트 바꾸기 → 배치가 같으면 끝, 다르면 같은 캔버스에 다시 짓기.
+  const adopt=next=>{
+    if(disposed||next.doc!==doc||!next.slot||!next.fallback)return false;
+    if(next.slot!==slot){if(!next.slot.parentNode)return false;next.slot.replaceWith(slot);}
+    fallback=next.fallback;fallback.hidden=!slot.hidden;onNode=next.onNode??null;onPlanet=next.onPlanet??null;
+    // V11FIX N-3: 다시 짓기가 그리기 차례 안에서 던져도 화면을 깨지 않게 3D를 치우고 새 그리기의 2D 우주를 보인다(탑과 같음).
+    try{
+      const k=sceneKey(next.data);if(k===sceneKeyNow)return true;
+      dispose(true);
+      const h=mountUniverse3d({...next,slot,fallback,keep:{canvas,gl,renderer,key:k,cam,ratio,lowered}});
+      if(!h){renderer.dispose();if(!gl.isContextLost())renderer.forceContextLoss();canvas.remove();slot.hidden=true;fallback.hidden=false;}
+    }catch{
+      if(active&&active!==handle)active.dispose();
+      if(!disposed)toFallback('ADOPT_FAILED');
+      else{renderer.dispose();if(!gl.isContextLost())renderer.forceContextLoss();canvas.remove();slot.hidden=true;fallback.hidden=false;setMode('svg','ADOPT_FAILED');}
+    }
+    return true;
+  };
+  const handle={dispose,canvas,adopt};
   canvas.addEventListener('webglcontextlost',onLost);doc.addEventListener('visibilitychange',onVisible);
-  try{renderer=new WebGLRenderer({canvas,context:gl,antialias:true,alpha:true});}catch{toFallback('RENDERER_FAILED');return null;}
-  const coarse=isCoarsePointer(win);let ratio=renderPixelRatio({dpr:win.devicePixelRatio,coarse}),lowered=false;
-  renderer.setPixelRatio(ratio);slot.dataset.pixelRatio=String(ratio);
+  try{renderer=keep?.renderer??new WebGLRenderer({canvas,context:gl,antialias:true,alpha:true});}catch{toFallback('RENDERER_FAILED');return null;}
+  const coarse=isCoarsePointer(win);let ratio=keep?.ratio??renderPixelRatio({dpr:win.devicePixelRatio,coarse}),lowered=Boolean(keep?.lowered);   // V11A: 느려서 낮춘 배율도 이어 간다
+  if(renderer.getPixelRatio()!==ratio)renderer.setPixelRatio(ratio);slot.dataset.pixelRatio=String(ratio);
   renderer.setClearColor(0x000000,0);
 
   // 장면: 별(상태 무관 구체) 한 묶음 + 늦음 테두리 한 묶음 + 기억함 후광 한 묶음 + 링크 선 하나.
@@ -88,7 +113,7 @@ export function mountUniverse3d({doc,slot,fallback,data,onNode=null,onPlanet=nul
   try{
     const eq=own(new DataTexture(envTexels({...skyAt(13),bottom:BACKDROP.mid}),TEX.env[0],TEX.env[1],RGBAFormat,UnsignedByteType));
     eq.mapping=EquirectangularReflectionMapping;eq.colorSpace=SRGBColorSpace;eq.magFilter=eq.minFilter=LinearFilter;eq.needsUpdate=true;
-    const pm=new PMREMGenerator(renderer);env=own(pm.fromEquirectangular(eq).texture);pm.dispose();
+    const pm=new PMREMGenerator(renderer);env=own(pm.fromEquirectangular(eq)).texture;pm.dispose();   // V11FIX M-1: 렌더 타깃째 소유
   }catch{env=null;}
   // V10F: 별도 빛을 받는다(평면 원판처럼 보이던 단색 재질 → 둥근 음영).
   const solid=own(new MeshStandardMaterial({color:0xffffff,roughness:0.45,metalness:0.05,envMap:env,envMapIntensity:0.5}));
@@ -171,12 +196,13 @@ export function mountUniverse3d({doc,slot,fallback,data,onNode=null,onPlanet=nul
   const pickSize=radius=>{pickMat.size=2*radius/HALO_SPRITE.ringR/tanHalf();};
 
   const aspect=()=>{const w=canvas.clientWidth||1,h=canvas.clientHeight||1;return w/h;};
-  const cam=st?(st.camUniverse??=universeCamera(data.bound,1)):universeCamera(data.bound,1);
-  let fitted=Boolean(st?.camUniverseFitted);
+  const cam=st?(st.camUniverse??=universeCamera(data.bound,1)):keep?.cam??universeCamera(data.bound,1);   // V11A: 다시 지어도 카메라 그대로
+  let fitted=Boolean(keep)||Boolean(st?.camUniverseFitted);
   const aim=()=>{clampUniverseCamera(cam,data.bound,aspect());const p=universePosition(cam);camera.position.set(p.x,p.y,p.z);camera.lookAt(0,0,0);};
+  const size2=new Vector2();   // V11A: 크기가 그대로면 다시 넣지 않는다(이어 쓰는 캔버스가 한 프레임 비지 않게)
   const resize=()=>{
     const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;
-    renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();names?.setAttribute('viewBox','0 0 '+w+' '+h);
+    const at=renderer.getSize(size2);if(at.x!==w||at.y!==h)renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();names?.setAttribute('viewBox','0 0 '+w+' '+h);
     if(!fitted){Object.assign(cam,universeCamera(data.bound,w/h));fitted=true;if(st)st.camUniverseFitted=true;}
   };
   const visible=()=>Boolean(canvas.clientWidth&&canvas.clientHeight)&&doc.visibilityState==='visible'&&onScreen;
@@ -225,6 +251,8 @@ export function mountUniverse3d({doc,slot,fallback,data,onNode=null,onPlanet=nul
     picked.position.set(c.x,c.y,c.z);pickSize(planetRadius(c)*1.35);picked.visible=true;
     slot.dataset.selected='planet-'+c.code;invalidate();
   };
+  // V11A: 아래에서 캔버스에 다는 듣개를 heard에 적어 둔다(다시 지을 때 dispose가 뗀다). 다 단 뒤 원래 함수로 돌린다.
+  const listen=canvas.addEventListener;canvas.addEventListener=(...a)=>{heard.push(a);return listen.apply(canvas,a);};
   let down=null,pinch=0;
   canvas.addEventListener('pointerdown',e=>{
     canvas.setPointerCapture?.(e.pointerId);pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
@@ -268,7 +296,9 @@ export function mountUniverse3d({doc,slot,fallback,data,onNode=null,onPlanet=nul
     else used=false;
     if(used){e.preventDefault();invalidate();}
   });
+  delete canvas.addEventListener;
 
+  slot.dataset.builds=String(keep?Number(slot.dataset.builds||0)+1:1);   // V11A 측정값: 이 칸에서 장면을 지은 횟수(1 = 처음, 늘면 갱신)
   stage.append(...[canvas,names].filter(Boolean));
   slot.replaceChildren(...(tag?[tag]:[]),stage,key,hint);
   active=handle;
@@ -278,5 +308,6 @@ export function mountUniverse3d({doc,slot,fallback,data,onNode=null,onPlanet=nul
   // 화면이 다시 그려져 캔버스가 문서에서 빠지면 GPU 자원을 바로 돌려준다.
   watcher=new win.MutationObserver(()=>{if(!canvas.isConnected)dispose();});watcher.observe(doc.body,{childList:true,subtree:true});
   resize();invalidate();
+  if(keep&&canvas.isConnected){win.cancelAnimationFrame(raf);drawFrame(win.performance.now());}   // V11A: 붙은 캔버스에 다시 지었으면 같은 차례에 바로 그린다
   return handle;
 }

@@ -184,7 +184,7 @@ export function renderStudy(root,ctx,st){
   // B2C (DEFECT-5 묶음): 상자 쓰기 실패는 save가 던지지 않는다(설계). 버튼이 끝났을 때 그 날짜 초안이 실패 상태면 성공 문구 대신 실패 문구를 보인다(날짜가 옮겨 갔을 수 있어 st.date).
   const boxFailText=()=>{const c=box?.status().failed;return c?box.ERROR_TEXT[c]??T.failed:null;};
   const flagBoxFail=()=>{const x=box?.statusFor('STUDY_DAY',st.date);if(x?.has&&x.failed&&!st.error){st.message=box.ERROR_TEXT[x.failed]??T.failed;st.error=true;}};
-  const act=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;seen();try{await fn();}catch(e){st.message=box?.ERROR_TEXT[e?.code]??studyErrorText(e?.code);st.error=true;}flagBoxFail();await prepareStudy(ctx,st);await ctx.rerender();});
+  const act=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;st.near=null;seen();try{await fn();}catch(e){st.message=box?.ERROR_TEXT[e?.code]??studyErrorText(e?.code);st.error=true;}flagBoxFail();await prepareStudy(ctx,st);await ctx.rerender();});
   // B17 (H12-N02): 복습은 오늘 카드에 기록한다고 약속한다. 클릭 시점에 오늘 날짜를 다시 확인해, 화면을 그린 뒤 날짜가 바뀌었으면 기록하지 않고
   // "날짜가 바뀌었습니다"를 알린 뒤 오늘 화면으로 새로 그린다(옛 날짜 기준으로 계산한 다음 복습일 제안을 그대로 쓰지 않게, 결과를 다시 고르게 한다).
   const dayMoved=()=>{
@@ -242,7 +242,7 @@ export function renderStudy(root,ctx,st){
   const chip=b?.typing?T.typing:b?.has?'이 기기에만 있는 임시 입력 · '+(b.dirty?(b.failed?'아직 이 기기에 저장하지 못함':T.typing):T.saved)+(b.old?' · '+T.old:''):
     fs.status==='LOCAL_DRAFT'?'이 기기에만 있는 임시 입력 (아직 쌓기 전) · 임시 저장됨':fs.status==='CONFIRMED'?'쌓임 · 이 카드는 '+fs.latestConfirmCount+'번 쌓음':'아직 기록 없음';
   const dateIn=input(date,{inputmode:'numeric',placeholder:'YYYY-MM-DD',maxlength:'10'});
-  const go=d=>()=>{if(!dateKeyOK(d)){st.message='날짜는 YYYY-MM-DD 형식이어야 합니다.';st.error=true;void ctx.rerender();return;}st.date=d;st.form=null;st.reviewForm=null;st.message=null;st.notices=[];void ctx.perform(async()=>{await prepareStudy(ctx,st);await ctx.rerender();});};
+  const go=d=>()=>{st.near=null;if(!dateKeyOK(d)){st.message='날짜는 YYYY-MM-DD 형식이어야 합니다.';st.error=true;void ctx.rerender();return;}st.date=d;st.form=null;st.reviewForm=null;st.message=null;st.notices=[];void ctx.perform(async()=>{await prepareStudy(ctx,st);await ctx.rerender();});};
   const nav=add(el('div',null,'buttons day-nav'),button('◀ 전날',()=>go(shiftDay(date,-1))()),dateIn,button('이동',()=>go(dateIn.value.trim())()),button('▶ 다음날',()=>go(shiftDay(date,1))()),button('오늘',()=>go(st.today)()));for(const n of [nav,rev])if(n.dataset)n.dataset.freshKeep='1';   // V7D2: 기준 전 날짜를 보면 날짜 이동·복습(오늘 카드에 기록)만 남기고 잠근다
   add(head,nav,add(el('div',null,'rc-line'),el('p',chip,'study-chip'),ctx.clearMenu?.('STUDY_DAY',date)??null));   // V7D2: 쌓은 공부 카드 ⋯ 메뉴
   if(st.ports?.persistent===false)add(head,hint('이 환경에는 임시 저장 공간이 없어 임시 입력이 앱을 닫거나 새로고침하면 사라집니다. 쌓기 전에 닫지 마세요. (PC 앱에서는 임시 입력이 기기에 암호화되어 남습니다.)'));
@@ -257,7 +257,7 @@ export function renderStudy(root,ctx,st){
       button(T.resumeDrop,()=>{if(ctx.confirmDialog?.(T.dropConfirm)??true)void act(async()=>{await st.ports.drafts.discard(fs.draftId);st.notices=[];})();})));
   }
   if(fs.latestConfirmCount+1>=3&&fs.status==='LOCAL_DRAFT')add(head,hint('이 카드는 이번이 '+(fs.latestConfirmCount+1)+'번째 쌓기입니다. 막지는 않지만, 모아서 한 번에 쌓는 편이 좋습니다.'));
-  if(st.message&&st.message!==boxFailText())add(head,el('p',st.message,st.error?'notice error study-message':'notice study-message'));   // 위 빨간 줄과 같은 문구는 두 번 보이지 않는다
+  if(st.message&&st.message!==boxFailText()&&st.near!=='mistake')add(head,el('p',st.message,st.error?'notice error study-message':'notice study-message'));   // 위 빨간 줄과 같은 문구는 두 번 보이지 않는다
   if(st.notices.some(n=>n.code!=='REBASE_TIMER_CLAIM_OVERLAP')&&st.notices.some(n=>n.code!=='REBASE_TIMER_TIMER_OVERLAP'&&n.code!=='REBASE_TIMER_CLAIM_OVERLAP'))add(head,el('p','다른 기기에서 바뀐 내용이 있어 합쳤어요.','notice study-merged'));   // FIX34 (H6): 겹침 알림만 있으면 합친 것이 아니다
   for(const n of st.notices)add(head,el('p',NOTICE_TEXT[n.code]??'알림을 읽지 못했어요'+' · 문의 코드 ▾\u2060'+n.code+'\u2060','notice study-notice'));
   add(out,head);
@@ -296,12 +296,13 @@ export function renderStudy(root,ctx,st){
   mProv.addEventListener('change',showRef);showRef();
   add(mis,el('h3','오답 추가','panel-title'),field('과목',mSub),field('출처',mProv),bookOpen?null:hint('시중 문제집 출처 · 4기기 업데이트 뒤 켜기'),plainRef,bookRef,field('틀린 이유',mCode),field('증거',mEv),field('메모',mNote),field('첫 복습일',mDue),
     button('오답 넣기',act(async()=>{
-      const reviewDue=mDue.value.trim(),isBook=mProv.value===BOOK_TAG,ref=isBook?bookRefFrom(mPage.value,mItem.value):itemRefFrom(mProv.value,mNum.value);
+      st.near='mistake';const reviewDue=mDue.value.trim(),isBook=mProv.value===BOOK_TAG,ref=isBook?bookRefFrom(mPage.value,mItem.value):itemRefFrom(mProv.value,mNum.value);
       if(ref===null){const e=new Error('STUDY_BOOK_REF');e.code='STUDY_BOOK_REF';throw e;}
       await st.flow.addMistake(date,{...mistakeFieldsOf(mSub.value,st.ports.newId),itemRef:ref,errorCode:mCode.value,evidence:mEv.value,note:mNote.value.trim(),...(isBook?{book:mBook.value.trim()}:{}),...(reviewDue?{reviewDue}:{})});
       st.lastProv=mProv.value;if(isBook)st.lastBook=mBook.value.trim();
       st.message='오답을 임시 입력에 넣었습니다.';
     }),'primary'));
+  if(st.message&&st.message!==boxFailText()&&st.near==='mistake')add(mis,el('p',st.message,st.error?'notice error study-message':'notice study-message'));   // V11B L-34: "오답 넣기" 글은 단추 아래 — 맨 위에 줄이 생겨 누른 단추가 밀리지 않게
   add(out,mis);
 
   // 4) 확정

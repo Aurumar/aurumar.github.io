@@ -645,10 +645,10 @@ function dateGrid(h,ctx,st,data,ym,o={}){
   const weeks=weekIndex(ach);
   const grid=h.el('div',null,'plan-cal');
   for(const w of ['월','화','수','목','금','토','일'])grid.append(h.el('span',w,'plan-cal-head'+(w==='토'?' sat':w==='일'?' sun':'')));
-  // 칸 안 기록 표시: 쌓은 과목 점(최대 3) · 시험 이름.
+  // 칸 안 기록 표시: 쌓은 과목 점(최대 3) · 시험 이름. V11B L-08: 점은 칸 왼쪽부터(xMinYMid, 날짜·미리보기와 같은 왼쪽 정렬, 전에는 가운데).
   const marks=(n,act,ex)=>{
     const subs=[...act.bySubject.keys()].slice(0,3);
-    if(subs.length){const dots=h.svg('svg',{class:'plan-dots',viewBox:'0 0 30 8',width:'100%','aria-hidden':'true'});subs.forEach((id,k)=>dots.append(h.svg('circle',{cx:5+k*10,cy:4,r:3.5,fill:subjectOf(subjects,id).color})));n.append(dots);}
+    if(subs.length){const dots=h.svg('svg',{class:'plan-dots',viewBox:'0 0 30 8',width:'100%',preserveAspectRatio:'xMinYMid meet','aria-hidden':'true'});subs.forEach((id,k)=>dots.append(h.svg('circle',{cx:5+k*10,cy:4,r:3.5,fill:subjectOf(subjects,id).color})));n.append(dots);}
     if(ex.length)n.append(h.el('span',ex.length>1?ex.length+'개':ex[0].replace(/\(.*\)/,''),'plan-cal-exam'));
   };
   // CAL1C: 앞(·tail이면 뒤) 빈칸(칸 수 그대로)에 다른 달 날짜를 흐린 숫자로(Windows 달력처럼, 누르지 않음·오늘·지난 날 표시 없음).
@@ -811,9 +811,11 @@ function homeCellEvents(h,cell,date,cal){
   const {el,add,svg}=h,box=el('span',null,'hc-ev'),kind=r=>r.event?String(r.event.kind):'OUTER';box.setAttribute('aria-hidden','true');
   for(const r of rows.slice(0,HOME_CELL_LINES)){const line=add(el('span',null,'hc-ev-line'),r.time?el('span',r.time,'hc-ev-time'):null,el('span',r.title,'hc-ev-title'));line.dataset.kind=kind(r);box.append(line);}
   if(rows.length>HOME_CELL_LINES)box.append(el('span','+'+(rows.length-HOME_CELL_LINES),'hc-ev-more'));
+  // V11B L-07: 점 색 = 자주 쓰는 종류(시험·수업 …)·직접 입력도 따로(data-own, 전에는 모두 약속 색) · 3개를 넘으면 접은 폭에서 점 옆에 전체 개수.
   const k=Math.min(rows.length,HOME_CELL_DOTS),dots=svg('svg',{class:'hc-ev-dots',viewBox:'0 0 '+(k*8-2)+' 6',width:k*8-2,height:6});
-  rows.slice(0,k).forEach((r,i)=>dots.append(svg('circle',{class:'hc-ev-dot','data-kind':kind(r),cx:3+i*8,cy:3,r:3})));
-  add(box,dots);cell.append(box);
+  const ownOf=r=>{const o=r.event?splitEventNotes(r.event.notes).kind:'';return o?(EVENT_KIND_PRESETS.includes(o)?o:EVENT_KIND_CUSTOM):'';};
+  rows.slice(0,k).forEach((r,i)=>{const own=ownOf(r),c=svg('circle',{class:'hc-ev-dot','data-kind':kind(r),cx:3+i*8,cy:3,r:3});if(own)c.setAttribute('data-own',own);dots.append(c);});
+  add(box,dots,rows.length>HOME_CELL_DOTS?el('span',String(rows.length),'hc-ev-n'):null);cell.append(box);
 }
 // 5) 금빛 농도: 오늘 집중 시간(담은 세션 분, 오늘 카드·벽돌과 같은 기준) → 0~4단계. 0 = 1시간 미만(금기 거의 없는 아이보리) · 1 = 1h · 2 = 3h · 3 = 5h · 4 = 8h 이상.
 //    앱이 화면 뿌리(<html data-gold>)에 적고 CSS가 바탕·머리띠 농도를 바꾼다. 펼친 달의 지난 날 칸도 그날 분으로 같은 단계(data-gold, 0이면 적지 않음 = 회색 빗금 그대로).
@@ -895,7 +897,10 @@ export function renderHomeCal(root,ctx,st){
     // 머리: ‹ [2026년 11월 9일 – 15일 ▾] › (가운데를 누르면 연간 달력, 오늘이 아니면 "오늘로")
     const range=el('strong',weekRangeText(monday),'hc-range'),rangeBtn=add(button(null,openYear,'secondary hc-range-btn'),range,el('span','▾','hc-range-icon'));rangeBtn.setAttribute('aria-label',weekRangeText(monday)+' · '+HOME_CAL_TEXT.yearOpen);
     const prev=button('‹',()=>pick(shiftDay(date,-7)),'secondary hc-step'),next=button('›',()=>pick(shiftDay(date,7)),'secondary hc-step');prev.setAttribute('aria-label','지난주');next.setAttribute('aria-label','다음 주');
-    add(out,add(el('div',null,'hc-nav'),prev,rangeBtn,next,st.date!==null||st.month!==null?button(HOME_CAL_TEXT.toToday,()=>{st.date=null;st.month=null;rerender();},'secondary hc-today'):null));
+    // V11B L-35: 오늘 주에는 "오늘로" 단추 대신 같은 폭의 빈 자리(보이지 않는 글자)를 둔다 — ‹·›를 눌러 단추가 생기면 가운데 글자가 좁아져 두 줄이 되고 단추가 밀렸다(360폭 10px).
+    const onToday=st.date===null&&st.month===null,slot=onToday?el('span',HOME_CAL_TEXT.toToday,'hc-today hc-today-off'):button(HOME_CAL_TEXT.toToday,()=>{st.date=null;st.month=null;rerender();},'secondary hc-today');
+    if(onToday)slot.setAttribute('aria-hidden','true');
+    add(out,add(el('div',null,'hc-nav'),prev,rangeBtn,next,slot));
     // 이번 주 띠: 칸 = 요일 · 날짜 숫자 · 점(V8W1: 오늘 = 금 칸 + 굵은 테 + 칸 위 "오늘", 지난 날 = 회색 빗금 칸). 누르면 그 날짜 목록.
     const strip=el('div',null,'hc-week');strip.setAttribute('role','group');strip.setAttribute('aria-label',weekRangeText(monday));
     for(const d of homeWeek(life,weekCal?.events,outer,monday,today,date)){
@@ -1029,7 +1034,7 @@ export function csatPlanModel(exams,today,ach){
   const c=countdown(exams,today);
   if(c.state==='NONE'||c.state==='AFTER')return null;
   const target=c.target,end=target.date,first=ach?.hasRecords&&ach.weeks?.length?ach.weeks[0].monday:null,floor=shiftDay(end,-7*MAX_GRID_WEEKS);
-  let start=first&&first<today?first:today;if(start<floor)start=floor;
+  let start=first&&first<today?first:today;if(start<floor)start=floor<today?floor:today;   // V11B L-04: 수능이 160주보다 멀면 바닥이 미래 → 시작 = 오늘(시작이 오늘보다 늦지 않게)
   const total=Math.max(1,dDay(start,end)),passed=Math.min(total,Math.max(0,dDay(start,today))),at=d=>Math.min(1,Math.max(0,dDay(start,d)/total));
   const marks=[...(exams?.items??[])].filter(x=>x.id!==target.id&&x.date<end).sort(byDate);
   const phaseAt=d=>Math.min(3,marks.filter(x=>x.date<=d).length);

@@ -218,7 +218,7 @@ export const stateText=r=>r.graduated?'졸업 · '+kstDay(r.graduatedAt)+' (30�
 
 export function renderCards(root,ctx,st){
   const doc=ctx.document??globalThis.document,{el,add,button,input,area,select,field}=maker(doc);
-  const act=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{await fn();}catch(e){st.message=st.ports?.box?.ERROR_TEXT?.[e?.code]??cardErrorText(e?.code);st.error=true;}await prepareCards(ctx,st);await ctx.rerender();});
+  const act=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;st.near=null;try{await fn();}catch(e){st.message=st.ports?.box?.ERROR_TEXT?.[e?.code]??cardErrorText(e?.code);st.error=true;}await prepareCards(ctx,st);await ctx.rerender();});
   const out=add(el('section',null,'panel study-panel cards-panel'),el('h2',CARD_TEXT.title,'panel-title'));out.id='study-cards';
   let proj=null;try{proj=cardsProjection(st);}catch{proj=null;}
   if(!proj){add(out,el('p','카드 목록을 계산하지 못했어요(기록 값 확인 필요).','notice error'));root.append(out);return out;}
@@ -228,7 +228,7 @@ export function renderCards(root,ctx,st){
   const head=add(el('div',null,'cards-head'),add(el('p',null,'cards-due'),el('span',proj.due.length,'cards-due-n'),el('span',proj.due.length?'장 오늘 복습':'장 · 오늘 복습할 카드 없음','cards-due-t')),
     proj.due.length&&!st.session?button('복습 시작',()=>{st.session={ids:proj.due.map(r=>r.id),i:0,back:false,results:[]};st.message=null;void ctx.rerender();},'primary cards-start'):null);
   add(out,head,el('p',CARD_TEXT.sub,'muted small'));
-  if(st.message)add(out,el('p',st.message,st.error?'notice error cards-message':'notice cards-message'));
+  if(st.message&&st.near!=='add')add(out,el('p',st.message,st.error?'notice error cards-message':'notice cards-message'));   // V11B L-34: "카드 넣기" 글은 단추 아래(renderForm)에 둔다 — 위에 줄이 생겨 누른 단추가 밀리지 않게
   if(st.pending.length)add(out,el('p','아직 안 쌓은 카드 입력 '+st.pending.length+'일치 · 이 기기에만 있어요 · 위 "지금 쌓기"로 저장 · 공부 카드는 새 기록이라 다른 기기도 최신 앱이어야 보여요','notice cards-pending'));   // V9FIX M-10: 새 종류 안내(쌓기 전마다 한 줄)
   // 1) 복습(한 장씩)
   if(st.session)add(out,renderSession(doc,ctx,st,proj,act));
@@ -309,9 +309,10 @@ function renderForm(doc,ctx,st,proj,act){
     add(box,field('앞면',front),field('뒷면',back));
   }
   add(box,button('카드 넣기',act(async()=>{
-    keep();await addCard(st,{kind,subject:form.subject,unit:form.unit,front:form.front,back:form.back,mine:form.mine,reasons:form.reasons,photo:kind==='WRONG'?form.photo:null});
+    st.near='add';keep();await addCard(st,{kind,subject:form.subject,unit:form.unit,front:form.front,back:form.back,mine:form.mine,reasons:form.reasons,photo:kind==='WRONG'?form.photo:null});
     st.form={subject:form.subject,unit:form.unit,reasons:[],photo:null};st.message=KIND_TEXT[kind]+'를 넣었어요 · 내일 첫 복습(임시 입력).';
   }),'primary cards-add'));
+  if(st.message&&st.near==='add')add(box,el('p',st.message,st.error?'notice error cards-message':'notice cards-message'));   // V11B L-34
   return box;
 }
 // 오늘 화면 작은 칸(지시서 3): "공부 카드 · 오늘 복습 n장" + 복습하기.

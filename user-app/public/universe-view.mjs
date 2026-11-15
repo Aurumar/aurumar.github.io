@@ -113,6 +113,7 @@ function exampleKey(h){
 }
 
 // 우주 패널 한 개. 3D는 WebGL2가 있을 때만 첫 장면이 그려진 뒤 SVG를 대신한다. 실패하면 SVG 그대로.
+let universe3d=null;   // V11A: 한 번 불러온 우주 3D 모듈(3D 호스트)
 function renderUniversePanel(ctx,state){
   const doc=ctx.document??globalThis.document,h={...maker(doc),doc},{el,add}=h;
   const head=add(el('div',null,'tower-head'),el('span','우주','eyebrow'),el('h2','지식 우주','panel-title')),out=add(el('section',null,'panel universe-panel'),head);
@@ -141,7 +142,10 @@ function renderUniversePanel(ctx,state){
   add(out,slot,scroller);
   if(example)add(out,exampleKey(h),legend(h,data,openPlanet),el('p','행성 이름이나 3D 행성을 누르면 어떤 기록이 이 행성이 되는지 볼 수 있어요','muted small'));
   else add(out,legend(h,data),el('p','행성 = 과목(누르면 별 수) · 붉은 테두리 = 복습 늦음 · 빛나는 별 = 기억함(졸업 포함) · 선 = 같은 과목의 같은 오답 코드','muted small'));
-  if(globalThis.WebGL2RenderingContext)import('./universe-3d.mjs').then(m=>{if(scroller.isConnected)m.mountUniverse3d({doc,slot,fallback:scroller,data,onNode:open,onPlanet:openPlanet,st:example?null:state});}).catch(()=>{slot.dataset.mode='svg';slot.dataset.reason='IMPORT_FAILED';});
+  // V11A 3D 호스트: 살아 있는 우주 3D가 있으면 같은 차례에 새 칸으로 옮겨 붙인다(배치가 바뀌었으면 장면만 갱신). 없을 때만 예전처럼 불러와 새로 만든다.
+  const u3={doc,slot,fallback:scroller,data,onNode:open,onPlanet:openPlanet,st:example?null:state};
+  if(universe3d?.adoptUniverse3d(u3))return out;
+  if(globalThis.WebGL2RenderingContext)import('./universe-3d.mjs').then(m=>{universe3d=m;if(scroller.isConnected)m.mountUniverse3d(u3);}).catch(()=>{slot.dataset.mode='svg';slot.dataset.reason='IMPORT_FAILED';});
   return out;
 }
 

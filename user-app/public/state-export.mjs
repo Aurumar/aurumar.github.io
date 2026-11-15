@@ -408,7 +408,12 @@ export function widgetLockedStatus({now,device='PC'}){return widgetStatusOf({now
 export const WIDGET_DDAY_MAX=3,WIDGET_EVENT_MAX=60,WIDGET_LABEL_MAX=12,WIDGET_KIND_MAX=20;
 export const WIDGET_EVENT_KIND=Object.freeze({DEADLINE:'기한',APPOINTMENT:'약속',REVIEW:'검토',MILESTONE:'중간 목표'});
 export const WIDGET_HIDDEN_DOMAINS=Object.freeze(['B','E']),WIDGET_HOSPITAL='병원',WIDGET_HOSPITAL_TITLE='병원 일정';
-const shortText=(v,max)=>typeof v==='string'&&v.isWellFormed()?clean(v,max).trim():'';
+// V11B L-05: 위젯 글자는 보이는 글자(자소 묶음)를 쪼개지 않고 자른다 — 코드 포인트로 자르면 👨‍👩‍👧 같은 결합 이모지가 반쪽으로 남는다(한글은 그대로).
+// 길이 상한은 예전 그대로 코드 포인트(widget-status-writer lineOK가 코드 포인트로 검사): 상한 안에 다 들어가는 묶음까지만. Segmenter가 없는 환경은 예전처럼 코드 포인트.
+const GRAPHEMES=typeof Intl==='object'&&typeof Intl.Segmenter==='function'?new Intl.Segmenter('ko',{granularity:'grapheme'}):null;
+// V11FIX N-5: 첫 묶음 하나가 상한을 넘으면(결합 부호가 아주 많은 글자) 빈 글자가 되어 그 일정·디데이가 위젯에서 통째로 빠졌다 → 그 묶음만 코드 포인트로 잘라 남긴다(예전과 같음).
+const graphemeCut=(s,max)=>{if(!GRAPHEMES)return [...s].slice(0,max).join('');let out='',n=0;for(const {segment} of GRAPHEMES.segment(s)){const k=[...segment].length;if(n+k>max){if(!out)out=[...segment].slice(0,max).join('');break;}out+=segment;n+=k;}return out;};
+const shortText=(v,max)=>typeof v==='string'&&v.isWellFormed()?graphemeCut(clean(v,Number.MAX_SAFE_INTEGER),max).trim():'';
 // V10FIX M-08: 진료·약 낱말. "약속"의 약은 빼고, 한 글자 "약"은 낱말 첫머리일 때만(약 A·약국 등).
 export const WIDGET_MEDICAL=/병원|진료|처방|치료|검진|진찰|의원|클리닉|치과|약국|복약|투약|상담|입원|수술|주사|(?:^|[^가-힣])약(?!속)/;
 export const widgetMedical=v=>typeof v==='string'&&WIDGET_MEDICAL.test(v);

@@ -93,7 +93,8 @@
   --cal-past:repeating-linear-gradient(135deg,var(--cal-past-line) 0 1px,transparent 1px 6px),var(--cal-past-bg);
   /* V10B 금빛 농도 5단계(오늘 집중 0·1h·3h·5h·8h+, <html data-gold>): 바탕·빛무리·머리띠. 넓은 면이라 명도 ≥75%(금지 띠 밖), 글자 검정 대비 그대로. 0 = 금기 거의 없는 차분한 아이보리.
      펼친 달 지난 날 칸 = 회색 빗금은 그대로 두고 바탕만 그날 집중만큼 옅은 금(지난 날 글자 #707070 대비 ≥3.5) */
-  --lb-goldlv-bg-0:#FAF9F6;--lb-goldlv-bg-1:#FBF8F1;--lb-goldlv-bg-2:#FCF4E2;--lb-goldlv-bg-3:#FCEFD3;--lb-goldlv-bg-4:#FBE9C1;
+  /* V11B L-02: 0단계 #FAF9F6 → #F2F4F6(금기 없는 차분한 회백). 1단계(#FBF8F1 = 지금 바탕)와 ΔE(CIE76) 2.17 → 5.14, 다른 단계 간격은 이미 5.7 이상 */
+  --lb-goldlv-bg-0:#F2F4F6;--lb-goldlv-bg-1:#FBF8F1;--lb-goldlv-bg-2:#FCF4E2;--lb-goldlv-bg-3:#FCEFD3;--lb-goldlv-bg-4:#FBE9C1;
   --lb-goldlv-glow1-0:rgba(255,255,255,.70);--lb-goldlv-glow1-1:rgba(255,250,232,.62);--lb-goldlv-glow1-2:rgba(255,244,210,.70);--lb-goldlv-glow1-3:rgba(252,236,186,.76);--lb-goldlv-glow1-4:rgba(250,228,165,.84);
   --lb-goldlv-glow2-0:rgba(232,196,90,0);--lb-goldlv-glow2-1:rgba(232,196,90,.10);--lb-goldlv-glow2-2:rgba(232,196,90,.18);--lb-goldlv-glow2-3:rgba(232,196,90,.27);--lb-goldlv-glow2-4:rgba(232,196,90,.38);
   --lb-goldlv-band:transparent;--lb-goldlv-band-0:#EFE3C2;--lb-goldlv-band-1:#F6E3A1;--lb-goldlv-band-2:#F2D98C;--lb-goldlv-band-3:#F0CF6E;--lb-goldlv-band-4:var(--lb-metal);
@@ -3288,3 +3289,16 @@ button.mcal-day.picked{outline:3px solid var(--cal-pick-edge);outline-offset:-3p
 html>body::before{z-index:4}
 /* L-28 우주 붉은 빛 테 범례 = 캔버스 테와 같은 값(--universe-late) */
 .universe-3d-key-late .universe-3d-key-mark{border-color:var(--universe-late);box-shadow:0 0 4px 1px var(--universe-late)}
+/* ===== 46. V11B_LOW (V10 낮음 정리, 통제탑 2026-11-15): 색은 :root 토큰만, 움직임·nowrap 없음(뒤 절 규칙). 앞 규칙은 그대로 두고 뒤에서 덮는다. ===== */
+/* L-35 오늘 주의 "오늘로" 빈 자리: 단추와 같은 폭(글자·테·안쪽 여백)만 차지하고 보이지 않음 */
+.hc-nav .hc-today-off{flex:none;visibility:hidden;display:inline-flex;align-items:center;min-height:40px;padding:9px 12px;border:1px solid transparent;font-weight:600;line-height:1.5;word-break:keep-all}
+/* L-07 접은 폭 일정 점: 자주 쓰는 종류·직접 입력도 따로 색(전에는 모두 약속 색) + 3개를 넘으면 점 아래 전체 개수 */
+.hc-ev-dot[data-own="시험"]{fill:var(--lb-slot-e)}.hc-ev-dot[data-own="수업"]{fill:var(--lb-subj-bio)}.hc-ev-dot[data-own="병원"]{fill:var(--lb-area-heart)}.hc-ev-dot[data-own="근무"]{fill:var(--lb-slot-a)}.hc-ev-dot[data-own="기념일"]{fill:var(--lb-chart-7)}.hc-ev-dot[data-own="기타"]{fill:var(--lb-ink-3)}.hc-ev-dot[data-own="직접 입력"]{fill:var(--money-cat-5)}
+.hc-ev-n{display:none}
+@media(max-width:700px){.hc-ev-n{display:block;justify-self:start;font-size:11px;font-weight:800;line-height:1.2;font-variant-numeric:tabular-nums;color:var(--lb-ink-1)}}
+/* L-11 펼친 달 지난 날 금 칸(data-gold) 숫자 = 보조 잉크(4단계 칸 위 대비 3.58 → 4.5 이상) */
+.home-cal .plan-day-cell[data-past][data-gold]:not(.today):not(.selected) .plan-cal-num{color:var(--lb-ink-3)}
+/* L-24 금액 "모름" 줄 = 중립 회색(나간 돈 파랑이 아님). 환불만 있는 달의 생활 지출은 fin-feel이 money-zero(중립)로 준다 */
+.fin-line .amount.unk{color:var(--lb-ink-3);font-weight:600}
+/* L-22 돈 달력 범례: 칸 합과 월 요약 "생활 지출"이 다른 이유 한 줄 */
+.mcal-legend .mcal-legend-note{flex-basis:100%;font-size:12px;color:var(--lb-ink-3)}

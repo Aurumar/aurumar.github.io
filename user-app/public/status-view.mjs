@@ -211,6 +211,7 @@ function moneyOf(ctx,date){try{return ctx.money?.(date)??null;}catch{return null
 // V8W6 3: 나만의 건물 수집. 쌓은 실제 벽돌 수(탑 입구와 같은 값)로 6채(오두막 → 성) 중 완성된 것을 모은다(저장 0, 새 기록 종류 0).
 // 위 = 고른 건물의 3D 모형(WebGL2가 있을 때, 첫 장면을 그린 뒤에만 보임) / 그 전·실패 때는 같은 부품의 2D 입면 그림. 아래 = 수집 목록 6칸(잠긴 건물은 빗금·점선 + "n장 남음").
 // SVG를 만들 수 없는 가짜 문서(시험)에서는 글자 줄만. 계산이 실패해도 상태 화면을 깨지 않게 칸을 비운다.
+let building3d=null;   // V11A: 한 번 불러온 건물 3D 모듈(3D 호스트)
 function buildingPanel({el,add},doc,whole,date,money){
   let s;
   try{s=buildingsOf(bricksOf(achieve({life:whole.life??null,study:whole.study??null,fin:whole.fin??null,today:date,money})));}catch{return null;}
@@ -218,7 +219,8 @@ function buildingPanel({el,add},doc,whole,date,money){
   const out=add(el('section',null,'panel st-build'),add(el('div',null,'st-build-head'),el('strong','나의 건물'),el('span','수집 '+s.count+' / '+s.total+' · 벽돌 '+s.bricks.toLocaleString('en-US')+'장','muted small st-build-count')));
   out.id='st-build';
   let pick=(s.latest??s.list[0]).id;
-  const name=el('strong',null,'st-build-name'),state=el('span',null,'muted small st-build-state'),view=el('div',null,'st-build-view'),slot=el('div',null,'bd-3d-slot'),art=el('div',null,'bd-fallback');slot.hidden=true;
+  const name=el('strong',null,'st-build-name'),state=el('span',null,'muted small st-build-state'),view=el('div',null,'st-build-view'),art=el('div',null,'bd-fallback');
+  let slot=el('div',null,'bd-3d-slot');slot.hidden=true;   // V11FIX H-1: let — 다시 그린 뒤에는 살아 있는 3D 칸으로 바뀐다(paint)
   add(view,slot,art);
   const bar=el('progress',null,'lb-xp-bar st-build-bar');bar.max=1000;bar.value=Math.round(s.part*1000);bar.setAttribute('aria-label',nextBuildingText(s)+' · '+Math.round(s.part*100)+'%');
   const cards=[];
@@ -227,8 +229,14 @@ function buildingPanel({el,add},doc,whole,date,money){
     name.textContent=b.no+'호 · '+b.name+(b.done?'':' · 예상도');state.textContent=b.line+' · '+buildingStateText(b);
     for(const c of cards)c.setAttribute('aria-pressed',String(c.dataset.building===pick));
     if(svgOK)art.replaceChildren(buildingSvg(doc,b.id,{locked:!b.done,cls:'bd-svg bd-big'}));
+    // V11A 3D 호스트: 살아 있는 건물 3D가 있으면 같은 차례에 이 칸으로 옮겨 붙인다(건물이 바뀌었으면 같은 캔버스에 다시 짓고, 2D 그림을 잠깐 보이지 않는다). 없을 때만 예전처럼.
+    // V11FIX H-1: 상태 화면을 다시 그리면 adopt가 이 패널의 자리 칸을 살아 있는 칸으로 바꿔 끼운다(replaceWith) → 문서에서 빠진 옛 칸 대신 지금 view 안의 칸을 쥔다.
+    // 옛 칸을 그대로 넘기면 다음 카드 누름에서 adopt가 거절하고(문서 밖 칸), 2D 그림이 3D 아래에 함께 보이며 3D는 옛 건물로 남았다.
+    if(slot.parentNode!==view){const live=Array.from(view.children??[]).find(n=>n.classList?.contains('bd-3d-slot'));if(live)slot=live;}
+    const b3={doc,slot,fallback:art,id:b.id,locked:!b.done};
+    if(svgOK&&building3d?.adoptBuilding3d(b3))return;
     art.hidden=false;slot.hidden=true;
-    if(svgOK&&doc.defaultView?.WebGL2RenderingContext&&slot.isConnected!==false)import('./building-3d.mjs').then(m=>{if(art.isConnected&&pick===b.id)m.mountBuilding3d({doc,slot,fallback:art,id:b.id,locked:!b.done});}).catch(()=>{slot.dataset.mode='svg';slot.dataset.reason='IMPORT_FAILED';});
+    if(svgOK&&doc.defaultView?.WebGL2RenderingContext&&slot.isConnected!==false)import('./building-3d.mjs').then(m=>{building3d=m;if(art.isConnected&&pick===b.id)m.mountBuilding3d(b3);}).catch(()=>{slot.dataset.mode='svg';slot.dataset.reason='IMPORT_FAILED';});
   };
   const list=el('ol',null,'st-build-list');list.setAttribute('aria-label','건물 수집 '+s.count+' / '+s.total);
   for(const b of s.list){

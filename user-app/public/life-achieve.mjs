@@ -196,7 +196,8 @@ function compute(life,study,today,money=null){
   const visibleDone=new Array(n),qualified=new Array(n);
   // V10C-3: 그날 '어쩔 수 없음'(해 없음)으로 적은 습관은 그날 분모에서 뺀다(완료로도 못함으로도 세지 않아 연속·완벽한 날·퀘스트가 끊기지 않는다).
   const excusedOf=(i,h)=>{const c=parsed[i].card;return Boolean(c&&Object.hasOwn(c.habits,h.id)&&entryExcused(h,c.habits[h.id]));};
-  const coreAt=new Array(n);for(let i=0;i<n;i++)coreAt[i]=(basisAt(dates[i],parsed[i].card)?.all??core).filter(h=>!excusedOf(i,h));   // FIX68 (F2): 그날 기준의 보이는 매일 습관(없으면 지금 목록)
+  // V11B L-13 (통제탑 기본안 2026-11-15): 퀘스트 고르기는 해 없음을 빼기 전 목록(questAt)으로 한다 — 햇볕이 오늘 퀘스트일 때 해 없음을 눌러도 다른 습관으로 바뀌지 않고, 그날 그 퀘스트는 완료로 친다.
+  const coreAt=new Array(n),questAt=new Array(n);for(let i=0;i<n;i++){questAt[i]=basisAt(dates[i],parsed[i].card)?.all??core;coreAt[i]=questAt[i].filter(h=>!excusedOf(i,h));}   // FIX68 (F2): 그날 기준의 보이는 매일 습관(없으면 지금 목록)
   // V10FIX2 (소유자 "끼니X는 달성률에넣지마"): 그날 셈 목록(countAt) = coreAt에서 끼니 ✕도 뺀 것 — 연속 50% 판정·완벽한 날·하루 칸 수(visibleTotal)의 분모.
   // 퀘스트 고르기(pickHabit)는 coreAt 그대로(✕를 눌러도 오늘 퀘스트가 바뀌지 않게).
   const mealMissOf=(i,h)=>{const c=parsed[i].card;return Boolean(c&&Object.hasOwn(c.habits,h.id)&&mealMissed(h,c.habits[h.id]));};
@@ -247,7 +248,7 @@ function compute(life,study,today,money=null){
   // 일간 퀘스트: 그날 이전 기록과 날짜만 보고 고른다(쌓은 그날 카드의 하루 종류만 예외). 쉬는 날은 벽돌을 내지 않는다.
   const examDays=(defs.exams?.items??[]).map(x=>dayNumber(x.date));
   const stOf=new Map(hStat.map(st=>[st.h.id,st]));
-  const pickHabit=i=>{
+  const pickHabit=(i,coreAt=questAt)=>{   // V11B L-13: 해 없음을 빼기 전 목록(끼니 ✕는 원래 안 뺌, V10FIX2)
     const core=coreAt[i].filter(h=>stOf.has(h.id));   // FIX68 (F2): 그날 기준 목록(정의가 없는 id는 고르지 않음)
     if(!core.length)return null;
     const span=Math.min(DAILY_WINDOW,i);
@@ -270,7 +271,8 @@ function compute(life,study,today,money=null){
     }
     const no=dayNumber(dates[i]);
     if(examDays.some(d=>d-no>=1&&d-no<=EXAM_REVIEW_DAYS))list.push({id:'review',label:'오답 복습 1건',value:p.reviews,target:1,unit:'건',done:p.reviews>=1,xp,area:'HEAD'});
-    else{const h=pickHabit(i);if(h){const done=doneOf(i,h);list.push({id:'habit',habitId:h.id,label:h.name,value:done?1:0,target:1,unit:'',done,xp,area:h.area});}}
+    // V11B L-13: 해 없음 = 할 수 없는 날 → 그날 퀘스트 완료
+    else{const h=pickHabit(i);if(h){const done=doneOf(i,h)||excusedOf(i,h);list.push({id:'habit',habitId:h.id,label:h.name,value:done?1:0,target:1,unit:'',done,xp,area:h.area});}}
     return list;
   };
   // 월간 퀘스트: 예산이 있으면 이달 예산 지키기(달이 끝난 다음 날 판정, 돈 영역), 없으면 이달의 벽돌(머리 영역). 금액은 받지 않는다(money.months = 지킨 달 여부와 사용률뿐).
@@ -436,12 +438,15 @@ function compute(life,study,today,money=null){
 // FIX36 (H36-M5): 태그는 편집 칸에서 지울 수 있으므로 메모의 명세서 표지(fin-reconcile statementTxnInput: `명세서 <sha12> · [표 N · ]행 N`)도 본다. 투영 줄에는 메모가 없어 fin.txns에서 읽는다(줄 key = 'T:' + 거래 id).
 export const MONEY_DAY_XP=XP.HABIT_UNIT*AUTO_DEFAULT;
 const STATEMENT_TAG='명세서:',STATEMENT_MEMO=/^명세서 [0-9a-f]{12}(?: · 표 \d+)? · 행 \d+/;
+// V11B L-23: 투자 손실(태그 '투자손익' = fin-charts INVEST_TAG, V10E)은 지출 기록이 아니다 — 그 줄만 있는 날은 돈 XP 날이 아니다. 엔진이 가계부 모듈을 불러오지 않게 글자만 같이 둔다(시험이 같은 값인지 본다).
+export const MONEY_XP_SKIP_TAG='투자손익';
 export function moneyEntryDays(fin,today){
   const oldest=shiftDay(today,-MAX_SPAN_DAYS),dates=new Set(),fromStatement=new Set();
   for(const t of fin?.txns??[])if(typeof t?.data?.memo==='string'&&STATEMENT_MEMO.test(t.data.memo))fromStatement.add('T:'+t.id);
   for(const l of fin?.lines??[]){
     if(l.source!=='TXN'||l.kind!=='EXPENSE'||typeof l.date!=='string'||l.date>today||l.date<oldest)continue;
     if(fromStatement.has(l.key)||(typeof l.memo==='string'&&STATEMENT_MEMO.test(l.memo)))continue;
+    if((l.tags??[]).includes(MONEY_XP_SKIP_TAG))continue;
     if(!(l.tags??[]).some(t=>typeof t==='string'&&t.startsWith(STATEMENT_TAG)))dates.add(l.date);
   }
   return [...dates].sort();
