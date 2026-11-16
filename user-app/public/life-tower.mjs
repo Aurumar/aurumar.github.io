@@ -17,10 +17,11 @@ const DRAW_MARGIN=4,KST_HOUR_MS=9*3600*1000,LABEL_ON_BONUS=3;
 // FIX49C: 작은 금빛 벽돌(일기 0.25·리뷰 0.5)도 무게만큼 그 칸 높이에 든다(층 높이 = 그 주 가장 높은 칸).
 const dayHeight=d=>Math.min(MAX_ROWS,d.items.reduce((s,b)=>s+(b.half?0.5:1),0)+(d.small??[]).reduce((s,b)=>s+b.weight,0));
 // 층마다 높이가 다르다: 그 주에 가장 높은 날에 맞춘다(최소 3줄, 최대 16줄). base = 그 층 바닥 높이(줄 단위).
-export function towerLayout(weeks){
+// V13 L-E1: headroom = 맨 위층 위 빈 공간(뷰박스 단위). 목표 높이 흰 선이 지금 지붕보다 높으면 그만큼 위를 띄운다(기본 0 = 예전 그대로).
+export function towerLayout(weeks,{headroom=0}={}){
   let z=0;
   const floors=weeks.map(w=>{const rows=Math.max(MIN_ROWS,Math.ceil(Math.max(0,...w.days.map(dayHeight))));const f={week:w,base:z,rows};z+=rows+SLAB;return f;});
-  const height=PAD_TOP+z*H+(COLS+DEPTH)*B+PAD_BOTTOM;
+  const height=PAD_TOP+headroom+z*H+(COLS+DEPTH)*B+PAD_BOTTOM;
   return {floors,height,width:VIEW_W,ground:height-PAD_BOTTOM-(COLS+DEPTH)*B,totalRows:z};
 }
 // 화면 위쪽 y(뷰박스 단위) → 그 층의 범위. 층 k의 화면 범위 = 윗면 위 ~ 바닥 앞면 아래.
@@ -128,25 +129,78 @@ function drawRange(s,layout,group,{from,to},onFloor){
   group.dataset.from=String(from);group.dataset.to=String(to);
 }
 // 탑 SVG. 돌려주는 값: {svg, redraw({top,height})} — 보이는 범위가 그린 범위를 벗어날 때만 다시 그린다.
-export function buildTowerSvg(doc,weeks,{onFloor=null,view={}}={}){
-  const s=svgMaker(doc),layout=towerLayout(weeks);
+// V13 L-E1: goal(이번 주 하루 목표)·seasons(시즌)가 있으면 3D와 같은 목표 높이 흰 선(goalHeights)을 그린다. 뒤 두 변·뒤 기둥은 층 뒤, 앞 두 변·앞 기둥·표지는 층 앞.
+export function buildTowerSvg(doc,weeks,{onFloor=null,view={},goal=null,seasons=null}={}){
+  const s=svgMaker(doc),flat=towerLayout(weeks),cur=flat.floors.at(-1)?.week?.current?flat.floors.at(-1):null;
+  const frame=goalHeights({cur,roof:flat.totalRows,recent:flat.floors.map(f=>f.rows+SLAB),goal,seasons});
+  const headroom=goalHeadroom(frame,flat.totalRows,GOAL_OUT),layout=headroom?towerLayout(weeks,{headroom}):flat;
   const svg=s('svg',{class:'tower-svg',viewBox:'0 0 '+layout.width+' '+layout.height,width:'100%',role:'group','aria-label':'탑 '+weeks.length+'층'});
   const defs=s('defs'),grad=s('linearGradient',{id:'tower-gold',x1:'0',y1:'0',x2:'1',y2:'1'});
   grad.append(s('stop',{offset:'0%',class:'tower-gold-1'}),s('stop',{offset:'55%',class:'tower-gold-2'}),s('stop',{offset:'100%',class:'tower-gold-3'}));
   defs.append(grad);
   const group=s('g',{class:'tower-floors'});
-  svg.append(defs,group);
+  const at=(x,y,z)=>[LEFT+(x-y)*A,layout.ground+(x+y)*B-z*H],lines=goalLines(s,at,frame,GOAL_OUT);
+  svg.append(...[defs,lines.back,group,lines.front].filter(Boolean));
   let drawn=floorWindow(layout,view);
   drawRange(s,layout,group,drawn,onFloor);
   const redraw=v=>{const next=floorWindow(layout,v);if(next.from===drawn.from&&next.to===drawn.to)return false;drawn=next;drawRange(s,layout,group,drawn,onFloor);return true;};
-  return {svg,group,layout,redraw,drawn:()=>drawn};
+  // 첫 화면 기준 높이(뷰박스 y): 머리 공간이 있으면 지붕·이번 주 흰 실선 표지가 보이는 곳부터(흰 점선만 보이는 빈 위쪽이 아니라).
+  const focusY=headroom?Math.max(0,Math.min(at(0,0,layout.totalRows)[1],frame.week?at(-GOAL_OUT,-GOAL_OUT,frame.week.z)[1]-GOAL_LABEL_ROOM:Infinity)-8):0;
+  return {svg,group,layout,redraw,drawn:()=>drawn,goals:frame,headroom,focusY};
+}
+// ---------- V13 L-E1 2.5D 대체 화면의 목표 높이 흰 선 + 범례 (3D V12E goalFrame과 같은 규칙, 줄 단위) ----------
+// 이번 주 목표 = 이번 주 층 바닥판 위 하루 목표 줄 수(층 줄 상한 16으로 자른 높이) → 흰 실선 고리 + 바닥판부터 네 모서리 실선 기둥.
+// 다음 단계 = 지금 지붕 위 첫 시즌 경계(남은 주 × 최근 4층 평균 층 높이, 4층 미만이면 최소 층 높이 — 3D blueprint와 같은 규칙) → 흰 점선 고리 + 지붕부터 점선 기둥.
+// 글자(표지·범례)는 실제 목표(V13 L-E2). 범례 글자는 3D(tower-3d-layout goalLegend)와 같다 — 이 파일은 배치 파일을 불러올 수 없어(B44A-4b) 같은 규칙을 여기 두고 시험이 두 결과를 맞춰 본다.
+const GOAL_OUT=0.2,GOAL_EMPTY_OUT=0.3,GOAL_LABEL_ROOM=12,GOAL_DASH='4 3';
+export const goalDaysText=n=>'하루 '+n+'장';
+export function towerGoalLegend({goal=null,next=null}={}){
+  return [goal!=null&&'흰 실선 = 이번 주 목표 높이('+goalDaysText(goal)+')',next!=null&&'흰 점선 = 다음 단계 높이('+next+')'].filter(Boolean).join(' · ')||null;
+}
+// cur = 이번 주 층({base}, 없으면 이번 주 선 없음), roof = 지금 지붕 높이(줄), recent = 층마다 높이(줄 + 바닥판). 돌려주는 z는 줄 단위.
+export function goalHeights({cur=null,roof=0,recent=[],goal=null,seasons=null}={}){
+  const want=Number.isFinite(goal)&&goal>0?goal:null,g=want===null?null:Math.min(MAX_ROWS,want);
+  const week=g!==null&&cur?{goal:g,target:want,base:cur.base,z:cur.base+SLAB+g}:null;
+  let next=null;const end=seasons?.at(-1);
+  if(end&&!end.passed&&recent.length){
+    const last=recent.slice(-4),floorH=last.length>=4?last.reduce((n,r)=>n+r,0)/4:MIN_ROWS+SLAB;
+    const b=seasons.filter(x=>!x.passed).map(x=>({k:x.k,name:x.name,dDay:x.dDay,z:roof+Math.max(0,x.weeksLeft)*floorH})).find(x=>x.z>roof+1e-6);
+    if(b)next={...b,base:roof};
+  }
+  return {week,next,legend:towerGoalLegend({goal:week?want:null,next:next?next.name:null}),top:Math.max(week?.z??0,next?.z??0)};
+}
+// 선·표지가 뷰박스 위로 잘리지 않게 지붕(roof, 줄) 위에 더 띄울 공간(뷰박스 단위). 선이 없거나 지붕보다 낮으면 0.
+function goalHeadroom(frame,roof,out){
+  if(!frame.week&&!frame.next)return 0;
+  return Math.max(0,Math.ceil(GOAL_LABEL_ROOM+2*out*B+(frame.top-roof)*H-PAD_TOP));
+}
+// 고리(z1)와 기둥(z0→z1). 등각에서 (0,0)이 뒤, (COLS,DEPTH)가 앞이다. 표지는 고리 뒤 꼭짓점 위에 왼쪽 맞춤(오른쪽 아래로 내려가는 뒤 변과 겹치지 않는다).
+function goalLines(s,at,frame,out){
+  if(!frame.week&&!frame.next)return {back:null,front:null};
+  const back=s('g',{class:'tower-goal tower-goal-back','aria-hidden':'true'}),front=s('g',{class:'tower-goal tower-goal-front','aria-hidden':'true'});
+  const X0=-out,X1=COLS+out,Y0=-out,Y1=DEPTH+out;
+  const line=(g,p,q,kind)=>{const a={class:'tower-goal-line tower-goal-'+kind,x1:p[0].toFixed(1),y1:p[1].toFixed(1),x2:q[0].toFixed(1),y2:q[1].toFixed(1)};if(kind==='next')a['stroke-dasharray']=GOAL_DASH;g.append(s('line',a));};
+  const draw=(z0,z1,kind)=>{
+    line(back,at(X0,Y1,z1),at(X0,Y0,z1),kind);line(back,at(X0,Y0,z1),at(X1,Y0,z1),kind);
+    line(front,at(X1,Y0,z1),at(X1,Y1,z1),kind);line(front,at(X1,Y1,z1),at(X0,Y1,z1),kind);
+    if(z1-z0>1e-6){line(back,at(X0,Y0,z0),at(X0,Y0,z1),kind);for(const [x,y] of [[X0,Y1],[X1,Y1],[X1,Y0]])line(front,at(x,y,z0),at(x,y,z1),kind);}
+  };
+  const tag=(text,kind,y)=>{const [x]=at(X0,Y0,0),t=s('text',{class:'tower-goal-tag tower-goal-tag-'+kind,x:(x+4).toFixed(1),y:y.toFixed(1)});t.textContent=text;front.append(t);};
+  let weekY=null;
+  if(frame.week){draw(frame.week.base,frame.week.z,'week');weekY=at(X0,Y0,frame.week.z)[1]-3;}
+  if(frame.next)draw(frame.next.base,frame.next.z,'next');
+  if(frame.week)tag('이번 주 목표 · '+goalDaysText(frame.week.target),'week',weekY);
+  // 두 높이가 가까우면 다음 단계 표지는 이번 주 표지 아래 줄로(위로 올리면 뷰박스 위에 잘릴 수 있다)
+  if(frame.next){let y=at(X0,Y0,frame.next.z)[1]-3;if(weekY!==null&&Math.abs(y-weekY)<10)y=weekY+10;tag('다음 단계 · '+frame.next.name+' · '+dText(frame.next.dDay),'next',y);}
+  return {back,front};
 }
 // V7E 빈 집(0층) 2.5D: 3D 대체 화면도 빈 칸이 아니게 — 바닥(흰 대리석 원판)·받침(검은 대리석 + 윗모서리 금 테)·1층 예상도(아이보리 반투명 + 샴페인 점선). 탑과 같은 등각 단위.
 export const EMPTY_PLAN_LABEL='1층 예정';
 const PLINTH_Z=2.4,PLINTH_OUT=0.4,GROUND_OUT=0.9,PLAN_Z=SLAB+MIN_ROWS;
+const emptyAt=(x,y,z)=>[LEFT+(x-y)*A,PAD_TOP+(PLINTH_Z+PLAN_Z)*H+(x+y)*B-z*H];
 export function buildEmptyTowerSvg(doc){
-  const s=svgMaker(doc),z0=PLINTH_Z,z1=PLINTH_Z+PLAN_Z,ground=PAD_TOP+z1*H,lo=-GROUND_OUT,xr=COLS+GROUND_OUT,yr=DEPTH+GROUND_OUT;
-  const at=(x,y,z)=>[LEFT+(x-y)*A,ground+(x+y)*B-z*H];
+  const s=svgMaker(doc),z0=PLINTH_Z,z1=PLINTH_Z+PLAN_Z,lo=-GROUND_OUT,xr=COLS+GROUND_OUT,yr=DEPTH+GROUND_OUT;
+  const at=emptyAt;
   const minX=at(lo,yr,0)[0]-DRAW_MARGIN,maxX=at(xr,lo,0)[0]+DRAW_MARGIN,height=at(xr,yr,0)[1]+PAD_BOTTOM;
   const poly=(pts,cls)=>s('polygon',{points:pointsOf(pts),class:cls});
   const box=(x0,y0,x1,y1,za,zb,cls)=>[   // 보이는 세 면: 앞(y1)·오른쪽(x1)·위(zb)
@@ -165,6 +219,19 @@ export function buildEmptyTowerSvg(doc){
   const [lx,ly]=at(0,DEPTH,z0+PLAN_Z/2),label=s('text',{class:'tower-label tower-plan-label',x:lx-5,y:ly});label.textContent=EMPTY_PLAN_LABEL;g.append(label);
   svg.append(g);
   return svg;
+}
+// V13 L-E1: 빈 집 2.5D에도 3D 빈 집과 같이 받침 윗면 위 하루 목표 줄 수 높이에 흰 실선(다음 단계 없음). 받침 위에서 시작하는 선이라 가리는 것이 없어 모두 그림 위에 그린다.
+// 선·표지가 위로 잘리면 뷰박스 위쪽(min-y)만 음수로 넓힌다(그림 자리는 그대로). goal이 없으면 svg 그대로.
+export function withEmptyGoal(doc,svg,goal=null){
+  const z1=PLINTH_Z+PLAN_Z,frame=goalHeights({cur:{base:PLINTH_Z},roof:z1,goal});
+  if(!frame.week)return {svg,goals:frame};
+  const lines=goalLines(svgMaker(doc),emptyAt,frame,GOAL_EMPTY_OUT),head=goalHeadroom(frame,z1,GOAL_EMPTY_OUT);
+  svg.append(lines.back,lines.front);
+  if(head){
+    const minX=emptyAt(-GROUND_OUT,DEPTH+GROUND_OUT,0)[0]-DRAW_MARGIN,maxX=emptyAt(COLS+GROUND_OUT,-GROUND_OUT,0)[0]+DRAW_MARGIN,height=emptyAt(COLS+GROUND_OUT,DEPTH+GROUND_OUT,0)[1]+PAD_BOTTOM;
+    svg.setAttribute('viewBox',minX.toFixed(1)+' '+(-head).toFixed(1)+' '+(maxX-minX).toFixed(1)+' '+(height+head).toFixed(1));
+  }
+  return {svg,goals:frame};
 }
 
 function maker(doc){
@@ -347,28 +414,35 @@ export function renderTower(root,ctx,st){
   // T2A: 3D 하늘·해는 지금 KST 시각(시, 소수)으로 정한다. 배치 계산은 시계를 쓰지 않으므로 여기서 넘긴다.
   // V11FIX N-1: 하늘은 15분 단계로 묶는다(T2A-5 이웃 시각 15분 색 차이 상한과 같은 간격). 분마다 바뀌던 3D 키 때문에 같은 데이터도 1분 넘게 지나 저장하면 장면을 통째로 다시 지었다.
   const kst=new Date(Date.parse(ctx.now())+KST_HOUR_MS),hour=kst.getUTCHours()+Math.floor(kst.getUTCMinutes()/15)/4;
+  let focusGoal=null;
   if(!ach.hasRecords){
     add(out,el('p',EMPTY_TEXT,'tower-empty'));
     // V7E (2026-11-13 소유자 "3D가 사라지고 2D에 아무것도 안 보인다"): 0층이어도 받침·바닥·1층 예상도를 3D로, 3D가 안 되면 같은 그림을 2.5D로 보인다(빈 칸 없음).
     // SVG를 만들 수 없는 가짜 문서(R36)에서는 안내 줄만.
     if(typeof doc.createElementNS==='function'){
-      const scroller=add(el('div',null,'tower-scroll tower-scroll-empty'),buildEmptyTowerSvg(doc)),slot=el('div',null,'tower-3d-slot');slot.hidden=true;
-      add(out,slot,scroller);
+      const empty=withEmptyGoal(doc,buildEmptyTowerSvg(doc),week?.goal??null);   // V13 L-E1: 2.5D에도 이번 주 목표 흰 실선
+      const scroller=add(el('div',null,'tower-scroll tower-scroll-empty'),empty.svg),slot=el('div',null,'tower-3d-slot');slot.hidden=true;
+      add(out,slot,scroller,goalLegendLine(h,empty.goals));
       mountTower3dLater({doc,slot,scroller,titleTier:null,titleName:null,badges:null,onArea:a=>openAreaSheet(doc,a,ach.levels[a],ach,ctx),ach,st,seasons:[],onFloor:null,hour});
     }
   }
   else{
     const open=w=>ctx.sheet?.(w.index+'층 · '+w.monday+' 주',floorDetail(doc,w,ctx.kit));
     const scroller=el('div',null,'tower-scroll');scroller.tabIndex=0;scroller.setAttribute('aria-label','탑 보기, 위아래로 움직입니다');
-    const tower=buildTowerSvg(doc,ach.weeks,{onFloor:open,view:{top:st?.scrollTop??0,height:640}});
+    const tower=buildTowerSvg(doc,ach.weeks,{onFloor:open,view:{top:st?.scrollTop??0,height:640},goal:week?.goal??null,seasons});   // V13 L-E1: 3D와 같은 목표 높이 흰 선
     add(scroller,tower.svg);
     scroller.addEventListener('scroll',()=>{
-      if(st)st.scrollTop=scroller.scrollTop;
+      if(st){st.scrollTop=scroller.scrollTop;st.goalTop=scroller.scrollTop<1;}   // goalTop(V13): 사용자가 맨 위(흰 점선 쪽)에 둔 것은 다음 그리기에서 옮기지 않는다
       const scale=(scroller.clientWidth||tower.layout.width)/tower.layout.width;
       tower.redraw({top:scroller.scrollTop/scale,height:(scroller.clientHeight||640)/scale});
     });
     const slot=el('div',null,'tower-3d-slot');slot.hidden=true;
-    add(out,slot,scroller,el('p',WEEKDAY.join(' · ')+' 순서로 7칸 · 층을 누르면 그 주를 자세히 봅니다','muted small'));
+    add(out,slot,scroller,goalLegendLine(h,tower.goals),el('p',WEEKDAY.join(' · ')+' 순서로 7칸 · 층을 누르면 그 주를 자세히 봅니다','muted small'));
+    focusGoal=()=>{   // V13 L-E1: 머리 공간(흰 점선)이 생긴 탑은 처음 볼 때 지붕·이번 주 흰 실선이 보이는 곳부터(예전처럼 맨 위층이 첫 화면에 보이게). V10A가 되돌린 스크롤이 있으면 그대로 둔다.
+      if(!tower.focusY||!scroller.isConnected||scroller.scrollTop||st?.goalTop)return;
+      const w=tower.svg.getBoundingClientRect?.().width||0;
+      if(w>0)scroller.scrollTop=Math.round(tower.focusY*w/tower.layout.width);
+    };
     if(seasons.length)add(out,seasonList(h,seasons));
     const badges=houseBadges(ach,seasons),openArea=a=>openAreaSheet(doc,a,ach.levels[a],ach,ctx);
     add(out,badgeList(h,badges));
@@ -387,8 +461,11 @@ export function renderTower(root,ctx,st){
   if(week.diary)add(out,diaryQuestRow(h,week.diary.quest,ctx.kit));   // FIX49C: 일기·리뷰 기록이 하나라도 있을 때만
   ctx.achvPanel?.(out,{doc,ach,today,life:whole.life??null,money,st,kit:ctx.kit,storage:ctx.storage,sheet:ctx.sheet,ctx});   // Q1A: 업적·칭호 패널 자리(앱이 넘긴다, 시험에서는 없음). Q1B: 시트·내 퀘스트 저장용 ctx
   root.append(out);
+  focusGoal?.();
   return out;
 }
+// V13 L-E1: 2.5D 범례 한 줄(3D 범례와 같은 글자). 3D가 보이는 동안(칸이 숨지 않음)은 styles.css가 숨긴다. 선이 없으면 없음.
+function goalLegendLine(h,goals){return goals?.legend?h.el('p',goals.legend,'muted small tower-goal-legend'):null;}
 // 3D 탑(B44A): SVG를 먼저 그려 두고, WebGL2가 있으면 3D가 첫 장면을 그린 뒤에만 SVG를 숨긴다. 실패하면 SVG 그대로(같은 데이터). V7E: 빈 집도 같은 길.
 // V11A 3D 호스트: 한 번 불러온 3D 모듈을 기억해, 살아 있는 3D가 있으면 기다리지 않고 같은 차례에 새 칸으로 옮겨 붙인다(데이터가 바뀌었으면 장면만 갱신, 첫 프레임 전 2.5D 깜박임 0). 없을 때만 예전처럼 불러와 새로 만든다.
 let tower3d=null;

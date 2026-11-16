@@ -285,8 +285,8 @@ function habitCells(ctx,st,h,{defs,life,date,card,act,ach=null,recDate=recordDat
       // V10C-2: 누를 때마다 미기록 → 먹음(지금 시각) → 안 먹음(✕, 기존 못함 칸) → 미기록. 길게 누르면 시각 고치기(예전 시트).
       const next=mealNext(e),b=el('button',done?'✓ '+e.at:missed?'✕ 안 먹음':'먹음','life-habit-btn life-meal-btn'+(done?' on':missed?' miss':''));b.type='button';
       b.setAttribute('aria-label',hb.name+' '+(done?'먹음 '+e.at:missed?'안 먹음':'기록 없음')+' · 누르면 '+V10C_TEXT.mealNext[next]);
-      // V12FIX H-1: 지난 날은 먹음 표시(V12B-6 한 번 누르기 그대로) 뒤 바로 빈 시각 시트 → 그날 먹은 시각으로 고친다(시트 안내에 지금 시각이 들어갔다고 적음).
-      pressable(b,()=>{setEntry(hb,()=>next==='done'?entryFor(hb,{now:hhmmFromIso(ctx.now())}):next==='miss'?{...MISSED_ENTRY}:null)();if(past&&next==='done')askTime(hb,v=>entryFor(hb,{now:v}),PAST_TIME_TEXT.mealNote(nowHm()));},()=>editTime(hb,e));add(cell,b);
+      // V13 H-1(통제탑 결정): 지난 날 [먹음] = 빈 시각 시트만 연다. 시각을 넣고 저장해야 그날 카드에 먹음(취소하면 쓰기 0). 오늘은 예전처럼 지금 시각.
+      pressable(b,()=>{if(past&&next==='done'){askTime(hb,v=>entryFor(hb,{now:v}),PAST_TIME_TEXT.mealNote(nowHm()));return;}setEntry(hb,()=>next==='done'?entryFor(hb,{now:hhmmFromIso(ctx.now())}):next==='miss'?{...MISSED_ENTRY}:null)();},()=>editTime(hb,e));add(cell,b);
     }else if(hb.kind==='TIME'){
       const b=el('button',done?'수정':past?PAST_TIME_TEXT.put:'지금','life-habit-btn');b.type='button';
       pressable(b,()=>{if(done)editTime(hb,e);else if(past)askTime(hb,v=>entryFor(hb,{now:v}));else setEntry(hb,()=>entryFor(hb,{now:hhmmFromIso(ctx.now())}))();},()=>editTime(hb,e));add(cell,b);
@@ -963,11 +963,12 @@ const NO_SLEEP_LINE='지난밤 수면 기록 없음';   // hlt-ui sleepStepsLine
 export const RECORD_TEXT=Object.freeze({future:'미래 날짜는 습관을 기록할 수 없어요 · 일정만 볼 수 있어요.'});
 export const SLEEP_LINK_TEXT=Object.freeze({today:'오늘 수면 ',day:'그날 수면 ',noBed:'어제 취침 기록 없음',noBedDay:'전날 취침 기록 없음',add:'넣기',hc:'출처: Health Connect',health:'출처: 건강 기록',
   habit:(b,w)=>'취침 '+b+' → 기상 '+w,bedTitle:'어제 취침 시각',bedNote:'자정 넘어 잤으면 그 시각(예: 01:30)을 그대로 적어요 · 정오 전이고 기상보다 이르면 오늘 새벽 취침으로 저장해요.',
+  habitSrc:'출처: 취침·기상 기록',check:t=>'확인 필요 · 전날 카드의 새벽 취침 '+t+'을(를) 지난밤으로 셌어요(전날 기상 기록 없음)',
   replace:(d,t)=>dateLabel(d)+' 카드의 취침 '+t+'을(를) 바꿔요.',line:m=>'지난밤 수면 '+Math.floor(m/60)+':'+String(m%60).padStart(2,'0')+' (취침·기상)'});
 export const AWAKE_TEXT=Object.freeze({add:'정신 차린 시각 (선택)',line:(t,m)=>'정신 차림 '+t+' · 깨어나는 데 '+m+'분',title:'정신 차린 시각',label:'시각 (KST)',
   note:'기상 뒤 정신이 든 시각이에요 · 비워 두어도 돼요.',bad:'정신 차린 시각은 기상 시각부터 12시간 안이어야 해요.',clear:'지우기'});
 // V12FIX H-1: 지난 날짜 칸의 시각 넣기 · M-6: 새벽(04:00 전, 일기 날과 같은 경계) 야식은 전날 밤 카드에.
-export const PAST_TIME_TEXT=Object.freeze({put:'시각 넣기',note:d=>dateLabel(d)+' 기록이에요 · 그날 시각을 적어 주세요.',mealNote:t=>'먹음으로 표시했어요 · 시각은 지금('+t+')으로 들어갔으니 그날 먹은 시각을 적어 주세요.',lateNight:(d,t)=>dateLabel(d)+' 밤 야식 '+t+'으로 넣었어요.',lateNightLabel:'야식 먹음 · 어젯밤 카드에 지금 시각으로'});
+export const PAST_TIME_TEXT=Object.freeze({put:'시각 넣기',note:d=>dateLabel(d)+' 기록이에요 · 그날 시각을 적어 주세요.',mealNote:t=>'지난 날 기록이라 지금('+t+')을 넣지 않아요 · 그날 먹은 시각을 넣으면 먹음으로 저장해요(취소하면 그대로).',lateNight:(d,t)=>dateLabel(d)+' 밤 야식 '+t+'으로 넣었어요.',lateNightLabel:'야식 먹음 · 어젯밤 카드에 지금 시각으로'});
 export const LATE_NIGHT_END='04:00';
 export const BED_LOCKED_TEXT='그 취침은 새 시작 전 날짜 카드라 넣을 수 없어요(읽기 전용).';
 export const MEAL_TIME_TEXT=Object.freeze({input:'시각 입력',fix:(n,t)=>n+' 시각 '+t+' · 눌러서 고치기',add:n=>n+' 시각 직접 입력',lateEat:'야식 먹음',lateOn:'✓ 야식 먹음',lateAte:t=>'야식 먹음 '+t,lateTitle:'야식 시각'});
@@ -996,7 +997,9 @@ function sleepNode({el,add,button},{link,today=true,canBed=false,openBed}){
   const box=el('div',null,'life-sleep');
   if(link.missing){add(box,el('span',today?SLEEP_LINK_TEXT.noBed:SLEEP_LINK_TEXT.noBedDay,'life-sleep-text')   /* V12FIX L-B7: 지난 날짜는 "전날" */,canBed?button(SLEEP_LINK_TEXT.add,openBed,'secondary life-sleep-add'):null);return box;}
   add(box,el('strong',(today?SLEEP_LINK_TEXT.today:SLEEP_LINK_TEXT.day)+sleepText(link.minutes),'life-sleep-text'),
-    el('span',link.source==='HC'?SLEEP_LINK_TEXT.hc:link.source==='HEALTH'?SLEEP_LINK_TEXT.health:SLEEP_LINK_TEXT.habit(link.bed,link.wake),'muted small life-sleep-src'));
+    el('span',link.source==='HC'?SLEEP_LINK_TEXT.hc:link.source==='HEALTH'?SLEEP_LINK_TEXT.health:SLEEP_LINK_TEXT.habit(link.bed,link.wake),'muted small life-sleep-src'),
+    link.source==='HABIT'?el('span',SLEEP_LINK_TEXT.habitSrc,'muted small life-sleep-origin'):null,   // V13 L-B14: 습관으로 이은 수면에도 출처
+    link.check?el('span',SLEEP_LINK_TEXT.check(link.bed),'small life-sleep-check'):null);   // V13 L-B5: 전날 새벽 취침 + 전날 기상 없음 = 확인 필요
   box.dataset.source=link.source;
   return box;
 }
@@ -1044,9 +1047,13 @@ export function moveById(list,fromId,toId){
 }
 // 손잡이 ⠿. row = 끄는 줄, rows() = 같은 목록의 줄들(dataset.dragRow = id), ids() = 지금 순서의 id들, onMove(from,to).
 // 포인터를 잡은 채 움직이면 놓을 자리 줄에 표시(위·아래 선)만 그리고, 놓을 때 한 번 onMove(다시 그리기 1번). 끄는 동안 화면을 다시 그리지 않는다.
+// V13 L-B10: 키보드 ↑/↓로 옮기면 목록을 다시 그려 손잡이가 새로 생긴다 → 같은 id의 새 손잡이가 생기면(2초 안) 그 손잡이로 초점을 돌려준다(연달아 ↑/↓ 가능).
+let dragRefocus=null;
+export const dragRefocusPending=()=>dragRefocus;
 export function dragHandle({el},{name,id,row,rows,ids,onMove}){
   const g=el('span','⠿','lb-drag');g.setAttribute('role','button');g.setAttribute('tabindex','0');g.setAttribute('aria-label',DRAG_TEXT.handle(name));g.dataset.dragId=id;g.dataset.navOnly='1';
-  g.addEventListener('keydown',e=>{const k=e.key==='ArrowUp'?-1:e.key==='ArrowDown'?1:0;if(!k)return;e.preventDefault?.();const list=ids(),to=list[list.indexOf(id)+k];if(to)onMove(id,to);});
+  if(dragRefocus&&dragRefocus.id===id&&Date.now()-dragRefocus.t<2000){dragRefocus=null;queueMicrotask(()=>g.focus?.());}
+  g.addEventListener('keydown',e=>{const k=e.key==='ArrowUp'?-1:e.key==='ArrowDown'?1:0;if(!k)return;e.preventDefault?.();const list=ids(),to=list[list.indexOf(id)+k];if(!to)return;dragRefocus={id,t:Date.now()};onMove(id,to);if(g.isConnected===true&&dragRefocus?.id===id)dragRefocus=null;});   // 다시 그리지 않았으면(묶음이 달라 막힘) 초점은 그대로 여기
   g.addEventListener('pointerdown',e=>{
     if(e.button>0)return;e.preventDefault?.();
     try{g.setPointerCapture?.(e.pointerId);}catch{/* 잡지 못해도 손잡이 위 움직임으로 동작 */}
@@ -1745,7 +1752,7 @@ export function renderDayRecord(root,ctx,st,date,{toToday=null}={}){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,hint}=h;
   const whole=ctx.getWhole(),today=kstDate(ctx.now()),life=ctx.autoStack?boardLife(ctx,st,whole.life??null,today):whole.life??null;
   const out=el('section',null,'panel next-panel life-panel life-day-record');out.id='life-day';out.dataset.date=date;
-  const band=add(el('div',null,'life-day-band'),el('strong',dayRecordHead(date),'life-day-band-text'),toToday?el('span',' · ','life-day-band-dot'):null,toToday?button(DAY_RECORD_TEXT.toToday,toToday,'secondary life-day-today'):null);
+  const band=add(el('div',null,'life-day-band'),el('strong',dayRecordHead(date),'life-day-band-text'),toToday?el('span',' · ','life-day-band-dot'):null,toToday?button(DAY_RECORD_TEXT.toToday,()=>void (ctx.perform?ctx.perform(async()=>{toToday();}):toToday()),'secondary life-day-today'):null);   // V13 L-F3: 저장 중(perform이 잠근 동안)에는 겹쳐 다시 그리지 않는다
   band.setAttribute('role','status');add(out,band);
   if(st.message)add(out,el('p',st.message,st.error?'notice error life-message':'notice life-message'));
   if(date>today){out.dataset.future='1';add(out,hint(DAY_RECORD_TEXT.future));root.append(out);return out;}

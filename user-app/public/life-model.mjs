@@ -143,6 +143,9 @@ function validateExams(id,d){
 }
 
 // ---- PLAN_DAY (B43): 하루 계획. 계획 줄 id가 두 기기 합치기의 단위다. 벽돌은 0.5 단위(조각 = 반 장). ----
+// V13B L-C3 1단계(r83, 읽기 관용): 계획 줄의 선택 칸 done(true|false, 주간→오늘 완료를 기기 사이에 맞출 칸)을 받는다. 그 밖의 모르는 칸은 예전처럼 거절한다.
+// r83은 이 칸을 쓰지 않는다(life-plan PLAN_DONE_SYNC = false). 받은 칸은 줄 고치기·합치기에서 그대로 남긴다. 쓰기는 모든 기기가 r83 이상이 된 뒤(2단계).
+export const PLAN_ITEM_KEYS=Object.freeze(['id','subjectId','title','bricks','block']),PLAN_ITEM_OPTIONAL=Object.freeze(['done']);
 function validatePlanDay(id,d){
   shape(d,['date','items'],'INVALID_PLAN_DAY');
   requireValue(dateKeyOK(id)&&d.date===id,'INVALID_PLAN_DATE');
@@ -150,7 +153,9 @@ function validatePlanDay(id,d){
   requireValue(d.items.length<=MAX_PLAN_ITEMS,'PLAN_ITEM_LIMIT');
   const seen=new Set();
   for(const x of d.items){
-    shape(x,['id','subjectId','title','bricks','block'],'INVALID_PLAN_ITEM');
+    const opt=plain(x)?PLAN_ITEM_OPTIONAL.filter(k=>Object.hasOwn(x,k)):[];
+    shape(x,[...PLAN_ITEM_KEYS,...opt],'INVALID_PLAN_ITEM');
+    requireValue(!opt.includes('done')||typeof x.done==='boolean','INVALID_PLAN_ITEM');
     requireValue(lifeIdOK(x.id)&&!seen.has(x.id)&&lifeIdOK(x.subjectId),'INVALID_PLAN_ITEM');
     seen.add(x.id);text(x.title,MAX_PLAN_TITLE,false);
     requireValue(typeof x.bricks==='number'&&Number.isFinite(x.bricks)&&x.bricks>=0.5&&x.bricks<=MAX_PLAN_BRICKS&&Number.isInteger(x.bricks*2),'INVALID_PLAN_BRICKS');
@@ -443,11 +448,12 @@ export function habitState(h,e){
 export const MISSED_ENTRY=Object.freeze({done:false,at:null,minutes:null,count:null});
 // ---- V12B (소유자 2026-11-16): 수면 연동 · 정신 차린 시각 · 야식 시각. 새 종류·새 칸 0, 기존 LIFE_DAY 칸 안의 값만 ----
 // 수면 = 기상(hb-wake) 시각과 그 앞 취침(hb-sleep) 시각을 잇는다(저장 0, 그릴 때 계산). 취침은 "지금"을 자정 뒤에 누르면 그날 카드에, 자정 전이면 전날 카드에 있다.
-// Health Connect(Fold에서 가져온 hc- 수면)가 있으면 그것이 먼저다. 그다음 취침·기상, 그다음 건강 카드의 다른 주 수면(손으로 적은 것).
+// Health Connect(Fold에서 가져온 hc- 수면)가 있으면 그것이 먼저다. 그다음 건강 카드의 다른 주 수면(손으로 적은 것), 그다음 취침·기상(V13B L-B14 순위).
 // 정신 차린 시각 = 기상 줄의 minutes 칸(기상~정신 차림 분, 0~720). 시각 습관 줄의 minutes는 검사기가 예전부터 받고(0~1440) 시각 습관 계산은 at만 본다(r81은 무시).
 // 야식 시각 = 그날 카드 habits의 'hb-latemeal' 줄(정의 없는 기록 값, 시각 줄 모양). 야식을 먹으면 야식X(hb-nolate)는 기존 못함 줄이다.
 export const WAKE_ID='hb-wake',BED_ID='hb-sleep',LATE_ID='hb-nolate',LATE_MEAL_KEY='hb-latemeal';
-export const SLEEP_MAX_MIN=20*60,AWAKE_MAX_MIN=720,BED_NOON=12*60;
+// V13 L-B6: 취침·기상으로 잇는 수면 상한 20시간 → 14시간(낮 취침 오타가 "18시간 40분"으로 보이지 않게). RETIME_KEEP_MAX = L-B9 아래.
+export const SLEEP_MAX_MIN=14*60,AWAKE_MAX_MIN=720,BED_NOON=12*60,RETIME_KEEP_MAX=180;
 const hmOf=t=>timeOK(t)?Number(t.slice(0,2))*60+Number(t.slice(3,5)):null;
 const hmText=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 const timeEntry=e=>Boolean(e)&&e.done===true&&timeOK(e.at);
@@ -471,17 +477,27 @@ export function bedBefore(days,date,wakeAt){
   if(s>=BED_NOON)return {bedDate:y,bed:p.at,minutes:1440-s+w};
   const yw=habitOf(days,y,WAKE_ID);
   if(timeEntry(yw)&&hmOf(yw.at)>s)return null;   // 전날 아침 기상 전 취침 = 전날 수면 몫
-  return s<w?{bedDate:y,bed:p.at,minutes:w-s}:null;
+  // V13 L-B5: 전날 카드의 새벽(정오 전) 취침인데 전날 기상이 없으면 지난밤인지 그 전 밤인지 모른다 → 셈은 그대로 두고 check(확인 필요) 표시.
+  return s<w?{bedDate:y,bed:p.at,minutes:w-s,...(timeEntry(yw)?{}:{check:true})}:null;
 }
 // 오늘 수면 한 줄 자료. days = 쌓은(또는 초안을 얹은) 하루 카드 [{date,data}], hltDays = 건강 카드 [{date,data}].
 // 돌려줌: {source:'HC'|'HABIT'|'HEALTH', minutes, bed, wake} · 기상만 있고 취침이 없으면 {missing:true, wake} · 둘 다 없으면 null.
+// V13 L-B8: 같은 수면 구간이 두 카드(그날·전날)에 다 들어 있어도 한 번만 센다 — 구간을 시작 순으로 합쳐(겹침·같은 구간 = 하나) 길이를 더한다.
+export function mergedSleepMinutes(list){
+  const iv=list.map(i=>[Date.parse(i.startAt),Date.parse(i.endAt)]).filter(([a,b])=>Number.isFinite(a)&&Number.isFinite(b)&&b>a).sort((x,y)=>x[0]-y[0]||x[1]-y[1]);
+  let total=0,cur=null;
+  for(const [a,b] of iv){if(cur&&a<=cur[1]){cur[1]=Math.max(cur[1],b);continue;}if(cur)total+=cur[1]-cur[0];cur=[a,b];}
+  if(cur)total+=cur[1]-cur[0];
+  return Math.round(total/60000);
+}
 export function sleepLink({days=[],hltDays=[],date}){
-  const span=list=>{const m=list.reduce((n,i)=>n+Math.round((Date.parse(i.endAt)-Date.parse(i.startAt))/60000),0);if(!(m>0))return null;
+  const span=list=>{const m=mergedSleepMinutes(list);if(!(m>0))return null;
     const a=Math.min(...list.map(i=>Date.parse(i.startAt))),b=Math.max(...list.map(i=>Date.parse(i.endAt)));return {minutes:m,bed:hhmmFromIso(new Date(a).toISOString()),wake:hhmmFromIso(new Date(b).toISOString())};};
+  // V13B L-B14(통제탑 결정): 순위 = Health Connect > 건강 기록(손으로 적은 주 수면) > 습관(취침·기상).
   const hc=span(hltMainSleeps(hltDays,date,true));if(hc)return {source:'HC',...hc};
-  const we=habitOf(days,date,WAKE_ID),wake=timeEntry(we)?we.at:null;
-  if(wake){const b=bedBefore(days,date,wake);if(b&&b.minutes>0&&b.minutes<=SLEEP_MAX_MIN)return {source:'HABIT',minutes:b.minutes,bed:b.bed,wake,bedDate:b.bedDate};}
   const other=span(hltMainSleeps(hltDays,date,false));if(other)return {source:'HEALTH',...other};
+  const we=habitOf(days,date,WAKE_ID),wake=timeEntry(we)?we.at:null;
+  if(wake){const b=bedBefore(days,date,wake);if(b&&b.minutes>0&&b.minutes<=SLEEP_MAX_MIN)return {source:'HABIT',minutes:b.minutes,bed:b.bed,wake,bedDate:b.bedDate,...(b.check?{check:true}:{})};}
   return wake?{missing:true,wake}:null;
 }
 // "어제 취침 넣기"에서 적은 시각을 어느 카드에 둘지: 정오 전이고 기상보다 이르면 그날(자정 넘김), 아니면 전날.
@@ -501,10 +517,12 @@ export function wakeWithAlert(e,alertHm){
   return m<=AWAKE_MAX_MIN?{...e,minutes:m}:null;
 }
 // 기상 시각을 고쳐도 적어 둔 정신 차린 시각(절대 시각)은 그대로 두고 분만 다시 계산한다. 맞지 않으면(새 기상이 그 뒤) 지운다.
+// V13 L-B9: 고친 뒤 간격이 3시간(RETIME_KEEP_MAX)과 고치기 전 간격 중 큰 값보다 길면(기상을 밤 시각으로 고침 등) 정신 차린 시각을 지운다.
 export function wakeRetimed(prev,next){
   if(!next||!timeEntry(next))return next;
   const a=alertAt(prev);if(a===null)return {...next,minutes:null};
-  return wakeWithAlert({...next,minutes:null},a)??{...next,minutes:null};
+  const r=wakeWithAlert({...next,minutes:null},a);
+  return r&&r.minutes<=Math.max(RETIME_KEEP_MAX,awakeMinutes(prev)??0)?r:{...next,minutes:null};
 }
 // 주간 리뷰: 그 주(dates) 기상 줄의 깨어나는 데 걸린 분 평균(반올림)과 날 수. 없으면 avg null.
 export function weekAwake(days,dates){

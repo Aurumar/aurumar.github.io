@@ -11,7 +11,7 @@ import {towerScene,quality3d,framesTooSlow,initialCamera,clampCamera,cameraPosit
   COLS,DEPTH,PHI,CRANE_UP,SPARKS,DONE_ROOF_DROP,blueprint,houseTop,wholeCamera,gateCamera,isTallHouse,startView,flyFirst,settleCamera,spinKeepsFront,WHOLE_VIEW_PAD,craneRows,completionAt,sparkAt,BONUS_SPARKS,BONUS_BURST_SECONDS,bonusFresh,bonusSparkAt,withBadges,houseLabels,towersToPulse,pulseAt,PULSE_SECONDS,
   BRICK_MATERIALS,MORTAR_IVORY,brickTint,DAIS,TOWER_GOLD,JOINT,jointRows,TOP_GLOW,topGlow,glowPulse,sunWheel,daisTexels,MARBLE,MORTAR_GLOW,CHAMPAGNE_WALL,BLACK_MARBLE,goldFrame,isGoldRow,isShadeFace,shadeWalls,
   backdropAt,warmGround,CONTACT_SHADOW,shadowTexels,spinStep,renderPixelRatio,isCoarsePointer,v10fTint,scaffoldOf,smallCrane,ROW_H as JOINT_ROW,
-  goalFrame,GOAL_LINE,DOME,domeGlow,groundRings,ridgeLayers} from './tower-3d-layout.mjs';
+  goalFrame,GOAL_LINE,DOME,domeGlow,groundRings,ridgeLayers,daisTint} from './tower-3d-layout.mjs';
 // V12E: 목표 높이 흰 선(이번 주 목표 = 흰 실선, 다음 단계 = 흰 점선, 캔버스 아래 범례 한 줄) 복구, 배경 = 해 쪽 금빛이 번지는 하늘 돔 + 그림자를 받는 넓은 바닥 원반(가장자리 안개) + 지평선 먼 능선 두 겹.
 // V10F: 누르고 있는 동안만 회전 멈춤(떼면 다시 돈다), 화소 배율(PC 1.5~2·폰 ≤1.5), 그림자 지도 2배, MID도 둥근 벽돌, 빈 칸 판에 벽돌 줄눈, 짙은 금 받침·샴페인 금 모퉁이 탑·잔디 정원,
 // 예상도(전체 높이 선·반투명 유리) 대신 다음 한 층 금 골조 + 작은 금 크레인.
@@ -231,6 +231,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   // V7T: 완공 지붕 = 금속 금(환경맵), 단상 = 광택 흰 대리석(거칠기 0.18, 환경맵으로 은은한 반사, 금속 아님).
   const roofMat=own(new MeshStandardMaterial({color:data.cone?.color??SLAB,roughness:0.3,metalness:0.9}));
   const daisMat=own(new MeshStandardMaterial({map:daisTex,roughness:0.18,metalness:0})),daisSideMat=own(new MeshStandardMaterial({color:DAIS.side,roughness:0.3,metalness:0.9}));
+  daisMat.color.set(daisTint(sky));   // V13: 단상 윗면 = 보일 색 ÷ (노출 + 환경 조도). 흰색 그대로면 한낮 빛 + 환경맵에 넘쳐 화면 아래가 255 흰 판(V12HUNT 2-10 "왼쪽 아래 밝은 평면")
   const lit=[brickMat,halfMat,goldMat,todayMat,trimMat,craneMat,daisMat,daisSideMat,mortarMat,coreMat,frameMat,windowMat,stoneMat,plainMat,ornMat,leafMat,roofMat];
 
   const place=(mesh,i,r)=>{dummy.position.set(r.x,r.y,r.z);dummy.rotation.set(0,0,0);dummy.scale.set(r.sx,r.sy,r.sz);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);};

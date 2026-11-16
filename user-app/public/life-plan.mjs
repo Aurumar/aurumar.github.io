@@ -5,7 +5,7 @@
 // 계획 달성은 XP에 넣지 않는다(B42 공식 유지, 다음 단계에서 결정). 설계: AUTOPILOT\tasks\B43_PLANNER_DDAY.md, ADDENDUM A4·A5·A6.
 import {achieve,SUBJECT_BY_CODE} from './life-achieve.mjs';
 import {stable} from './life-rebase.mjs';
-import {lifeDefs,dDay,dayNumber,shiftDay,kstDate,validateLifeData,PLAN_BLOCKS,MAX_PLAN_ITEMS,MAX_PLAN_TITLE,MAX_PLAN_BRICKS,hhmmFromIso,brickOf,subjectOfSession,dateKeyOK,examStatusOf} from './life-model.mjs';
+import {lifeDefs,dDay,dayNumber,shiftDay,kstDate,validateLifeData,PLAN_BLOCKS,MAX_PLAN_ITEMS,MAX_PLAN_TITLE,MAX_PLAN_BRICKS,hhmmFromIso,brickOf,subjectOfSession,dateKeyOK,examStatusOf,PLAN_ITEM_OPTIONAL} from './life-model.mjs';
 
 // 보기는 5개(저장 lb.plan.view 값도 그대로), 머리 칩은 4개(P1A·D36-3): 오늘 · 주 · 월 · 연간 계획(V8W3-3: 옛 이름 "멀리"). 연간 계획을 고르면 그 아래 연 · 수능까지 칩 줄이 열린다.
 export const VIEWS=Object.freeze([['DAY','오늘'],['WEEK','주'],['MONTH','월'],['YEAR','연'],['CSAT','수능까지']]);
@@ -135,7 +135,7 @@ export function weekGrid(exams,today,ach){
   let start=ach.hasRecords&&ach.weeks.length&&ach.weeks[0].monday<nowMon?ach.weeks[0].monday:nowMon;
   const maxStart=shiftDay(end,-7*(MAX_GRID_WEEKS-1));if(start<maxStart)start=maxStart;
   const examWeeks=new Map();
-  for(const x of exams.items){const m=mondayOf(x.date);examWeeks.set(m,[...(examWeeks.get(m)??[]),x.name]);}
+  for(const x of exams.items){const m=mondayOf(x.date);examWeeks.set(m,[...(examWeeks.get(m)??[]),examDisplayName(x)]);}   // V13 L-C1: 주 계획 시험 이름도 "2028 수능"
   const cells=[],goalWeek=ach.goalBricks*7;   // V6A: 주 목표 = 하루 목표(설정 한 곳) × 7일
   for(let m=start;m<=end;m=shiftDay(m,7)){
     const w=weeks.get(m)??null,state=m<nowMon?'PAST':m===nowMon?'NOW':'FUTURE';
@@ -158,10 +158,21 @@ const blockIndex=b=>SHOWN_BLOCKS.indexOf(shownBlock(b));   // V7B: 옛 밤 줄�
 export const sortedItems=items=>items.map((x,i)=>({x,i})).sort((a,b)=>blockIndex(a.x.block)-blockIndex(b.x.block)||a.i-b.i).map(o=>o.x);
 export const planSum=items=>items.reduce((s,x)=>s+x.bricks,0);
 // 어제 계획 복사: 줄을 새 id로 복사해 초안만 만든다(저장하지 않는다). newId는 호출자가 준다(난수는 여기서 만들지 않는다).
+// V13B L-C3: 완료(done)는 그 날 그 줄의 값이라 다른 날로 복사하지 않는다(planItemCopy).
 export function copyPlan(prev,date,newId){
-  const used=new Set(),items=(prev?.items??[]).map((x,i)=>{let id=newId(i);while(used.has(id))id+='x';used.add(id);return {...x,id};});
+  const used=new Set(),items=(prev?.items??[]).map((x,i)=>{let id=newId(i);while(used.has(id))id+='x';used.add(id);return {...planItemCopy(x),id};});
   return {date,items};
 }
+// ---- V13B L-C3 주간→오늘 완료를 기기 사이에 — 1단계(r83, 읽기 관용)만 ----
+// 계획 줄 선택 칸 done(life-model PLAN_ITEM_OPTIONAL)을 검사기가 받고, 줄 고치기·합치기는 그 칸을 그대로 남긴다(planItemKept). 다른 날로 복사할 때만 뺀다(planItemCopy).
+// PLAN_DONE_SYNC = 완료 칸 쓰기·읽기 스위치. r83은 false: 완료 표시는 예전처럼 이 기기 lb.plan.link에만 적고(기록 쓰기 0), 받은 done 값으로 화면을 바꾸지도 않는다(r82와 같은 화면).
+// 2단계(r84, 모든 기기가 r83 이상이 된 뒤 통제탑 결정)에서 켠다. 켜기 전에는 r82 기기로 done 칸이 가지 않는다.
+export const PLAN_DONE_SYNC=false;
+export const planItemKept=x=>Object.fromEntries(PLAN_ITEM_OPTIONAL.filter(k=>x!==null&&typeof x==='object'&&Object.hasOwn(x,k)).map(k=>[k,x[k]]));
+export const planItemCopy=x=>{const out={...x};for(const k of PLAN_ITEM_OPTIONAL)delete out[k];return out;};
+// 고친 줄(next, 시트가 만든 기본 5칸)에 저장돼 있던 줄(old)의 선택 칸을 되붙인다. 같은 줄을 고칠 때만 부른다.
+export const planItemEdited=(old,next)=>({...planItemKept(old),...next});
+export const planItemDone=x=>PLAN_DONE_SYNC&&x?.done===true;
 // 두 기기 합치기: 줄 id 단위 3자 병합(base = 편집을 시작한 시점, mine = 내 초안, latest = 저장 직전 서버 최신). life-rebase와 같은 규칙.
 export function rebasePlan({date,base,mine,latest}){
   const map=p=>new Map((p?.items??[]).map(x=>[x.id,x])),B=map(base),M=map(mine),T=map(latest),notices=[],keep=new Map();
@@ -177,8 +188,10 @@ export function rebasePlan({date,base,mine,latest}){
     const mine_=m===undefined?'deleted':same(m,b)?'same':'modified',their=t===undefined?'deleted':same(t,b)?'same':'modified';
     if(mine_==='same'){if(their!=='deleted')keep.set(id,t);continue;}
     if(mine_==='modified'){
-      if(their==='same'||their==='modified'&&same(m,t)){keep.set(id,m);continue;}
-      keep.set(id,m);notices.push(their==='modified'?{code:'PLAN_VALUE_OVERWRITTEN',itemId:id,remote:t,mine:m}:{code:'PLAN_CONFLICT_KEPT_LOCAL',itemId:id,mine:m});
+      // V13B L-C3: 나는 선택 칸(done)을 안 바꿨고 상대가 바꿨으면 그 칸은 상대 값을 남긴다(제목만 고친 r83이 r84의 완료를 지우지 않게).
+      const mm=t!==undefined&&same(planItemKept(m),planItemKept(b))?{...planItemCopy(m),...planItemKept(t)}:m;
+      if(their==='same'||their==='modified'&&same(mm,t)){keep.set(id,mm);continue;}
+      keep.set(id,mm);notices.push(their==='modified'?{code:'PLAN_VALUE_OVERWRITTEN',itemId:id,remote:t,mine:mm}:{code:'PLAN_CONFLICT_KEPT_LOCAL',itemId:id,mine:mm});
       continue;
     }
     if(their==='modified'){keep.set(id,t);notices.push({code:'PLAN_CONFLICT_KEPT_REMOTE',itemId:id,remote:t});}
@@ -238,7 +251,7 @@ export function daySessions(study,date,draft=null){
 }
 // items = 그 날 계획 줄, sessions = daySessions 결과, marks = {links:{세션 id: 줄 id}, done:[손으로 완료 표시한 줄 id]}.
 export function linkPlan(items,sessions,{links={},done=[]}={}){
-  const list=sortedItems(items??[]),rows=new Map(list.map(x=>[x.id,{id:x.id,subjectId:x.subjectId,block:x.block,minutes:0,bricks:0,pieces:0,sessions:[],manual:done.includes(x.id),state:'NONE'}]));
+  const list=sortedItems(items??[]),rows=new Map(list.map(x=>[x.id,{id:x.id,subjectId:x.subjectId,block:x.block,minutes:0,bricks:0,pieces:0,sessions:[],manual:done.includes(x.id)||planItemDone(x),state:'NONE'}]));   // V13B L-C3: 기록의 done은 스위치가 켜졌을 때만
   const full=r=>r.bricks>=1||r.manual,link=new Map(),outside=[];
   const order=[...(sessions??[])].sort((a,b)=>{const x=a.at??AT_LAST,y=b.at??AT_LAST;return x<y?-1:x>y?1:a.id<b.id?-1:a.id>b.id?1:0;});   // 넘겨받은 순서와 무관하게 시각 순
   for(const s of order){
@@ -873,7 +886,7 @@ function homeCellEvents(h,cell,date,cal){
   const rows=homeDayEvents(cal?.events,cal?.outer?.on?.(date)??[],date);if(!rows.length)return;
   const {el,add,svg}=h,box=el('span',null,'hc-ev'),kind=r=>r.event?String(r.event.kind):'OUTER';box.setAttribute('aria-hidden','true');
   // V12A-4: 줄 앞 색 띠·점 = 일정 색(eventColorOf: 고른 색 → 종류 기본색, class ev-c-KEY). 바깥 .ics 줄은 회색.
-  const colorOf=r=>r.event?eventColorOf(r.event):'GRAY';
+  const colorOf=r=>r.event?eventColorOf(r.event):OUTER_COLOR;   // V13 L-A13: 바깥 .ics 줄은 직접 입력 기본색(회색)과 다른 OUTER(옅은 회색 점선·빈 점)
   for(const r of rows.slice(0,HOME_CELL_LINES)){const line=add(el('span',null,'hc-ev-line ev-c-'+colorOf(r)),r.time?el('span',r.time,'hc-ev-time'):null,el('span',r.title,'hc-ev-title'));line.dataset.kind=kind(r);line.dataset.color=colorOf(r);box.append(line);}
   if(rows.length>HOME_CELL_LINES)box.append(el('span','+'+(rows.length-HOME_CELL_LINES),'hc-ev-more'));
   // V11B L-07: 점 색 = 자주 쓰는 종류(시험·수업 …)·직접 입력도 따로(data-own, 전에는 모두 약속 색) · 3개를 넘으면 접은 폭에서 점 옆에 전체 개수.
@@ -912,18 +925,22 @@ export const EVENT_META_MARK='[일정] ',EVENT_SKIP_MAX=100,EVENT_SPAN_MAX=4000;
 // 8색: 돈의 파랑(지출·손실)·빨강(수익)·공부의 금과 헷갈리지 않는 색(V7C 금지 띠 밖). key = 화면 class(ev-c-KEY), name = 저장 글자, hex = 위젯 내보내기 color 칸.
 export const EVENT_COLORS=Object.freeze([['GREEN','초록','#2E9E5B'],['TEAL','청록','#13938C'],['LIME','연두','#6FA82A'],['PURPLE','보라','#8457E0'],['PLUM','자주','#AE4FC0'],['PINK','분홍','#DD5A92'],['ORANGE','주황','#EA7F2C'],['GRAY','회색','#77808F']].map(([key,name,hex])=>Object.freeze({key,name,hex})));
 // 종류별 기본색(색을 고르지 않은 일정). 직접 쓴 종류 = 회색.
-export const EVENT_KIND_COLOR=Object.freeze({DEADLINE:'ORANGE',APPOINTMENT:'PURPLE',REVIEW:'LIME',MILESTONE:'PLUM','시험':'ORANGE','수업':'GREEN','병원':'PINK','근무':'TEAL','기념일':'PLUM','기타':'GRAY'});
+// V13B L-A13: 약속 기본색 보라(#8457E0) → 자주(PLUM #AE4FC0). 보라는 저녁 시간대 색(#6C5CE7)과 ΔE76 7.5로 헷갈렸다. 자주는 저녁 29.0·돈 파랑 52.9 이상·돈 빨강 73.7.
+// 색을 직접 고른 일정("[일정] 색 보라")은 그대로 보라다(기본색만 바뀜). 보라는 팔레트에 그대로 있다.
+export const EVENT_KIND_COLOR=Object.freeze({DEADLINE:'ORANGE',APPOINTMENT:'PLUM',REVIEW:'LIME',MILESTONE:'PLUM','시험':'ORANGE','수업':'GREEN','병원':'PINK','근무':'TEAL','기념일':'PLUM','기타':'GRAY'});
 export const REPEAT_CHOICES=Object.freeze([['NONE','없음'],['WEEKLY','매주'],['DAILY','매일'],['MONTHLY','매월 같은 날']]);
 export const REPEAT_WEEKDAYS=Object.freeze([1,2,3,4,5,6,0]);   // 화면·저장 순서(월~일), 값 = 0(일)~6(토)
 const colorByName=new Map(EVENT_COLORS.map(c=>[c.name,c])),colorByKey=new Map(EVENT_COLORS.map(c=>[c.key,c]));
 const HM_RE=/^(?:[01]\d|2[0-3]):[0-5]\d$/;
 // "[일정] …" 한 줄 → {color,end,repeat:{freq,days,until,skip}|null}. 틀리면 null(그 줄은 메모 글).
+// V13 L-A12: 아는 칸이 하나 이상이면 모르는 칸(다음 판이 더할 칸)은 건너뛰고 extra에 그대로 둔다 → eventMetaLine이 뒤에 다시 붙여 보존(이 기기에서 고쳐 써도 반복이 사라지지 않는다). 아는 칸이 0개면 예전처럼 메모 글.
 export function parseEventMetaLine(line){
   if(typeof line!=='string')return null;
-  const out={color:null,end:null,repeat:null},seen=new Set();let until=null,skip=null;
+  const out={color:null,end:null,repeat:null},seen=new Set(),extra=[];let until=null,skip=null;
   for(const t of line.split(' · ')){
     const key=t.startsWith('색 ')?'c':t.startsWith('끝 ')?'e':t==='매일'||t==='매월'||t.startsWith('매주 ')?'r':t.startsWith('~')?'u':t.startsWith('빼기 ')?'s':null;
-    if(!key||seen.has(key))return null;seen.add(key);
+    if(!key){if(!t.trim())return null;extra.push(t);continue;}
+    if(seen.has(key))return null;seen.add(key);
     if(key==='c'){const c=colorByName.get(t.slice(2));if(!c)return null;out.color=c.key;}
     else if(key==='e'){const v=t.slice(2);if(!HM_RE.test(v))return null;out.end=v;}
     else if(key==='r'){
@@ -933,7 +950,9 @@ export function parseEventMetaLine(line){
     else{skip=t.slice(3).split(',');if(skip.length>EVENT_SKIP_MAX||skip.some(x=>!dateKeyOK(x))||new Set(skip).size!==skip.length)return null;}
   }
   if((until||skip)&&!out.repeat)return null;
+  if(!seen.size)return null;
   if(out.repeat)out.repeat={...out.repeat,until,skip:skip?[...skip].sort():[]};
+  if(extra.length)out.extra=extra;
   return out;
 }
 export function eventMetaLine(meta){
@@ -945,18 +964,24 @@ export function eventMetaLine(meta){
     if(r.until)parts.push('~'+r.until);
     if(r.skip?.length)parts.push('빼기 '+[...new Set(r.skip)].sort().join(','));
   }
+  if(parts.length&&Array.isArray(meta?.extra))for(const t of meta.extra)if(typeof t==='string'&&t.trim()&&!t.includes('\n')&&!t.includes(' · '))parts.push(t);   // V13 L-A12: 모르는 칸 보존(아는 칸이 있을 때만)
   return parts.join(' · ');
 }
+// V13 L-A6·L-A5: 사람이 쓴 메모(또는 가져온 설명)가 머리 표지 "[종류] "·"[일정] "로 시작하면 앞에 "\"를 하나 붙여 저장하고(다음에 읽을 때 종류·반복으로 바뀌지 않게), 읽을 때 하나 뗀다.
+// 이미 "\…[일정] "로 시작하는 글도 "\"를 하나 더 붙여 돌려받을 때 같은 글이 된다. r82 앱은 "\[일정] …"을 메모 글 그대로 보여 준다(뜻 바뀜 0).
+const NOTE_MARK_RE=/^\\*\[(?:종류|일정)\] /;
+export const escapeEventNote=n=>{const s=String(n??'');return NOTE_MARK_RE.test(s)?'\\'+s:s;};
+export const unescapeEventNote=n=>{const s=String(n??'');return s.startsWith('\\')&&NOTE_MARK_RE.test(s)?s.slice(1):s;};
 // 메모 → {kind(V8W1 종류 글자), color, end, repeat, notes(사람이 쓴 메모)}. 머리 줄 순서 = [종류] 다음 [일정].
 export function splitEventMeta(notes){
-  const k=splitKindLine(notes),s=k.notes,none={kind:k.kind,color:null,end:null,repeat:null,notes:s};
+  const k=splitKindLine(notes),s=k.notes,none={kind:k.kind,color:null,end:null,repeat:null,notes:unescapeEventNote(s)};
   if(!s.startsWith(EVENT_META_MARK))return none;
   const nl=s.indexOf('\n'),m=parseEventMetaLine(s.slice(EVENT_META_MARK.length,nl<0?s.length:nl));
-  return m?{kind:k.kind,...m,notes:nl<0?'':s.slice(nl+1)}:none;
+  return m?{kind:k.kind,...m,notes:nl<0?'':unescapeEventNote(s.slice(nl+1))}:none;
 }
 // 거꾸로: 종류 글자 + 메타 + 메모 → 메모 칸 글자. 종류가 20자를 넘으면 null(저장하지 않는다, joinEventNotes 규칙).
 export function joinEventMeta(kind,meta,notes){
-  const line=eventMetaLine(meta),n=String(notes??'');
+  const line=eventMetaLine(meta),n=escapeEventNote(notes);
   return joinEventNotes(kind,line?EVENT_META_MARK+line+(n?'\n'+n:''):n);
 }
 // 일정(EVENT data 또는 달력 줄 {kind,notes})의 색 key: 고른 색 → 종류 기본색(자주 쓰는 종류·기본 4종) → 회색.
@@ -966,10 +991,28 @@ export function eventColorOf(e){
   return EVENT_KIND_COLOR[e?.kind]??'GRAY';
 }
 export const eventColorHex=key=>(colorByKey.get(key)??colorByKey.get('GRAY')).hex;
+// V13 L-A13: 이 기기 일정의 8색과 겹치지 않는 바깥(.ics) 표시 key. 저장·위젯 color에는 쓰지 않는다(화면 class ev-c-OUTER만).
+export const OUTER_COLOR='OUTER';
 // 시각 글자: "15:45~23:00" · "15:45" · ''(종일).
+// V13 L-A9: 끝이 시작보다 이르면 자정을 넘는 일정 = "15:45~01:00(다음 날)". 다음 날 칸에 이어서 보이는 줄(달력 계산이 만드는 cont 줄) = "~01:00(전날부터)".
+export const NEXT_DAY_TEXT='(다음 날)',FROM_PREV_TEXT='(전날부터)';
 export function eventTimeText(e){
+  if(e?.cont&&HM_RE.test(e.contEnd??''))return '~'+e.contEnd+FROM_PREV_TEXT;
   const t=!e?.allDay&&HM_RE.test(e?.time??'')?e.time:'';if(!t)return '';
-  const end=splitEventMeta(e.notes).end;return end?t+'~'+end:t;
+  const end=splitEventMeta(e.notes).end;return end?t+'~'+end+(end<t?NEXT_DAY_TEXT:''):t;
+}
+// 자정을 넘는 일정의 끝 시각(다음 날 몇 시까지). 아니면 null.
+export function eventOvernightEnd(d){
+  if(!d||d.allDay||!HM_RE.test(d.time??''))return null;
+  const end=splitEventMeta(d.notes).end;return end&&end<d.time?end:null;
+}
+// V13 M-4: 요일 줄 끝 "주말" 한 번에 고르기.
+export const WEEKEND_TEXT='주말(토·일)',WEEKEND_DAYS=Object.freeze([6,0]);
+export const isWeekendDays=days=>Array.isArray(days)&&days.length===2&&days.includes(6)&&days.includes(0);
+// V13 L-A8: 매월 반복을 29·30·31일에 시작하면 그 날이 없는 달은 건너뛴다(말일로 옮기지 않음 · 회차 규칙 그대로) → 시트·반복 글자에 안내.
+export function monthlyNote(date){
+  if(!dateKeyOK(date))return '';const d=Number(date.slice(8,10));
+  return d>=29?'매월 '+d+'일 · '+d+'일이 없는 달('+(d===31?'2·4·6·9·11월':d===30?'2월':'평년 2월')+')은 건너뛰어요':'';
 }
 // 옛 recurrence 중 새 규칙으로 옮길 수 있는 것(간격 1): 매일·매주(시작 요일) + 끝나는 날 = 마지막 회차. 간격 2 이상은 null(그대로 둔다).
 export function legacyRepeat(d){
@@ -1006,7 +1049,7 @@ export function repeatStart(date,repeat){
 // 반복 일정 한 회차 지우기·이후 모두 지우기 = 기록 1건 고쳐 쓰기(삭제 표시 아님, 이전 값은 이력). 새 줄이 없으면 옛 반복(간격 1)을 새 규칙으로 옮겨서. 못 하면 null,
 // 메모가 2000자를 넘으면 {tooLong:true}(앱이 EVENT_NOTES_TOO_LONG 문구).
 function withRepeat(d,repeat){
-  const m=splitEventMeta(d.notes),notes=joinEventMeta(m.kind,{color:m.color,end:m.end,repeat},m.notes);
+  const m=splitEventMeta(d.notes),notes=joinEventMeta(m.kind,{color:m.color,end:m.end,repeat,extra:m.extra},m.notes);
   if(notes===null||[...notes].length>2000)return {tooLong:true};
   return {...d,recurrence:null,notes};
 }
@@ -1460,7 +1503,7 @@ function openPlanEditor(ctx,st,date,{seed=[],onSaved=null}={}){
   let dlg=null,sealedAs=null;
   const save=()=>{
     const auto=autoMode;autoMode=null;
-    const mine={date,items:draft.map(x=>({id:x.id,subjectId:x.subjectId,title:String(x.title).trim(),bricks:Number(x.bricks),block:x.block}))};
+    const mine={date,items:draft.map(x=>({...planItemKept(x),id:x.id,subjectId:x.subjectId,title:String(x.title).trim(),bricks:Number(x.bricks),block:x.block}))};   // V13B L-C3: 받은 선택 칸(done)은 그대로
     try{validateLifeData('PLAN_DAY',date,mine);}catch(e){if(auto)showSaved('아직 저장 안 됨 · 세부내용을 채우면 저장돼요',false);else showErr(e?.code);return;}
     if(auto&&stable(mine)===stable(base??{date,items:[]}))return;
     if(!auto)dlg?.close?.();else saving=true;

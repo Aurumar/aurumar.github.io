@@ -83,9 +83,10 @@ export function parseImport(text){
 const NEW_EVENT=Object.freeze({title:'',domain:null,date:'',time:null,allDay:true,kind:'APPOINTMENT',planId:null,milestoneId:null,recurrence:null,notes:'',deleted:false});
 // 가져온 값만 바꾸고 사용자가 단 영역·계획 연결·반복(과 뒤에 생길 칸)은 그대로 둔다.
 // V12_MERGE: V12A 일정 색·끝 시각·반복은 메모 [일정] 줄에 있다 → 다시 가져올 때 그 줄을 그대로 옮겨 둔다. 새 일정은 [일정] 줄 없음 = 종류 기본색 · 반복 아님(recurrence null).
+// V13 L-A5: 가져온 설명이 "[일정] 매일"·"[종류] 진료"로 시작해도 joinEventMeta가 머리 표지를 "\"로 막아 저장한다(반복·종류로 읽히지 않고, 다시 가져와도 같은 글 = 그대로). 모르는 칸(extra)도 옮겨 둔다.
 export function eventData(source,item,old=null){
   const body=[item.note,markLine(source,item.extId,item.alarm)].filter(Boolean).join('\n'),m=old?splitEventMeta(old.notes):null;
-  return {...(old??NEW_EVENT),title:item.title,date:item.date,time:item.time,allDay:item.time===null,kind:item.kind,notes:joinEventMeta(item.own,{color:m?.color??null,end:m?.end??null,repeat:m?.repeat??null},body),deleted:false};
+  return {...(old??NEW_EVENT),title:item.title,date:item.date,time:item.time,allDay:item.time===null,kind:item.kind,notes:joinEventMeta(item.own,{color:m?.color??null,end:m?.end??null,repeat:m?.repeat??null,extra:m?.extra},body),deleted:false};
 }
 const sameData=(a,b)=>{const keys=[...new Set([...Object.keys(a),...Object.keys(b)])].sort();return keys.every(k=>JSON.stringify(a[k])===JSON.stringify(b[k]));};
 export function planImport(parsed,events){

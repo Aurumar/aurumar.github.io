@@ -8,7 +8,7 @@
 import {lifeDefs,kstDate,shiftDay,hhmmFromIso,validateLifeData,SUBJECT_COLOR_KEYS,PLAN_BLOCKS,MAX_PLAN_TITLE} from './life-model.mjs';
 import {achieve,previewAchieve} from './life-achieve.mjs';
 import {timerElapsedMin,liveTick} from './study-stage.mjs';
-import {planOf,daySummary,copyPlan,savePlanDay,planErrorText,PLAN_NOTICE_TEXT,barsText,dateLabel,BLOCK_TEXT,BLOCK_HINT,SHOWN_BLOCKS,shownBlock,NO_SUBJECT_COLOR,blockOfIso,daySessions,linkPlan,readPlanMarks,writePlanMarks,itemStateText,oldTarget,NEW_ITEM_BRICKS} from './life-plan.mjs';
+import {planOf,daySummary,copyPlan,savePlanDay,planErrorText,PLAN_NOTICE_TEXT,barsText,dateLabel,BLOCK_TEXT,BLOCK_HINT,SHOWN_BLOCKS,shownBlock,NO_SUBJECT_COLOR,blockOfIso,daySessions,linkPlan,readPlanMarks,writePlanMarks,itemStateText,oldTarget,NEW_ITEM_BRICKS,planItemEdited} from './life-plan.mjs';
 
 // V6F: 화면에는 약자(M·L·D·N / M·A·E·N)를 쓰지 않고 한글 시간대만. 저장값은 M·A·E·N 그대로.
 // V7B: 화면 시간대는 오전·오후·저녁 3개. 옛 밤(N) 줄은 저녁으로 보인다(life-plan shownBlock).
@@ -179,7 +179,7 @@ function drawTodayPlan(ctx,{date=null,today=null,focus=null,draft=null,focusMess
   const day=today??kstDate(ctx.now()),d=date??day,timer=focus?.timer?.()??null,store=ctx.storage??globalThis.localStorage;
   const m=todayPlanModel({life,study:whole.study??null,date:d,today:day,timer,draft,marks:readPlanMarks(store,d)});
   const out=el('section',null,'pt-card'+(m.isToday?' today':''));out.id=m.isToday?'today-plan':'';out.dataset.date=d;
-  const put=(item,close,reopen)=>commitPlan(ctx,state,d,items=>{const i=items.findIndex(x=>x.id===item.id);if(i<0)items.push(item);else items[i]=item;return items;},m.isToday?'오늘 계획에 넣었습니다.':'계획에 넣었습니다.',close,reopen);
+  const put=(item,close,reopen)=>commitPlan(ctx,state,d,items=>{const i=items.findIndex(x=>x.id===item.id);if(i<0)items.push(item);else items[i]=planItemEdited(items[i],item);return items;},/* V13B L-C3: 고친 줄도 받은 선택 칸(done) 그대로 */m.isToday?'오늘 계획에 넣었습니다.':'계획에 넣었습니다.',close,reopen);
   const sheetFor=item=>()=>openChipSheet(ctx,{date:d,item,onPut:put,onDelete:item?(close,reopen)=>commitPlan(ctx,state,d,items=>items.filter(x=>x.id!==item.id),'계획 줄을 지웠습니다.',close,reopen):null});
   const plus=button('+',sheetFor(null),'secondary pt-add');plus.setAttribute('aria-label','계획 줄 넣기');
   add(out,add(el('div',null,'pt-head'),el('h3',m.title,'pt-title'),m.head?el('span',m.head,'pt-sum'):null,m.empty?null:plus));

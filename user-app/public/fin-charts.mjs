@@ -7,10 +7,14 @@ import {shiftMonth,monthSpan,monthOK,formatWon} from './fin-ledger.mjs';
 // lines(예산·그래프·진단이 읽는 생활 돈)에서는 빼고 invest에 따로 둔다. allLines = 둘 다(거래 목록·돈 달력). 잔액(fin.lines)은 그대로 모두 반영.
 export const INVEST_TAG='투자손익';
 export const isInvestLine=l=>(l.kind==='EXPENSE'||l.kind==='INCOME')&&Array.isArray(l.tags)&&l.tags.includes(INVEST_TAG);
+// V13 L-D3: 태그 '투자손익'이 붙은 환불은 생활 지출 환불이 아니라 투자 쪽 들어온 돈이다(isInvestLine은 지출·수입만 그대로).
+// 생활 돈(lines)·지출 달력·생활 지출 환불 합계에서 빼고 invest(투자 손익 탭)에 둔다.
+export const isInvestRefund=l=>l.kind==='REFUND'&&Array.isArray(l.tags)&&l.tags.includes(INVEST_TAG);
+export const isInvestFlow=l=>isInvestLine(l)||isInvestRefund(l);
 export function prepare(fin){
   const all=fin.lines.map(l=>({...l,net:l.net===null?null:BigInt(l.net)}));
   return {
-    lines:all.filter(l=>!isInvestLine(l)),allLines:all,invest:all.filter(isInvestLine),
+    lines:all.filter(l=>!isInvestFlow(l)),allLines:all,invest:all.filter(isInvestFlow),
     residuals:fin.residuals.map(r=>({...r,net:BigInt(r.net)})),
     accounts:new Map(fin.accounts.map(a=>[a.id,a.data])),
     labels:fin.labels,

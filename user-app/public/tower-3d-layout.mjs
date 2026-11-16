@@ -745,7 +745,8 @@ export const isCoarsePointer=win=>Boolean(win?.matchMedia?.('(pointer: coarse)')
 export const FPS_FLOOR_MS=33,FPS_WINDOW=30;
 export const tooSlowFor30=deltas=>deltas.length>=FPS_WINDOW&&p95(deltas.slice(-FPS_WINDOW))>FPS_FLOOR_MS;
 // 3) 탑 재질(3D만, 2.5D 대체 화면은 그대로): 검은 대리석 받침 → 짙은 금 받침, 흰 모퉁이 탑·흰 받침판 → 샴페인 금 돌, 흰 화단 판 → 부드러운 잔디·모래 정원.
-export const V10F_TOWER=Object.freeze({plinth:TOWER_GOLD.deep,pad:'#E9D9AE',towerStone:CHAMPAGNE_WALL.color,lawn:'#C9D9A6',dirt:'#E8DCC0'});
+// V13 탑 배경: 흙 화단(dirt)은 V12E 바닥 원반처럼 "보일 색(GARDEN_SHOWN.dirt) ÷ 노출(GROUND_TONE.exposure)" 값이다. 예전 #E8DCC0은 한낮 빛 1.31배에 넘쳐 화면에서 255,246,212 옅은 판(V12HUNT 2-10)으로 보였다.
+export const V10F_TOWER=Object.freeze({plinth:TOWER_GOLD.deep,pad:'#E9D9AE',towerStone:CHAMPAGNE_WALL.color,lawn:'#C9D9A6',dirt:'#C8BB9E'});
 export function v10fTint(rows){
   return rows.map(r=>{
     const c=r.color===BLACK_MARBLE.body?V10F_TOWER.plinth:r.pad?V10F_TOWER.pad:r.part==='TOWER'&&r.color===KIT.frame?V10F_TOWER.towerStone:r.bed?(r.color===KIT.lawn?V10F_TOWER.lawn:V10F_TOWER.dirt):null;
@@ -777,7 +778,13 @@ export function smallCrane(roof){
 // 선은 얇은 상자(굵기 GOAL_LINE.t)라 1px 선처럼 화면 배율에 따라 가늘어지지 않는다. 입력 불변, 결정적.
 // 자리 = 바닥판 바깥 out(0.55): 이번 주 층을 감싼 짙은 비계(바닥판 바깥 0.35, KIT.timber)보다 바깥이라 비계 선에 가리지 않고, 모퉁이 탑(앞면 z 3.1까지)과도 닿지 않는다.
 export const GOAL_LINE=Object.freeze({t:0.08,out:0.55,dash:0.5,gap:0.3,week:'#FFFFFF',next:'#FFFDF5'});
-const goalDays=n=>'하루 '+n+'장';
+export const goalDays=n=>'하루 '+n+'장';
+// 범례 한 줄(흰 실선·흰 점선이 무엇인지). goal = 실제 하루 목표(줄 상한으로 자르지 않은 값), next = 다음 단계 이름. 둘 다 없으면 null.
+// V13 L-E1: 2.5D 대체 화면(life-tower towerGoalLegend)도 같은 글자를 쓴다(그 파일은 이 파일을 불러올 수 없어 같은 규칙을 한 번 더 두고, 시험이 두 결과가 같은지 본다).
+export function goalLegend({goal=null,next=null}={}){
+  return [goal!=null&&'흰 실선 = 이번 주 목표 높이('+goalDays(goal)+')',next!=null&&'흰 점선 = 다음 단계 높이('+next+')'].filter(Boolean).join(' · ')||null;
+}
+// V13 L-E2: 하루 목표가 층 줄 상한(MAX_ROWS 16)보다 크면 높이(선 위치·week.goal)만 상한으로 자르고, 표지·범례 글자는 실제 목표(week.target)를 쓴다("하루 20장"이 "하루 16장"으로 보이지 않게).
 export function goalFrame(scene,bp=null,{goal=null}={}){
   const G=GOAL_LINE,T=G.t,hx=COLS/2+SLAB_OUT+G.out,hz=DEPTH/2+SLAB_OUT+G.out,rows=[],labels=[];
   const beam=(a,b,kind,dashed)=>{   // 축 하나를 따라가는 a→b 막대(점선이면 dash·gap으로 나눈다)
@@ -788,19 +795,19 @@ export function goalFrame(scene,bp=null,{goal=null}={}){
   };
   const ring=(y,kind,dashed)=>{for(const s of [-1,1]){beam([-hx,y,s*hz],[hx,y,s*hz],kind,dashed);beam([s*hx,y,-hz+T],[s*hx,y,hz-T],kind,dashed);}};
   const posts=(y0,y1,kind,dashed)=>{if(y1-y0<=1e-6)return;for(const [a,b] of [[1,1],[-1,1],[1,-1],[-1,-1]])beam([a*hx,y0,b*hz],[a*hx,y1,b*hz],kind,dashed);};
-  const cur=scene.floors?.at(-1)?.current?scene.floors.at(-1):null,g=Number.isFinite(goal)&&goal>0?Math.min(MAX_ROWS,goal):null;
+  const cur=scene.floors?.at(-1)?.current?scene.floors.at(-1):null,want=Number.isFinite(goal)&&goal>0?goal:null,g=want===null?null:Math.min(MAX_ROWS,want);
   let week=null,next=null;
   if(g!==null&&(cur||scene.empty)){
     const base=cur?cur.base:scene.roof,y=base+SLAB_H+g*ROW_H;
-    week={goal:g,base,y};ring(y,'week',false);posts(base,y,'week',false);
-    labels.push({kind:'GOAL',text:'이번 주 목표 · '+goalDays(g),x:COLS/2+0.9,y,z:DEPTH/2+0.9});
+    week={goal:g,target:want,base,y};ring(y,'week',false);posts(base,y,'week',false);
+    labels.push({kind:'GOAL',text:'이번 주 목표 · '+goalDays(want),x:COLS/2+0.9,y,z:DEPTH/2+0.9});
   }
   const roof=scene.height,b=(bp&&!bp.empty?bp.boundaries:[]).find(x=>x.y>roof+1e-6)??null;
   if(b){
     next={k:b.k,name:b.name,dDay:b.dDay,base:roof,y:b.y};ring(b.y,'next',true);posts(roof,b.y,'next',true);
     labels.push({kind:'PLAN',k:b.k,text:'다음 단계 · '+b.name+' · '+dText(b.dDay),x:COLS/2+0.9,y:b.y,z:DEPTH/2+0.9});
   }
-  const legend=[week&&'흰 실선 = 이번 주 목표 높이('+goalDays(g)+')',next&&'흰 점선 = 다음 단계 높이('+next.name+')'].filter(Boolean).join(' · ')||null;
+  const legend=goalLegend({goal:week?want:null,next:next?next.name:null});
   return {rows,week,next,labels,legend,top:Math.max(week?.y??0,next?.y??0)};
 }
 
@@ -838,6 +845,26 @@ export function ridgeLayers(bottom=IVORY_1){
     const top=mixHex(bottom,L.tone,L.mix),el=Array.from({length:RIDGE.n+1},(_,k)=>{const x=k%RIDGE.n;return L.base+L.amp*(0.65*valueNoise(L.seed,x,0,16,RIDGE.n/16,1)+0.35*valueNoise(L.seed+1,x,0,5,RIDGE.n/5,1));});
     return {r:L.r,top,bottom,el,below:RIDGE.below};
   });
+}
+// ---------- V13 탑 배경 남은 밝은 판 (V12HUNT 2-10·E2 "왼쪽 아래 밝은 평면 조각이 남아 옅은 판") ----------
+// 원인: V12E가 바닥 원반만 "보일 색 ÷ 노출"로 바꿨고, 그 위 흰 대리석 단상 윗면(반지름 15, 화면 아래쪽 대부분)은 흰 질감 × 흰색 그대로였다.
+// 단상 재질은 환경맵도 받아(금속 아님 → 환경맵이 간접 확산광도 더한다) 빛 ≈ 노출 1.31 + 환경 조도 ≈ 0.98배 → 화면 255,255,255 평평한 흰 판. 그 위 흙 화단은 255,246,212 옅은 판.
+// 이제 단상 윗면 색 = 보일 색(DAIS_TONE.shown, 옅은 아이보리 대리석) ÷ (노출 + 환경 조도), 화단은 V10F_TOWER.dirt = GARDEN_SHOWN.dirt ÷ 노출. 메시·재질 수·질감은 그대로, 색만 곱한다.
+export const DAIS_TONE=Object.freeze({shown:'#EFE8DA'}),GARDEN_SHOWN=Object.freeze({dirt:'#E2D3B2'});
+export const unexposed=(hex,exposure)=>hexOf(rgbOf(hex).map(v=>toSrgb(toLin(v)/exposure)));
+// 환경맵(envTexels)이 위를 보는 면에 주는 조도(코사인 가중 위 반구 평균, 선형 RGB). 시각마다 색만 조금 다르다.
+export function envIrradiance(sky){
+  const [w,h]=TEX.env,px=envTexels(sky),acc=[0,0,0];let sum=0;
+  for(let y=0;y<h;y++){
+    const e=((y+0.5)/h-0.5)*Math.PI;if(e<=0)continue;
+    const wt=Math.sin(e)*Math.cos(e);sum+=wt*w;
+    for(let x=0;x<w;x++)for(let k=0;k<3;k++)acc[k]+=toLin(px[(y*w+x)*4+k]/255)*wt;
+  }
+  return acc.map(v=>v/sum);
+}
+export function daisTint(sky,exposure=GROUND_TONE.exposure){
+  const irr=envIrradiance(sky);
+  return hexOf(rgbOf(DAIS_TONE.shown).map((v,k)=>toSrgb(toLin(v)/(exposure+irr[k]))));
 }
 // 4) 우주: 빛무리·붉은 빛 테 질감(n×n 알파, 가운데 = 0.5). glow = 가운데 밝고 바깥으로 부드럽게, ring = 반지름 0.62 둘레만 밝은 고리(복습 필요).
 export const HALO_SPRITE=Object.freeze({size:64,ringR:0.62,ringW:0.12});

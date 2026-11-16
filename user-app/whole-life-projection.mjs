@@ -7,7 +7,7 @@ import {hltRawView} from './public/hlt-projection.mjs';
 import {studyTitle,studyRawView,STUDY_TYPES} from './public/study-model.mjs';
 import {lifeTitle,lifeRawView,lifeHistoryValue,LIFE_TYPES} from './public/life-model.mjs';
 import {cardDayTitle,cardRawView,CARD_TYPES} from './public/study-cards-model.mjs';
-import {eventDates,eventRepeatOf} from './public/life-plan.mjs';   // V12A: 반복 일정 펼치기(달력·오늘 탭과 같은 함수)
+import {eventDates,eventRepeatOf,eventOvernightEnd} from './public/life-plan.mjs';   // V12A: 반복 일정 펼치기(달력·오늘 탭과 같은 함수)
 import {rangeDayTitle,rangeRawView,RANGE_TYPES} from './public/study-range-model.mjs';
 import {finView} from './fin-projection.mjs';
 import {WL_FORMAT,DOMAIN_CODES,DOMAIN_NAMES,effectiveActions,entityKey,emptyDomain,financeTotals,shiftDate,dateOK,shape} from './whole-life-model.mjs';
@@ -64,7 +64,12 @@ export function expandCalendar(events,plans,from,to){
     const d=event.data;if(d.deleted)continue;
     // V12A-3: 반복 펼치기 = life-plan eventDates(옛 recurrence는 예전과 같은 회차·id, 새 반복 줄 "[일정] 매주 토·일 …"은 범위 안 날만 · 회차 번호 = 시작일부터 날 수, 전체 횟수는 정해지지 않아 null).
     const r=d.recurrence,repeat=eventRepeatOf(d),count=repeat?null:r?.count??1;
-    for(const {date,i} of eventDates(d,from,to))add({id:event.entityId+':'+i,eventId:event.entityId,title:d.title,domain:d.domain,date,time:d.time,allDay:d.allDay,kind:d.kind,planId:d.planId,source:'EVENT',occurrence:i+1,totalOccurrences:count,notes:d.notes});
+    // V13 L-A9: 자정을 넘는 일정(15:45~01:00)은 다음 날 칸에도 이어지는 줄 하나(cont, 시각 없음 · "~01:00(전날부터)" · 누르면 원래 회차 날짜 contFrom으로 편집). 범위 첫날의 전날 회차도 본다.
+    const overnight=eventOvernightEnd(d);
+    for(const {date,i} of eventDates(d,overnight?shiftDate(from,-1):from,to)){
+      add({id:event.entityId+':'+i,eventId:event.entityId,title:d.title,domain:d.domain,date,time:d.time,allDay:d.allDay,kind:d.kind,planId:d.planId,source:'EVENT',occurrence:i+1,totalOccurrences:count,notes:d.notes});
+      if(overnight)add({id:event.entityId+':'+i+':cont',eventId:event.entityId,title:d.title,domain:d.domain,date:shiftDate(date,1),time:null,allDay:false,kind:d.kind,planId:d.planId,source:'EVENT',occurrence:i+1,totalOccurrences:count,notes:d.notes,cont:true,contEnd:overnight,contFrom:date});
+    }
   }
   for(const plan of plans){
     const d=plan.data;if(d.status==='COMPLETE')continue;
@@ -124,7 +129,7 @@ export function wholeLifeView(graph,date=clock().localDate,orderedOperations=nul
     cards:cardRawView(CARD_TYPES.flatMap(type=>entities(graph,type))),   // V9A 공부 카드 하루 묶음
     range:rangeRawView(RANGE_TYPES.flatMap(type=>entities(graph,type))),   // V9B 공부 범위 하루 묶음(역산 계획·모의고사 목표선)
     home:{priorityActions:actions.filter(a=>a.active).slice(0,5),restartPoints:actions.filter(a=>a.restartPoint.trim()),
-      upcoming:expandCalendar(events,plans,date,shiftDate(date,90)).slice(0,10),
+      upcoming:expandCalendar(events,plans,date,shiftDate(date,90)).filter(r=>!r.cont).slice(0,10),
       activePlans:plans.filter(p=>['ACTIVE','MAINTAIN'].includes(p.data.status)),
       recentActualActions:history.filter(r=>r.type==='RESULT').slice(0,6)}};
 }
