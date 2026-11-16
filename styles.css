@@ -3503,3 +3503,12 @@ button.pcs-month.selected,button.pcs-month.selected:hover{box-shadow:inset 0 0 0
 .event-import-panel .event-import-summary{margin:6px 0 2px;font-weight:700;color:var(--lb-ink-1)}
 .event-import-panel .event-import-list{margin:6px 0;padding:4px 0 4px 10px;border-left:2px solid var(--lb-ink-3)}
 .event-import-panel .event-import-row{margin:2px 0;font-size:13px;color:var(--lb-ink-2)}
+/* ===== 48. V14_IPO_AUTO 공모주 (오늘 화면 맨 위 줄 · 설정 칸): 색은 :root 글자·선 토큰만(금·빨강 경고 토큰 0, 움직임·nowrap 없음). 긴 종목 이름은 칸 안에서 줄바꿈(360 폭 넘침 0) ===== */
+.ipo-today{display:flex;gap:8px;align-items:flex-start;min-width:0;margin:0 0 10px;padding:8px 12px;border:1px solid var(--lb-line);border-left:3px solid var(--lb-ink-3);border-radius:10px;background:var(--lb-surface)}
+.ipo-today .ipo-today-tag{flex:0 0 auto;font-size:12px;font-weight:800;color:var(--lb-ink-1);padding-top:1px}
+.ipo-today .ipo-today-list{flex:1 1 auto;min-width:0}
+.ipo-today .ipo-today-row,.ipo-today .ipo-today-more{margin:1px 0;font-size:13px;line-height:1.4;color:var(--lb-ink-2);overflow-wrap:anywhere}
+.ipo-today .ipo-today-row.is-today{font-weight:700;color:var(--lb-ink-1)}
+.ipo-today .ipo-today-more{color:var(--lb-ink-3)}
+.ipo-auto-settings p{overflow-wrap:anywhere}
+.ipo-auto-settings .ipo-auto-status{margin:8px 0 2px;font-weight:700;color:var(--lb-ink-1)}

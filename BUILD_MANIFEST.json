@@ -367,8 +367,8 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "501b44e94e3e9978353f0dc07d4dccbfa30c67aae0fa9123727fbaa2ecacbe5a",
-      "outputSha256": "501b44e94e3e9978353f0dc07d4dccbfa30c67aae0fa9123727fbaa2ecacbe5a",
+      "sourceSha256": "b1903db4665625c626c3c26d1462c0abd0fd631823c6d7b1339e17b427a324eb",
+      "outputSha256": "b1903db4665625c626c3c26d1462c0abd0fd631823c6d7b1339e17b427a324eb",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs",
@@ -739,8 +739,8 @@
     },
     {
       "path": "user-app/public/event-import.mjs",
-      "sourceSha256": "3378cd351b82e9d5cd91f8f377f22e9cf8d8ffda40499b91a604ea00aff3776f",
-      "outputSha256": "3378cd351b82e9d5cd91f8f377f22e9cf8d8ffda40499b91a604ea00aff3776f",
+      "sourceSha256": "b97eebe6b1ff6fbc6b463c965eb3a4c896db1ab2daa096f5004f0a119272b933",
+      "outputSha256": "b97eebe6b1ff6fbc6b463c965eb3a4c896db1ab2daa096f5004f0a119272b933",
       "dependencies": [
         "user-app/public/life-model.mjs",
         "user-app/public/life-plan.mjs",
@@ -1696,8 +1696,8 @@
     {
       "path": "styles.css",
       "sourcePath": "user-app/public/styles.css",
-      "sourceSha256": "c3ba9fb99ce0c887feb6abf2570421f57fc9a4a074a64eae3410a76bd41fdda4",
-      "outputSha256": "c3ba9fb99ce0c887feb6abf2570421f57fc9a4a074a64eae3410a76bd41fdda4"
+      "sourceSha256": "583b73a711f857f83cb988e64b63e6085307e8a6ede1b198c2f903338534c399",
+      "outputSha256": "583b73a711f857f83cb988e64b63e6085307e8a6ede1b198c2f903338534c399"
     },
     {
       "path": "public-config.json",
