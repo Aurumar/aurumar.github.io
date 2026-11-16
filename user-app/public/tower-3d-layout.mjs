@@ -370,9 +370,11 @@ export function withBadges(scene,badges,{titleName=null}={}){
 export const DIARY_LAMP_X=1.35,DIARY_LAMP_COLORS=Object.freeze([KIT.flame,'#FFD27A',GOLD]);
 // 글자 겹침층에 올릴 표지(최대 MAX_LABELS, 앞 순서가 먼저 보인다): 현판·머릿돌 → 예상도 시즌 경계 → 지난 시즌·완공 현판(가까운 것부터).
 const dText=n=>n===0?'D-DAY':n>0?'D-'+n:'D+'+(-n);
-export function houseLabels(scene,bp=null){
-  const plan=bp?bp.boundaries.map(b=>({kind:'PLAN',text:b.name+' · '+dText(b.dDay),x:COLS/2+0.9,y:b.y,z:DEPTH/2+0.9})):[];
-  return [...(scene.badgeLabels??[]),...plan,...[...scene.labels].reverse()].slice(0,MAX_LABELS);
+// V12E: frame(goalFrame 결과)가 있으면 목표 높이 표지(이번 주 목표·다음 단계)를 현판 다음에 둔다. 다음 단계와 같은 시즌 경계 표지는 한 번만.
+export function houseLabels(scene,bp=null,frame=null){
+  const goals=frame?.labels??[],taken=new Set(goals.map(l=>l.k).filter(Boolean));
+  const plan=bp?bp.boundaries.filter(b=>!taken.has(b.k)).map(b=>({kind:'PLAN',text:b.name+' · '+dText(b.dDay),x:COLS/2+0.9,y:b.y,z:DEPTH/2+0.9})):[];
+  return [...(scene.badgeLabels??[]),...goals,...plan,...[...scene.labels].reverse()].slice(0,MAX_LABELS);
 }
 // 레벨업 맥동: 지난번에 본 레벨(seen, 앱 실행 중 메모리)보다 오른 탑만. 처음 보는 실행이면 오른 것을 알 수 없어 없음. pulseAt = 0→1→0(0.6초).
 export const PULSE_SECONDS=0.6;
@@ -767,6 +769,75 @@ export function smallCrane(roof){
   const x=-(COLS/2-0.4),z=-(DEPTH/2-0.4),top=roof+2.4,c=TOWER_GOLD;
   return [box(x,roof+1.2,z,0.12,2.4,0.12,{color:c.deep}),box(x+1.2,top,z,3.2,0.1,0.1,{color:c.mid}),box(x-0.5,top-0.08,z,0.5,0.24,0.3,{color:c.deep}),
     box(x+2.4,top-0.55,z,0.02,0.9,0.02,{color:c.line}),box(x+2.4,top-1.05,z,0.12,0.1,0.12,{color:c.hi})];
+}
+// ---------- V12E 목표 높이 흰 선 (설계 V12 E1, 소유자 r81 "다 쌓으면 여기까지를 보여 주던 흰 윤곽선·가상 틀이 사라졌다") ----------
+// V10F가 예상도(1px 선·반투명 유리)를 금 골조 한 층으로 바꾸며 "어디까지 쌓으면 되는지"가 사라졌다. 판·유리는 다시 쓰지 않고(V10F 소유자 "흰 판이 어색") 흰 윤곽만 되살린다.
+// 이번 주 목표 = 이번 주 층 바닥판 위에서 하루 목표 장수(week.goal)만큼 올라간 높이: 흰 실선 고리 + 바닥판부터 그 높이까지 네 모서리 흰 실선 기둥.
+// 다음 단계 = 지금 지붕보다 위에 있는 첫 시즌 경계(blueprint의 boundaries, 시험 이름 · D-n): 지붕부터 그 높이까지 네 모서리 흰 점선 + 점선 고리.
+// 선은 얇은 상자(굵기 GOAL_LINE.t)라 1px 선처럼 화면 배율에 따라 가늘어지지 않는다. 입력 불변, 결정적.
+// 자리 = 바닥판 바깥 out(0.55): 이번 주 층을 감싼 짙은 비계(바닥판 바깥 0.35, KIT.timber)보다 바깥이라 비계 선에 가리지 않고, 모퉁이 탑(앞면 z 3.1까지)과도 닿지 않는다.
+export const GOAL_LINE=Object.freeze({t:0.08,out:0.55,dash:0.5,gap:0.3,week:'#FFFFFF',next:'#FFFDF5'});
+const goalDays=n=>'하루 '+n+'장';
+export function goalFrame(scene,bp=null,{goal=null}={}){
+  const G=GOAL_LINE,T=G.t,hx=COLS/2+SLAB_OUT+G.out,hz=DEPTH/2+SLAB_OUT+G.out,rows=[],labels=[];
+  const beam=(a,b,kind,dashed)=>{   // 축 하나를 따라가는 a→b 막대(점선이면 dash·gap으로 나눈다)
+    const k=[0,1,2].find(i=>a[i]!==b[i])??1,len=Math.abs(b[k]-a[k]),dir=Math.sign(b[k]-a[k])||1,size=[T,T,T];
+    const piece=(from,l)=>{const c=[...a];c[k]=a[k]+dir*(from+l/2);size[k]=l;rows.push(box(c[0],c[1],c[2],size[0],size[1],size[2],{kind,color:G[kind]}));};
+    if(!dashed){piece(0,len);return;}
+    for(let s=0;s<len-1e-9;s+=G.dash+G.gap)piece(s,Math.min(G.dash,len-s));
+  };
+  const ring=(y,kind,dashed)=>{for(const s of [-1,1]){beam([-hx,y,s*hz],[hx,y,s*hz],kind,dashed);beam([s*hx,y,-hz+T],[s*hx,y,hz-T],kind,dashed);}};
+  const posts=(y0,y1,kind,dashed)=>{if(y1-y0<=1e-6)return;for(const [a,b] of [[1,1],[-1,1],[1,-1],[-1,-1]])beam([a*hx,y0,b*hz],[a*hx,y1,b*hz],kind,dashed);};
+  const cur=scene.floors?.at(-1)?.current?scene.floors.at(-1):null,g=Number.isFinite(goal)&&goal>0?Math.min(MAX_ROWS,goal):null;
+  let week=null,next=null;
+  if(g!==null&&(cur||scene.empty)){
+    const base=cur?cur.base:scene.roof,y=base+SLAB_H+g*ROW_H;
+    week={goal:g,base,y};ring(y,'week',false);posts(base,y,'week',false);
+    labels.push({kind:'GOAL',text:'이번 주 목표 · '+goalDays(g),x:COLS/2+0.9,y,z:DEPTH/2+0.9});
+  }
+  const roof=scene.height,b=(bp&&!bp.empty?bp.boundaries:[]).find(x=>x.y>roof+1e-6)??null;
+  if(b){
+    next={k:b.k,name:b.name,dDay:b.dDay,base:roof,y:b.y};ring(b.y,'next',true);posts(roof,b.y,'next',true);
+    labels.push({kind:'PLAN',k:b.k,text:'다음 단계 · '+b.name+' · '+dText(b.dDay),x:COLS/2+0.9,y:b.y,z:DEPTH/2+0.9});
+  }
+  const legend=[week&&'흰 실선 = 이번 주 목표 높이('+goalDays(g)+')',next&&'흰 점선 = 다음 단계 높이('+next.name+')'].filter(Boolean).join(' · ')||null;
+  return {rows,week,next,labels,legend,top:Math.max(week?.y??0,next?.y??0)};
+}
+
+// ---------- V12E 탑 배경 (설계 V12 E2, 소유자 r81 "평평한 옅은 판과 단색 그러데이션이라 저화질") ----------
+// 하늘 돔: 기존 아이보리→금(backdropAt) 위에 해 쪽 금빛 번짐(지평선 가까이 가장 진하다) + 지평선 바로 위 밝은 안개 띠. 시각(해 방향)만 입력, 결정적.
+export const DOME=Object.freeze({glow:'#FFE2A0',haze:'#FFFBF0',glowMax:0.42,hazeMax:0.35,segments:[64,32]});
+export function domeGlow(x,y,z,sunDir){
+  const h=Math.hypot(x,z)||1,sh=Math.hypot(sunDir[0],sunDir[2])||1,face=((x*sunDir[0]+z*sunDir[2])/(h*sh)+1)/2;
+  const low=y<=0?0:Math.exp(-((y/0.32)**2));
+  return {glow:DOME.glowMax*face**3*low,haze:y<0?0:DOME.hazeMax*Math.exp(-((y/0.06)**2))};
+}
+// 바닥: 그림자를 받는 넓은 원반. 예전 대지(거의 흰 질감 × 흰색)는 한낮 빛(반구광 + 해 ≈ 1.3배)에 넘쳐 화면에서 평평한 흰 판이었다.
+// 이제 화면에 보일 색(shown)을 정하고 정점 색 = shown ÷ 노출(exposure, 선형 색 공간)로 넣는다: 단상 둘레 따뜻한 돌 → 가운데 고리 가장 밝은 판 → 가장자리 조금 깊은 아이보리(그 뒤는 안개가 하늘 아래색으로 덮는다).
+// 단상 둘레 세 겹 포장 고리(아주 옅은 선)가 원근감을 준다. 반지름 목록(가까운 곳은 촘촘하게) + 반지름마다 곱할 색(color)·보일 색(shown).
+export const GROUND_TONE=Object.freeze({near:'#EBDDBF',mid:'#F7F0E1',edge:'#EFE6D2',ring:0.94,rings:Object.freeze([18.5,24,31]),ringW:0.12,fadeFrom:DAIS.r,midAt:40,fadeTo:72,exposure:1.31});
+const toLin=v=>v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4,toSrgb=v=>v<=0.0031308?v*12.92:1.055*v**(1/2.4)-0.055;
+export function groundRings(R){
+  const T=GROUND_TONE,steps=[0,DAIS.r-0.5];
+  for(let r=DAIS.r;r<T.fadeTo;r+=r<40?1.5:4)steps.push(r);
+  for(const c of T.rings)steps.push(c-T.ringW,c,c+T.ringW);
+  steps.push(T.midAt,T.fadeTo,(T.fadeTo+R)/2,R);
+  const radii=[...new Set(steps.filter(r=>r>=0&&r<=R).map(r=>Math.round(r*1000)/1000))].sort((a,b)=>a-b);
+  return radii.map(r=>{
+    const near=r<=T.midAt,u=near?clamp01((r-T.fadeFrom)/(T.midAt-T.fadeFrom)):clamp01((r-T.midAt)/(T.fadeTo-T.midAt)),base=near?mixHex(T.near,T.mid,smooth(u)):mixHex(T.mid,T.edge,smooth(u));
+    const dip=T.rings.some(c=>Math.abs(r-c)<1e-6)?T.ring:1,shown=hexOf(rgbOf(base).map(v=>v*dip));
+    return {r,shown,color:hexOf(rgbOf(shown).map(v=>toSrgb(toLin(v)/T.exposure)))};
+  });
+}
+// 원경: 지평선을 두르는 낮은 산 능선 두 겹(먼 겹 = 옅고 조금 높게, 가까운 겹 = 조금 짙고 낮게). 하늘 구와 함께 카메라를 따라다녀(원근 없이 늘 지평선) 시선 높이 각도로 정한다.
+// 높이 = 결정적 값 잡음(난수 없음), 위 색 = 지평선 색과 능선 색을 섞은 옅은 색(안개 낀 원경), 아래 색 = 지평선 색(이음매 없음).
+// 기본 고각(PHI 0.3)에서 하늘은 화면 위쪽 약 1.8°만 보이므로 능선은 그보다 낮게(먼 겹 0.3~1.5°, 가까운 겹 0.1~0.8°) — 하늘 돔이 그 위에 남는다.
+export const RIDGE=Object.freeze({n:160,layers:Object.freeze([Object.freeze({r:0.86,base:0.006,amp:0.02,tone:'#D9C9A2',mix:0.3,seed:11}),Object.freeze({r:0.72,base:0.002,amp:0.012,tone:'#CDBB8E',mix:0.42,seed:23})]),below:-0.03});
+export function ridgeLayers(bottom=IVORY_1){
+  return RIDGE.layers.map(L=>{
+    const top=mixHex(bottom,L.tone,L.mix),el=Array.from({length:RIDGE.n+1},(_,k)=>{const x=k%RIDGE.n;return L.base+L.amp*(0.65*valueNoise(L.seed,x,0,16,RIDGE.n/16,1)+0.35*valueNoise(L.seed+1,x,0,5,RIDGE.n/5,1));});
+    return {r:L.r,top,bottom,el,below:RIDGE.below};
+  });
 }
 // 4) 우주: 빛무리·붉은 빛 테 질감(n×n 알파, 가운데 = 0.5). glow = 가운데 밝고 바깥으로 부드럽게, ring = 반지름 0.62 둘레만 밝은 고리(복습 필요).
 export const HALO_SPRITE=Object.freeze({size:64,ringR:0.62,ringW:0.12});

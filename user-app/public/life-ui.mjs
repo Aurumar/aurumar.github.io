@@ -21,6 +21,7 @@ import {HABIT_KINDS,HABIT_AREAS,DAY_TYPES,MAX_NAME,MAX_NOTE,SUBJECT_COLOR_KEYS,H
   kstDate,diaryOpenDate,shiftDay,dateKeyOK,dayNumber,hhmmFromIso,timeOK,targetTimeOK,lifeIdOK,
   brickOf,sumBricks,entryDone,nearestExam,lifeDefs,weekCount,studyCodeOf,sessionIdFor,timerSessionId,timerTagFrom,subjectOfSession,emptyDay,
   SUBJECT_PALETTE,NEW_SUBJECT_COLOR,subjectColor,defaultSubjectColor,parseSubjectHex,nearSubjectPairs,habitPinned,habitState,MISSED_ENTRY,HABIT_UNPIN_ORDER,validateLifeData,DEFAULT_HABITS,NO_SUN_ENTRY,entryExcused,isMealHabit} from './life-model.mjs';
+import {WAKE_ID,BED_ID,LATE_ID,LATE_MEAL_KEY,sleepLink,bedCardDate,sleepText,awakeMinutes,alertAt,wakeWithAlert,wakeRetimed} from './life-model.mjs';   // V12B: 수면 연동 · 정신 차린 시각 · 야식 시각
 import {LIFE_CLEAR_TYPES,LIFE_CLEAR_KIND,emptyLifeRecord,lifeRecordEmpty,lifeRecordOf,lifeRecordSummary,lifeClearDate,lifeClearCheckDate} from './life-model.mjs';   // V7D2: 기록별 비우기
 import {emptyStudyDay,studyDayEmpty} from './study-model.mjs';
 import {emptyHltDay,hltDayEmpty} from './hlt-model.mjs';
@@ -90,7 +91,10 @@ function maker(doc){
 }
 const int=s=>typeof s==='string'&&/^\d+$/.test(s.trim())?Number(s.trim()):NaN;
 
-export function createLifeState(){return {today:null,flow:null,ports:null,boxRef:null,flowState:null,studyCard:null,pending:[],subjectId:null,timer:null,message:null,error:false,notices:[],pastDate:null,editing:false,floatXp:null,liveOpen:false,diary:null,diaryFlow:null,diaryPorts:null,diaryPortsOf:null,diaryMessage:null,diaryNotices:[]};}
+export function createLifeState(){return {today:null,flow:null,ports:null,boxRef:null,flowState:null,studyCard:null,pending:[],subjectId:null,timer:null,message:null,error:false,notices:[],pastDate:null,editing:false,floatXp:null,liveOpen:false,diary:null,diaryFlow:null,diaryPorts:null,diaryPortsOf:null,diaryMessage:null,diaryNotices:[],recordDate:null,recordState:null};}
+// V12B-6: 하루 기록 칸(습관·끼니·수면)이 읽고 쓸 날짜. null·오늘 = 오늘. 상태는 메모리뿐이라 앱을 다시 열면 오늘로 돌아온다. 고른 뒤 prepareLife가 그 날짜 카드를 읽는다.
+export function setRecordDate(st,date){st.recordDate=dateKeyOK(date)&&date!==st.today?date:null;if(!st.recordDate)st.recordState=null;return st.recordDate;}
+export const recordDateOf=st=>dateKeyOK(st?.recordDate)&&st.recordDate!==st.today?st.recordDate:st?.today;
 
 // B2C (DEFECT-6): 상자 쓰기 실패는 save가 던지지 않는다(설계). 버튼이 끝났을 때 오늘 카드·공부 벽돌 초안이 실패 상태면 성공 문구 대신 실패 문구를 보인다. 쌓기가 성공하면 초안이 지워져 has가 거짓이다.
 // R33B (HUNT32 S1): 그 칸 자체의 실패(own)만 본다. 다른 날짜·종류 초안의 실패는 위쪽 상자 전체 빨간 줄이 따로 알린다.
@@ -169,7 +173,11 @@ export async function prepareLife(ctx,st,gone=()=>false){
   // V7D1: 새 시작 기준 전 날짜의 초안은 쌓기 대상·성취표에서 빼고 "새 시작 전 초안"(freshDrafts)으로만 센다(지우지 않음).
   const before=d=>Boolean(ctx.freshBefore?.(d)),freshDrafts=dates.filter(before);dates=dates.filter(d=>!before(d));
   if(ctx.autoStack){try{for(const d of dates)if(d!==st.today){const s=await st.flow.state(d);if(s?.status==='LOCAL_DRAFT'){draftCards[d]=s.card;draftStates[d]=s;}}}catch{draftCards={};draftStates={};}}
+  // V12B-6: 고른 기록 날짜(st.recordDate, 없으면 오늘)의 카드 상태. 습관·끼니·수면 칸이 그 날짜 기록을 읽고 쓴다(A2 날짜 고르기가 setRecordDate로 잇는다).
+  let recordState=null;const rd=st.recordDate;
+  if(dateKeyOK(rd)&&rd!==st.today){try{recordState=await st.flow.state(rd);}catch{recordState=null;}}
   if(gone())return st;
+  st.recordState=recordState;
   st.flowState=flowState;st.studyCard=studyCard;st.diary=diary;
   st.pending=dates.filter(d=>d<st.today).slice(-3);st.pendingAll=dates.filter(d=>d<st.today);st.draftCards=draftCards;st.draftStates=draftStates;st.freshDrafts=freshDrafts;
   currentTimer(st,ctx.storage??globalThis.localStorage);
@@ -206,7 +214,7 @@ export function pendingStackCount(st){if(!st?.flowState)return 0;return (st.flow
 export function lockLife(st){
   if(!st)return;clearAutoStack(st);
   st.liveStop?.();st.liveStop=null;st.endSheet=null;
-  st.timer=null;st.liveOpen=false;st.flowState=null;st.studyCard=null;st.pending=[];st.pendingAll=[];st.draftCards={};st.draftStates={};st.message=null;st.error=false;st.focusNote=null;st.diary=null;st.diaryMessage=null;st.diaryNotices=[];st.linkNote=null;
+  st.timer=null;st.liveOpen=false;st.flowState=null;st.recordState=null;st.recordDate=null;st.studyCard=null;st.pending=[];st.pendingAll=[];st.draftCards={};st.draftStates={};st.message=null;st.error=false;st.focusNote=null;st.diary=null;st.diaryMessage=null;st.diaryNotices=[];st.linkNote=null;
 }
 
 function entryFor(h,{now,minutes,count}={}){
@@ -235,6 +243,90 @@ function renderQuestLine({el,add,button},slot,line,open){
   add(slot,add(go,el('span','›','life-quest-more')));
 }
 
+// V12_MERGE (A2·B6 잇기): 습관·끼니·수면 칸 묶음. date = 오늘(st.today), recDate = 칸이 읽고 쓰는 날짜(B6, 기본 오늘). 오늘 카드(renderLifeToday)와
+// 고른 날 하루 기록(renderDayRecord)이 같은 칸을 쓴다. ach = 오늘 XP 뜨는 글자용(오늘 칸일 때만).
+function habitCells(ctx,st,h,{defs,life,date,card,act,ach=null,recDate=recordDateOf(st)}){
+  const {el,add,button,hint}=h;
+  // V12B-6: 칸은 기록 날짜(recDate = st.recordDate, 기본 오늘)의 카드를 읽고 쓴다. 미래 날짜는 기입을 막는다(A2 날짜 고르기가 잇는다).
+  const recFuture=recDate>date,recCard=recDate===date?card:recordCard(ctx,st,recDate);
+  const grid=el('div',null,'life-habits');
+  const hs=recFuture?[]:defs.habits.filter(x=>!x.hidden),moreGrid=el('div',null,'life-habits life-habits-more');   // V6B: 고정한 습관만 바로 보이고 나머지는 "더 보기"
+  if(recFuture)add(grid,hint(RECORD_TEXT.future));
+  else if(!hs.length)add(grid,hint('보이는 습관이 없습니다. 습관 편집에서 추가하거나 숨김을 풀어 주세요.'));
+  const floatXp=st.floatXp;st.floatXp=null;
+  const onlyFor=date=>()=>Boolean(ctx.autoStack)&&draftLoose(st,date,{memory:false}),nowHm=()=>hhmmFromIso(ctx.now()),onlyLoose=onlyFor(recDate);   // 오늘 칩·값 시트와 같은 규칙(FIX70 F2), 날짜만 기록 날짜
+  // V12B: 여러 칸을 한 번에 넣는 입력(야식 먹음 = 야식 시각 + 야식X 못함). 그날 카드 1장 쌓기 핸들러 그대로(연산 1).
+  const setMany=fn=>stackAt(act,ctx,st,recDate,fn,onlyLoose);
+  // FIX70 (F2): 칩 입력은 초안에 넣고, 앱이 묶을 때(autoStack) 상자에 확실히 남지 않았으면 그 자리에서 쌓는다(메모리 초안은 V6F 그대로 = 화면 안내).
+  const setEntry=(hb,make)=>stackAt(act,ctx,st,recDate,async()=>{
+    const prev=recCard.habits[hb.id]??null,wasDone=entryDone(hb,prev);let entry=make();
+    if(past&&hb.kind==='DURATION'&&entry?.at)entry={...entry,at:null};   // V12FIX H-1: 지난 날 분 기록에는 지금 시각(기록 시각)을 남기지 않는다(일폭 보너스는 오늘 칸만)
+    if(hb.id===WAKE_ID&&entry)entry=wakeRetimed(prev,entry);   // V12B-2: 기상을 고쳐도 적어 둔 정신 차린 시각은 그대로
+    await st.flow.setHabit(recDate,hb.id,entry);
+    if(hb.id===LATE_ID&&entry?.done&&Object.hasOwn(recCard.habits,LATE_MEAL_KEY))await st.flow.setHabit(recDate,LATE_MEAL_KEY,null);   // V12B-3: 야식X 했음 = 야식 안 먹음
+    if(recDate===date&&ach&&!wasDone&&entry&&entryDone(hb,entry))st.floatXp={habitId:hb.id,text:'+'+habitXpToday(ach,hb.id)};   // 다시 그린 뒤 칸 위에 잠깐 보인다
+  },onlyLoose);
+  const editTime=(hb,e)=>openEntrySheet(ctx,st,hb,e,recDate);
+  // V12FIX H-1: 지난 날짜 칸은 "지금"이 그날 시각이 아니다 → [먹음]·[시각 넣기]·[야식 먹음]은 빈 시각 시트를 열고, 넣은 시각으로 쓴다. 기록 시각(at)도 지금 시각을 넣지 않는다.
+  const past=recDate<date;
+  const askTime=(hb,make,note=PAST_TIME_TEXT.note(recDate))=>openTimeSheet(ctx,{title:hb.name+' 시각 · '+dateLabel(recDate),label:'시각 (KST)',value:'',note,save:v=>{setEntry(hb,()=>make(v))();return null;}});
+  for(const hb of hs){
+    const e=recCard.habits[hb.id]??null,done=entryDone(hb,e),meal=isMealHabit(hb),skip=entryExcused(hb,e),missed=meal&&Boolean(e)&&!e.done;
+    const cell=el('div',null,'life-habit '+(done?'done':missed?'miss':skip?'skip':'todo')+' kind-'+hb.kind.toLowerCase()+(meal?' life-meal':''));
+    cell.dataset.habitId=hb.id;
+    if(floatXp?.habitId===hb.id){const f=el('span',floatXp.text,'life-xp-float');f.setAttribute('aria-hidden','true');f.addEventListener('animationend',()=>f.remove());add(cell,f);}
+    const week=hb.kind==='COUNT'&&hb.target.per==='WEEK'?weekCount(hb.id,recDate,life.days,recCard):null;
+    // V12B-3: 끼니 시각은 눌러서 고친다(먹음이면 시각 단추, 아직이면 "시각 입력" = 나중에 기록할 때 시각 직접 입력). 안 먹음(✕)은 글자 그대로.
+    const lm=hb.id===LATE_ID?recCard.habits[LATE_MEAL_KEY]??null:null,ate=Boolean(lm?.done&&timeOK(lm.at));
+    const value=meal&&!missed?mealTimeButton(h,hb.name,done?e.at:null,()=>editTime(hb,e)):el('span',ate?MEAL_TIME_TEXT.lateAte(lm.at):habitValueText(hb,e,week),'life-habit-value');
+    const head=add(el('div',null,'life-habit-head'),el('strong',hb.name),value);
+    add(cell,head,HABIT_HINTS[hb.id]?el('span',HABIT_HINTS[hb.id],'muted small'):null);
+    if(meal){
+      // V10C-2: 누를 때마다 미기록 → 먹음(지금 시각) → 안 먹음(✕, 기존 못함 칸) → 미기록. 길게 누르면 시각 고치기(예전 시트).
+      const next=mealNext(e),b=el('button',done?'✓ '+e.at:missed?'✕ 안 먹음':'먹음','life-habit-btn life-meal-btn'+(done?' on':missed?' miss':''));b.type='button';
+      b.setAttribute('aria-label',hb.name+' '+(done?'먹음 '+e.at:missed?'안 먹음':'기록 없음')+' · 누르면 '+V10C_TEXT.mealNext[next]);
+      // V12FIX H-1: 지난 날은 먹음 표시(V12B-6 한 번 누르기 그대로) 뒤 바로 빈 시각 시트 → 그날 먹은 시각으로 고친다(시트 안내에 지금 시각이 들어갔다고 적음).
+      pressable(b,()=>{setEntry(hb,()=>next==='done'?entryFor(hb,{now:hhmmFromIso(ctx.now())}):next==='miss'?{...MISSED_ENTRY}:null)();if(past&&next==='done')askTime(hb,v=>entryFor(hb,{now:v}),PAST_TIME_TEXT.mealNote(nowHm()));},()=>editTime(hb,e));add(cell,b);
+    }else if(hb.kind==='TIME'){
+      const b=el('button',done?'수정':past?PAST_TIME_TEXT.put:'지금','life-habit-btn');b.type='button';
+      pressable(b,()=>{if(done)editTime(hb,e);else if(past)askTime(hb,v=>entryFor(hb,{now:v}));else setEntry(hb,()=>entryFor(hb,{now:hhmmFromIso(ctx.now())}))();},()=>editTime(hb,e));add(cell,b);
+      if(hb.id===WAKE_ID&&done)add(cell,awakeButton(h,e,()=>openAwakeSheet(ctx,st,{act,date:recDate,e,only:onlyLoose})));   // V12B-2
+    }else if(hb.kind==='DURATION'){
+      const row=el('div',null,'life-chip-row');
+      const shown=durationChips(hb.target?.minutes);
+      for(const m of shown)add(row,chip(m+'분',{selected:e?.minutes===m,onClick:setEntry(hb,()=>e?.minutes===m?null:entryFor(hb,{minutes:m,now:hhmmFromIso(ctx.now())}))}));
+      add(row,button(e&&!shown.includes(e.minutes)&&e.minutes?'직접 '+e.minutes+'분':'직접',()=>editTime(hb,e),'secondary'));
+      // V10C-3: 햇볕 = '오늘 해 없음(비·흐림)'. 실패도 성공도 아닌 어쩔 수 없음(연속이 끊기지 않음). 다시 누르면 지운다.
+      // 칩 줄은 한 줄 가로 밀기라 끝에 두면 안 보인다(PC 캡처) → 칩 줄 아래 자기 줄.
+      const noRow=hb.id===SUN_HABIT_ID?el('div',null,'life-nosun-row'):null;
+      if(noRow){const no=chip(V10C_TEXT.noSunChip,{selected:skip,onClick:setEntry(hb,()=>skip?null:{...NO_SUN_ENTRY})});no.className=(no.className?no.className+' ':'')+'life-nosun';add(noRow,no);}
+      add(cell,row,noRow);
+    }else if(hb.kind==='COUNT'){
+      const row=el('div',null,'life-chip-row');
+      add(row,button('+1',setEntry(hb,()=>entryFor(hb,{count:Math.min(99,(e?.count??0)+1)})),'primary'),button('수정',()=>editTime(hb,e),'secondary'));add(cell,row);
+    }else{
+      add(cell,toggle(hb.name+' 했음',done,on=>setEntry(hb,()=>on?entryFor(hb,{}):null)()));   // FIX44 (AUD1 #1): 라벨이 칸마다 달라야 saReconcile이 다른 칸과 비교하지 않는다
+      // V12B-3: 야식 = [야식 먹음]을 누르면 지금 시각(야식 시각 줄) + 야식X 못함. 다시 누르면 둘 다 지움. 시각은 눌러 고치고, 나중에 적을 때는 "시각 입력".
+      if(hb.id===LATE_ID){
+        const eat=at=>setMany(async()=>{await st.flow.setHabit(recDate,LATE_MEAL_KEY,{done:true,at,minutes:null,count:null});await st.flow.setHabit(recDate,LATE_ID,{...MISSED_ENTRY});});
+        // V12FIX M-6: 오늘 카드에서 04:00 전(일기 날 경계)에 [야식 먹음] = 어젯밤 야식 → 어제 카드(야식 시각 + 야식X 못함). 어제가 새 시작 전(읽기 전용)이면 예전처럼 오늘.
+        const yday=shiftDay(date,-1),night=!past&&recDate===date&&dateKeyOK(yday)&&nowHm()<LATE_NIGHT_END&&!ctx.freshBefore?.(yday);
+        const eatNight=at=>stackAt(act,ctx,st,yday,async()=>{await st.flow.setHabit(yday,LATE_MEAL_KEY,{done:true,at,minutes:null,count:null});await st.flow.setHabit(yday,LATE_ID,{...MISSED_ENTRY});st.message=PAST_TIME_TEXT.lateNight(yday,at);},onlyFor(yday));
+        const askLate=()=>openTimeSheet(ctx,{title:MEAL_TIME_TEXT.lateTitle,label:'시각 (KST)',value:ate?lm.at:past?'':nowHm(),note:past?PAST_TIME_TEXT.note(recDate):null,save:v=>{eat(v)();return null;}});   // V12FIX H-1: 지난 날은 빈 시각
+        const lateBtn=button(ate?MEAL_TIME_TEXT.lateOn:MEAL_TIME_TEXT.lateEat,ate?setMany(async()=>{await st.flow.setHabit(recDate,LATE_MEAL_KEY,null);await st.flow.setHabit(recDate,LATE_ID,null);}):past?askLate:night?()=>eatNight(nowHm())():()=>eat(nowHm())(),'secondary life-latemeal-btn'+(ate?' on':''));
+        lateBtn.setAttribute('aria-label',ate?MEAL_TIME_TEXT.lateAte(lm.at)+' · 누르면 기록 지우기':past?'야식 먹음 · 시각 넣기':night?PAST_TIME_TEXT.lateNightLabel:'야식 먹음 · 지금 시각으로');
+        add(cell,add(el('div',null,'life-latemeal-row'),lateBtn,mealTimeButton(h,'야식',ate?lm.at:null,askLate)));
+      }
+    }
+    if(hb.id===WAKE_ID)add(cell,sleepNode(h,{link:sleepLink({days:linkDaysOf(ctx,st,life,date,recDate,card,recCard),hltDays:ctx.getWhole().hlt?.days??[],date:recDate}),today:recDate===date,
+      canBed:defs.habits.some(x=>x.id===BED_ID&&!x.hidden),openBed:()=>openBedSheet(ctx,st,{act,date:recDate,wakeAt:e?.at??null,bed:defs.habits.find(x=>x.id===BED_ID)})}));   // V12B-1
+    add(habitPinned(hb)?grid:moreGrid,cell);
+  }
+  const moreCount=hs.filter(x=>!habitPinned(x)).length;
+  const moreBox=moreCount?add(el('details',null,'life-habits-more-box'),el('summary',BOARD_TEXT.more(moreCount),'life-habits-more-summary'),moreGrid):null;
+  return {grid,moreBox};
+}
+
 export function renderLifeToday(root,ctx,st){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,hint,input}=h;
   const whole=ctx.getWhole(),life=whole.life??{habits:[],days:[],subjects:[],exams:null};
@@ -251,7 +343,9 @@ export function renderLifeToday(root,ctx,st){
   const xpSlot=add(el('div',null,'life-xp-slot'),ring(ach.todayXp,ach.goalXp,{size:64}));xpSlot.id='xp-slot';xpSlot.setAttribute('aria-label','오늘 XP '+ach.todayXp+' / '+ach.goalXp);
   const chips=add(el('div',null,'life-chips'),el('span',ach.todayXp+' / '+ach.goalXp+' XP','life-xp-text'),(()=>{const n=el('span','연속 '+ach.streak.days+'일 '+multText(ach.streak.mult10),'life-chip-slot');n.id='streak-chip';return n;})(),(()=>{const n=el('span',AREA_TEXT[ach.topArea]+' Lv '+topLevel.level,'life-chip-slot');n.id='level-chip';return n;})());
   const title=ctx.achvTitle?.({doc,ach,life:whole.life??null,money,storage:ctx.storage});   // Q1C: 칭호 칩(앱이 넘긴다, 표시만)
-  const healthText=ctx.healthLine?.(date)??null;   // FIX45 (AUD1 #9): 수면·걸음 한 줄(건강 모듈이 꺼져 있으면 없다)
+  let healthText=ctx.healthLine?.(date)??null;   // FIX45 (AUD1 #9): 수면·걸음 한 줄(건강 모듈이 꺼져 있으면 없다)
+  // V12B-1: 건강 카드에 수면이 없어도 취침·기상 기록으로 이은 수면이 있으면 그 값을 쓴다(건강 카드 값이 있으면 그대로 = Health Connect 먼저).
+  if(healthText?.startsWith(NO_SLEEP_LINE)){const k=sleepLink({days:linkDaysOf(ctx,st,life,date,date,card,card),hltDays:whole.hlt?.days??[],date});if(k?.source==='HABIT')healthText=SLEEP_LINK_TEXT.line(k.minutes)+healthText.slice(NO_SLEEP_LINE.length);}
   let healthNode=null;if(healthText){healthNode=el('p',healthText,'life-health-line');healthNode.id='today-health';}
   const napNode=renderNapLine(ctx,st,h,date);   // V6B: 수면·걸음 줄 아래 낮잠(건강 모듈이 켜졌을 때만)
   add(out,add(el('div',null,'life-head'),add(el('div',null,'life-head-main'),el('span','TODAY','eyebrow'),el('h2',dateLabel(date),'panel-title'),title?.node,examLine),add(el('div',null,'life-head-side'),xpSlot,chips,ctx.clearMenu?.('LIFE_DAY',date)??null)),   /* V7D2: 쌓은 오늘 카드의 ⋯ 메뉴 */
@@ -289,53 +383,8 @@ export function renderLifeToday(root,ctx,st){
   // 자정 이후 첫 열기: 어제(또는 그 전) 쌓지 않은 입력이 있으면 한 번 눌러 쌓게 안내
   for(const d of st.pending)add(status,add(el('div',null,'notice life-yesterday'),el('span',(d===shiftDay(date,-1)?'어제':dateLabel(d))+' 카드를 아직 쌓지 않았어요. '),button((d===shiftDay(date,-1)?'어제':dateLabel(d))+' 카드 쌓기',stackAt(act,ctx,st,d),'primary')));
 
-  // 3) 습관 격자(FIX44: 여기서는 만들기만 하고, 자리는 공부 벽돌 아래)
-  const grid=el('div',null,'life-habits');
-  const hs=defs.habits.filter(x=>!x.hidden),moreGrid=el('div',null,'life-habits life-habits-more');   // V6B: 고정한 습관만 바로 보이고 나머지는 "더 보기"
-  if(!hs.length)add(grid,hint('보이는 습관이 없습니다. 습관 편집에서 추가하거나 숨김을 풀어 주세요.'));
-  const floatXp=st.floatXp;st.floatXp=null;
-  // FIX70 (F2): 칩 입력은 초안에 넣고, 앱이 묶을 때(autoStack) 상자에 확실히 남지 않았으면 그 자리에서 쌓는다(메모리 초안은 V6F 그대로 = 화면 안내).
-  const setEntry=(hb,make)=>stackAt(act,ctx,st,date,async()=>{
-    const wasDone=entryDone(hb,card.habits[hb.id]??null),entry=make();
-    await st.flow.setHabit(date,hb.id,entry);
-    if(!wasDone&&entry&&entryDone(hb,entry))st.floatXp={habitId:hb.id,text:'+'+habitXpToday(ach,hb.id)};   // 다시 그린 뒤 칸 위에 잠깐 보인다
-  },()=>Boolean(ctx.autoStack)&&draftLoose(st,date,{memory:false}));
-  for(const hb of hs){
-    const e=card.habits[hb.id]??null,done=entryDone(hb,e),meal=isMealHabit(hb),skip=entryExcused(hb,e),missed=meal&&Boolean(e)&&!e.done;
-    const cell=el('div',null,'life-habit '+(done?'done':missed?'miss':skip?'skip':'todo')+' kind-'+hb.kind.toLowerCase()+(meal?' life-meal':''));
-    cell.dataset.habitId=hb.id;
-    if(floatXp?.habitId===hb.id){const f=el('span',floatXp.text,'life-xp-float');f.setAttribute('aria-hidden','true');f.addEventListener('animationend',()=>f.remove());add(cell,f);}
-    const week=hb.kind==='COUNT'&&hb.target.per==='WEEK'?weekCount(hb.id,date,life.days,card):null;
-    const head=add(el('div',null,'life-habit-head'),el('strong',hb.name),el('span',habitValueText(hb,e,week),'life-habit-value'));
-    add(cell,head,HABIT_HINTS[hb.id]?el('span',HABIT_HINTS[hb.id],'muted small'):null);
-    if(meal){
-      // V10C-2: 누를 때마다 미기록 → 먹음(지금 시각) → 안 먹음(✕, 기존 못함 칸) → 미기록. 길게 누르면 시각 고치기(예전 시트).
-      const next=mealNext(e),b=el('button',done?'✓ '+e.at:missed?'✕ 안 먹음':'먹음','life-habit-btn life-meal-btn'+(done?' on':missed?' miss':''));b.type='button';
-      b.setAttribute('aria-label',hb.name+' '+(done?'먹음 '+e.at:missed?'안 먹음':'기록 없음')+' · 누르면 '+V10C_TEXT.mealNext[next]);
-      pressable(b,()=>setEntry(hb,()=>next==='done'?entryFor(hb,{now:hhmmFromIso(ctx.now())}):next==='miss'?{...MISSED_ENTRY}:null)(),()=>openEntrySheet(ctx,st,hb,e));add(cell,b);
-    }else if(hb.kind==='TIME'){
-      const b=el('button',done?'수정':'지금','life-habit-btn');b.type='button';
-      pressable(b,()=>{if(done)openEntrySheet(ctx,st,hb,e);else setEntry(hb,()=>entryFor(hb,{now:hhmmFromIso(ctx.now())}))();},()=>openEntrySheet(ctx,st,hb,e));add(cell,b);
-    }else if(hb.kind==='DURATION'){
-      const row=el('div',null,'life-chip-row');
-      const shown=durationChips(hb.target?.minutes);
-      for(const m of shown)add(row,chip(m+'분',{selected:e?.minutes===m,onClick:setEntry(hb,()=>e?.minutes===m?null:entryFor(hb,{minutes:m,now:hhmmFromIso(ctx.now())}))}));
-      add(row,button(e&&!shown.includes(e.minutes)&&e.minutes?'직접 '+e.minutes+'분':'직접',()=>openEntrySheet(ctx,st,hb,e),'secondary'));
-      // V10C-3: 햇볕 = '오늘 해 없음(비·흐림)'. 실패도 성공도 아닌 어쩔 수 없음(연속이 끊기지 않음). 다시 누르면 지운다.
-      // 칩 줄은 한 줄 가로 밀기라 끝에 두면 안 보인다(PC 캡처) → 칩 줄 아래 자기 줄.
-      const noRow=hb.id===SUN_HABIT_ID?el('div',null,'life-nosun-row'):null;
-      if(noRow){const no=chip(V10C_TEXT.noSunChip,{selected:skip,onClick:setEntry(hb,()=>skip?null:{...NO_SUN_ENTRY})});no.className=(no.className?no.className+' ':'')+'life-nosun';add(noRow,no);}
-      add(cell,row,noRow);
-    }else if(hb.kind==='COUNT'){
-      const row=el('div',null,'life-chip-row');
-      add(row,button('+1',setEntry(hb,()=>entryFor(hb,{count:Math.min(99,(e?.count??0)+1)})),'primary'),button('수정',()=>openEntrySheet(ctx,st,hb,e),'secondary'));add(cell,row);
-    }else{
-      add(cell,toggle(hb.name+' 했음',done,on=>setEntry(hb,()=>on?entryFor(hb,{}):null)()));   // FIX44 (AUD1 #1): 라벨이 칸마다 달라야 saReconcile이 다른 칸과 비교하지 않는다
-    }
-    add(habitPinned(hb)?grid:moreGrid,cell);
-  }
-  const moreCount=hs.filter(x=>!habitPinned(x)).length;
-  const moreBox=moreCount?add(el('details',null,'life-habits-more-box'),el('summary',BOARD_TEXT.more(moreCount),'life-habits-more-summary'),moreGrid):null;
+  // 3) 습관 격자(FIX44: 여기서는 만들기만 하고, 자리는 공부 벽돌 아래). V12_MERGE: 칸 묶음 = habitCells(날짜 인자, 고른 날 하루 기록과 같은 칸)
+  const {grid,moreBox}=habitCells(ctx,st,h,{defs,life,date,card,act,ach});
 
   // 4) 오늘 계획(P1B): 앱이 ctx.todayPlan으로 넘겨 준 카드(계획 탭 '일' 보기와 같은 함수). [▶ 집중]은 아래 공부 벽돌과 같은 타이머·담기를 쓴다(focusPort, 기록 쓰기 0).
   const planCard=ctx.todayPlan?.({date,today:date,focus:ctx.study?.()?focusPort(ctx,st,act):null,draft:st.studyCard?.status==='LOCAL_DRAFT'?st.studyCard.card:null})??null;
@@ -895,21 +944,126 @@ function openTimerEnd(ctx,st,subject,act,finish){
 }
 
 // ---- 습관 값 직접 입력 시트(길게 눌러 수정 · 분 직접 · 횟수 수정) ----
-function openEntrySheet(ctx,st,hb,e){
+// V12B-6: date = 그 칸의 기록 날짜(기본 오늘). 기상은 고쳐도 정신 차린 시각을 그대로 둔다(wakeRetimed).
+function openEntrySheet(ctx,st,hb,e,date=st.today){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,input,field}=h;
-  const date=st.today;
   const body=el('div',null,'life-sheet-body');
-  let read;
-  if(hb.kind==='TIME'){const t=input(e?.at??hhmmFromIso(ctx.now()),{},'time');add(body,field('시각 (KST)',t));read=()=>{if(!timeOK(t.value))throw Object.assign(new Error('INVALID_LIFE_ENTRY'),{code:'INVALID_LIFE_ENTRY'});return entryFor(hb,{now:t.value});};}
-  else if(hb.kind==='DURATION'){const m=input(e?.minutes?String(e.minutes):'',{inputmode:'numeric'});add(body,field('분',m));read=()=>{const v=int(m.value);if(!(v>=1&&v<=1440))throw Object.assign(new Error('INVALID_LIFE_ENTRY'),{code:'INVALID_LIFE_ENTRY'});return entryFor(hb,{minutes:v,now:hhmmFromIso(ctx.now())});};}
+  let read;const now=date<st.today?null:hhmmFromIso(ctx.now());   // V12FIX H-1: 지난 날짜면 지금 시각을 기본값·기록 시각으로 쓰지 않는다
+  if(hb.kind==='TIME'){const t=input(e?.at??now??'',{},'time');add(body,field('시각 (KST)',t));read=()=>{if(!timeOK(t.value))throw Object.assign(new Error('INVALID_LIFE_ENTRY'),{code:'INVALID_LIFE_ENTRY'});return entryFor(hb,{now:t.value});};}
+  else if(hb.kind==='DURATION'){const m=input(e?.minutes?String(e.minutes):'',{inputmode:'numeric'});add(body,field('분',m));read=()=>{const v=int(m.value);if(!(v>=1&&v<=1440))throw Object.assign(new Error('INVALID_LIFE_ENTRY'),{code:'INVALID_LIFE_ENTRY'});const x=entryFor(hb,{minutes:v,now:hhmmFromIso(ctx.now())});return now===null?{...x,at:null}:x;};}
   else{const c=input(e?.count?String(e.count):'',{inputmode:'numeric'});add(body,field('횟수',c));read=()=>{const v=int(c.value);if(!(v>=1&&v<=99))throw Object.assign(new Error('INVALID_LIFE_ENTRY'),{code:'INVALID_LIFE_ENTRY'});return entryFor(hb,{count:v});};}
   const err=el('p',null,'notice error');err.hidden=true;
   const dlg=sheet(hb.name+' 수정',body);
   const run=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{await fn();}catch(x){st.message=lifeErrorText(x?.code);st.error=true;}flagBoxFail(st,date);await prepareLife(ctx,st);await ctx.rerender();});
-  const apply=entry=>{dlg.close();stackAt(run,ctx,st,date,()=>st.flow.setHabit(date,hb.id,entry),()=>Boolean(ctx.autoStack)&&draftLoose(st,date,{memory:false}))();};   // FIX70 (F2): 오늘 칩과 같은 규칙
+  const apply=entry=>{dlg.close();stackAt(run,ctx,st,date,()=>st.flow.setHabit(date,hb.id,hb.id===WAKE_ID&&entry?wakeRetimed(e,entry):entry),()=>Boolean(ctx.autoStack)&&draftLoose(st,date,{memory:false}))();};   // FIX70 (F2): 오늘 칩과 같은 규칙
   add(body,err,add(el('div',null,'buttons'),button('저장',()=>{try{apply(read());}catch(x){err.textContent=lifeErrorText(x.code);err.hidden=false;}},'primary'),e?button('지우기',()=>apply(null)):null));
 }
+// ---- V12B (소유자 2026-11-16): 수면 연동 · 정신 차린 시각 · 끼니 시각 고치기 · 날짜 인자 ----
+const NO_SLEEP_LINE='지난밤 수면 기록 없음';   // hlt-ui sleepStepsLine의 앞부분(건강 카드에 수면이 없을 때)
+export const RECORD_TEXT=Object.freeze({future:'미래 날짜는 습관을 기록할 수 없어요 · 일정만 볼 수 있어요.'});
+export const SLEEP_LINK_TEXT=Object.freeze({today:'오늘 수면 ',day:'그날 수면 ',noBed:'어제 취침 기록 없음',noBedDay:'전날 취침 기록 없음',add:'넣기',hc:'출처: Health Connect',health:'출처: 건강 기록',
+  habit:(b,w)=>'취침 '+b+' → 기상 '+w,bedTitle:'어제 취침 시각',bedNote:'자정 넘어 잤으면 그 시각(예: 01:30)을 그대로 적어요 · 정오 전이고 기상보다 이르면 오늘 새벽 취침으로 저장해요.',
+  replace:(d,t)=>dateLabel(d)+' 카드의 취침 '+t+'을(를) 바꿔요.',line:m=>'지난밤 수면 '+Math.floor(m/60)+':'+String(m%60).padStart(2,'0')+' (취침·기상)'});
+export const AWAKE_TEXT=Object.freeze({add:'정신 차린 시각 (선택)',line:(t,m)=>'정신 차림 '+t+' · 깨어나는 데 '+m+'분',title:'정신 차린 시각',label:'시각 (KST)',
+  note:'기상 뒤 정신이 든 시각이에요 · 비워 두어도 돼요.',bad:'정신 차린 시각은 기상 시각부터 12시간 안이어야 해요.',clear:'지우기'});
+// V12FIX H-1: 지난 날짜 칸의 시각 넣기 · M-6: 새벽(04:00 전, 일기 날과 같은 경계) 야식은 전날 밤 카드에.
+export const PAST_TIME_TEXT=Object.freeze({put:'시각 넣기',note:d=>dateLabel(d)+' 기록이에요 · 그날 시각을 적어 주세요.',mealNote:t=>'먹음으로 표시했어요 · 시각은 지금('+t+')으로 들어갔으니 그날 먹은 시각을 적어 주세요.',lateNight:(d,t)=>dateLabel(d)+' 밤 야식 '+t+'으로 넣었어요.',lateNightLabel:'야식 먹음 · 어젯밤 카드에 지금 시각으로'});
+export const LATE_NIGHT_END='04:00';
+export const BED_LOCKED_TEXT='그 취침은 새 시작 전 날짜 카드라 넣을 수 없어요(읽기 전용).';
+export const MEAL_TIME_TEXT=Object.freeze({input:'시각 입력',fix:(n,t)=>n+' 시각 '+t+' · 눌러서 고치기',add:n=>n+' 시각 직접 입력',lateEat:'야식 먹음',lateOn:'✓ 야식 먹음',lateAte:t=>'야식 먹음 '+t,lateTitle:'야식 시각'});
+// 고른 날짜의 카드(쌓인 카드 위에 그 날 초안을 칸 단위로 얹음, 오늘 카드와 같은 규칙). 없으면 빈 카드.
+function recordCard(ctx,st,d){
+  const s=st.recordState?.card?.date===d?st.recordState:st.draftStates?.[d]??null,stacked=stackedDay(ctx,d);   // V12_MERGE: 그날 상태를 아직 못 읽었으면 성취표가 읽어 둔 그날 초안(draftStates)
+  if(s?.card?.date===d)return (s.status==='LOCAL_DRAFT'?overlayDay(stacked,s):s.card)??stacked??emptyDay(d);
+  return stacked??emptyDay(d);
+}
+// 수면 연동이 보는 하루 카드들: 쌓인 카드 + 이 기기 초안(성취표와 같은 boardLife) + 오늘·고른 날짜 화면 카드.
+export function linkDaysOf(ctx,st,life,today,recDate,card,recCard){
+  const base=(boardLife(ctx,st,life,today)?.days??life?.days??[]).filter(d=>d.date!==today&&d.date!==recDate);
+  return [...base,{date:today,data:card},...(recDate!==today?[{date:recDate,data:recCard}]:[])];
+}
+function mealTimeButton({el},name,at,open){
+  const b=el('button',at??MEAL_TIME_TEXT.input,'life-habit-value life-meal-time'+(at?'':' empty'));b.type='button';b.dataset.navOnly='1';
+  b.setAttribute('aria-label',at?MEAL_TIME_TEXT.fix(name,at):MEAL_TIME_TEXT.add(name));b.addEventListener('click',open);return b;
+}
+function awakeButton({el},e,open){
+  const m=awakeMinutes(e),b=el('button',m===null?AWAKE_TEXT.add:AWAKE_TEXT.line(alertAt(e),m),'secondary life-awake'+(m===null?'':' on'));b.type='button';b.dataset.navOnly='1';
+  b.addEventListener('click',open);return b;
+}
+// 수면 한 줄(기상 칸 안): "오늘 수면 7시간 20분" + 출처 · 취침이 없으면 "어제 취침 기록 없음 · 넣기". 평가 문구 없음.
+function sleepNode({el,add,button},{link,today=true,canBed=false,openBed}){
+  if(!link)return null;
+  const box=el('div',null,'life-sleep');
+  if(link.missing){add(box,el('span',today?SLEEP_LINK_TEXT.noBed:SLEEP_LINK_TEXT.noBedDay,'life-sleep-text')   /* V12FIX L-B7: 지난 날짜는 "전날" */,canBed?button(SLEEP_LINK_TEXT.add,openBed,'secondary life-sleep-add'):null);return box;}
+  add(box,el('strong',(today?SLEEP_LINK_TEXT.today:SLEEP_LINK_TEXT.day)+sleepText(link.minutes),'life-sleep-text'),
+    el('span',link.source==='HC'?SLEEP_LINK_TEXT.hc:link.source==='HEALTH'?SLEEP_LINK_TEXT.health:SLEEP_LINK_TEXT.habit(link.bed,link.wake),'muted small life-sleep-src'));
+  box.dataset.source=link.source;
+  return box;
+}
+// 시각 하나를 받는 작은 시트. save(v) = 문제 문구(시트에 남김) 또는 null(닫음). clear가 있으면 [지우기].
+export function openTimeSheet(ctx,{title,label='시각 (KST)',value='',note=null,clear=null,save}){
+  const doc=ctx.document??globalThis.document,{el,add,button,input,field}=maker(doc),body=el('div',null,'life-sheet-body life-time-sheet');
+  const t=input(value??'',{'aria-label':label},'time'),err=el('p',null,'notice error');err.hidden=true;
+  const dlg=sheet(title,body);
+  add(body,note?el('p',note,'muted small'):null,field(label,t),err,add(el('div',null,'buttons'),
+    button('저장',()=>{if(!timeOK(t.value)){err.textContent=lifeErrorText('INVALID_LIFE_ENTRY');err.hidden=false;return;}const bad=save(t.value);if(bad){err.textContent=bad;err.hidden=false;return;}dlg?.close?.();},'primary'),
+    clear?button(AWAKE_TEXT.clear,()=>{dlg?.close?.();clear();}):null));
+  return {dlg,body,input:t};
+}
+function openAwakeSheet(ctx,st,{act,date,e,only}){
+  const put=entry=>stackAt(act,ctx,st,date,()=>st.flow.setHabit(date,WAKE_ID,entry),only)();
+  return openTimeSheet(ctx,{title:AWAKE_TEXT.title,label:AWAKE_TEXT.label,value:alertAt(e)??(date<st.today?'':hhmmFromIso(ctx.now())),note:AWAKE_TEXT.note,
+    clear:awakeMinutes(e)===null?null:()=>put(wakeWithAlert(e,null)),
+    save:v=>{const next=wakeWithAlert(e,v);if(!next)return AWAKE_TEXT.bad;put(next);return null;}});
+}
+function openBedSheet(ctx,st,{act,date,wakeAt,bed}){
+  const stacked=d=>(boardLife(ctx,st,ctx.getWhole().life??null,st.today)?.days??[]).find(x=>x.date===d)?.data?.habits?.[BED_ID]??null;
+  const r=openTimeSheet(ctx,{title:SLEEP_LINK_TEXT.bedTitle,value:'',note:SLEEP_LINK_TEXT.bedNote,save:v=>{
+    const target=bedCardDate(date,v,wakeAt);
+    if(ctx.freshBefore?.(target))return BED_LOCKED_TEXT;   // V12FIX M-12: 새 시작 전(읽기 전용) 날짜 카드에는 쓰지 않는다
+    stackAt(act,ctx,st,target,()=>st.flow.setHabit(target,BED_ID,entryFor(bed??{kind:'TIME'},{now:v})),()=>Boolean(ctx.autoStack)&&draftLoose(st,target,{memory:false}))();
+    return null;}});
+  const old=stacked(shiftDay(date,-1));
+  if(old?.done&&old.at)r.body.prepend(maker(ctx.document??globalThis.document).hint(SLEEP_LINK_TEXT.replace(shiftDay(date,-1),old.at)));
+  return r;
+}
 
+// ---- V12B-4·5 (소유자 2026-11-16): 끌어서 순서 바꾸기 — 마우스·터치(포인터) + 키보드(손잡이에서 위/아래 화살표) + 기존 ▲▼ 단추 병행 ----
+// 순서는 기존 HABIT_DEF.order 칸 하나(습관 편집·습관 고르기·성취표가 같은 값 = 한 곳에서 바꾸면 모두 바뀜). 새 칸 0.
+export const DRAG_TEXT=Object.freeze({handle:n=>n+' 끌어서 순서 바꾸기 · 위·아래 화살표로도 옮겨요',moved:'순서를 바꿨어요.',reason:'성취표에서 순서 바꾸기',group:'고정한 습관과 "더 보기" 습관 사이로는 옮기지 않아요 · 고정은 습관 편집에서 바꿔요.'});
+// V12FIX M-5: 같은 묶음(고정 / 더 보기) 안에서만 옮긴다. 묶음을 넘으면 저장 때 order 구간 규칙(고정 0~, 더 보기 500~)으로 원래 묶음에 돌아가 "옮김"이 거짓이 되고 정의를 여러 개 다시 썼다.
+export function moveInGroup(list,fromId,toId){
+  const x=list.find(h=>h.id===fromId),y=list.find(h=>h.id===toId);
+  if(!x||!y||habitPinned(x)!==habitPinned(y))return false;
+  return moveById(list,fromId,toId);
+}
+// from을 to 자리로 옮긴다(아래로 끌면 to 뒤, 위로 끌면 to 앞). 옮겼으면 true.
+export function moveById(list,fromId,toId){
+  const i=list.findIndex(x=>x.id===fromId),j=list.findIndex(x=>x.id===toId);if(i<0||j<0||i===j)return false;
+  const [x]=list.splice(i,1);list.splice(j,0,x);return true;
+}
+// 손잡이 ⠿. row = 끄는 줄, rows() = 같은 목록의 줄들(dataset.dragRow = id), ids() = 지금 순서의 id들, onMove(from,to).
+// 포인터를 잡은 채 움직이면 놓을 자리 줄에 표시(위·아래 선)만 그리고, 놓을 때 한 번 onMove(다시 그리기 1번). 끄는 동안 화면을 다시 그리지 않는다.
+export function dragHandle({el},{name,id,row,rows,ids,onMove}){
+  const g=el('span','⠿','lb-drag');g.setAttribute('role','button');g.setAttribute('tabindex','0');g.setAttribute('aria-label',DRAG_TEXT.handle(name));g.dataset.dragId=id;g.dataset.navOnly='1';
+  g.addEventListener('keydown',e=>{const k=e.key==='ArrowUp'?-1:e.key==='ArrowDown'?1:0;if(!k)return;e.preventDefault?.();const list=ids(),to=list[list.indexOf(id)+k];if(to)onMove(id,to);});
+  g.addEventListener('pointerdown',e=>{
+    if(e.button>0)return;e.preventDefault?.();
+    try{g.setPointerCapture?.(e.pointerId);}catch{/* 잡지 못해도 손잡이 위 움직임으로 동작 */}
+    const R=typeof row==='function'?row():row;if(!R)return;
+    R.classList.add('lb-dragging');let to=null;
+    const clear=()=>{for(const r of rows())r.classList.remove('lb-drop-before','lb-drop-after');};
+    const move=ev=>{
+      clear();to=null;
+      for(const r of rows()){if(r===R)continue;const b=r.getBoundingClientRect?.();if(b&&ev.clientY>=b.top&&ev.clientY<b.bottom)to=r;}
+      if(to){const list=ids();to.classList.add(list.indexOf(to.dataset.dragRow)<list.indexOf(id)?'lb-drop-before':'lb-drop-after');}
+    };
+    const end=ev=>{g.removeEventListener('pointermove',move);g.removeEventListener('pointerup',up);g.removeEventListener('pointercancel',cancel);R.classList.remove('lb-dragging');clear();if(ev&&to)onMove(id,to.dataset.dragRow);};
+    const up=ev=>end(ev),cancel=()=>{to=null;end(null);};
+    g.addEventListener('pointermove',move);g.addEventListener('pointerup',up);g.addEventListener('pointercancel',cancel);
+  });
+  return g;
+}
 // DSFIX D1: 3방향 병합의 기준 = 시트를 열 때(색 화면은 그릴 때) 보인 값. 저장본이 있으면 그 data, 없으면 보이던 기본값(collectRows와 같은 order).
 export function definitionBases(life,defs=lifeDefs(life)){
   const out={},put=(type,stored,list)=>list.forEach((x,i)=>{const old=stored.find(s=>s.id===x.id);out[type+'|'+x.id]=structuredClone(old?old.data:{...x,order:i});});
@@ -943,9 +1097,11 @@ export function openEditor(ctx,st){
     add(body,note,err);
   };
   const habitsPane=()=>{
+    const dragRows=[];
     work.habits.forEach((x,i)=>{
       const name=input(x.name,{maxlength:String(MAX_NAME),'aria-label':'습관 이름'});name.addEventListener('input',()=>{x.name=name.value;});
-      const row=add(el('div',null,'life-edit-row'),name,el('span',KIND_TEXT[x.kind],'life-badge'));
+      let row=null;const grip=dragHandle(h,{name:x.name,id:x.id,row:()=>row,rows:()=>dragRows,ids:()=>work.habits.map(y=>y.id),onMove:(a,b)=>{if(moveInGroup(work.habits,a,b))rerender();else{err.textContent=DRAG_TEXT.group;err.hidden=false;}}});   // V12B-4 · V12FIX M-5
+      row=add(el('div',null,'life-edit-row'),grip,name,el('span',KIND_TEXT[x.kind],'life-badge'));row.dataset.dragRow=x.id;
       if(x.kind==='TIME'){const t=input(x.target.time??'',{placeholder:'목표 HH:MM','aria-label':'목표 시각',maxlength:'5'});t.addEventListener('input',()=>{x.target.time=t.value.trim()===''?null:t.value.trim();});add(row,t);}
       if(x.kind==='DURATION'){const m=input(x.target.minutes?String(x.target.minutes):'',{inputmode:'numeric',placeholder:'목표 분','aria-label':'목표 분'});m.addEventListener('input',()=>{x.target.minutes=m.value.trim()===''?null:int(m.value);});add(row,m);}
       if(x.kind==='COUNT'){const c=input(x.target.count?String(x.target.count):'',{inputmode:'numeric',placeholder:'목표 횟수','aria-label':'목표 횟수'});c.addEventListener('input',()=>{x.target.count=c.value.trim()===''?null:int(c.value);});const per=select([['DAY','하루'],['WEEK','한 주']],x.target.per);per.addEventListener('change',()=>{x.target.per=per.value;});add(row,c,per);}
@@ -953,7 +1109,7 @@ export function openEditor(ctx,st){
       const area=select(HABIT_AREAS.map(a=>[a,AREA_TEXT[a]]),x.area);area.setAttribute('aria-label','영역');area.addEventListener('change',()=>{x.area=area.value;});
       // V6B: 오늘 고정(order 구간, life-model habitPinned) · 보관(= 기존 숨김 칸)
       add(row,diff,area,toggle('오늘 고정',habitPinned(x),on=>{x.order=on?0:HABIT_UNPIN_ORDER;}),toggle('보관(숨김)',x.hidden,on=>{x.hidden=on;}),button('▲',()=>{move(work.habits,i,-1);rerender();},'secondary'),button('▼',()=>{move(work.habits,i,1);rerender();},'secondary'));
-      add(body,row);
+      dragRows.push(row);add(body,row);
     });
     // V6B: 자유 추가 — 이름 · 종류(했다/안 했다 · 시각 목표 · 분 목표 · 주 몇 회) · 목표. 개수 제한 없음(기록 한도 HABIT_DEF 30개까지).
     const nn=input('',{maxlength:String(MAX_NAME),placeholder:'새 습관 이름'}),kind=select(NEW_HABIT_KINDS,'CHECK'),goal=input('',{placeholder:'목표(시각 HH:MM · 분 · 주 횟수)','aria-label':'새 습관 목표',maxlength:'5'});
@@ -1053,13 +1209,15 @@ export function openHabitPicker(ctx,st){
     let n=0;try{n=rowsNow().length;}catch{/* 이름이 비면 저장 때 알린다 */}
     add(body,add(el('div',null,'buttons'),button(PICK_TEXT.save,save,'primary hb-pick-save')),hint(PICK_TEXT.lead),
       defs.usingDefaults.habits?el('p',PICK_TEXT.first(DEFAULT_HABITS.length),'notice hb-pick-first'):null,n?el('p',PICK_TEXT.changed(n),'muted small hb-pick-changed'):null,note,err);
-    const onBox=add(el('div',null,'hb-pick-list hb-pick-on'),el('h3',PICK_TEXT.on(on.length),'life-edit-sub'));
+    const onBox=add(el('div',null,'hb-pick-list hb-pick-on'),el('h3',PICK_TEXT.on(on.length),'life-edit-sub')),dragRows=[];
     for(const x of on){
       const name=input(x.name,{maxlength:String(MAX_NAME),'aria-label':x.name+' 이름'});name.addEventListener('input',()=>{x.name=name.value;});name.addEventListener('change',()=>draw());
-      const row=add(el('div',null,'life-edit-row hb-pick-row'),name,el('span',KIND_TEXT[x.kind],'life-badge'),
+      let row=null;const grip=dragHandle(h,{name:x.name,id:x.id,row:()=>row,rows:()=>dragRows,ids:()=>work.habits.filter(y=>!y.hidden).map(y=>y.id),onMove:(a,b)=>{if(moveInGroup(work.habits,a,b))draw();else{err.textContent=DRAG_TEXT.group;err.hidden=false;}}});   // V12B-4 · V12FIX M-5
+      row=add(el('div',null,'life-edit-row hb-pick-row'),grip,name,el('span',KIND_TEXT[x.kind],'life-badge'),
         button('▲',()=>{if(pickMove(work.habits,x.id,-1))draw();},'secondary hb-pick-up'),button('▼',()=>{if(pickMove(work.habits,x.id,1))draw();},'secondary hb-pick-down'),
         button(PICK_TEXT.hide,()=>{x.hidden=true;err.hidden=true;draw();},'secondary hb-pick-hide'));
-      row.dataset.habit=x.id;add(onBox,row);
+      row.dataset.habit=x.id;row.dataset.dragRow=x.id;
+      dragRows.push(row);add(onBox,row);
     }
     if(!on.length)add(onBox,hint(PICK_TEXT.onNone));
     const offBox=add(el('div',null,'hb-pick-list hb-pick-off'),el('h3',PICK_TEXT.off(off.length),'life-edit-sub'));
@@ -1188,7 +1346,9 @@ function openBoardCell(ctx,st,row,date,{act,recordAction,openActionPast}){
   // OPS1A: 지금 값은 초안이 있으면 초안 카드(누른 즉시 반영), 없으면 쌓인 카드.
   const hb=row.h,nowHm=hhmmFromIso(ctx.now()),e=(boardCard(ctx,st,date,today)?.habits??{})[hb.id]??null;
   // OPS1A (통제탑 2026-11-11): 앱이 autoStack을 켜면 칸은 그날 카드 초안에만 넣는다(연산 0). 쌓기는 자동 쌓기(5분)·지금 쌓기·저장 후 종료(그날 카드 1장 = 연산 1). 끄면 예전처럼 바로 쌓는다.
-  const save=pick=>{dlg.close();const entry=boardEntry(hb,pick,{nowHm,date,today});const put=()=>st.flow.setHabit(date,hb.id,entry);stackAt(act,ctx,st,date,put,ctx.autoStack?()=>draftLoose(st,date):null)();};   // FIX70 (F2): 앱이 묶으면 초안에 넣고 상자에 확실히 남지 않았을 때만(메모리 초안 포함) 바로 쌓기, 끄면 예전처럼 바로 쌓기
+  const save=pick=>{dlg.close();const entry=boardEntry(hb,pick,{nowHm,date,today});
+    const put=async()=>{await st.flow.setHabit(date,hb.id,hb.id===WAKE_ID&&entry?wakeRetimed(e,entry):entry);if(hb.id===LATE_ID&&entry?.done&&Object.hasOwn(boardCard(ctx,st,date,today)?.habits??{},LATE_MEAL_KEY))await st.flow.setHabit(date,LATE_MEAL_KEY,null);};   // V12B-2·3
+    stackAt(act,ctx,st,date,put,ctx.autoStack?()=>draftLoose(st,date):null)();};   // FIX70 (F2): 앱이 묶으면 초안에 넣고 상자에 확실히 남지 않았을 때만(메모리 초안 포함) 바로 쌓기, 끄면 예전처럼 바로 쌓기
   const err=el('p',null,'notice error');err.hidden=true;
   const fail=()=>{err.textContent=lifeErrorText('INVALID_LIFE_ENTRY');err.hidden=false;};
   add(body,el('p',boardStateText(hb,habitState(hb,e))+(e&&entryDone(hb,e)?' · '+habitValueText(hb,e,null):''),'muted small hb-now'));
@@ -1278,10 +1438,16 @@ export function renderHabitBoard(root,ctx,st,{actionDefs=[],actionDays={},action
   for(const d of dates){const dt=new Date(d+'T12:00:00Z'),th=el('th',null,'hb-date'+(d===today?' hb-today':''));add(th,el('span',WEEKDAY[dt.getUTCDay()],'hb-wd'),el('span',String(dt.getUTCDate()),'hb-dn'));add(head,th);}
   add(head,el('th',BOARD_TEXT.rate,'hb-stat-col'),el('th',BOARD_TEXT.streak,'hb-stat-col'));add(table,add(el('thead'),head));
   const tbody=el('tbody');add(table,tbody);
+  const dragTrs=[];   // V12B-5
   const rowNode=r=>{
     const tr=el('tr',null,'hb-row'+(r.pinned?'':' hb-unpinned'));tr.dataset.habit=r.id;tr.dataset.kind=r.kind;
     const name=button(r.name,()=>{b.open=b.open===r.id?null:r.id;void ctx.rerender();},'hb-name');name.setAttribute('aria-expanded',String(b.open===r.id));
-    add(tr,add(el('th',null,'hb-name-col'),name));
+    // V12B-5: 내 습관 행은 손잡이로 끌어 순서를 바꾼다(습관 편집과 같은 HABIT_DEF.order, 놓으면 바로 저장). 기본 행동 행은 설정 순서 그대로.
+    const grip=r.kind==='LIFE'?dragHandle(h,{name:r.name,id:r.id,row:tr,rows:()=>dragTrs,ids:()=>board.rows.filter(x=>x.kind==='LIFE').map(x=>x.id),
+      onMove:(a,z)=>{const x=board.rows.find(y=>y.id===a),y=board.rows.find(w=>w.id===z);if(x&&y&&Boolean(x.pinned)!==Boolean(y.pinned)){st.message=DRAG_TEXT.group;st.error=false;void ctx.rerender();return;}   // V12FIX M-5
+        habitSave(list=>{moveInGroup(list,a,z);},DRAG_TEXT.reason,DRAG_TEXT.moved)();}}):null;
+    if(grip){tr.dataset.dragRow=r.id;dragTrs.push(tr);}
+    add(tr,add(el('th',null,'hb-name-col'+(grip?' hb-drag-col':'')),grip,name));
     for(const c of r.cells){
       const meal=r.kind==='LIFE'&&isMealHabit(r.h),cell=el('button',meal&&c.state==='miss'?'✕':STATE_MARK[c.state],'hb-cell hb-'+c.state+(meal&&c.state==='miss'?' hb-meal-miss':'')+(c.date===today?' hb-today':''));cell.type='button';cell.dataset.state=c.state;cell.dataset.date=c.date;
       cell.setAttribute('aria-label',r.name+' '+dateLabel(c.date)+' '+(r.kind==='LIFE'?boardStateText(r.h,c.state):BOARD_TEXT[c.state]));   // V10C-2·3
@@ -1567,3 +1733,49 @@ export function createRecordClear(deps){
 }
 export {lifeIdOK,targetTimeOK,subjectOfSession,emptyDay,dayNumber};
 export {createPlanDrafts} from './life-flow.mjs';   // OPS1A: 앱이 계획 초안(PLAN_DAY 묶기)을 만들 때 쓴다(앱은 이 모듈만 불러온다)
+
+// ---- V12A-2 (통제탑 2026-11-16, 소유자 V12 A2): 오늘 탭에서 고른 날짜의 하루 기록 ----
+// 오늘 탭 달력(life-plan renderHomeCal)에서 오늘이 아닌 날을 고르면 앱이 오늘 카드 대신 이 칸을 그린다. 맨 위 띠 "11월 15일(일) 기록 중 · 오늘로".
+// 지난 날: 습관·끼니·수면(기상·취침) 줄 = 성취표 칸과 같은 시트(openBoardCell — 그 날짜 LIFE_DAY 초안·자동 쌓기 규칙 그대로), 기분 = 그 날짜 setMood(오늘 칩과 같은 쌓기 규칙).
+// 새 칸·새 기록 종류·새 쓰기 경로 0. 앞날: 습관 기입을 막는다(줄 없음 + 안내, 일정은 위 달력 목록). 새 시작 전 날짜: 읽기만(단추 막힘).
+// V12_MERGE: 고칠 수 있는 지난 날의 칸 = B6 날짜 인자 칸(habitCells, 오늘 카드와 같은 칸). 어제 야식 체크 = "어제 기록"·달력 어제 칸(1) → 야식X 토글(2) → "오늘로"(3).
+export const DAY_RECORD_TEXT=Object.freeze({toToday:'오늘로',future:'앞날은 일정만 볼 수 있어요 · 습관 기입은 그날이 되면 열려요.',mood:'기분',habits:'습관 · 끼니 · 수면'});
+export const dayRecordHead=d=>{const dt=new Date(d+'T12:00:00Z');return (dt.getUTCMonth()+1)+'월 '+dt.getUTCDate()+'일('+WEEKDAY[dt.getUTCDay()]+') 기록 중';};
+export function renderDayRecord(root,ctx,st,date,{toToday=null}={}){
+  const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,hint}=h;
+  const whole=ctx.getWhole(),today=kstDate(ctx.now()),life=ctx.autoStack?boardLife(ctx,st,whole.life??null,today):whole.life??null;
+  const out=el('section',null,'panel next-panel life-panel life-day-record');out.id='life-day';out.dataset.date=date;
+  const band=add(el('div',null,'life-day-band'),el('strong',dayRecordHead(date),'life-day-band-text'),toToday?el('span',' · ','life-day-band-dot'):null,toToday?button(DAY_RECORD_TEXT.toToday,toToday,'secondary life-day-today'):null);
+  band.setAttribute('role','status');add(out,band);
+  if(st.message)add(out,el('p',st.message,st.error?'notice error life-message':'notice life-message'));
+  if(date>today){out.dataset.future='1';add(out,hint(DAY_RECORD_TEXT.future));root.append(out);return out;}
+  const locked=Boolean(ctx.freshBefore?.(date));
+  if(locked)add(out,el('p',ctx.freshText?.badge??'새 시작 전 기록 · 읽기 전용','notice fresh-badge'));
+  const act=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{await fn();}catch(x){st.message=st.ports?.box?.ERROR_TEXT[x?.code]??lifeErrorText(x?.code);st.error=true;}flagBoxFail(st,date);await prepareLife(ctx,st);await ctx.rerender();});
+  const card=boardCard(ctx,st,date,today);
+  // V12_MERGE (A2·B6 잇기): 고칠 수 있는 지난 날 = 오늘 카드와 같은 습관·끼니·수면 칸(habitCells)을 이 날짜로(B6 날짜 인자) — 끼니 시각 고치기·야식 먹음·수면 연동·정신 차린 시각까지 그날 카드에.
+  // 칸이 읽는 날짜 = st.recordDate(앱이 renderCore에서 setRecordDate로 맞추고 prepareLife가 그날 카드 상태를 읽음). 새 시작 전 날짜(읽기 전용)만 아래 줄 목록(단추 막힘).
+  if(!locked){
+    const wl=whole.life??{habits:[],days:[],subjects:[],exams:null},fs=st.flowState,tday=st.today??today;
+    const tcard=fs?(fs.status==='LOCAL_DRAFT'?overlayDay(stackedDay(ctx,tday),fs):fs.card):stackedDay(ctx,tday)??emptyDay(tday);
+    const {grid,moreBox}=habitCells(ctx,st,h,{defs:lifeDefs(wl),life:wl,date:tday,card:tcard,act,recDate:date});
+    add(out,el('h3',DAY_RECORD_TEXT.habits,'life-day-sub'),grid,moreBox);
+  }
+  const list=el('div',null,'life-day-list');list.setAttribute('role','group');list.setAttribute('aria-label',DAY_RECORD_TEXT.habits);
+  if(locked)for(const r of habitBoard({life,dates:[date],today}).rows){
+    if(r.kind!=='LIFE')continue;
+    const s=r.cells[0].state,e=card?.habits?.[r.id]??null,val=e&&entryDone(r.h,e)?habitValueText(r.h,e,null):'',said=boardStateText(r.h,s)||'';
+    const b=button(null,()=>openBoardCell(ctx,st,r,date,{act}),'secondary life-day-row hb-'+s);b.dataset.habit=r.id;b.dataset.state=s;b.disabled=locked;
+    b.setAttribute('aria-label',r.name+' · '+dateLabel(date)+(said?' · '+said:'')+(val?' · '+val:''));
+    add(b,el('span',STATE_MARK[s]||'·','life-day-mark'),el('span',r.name,'life-day-name'),el('span',val||said,'life-day-val'));
+    list.append(b);
+  }
+  if(locked)add(out,el('h3',DAY_RECORD_TEXT.habits,'life-day-sub'),list);
+  const moodRow=el('div',null,'life-mood-row life-day-mood');moodRow.setAttribute('role','group');moodRow.setAttribute('aria-label',DAY_RECORD_TEXT.mood);
+  for(const [v,face,label] of MOODS){
+    const sel=card?.mood===v,b=el('button',face,'life-mood'+(sel?' selected':''));b.type='button';b.disabled=locked;b.setAttribute('aria-label','기분 '+v+' '+label);b.setAttribute('aria-pressed',String(sel));
+    b.addEventListener('click',()=>stackAt(act,ctx,st,date,()=>st.flow.setMood(date,sel?null:v),ctx.autoStack?()=>draftLoose(st,date):null)());add(moodRow,b);
+  }
+  add(out,el('h3',DAY_RECORD_TEXT.mood,'life-day-sub'),moodRow);
+  root.append(out);return out;
+}

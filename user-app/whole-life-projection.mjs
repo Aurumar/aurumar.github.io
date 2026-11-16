@@ -7,6 +7,7 @@ import {hltRawView} from './public/hlt-projection.mjs';
 import {studyTitle,studyRawView,STUDY_TYPES} from './public/study-model.mjs';
 import {lifeTitle,lifeRawView,lifeHistoryValue,LIFE_TYPES} from './public/life-model.mjs';
 import {cardDayTitle,cardRawView,CARD_TYPES} from './public/study-cards-model.mjs';
+import {eventDates,eventRepeatOf} from './public/life-plan.mjs';   // V12A: 반복 일정 펼치기(달력·오늘 탭과 같은 함수)
 import {rangeDayTitle,rangeRawView,RANGE_TYPES} from './public/study-range-model.mjs';
 import {finView} from './fin-projection.mjs';
 import {WL_FORMAT,DOMAIN_CODES,DOMAIN_NAMES,effectiveActions,entityKey,emptyDomain,financeTotals,shiftDate,dateOK,shape} from './whole-life-model.mjs';
@@ -61,8 +62,9 @@ export function expandCalendar(events,plans,from,to){
   const add=r=>{if(r.date>=from&&r.date<=to)rows.push(r);};
   for(const event of events){
     const d=event.data;if(d.deleted)continue;
-    const r=d.recurrence,count=r?.count??1,step=r?r.interval*(r.frequency==='WEEKLY'?7:1):0;
-    for(let i=0;i<count;i++)add({id:event.entityId+':'+i,eventId:event.entityId,title:d.title,domain:d.domain,date:shiftDate(d.date,i*step),time:d.time,allDay:d.allDay,kind:d.kind,planId:d.planId,source:'EVENT',occurrence:i+1,totalOccurrences:count,notes:d.notes});
+    // V12A-3: 반복 펼치기 = life-plan eventDates(옛 recurrence는 예전과 같은 회차·id, 새 반복 줄 "[일정] 매주 토·일 …"은 범위 안 날만 · 회차 번호 = 시작일부터 날 수, 전체 횟수는 정해지지 않아 null).
+    const r=d.recurrence,repeat=eventRepeatOf(d),count=repeat?null:r?.count??1;
+    for(const {date,i} of eventDates(d,from,to))add({id:event.entityId+':'+i,eventId:event.entityId,title:d.title,domain:d.domain,date,time:d.time,allDay:d.allDay,kind:d.kind,planId:d.planId,source:'EVENT',occurrence:i+1,totalOccurrences:count,notes:d.notes});
   }
   for(const plan of plans){
     const d=plan.data;if(d.status==='COMPLETE')continue;

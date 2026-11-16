@@ -61,17 +61,20 @@ export function rangeOf(today,items=[]){
   const end=shiftDay(today,ICS_DAYS-1),last=items.at(-1)?.date;
   return {from:today,to:last&&last>end?last:end};
 }
-export function collectIcsItems({events=[],plans=[],life=null,today,skipPlanDays=false}){
+// V12FIX M-1: occur(data,from,to) = 앱 달력과 같은 회차 [{date,i,end}](life-plan eventSpan, 부르는 쪽이 넘김). 없으면 옛 recurrence만 펼친다.
+export function collectIcsItems({events=[],plans=[],life=null,today,skipPlanDays=false,occur=null}){
   if(!dateKeyOK(today)){const e=new Error('INVALID_TODAY');e.code='INVALID_TODAY';throw e;}
   const {from,to}=rangeOf(today),items=[];
-  const pushOpen=(uid,title,date,time)=>{
+  const pushOpen=(uid,title,date,time,end=null)=>{
     const summary=cleanText(title);
     if(!summary||!dateKeyOK(date)||date<from)return;
-    items.push({uid:uid+'@'+UID_HOST,summary,date,time:timeOK(time)?time:null});
+    const t=timeOK(time)?time:null;
+    items.push({uid:uid+'@'+UID_HOST,summary,date,time:t,...(t&&timeOK(end)&&end!==t?{end}:{})});
   };
-  const push=(uid,title,date,time)=>{if(!(date>to))pushOpen(uid,title,date,time);};
+  const push=(uid,title,date,time,end)=>{if(!(date>to))pushOpen(uid,title,date,time,end);};
   for(const ev of events){
     const d=ev?.data;if(!d||d.deleted||excluded(d)||!dateKeyOK(d.date)||String(ev.entityId).startsWith(IMPORTED_EVENT_PREFIX))continue;
+    if(typeof occur==='function'){for(const o of occur(d,from,to).slice(0,MAX_REPEAT))push('ev-'+safeId(ev.entityId)+'-'+o.i,d.title,o.date,d.allDay?null:d.time,o.end);continue;}
     const r=d.recurrence,count=Math.min(r?.count??1,MAX_REPEAT),step=r?r.interval*(r.frequency==='WEEKLY'?7:1):0;
     for(let i=0;i<count;i++){
       const date=shiftDay(d.date,i*step);
@@ -102,7 +105,7 @@ export function buildIcs(items,{now}){
   const stamp=stampOf(now),lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:'+PRODID,'CALSCALE:GREGORIAN'];
   for(const it of items){
     lines.push('BEGIN:VEVENT','UID:'+it.uid,'DTSTAMP:'+stamp);
-    if(it.time){const end=endOfTimed(it.date,it.time);lines.push('DTSTART:'+compactDate(it.date)+'T'+it.time.replace(':','')+'00','DTEND:'+compactDate(end.slice(0,10))+'T'+end.slice(11).replace(':','')+'00');}
+    if(it.time){const end=it.end?(it.end>it.time?it.date:shiftDay(it.date,1))+'T'+it.end:endOfTimed(it.date,it.time);/* V12FIX M-1: 끝 시각이 있으면 그 시각(시작보다 이르면 다음 날) */lines.push('DTSTART:'+compactDate(it.date)+'T'+it.time.replace(':','')+'00','DTEND:'+compactDate(end.slice(0,10))+'T'+end.slice(11).replace(':','')+'00');}
     else lines.push('DTSTART;VALUE=DATE:'+compactDate(it.date),'DTEND;VALUE=DATE:'+compactDate(shiftDay(it.date,1)));
     lines.push('SUMMARY:'+escapeText(it.summary),'END:VEVENT');
   }
@@ -110,8 +113,8 @@ export function buildIcs(items,{now}){
   return lines.flatMap(foldLine).join('\r\n')+'\r\n';
 }
 // 화면용 한 번에: {text,count,from,to}. 항목이 없으면 유효한 빈 VCALENDAR가 나오고 count=0이다(화면은 내려받기를 막는다).
-export function buildIcsFromViews({events=[],plans=[],life=null,today,now,skipPlanDays=false}){
-  const items=collectIcsItems({events,plans,life,today,skipPlanDays}),{from,to}=rangeOf(today,items);
+export function buildIcsFromViews({events=[],plans=[],life=null,today,now,skipPlanDays=false,occur=null}){
+  const items=collectIcsItems({events,plans,life,today,skipPlanDays,occur}),{from,to}=rangeOf(today,items);
   return {text:buildIcs(items,{now}),count:items.length,from,to};
 }
 export const icsFileName=today=>'life-brick-schedule-'+today+'.ics';

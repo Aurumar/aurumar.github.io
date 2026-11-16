@@ -6,11 +6,13 @@
 // T2C: 네 모퉁이 탑(누르면 영역 시트, 레벨이 오른 뒤 처음 보면 맥동)·업적 장식·현판 칭호 글자(같은 SVG 겹침층).
 // DS6: 쌓은 벽돌 = 금속 금(환경맵 반사 + 해), 나이 3단계(오늘 빛 번짐·이번 주·지난 주), 아이보리 줄눈·구조벽, 대리석 단상, 금 예상도 선, 크레인, 꼭대기 태양 바퀴.
 // V6C: 금 3단 질감 + 스튜디오 환경(대비) + gold-shadow 줄눈 선(습관 벽돌 날은 색만 다름) + 아이보리 바닥·하늘 + 가는 청동 크레인 + 위로 옅어지는 예상도 선 + 꼭대기 작은 금빛 점광. 광원 3개(반구광·해·점광), 보조광 없음.
-import {WebGLRenderer,Scene,PerspectiveCamera,HemisphereLight,DirectionalLight,PointLight,BoxGeometry,ConeGeometry,SphereGeometry,CircleGeometry,CylinderGeometry,TorusGeometry,ExtrudeGeometry,Shape,BufferGeometry,BufferAttribute,MeshStandardMaterial,MeshBasicMaterial,PointsMaterial,InstancedMesh,Mesh,Points,Group,Object3D,Color,Fog,DataTexture,RGBAFormat,UnsignedByteType,RepeatWrapping,LinearFilter,LinearMipmapLinearFilter,SRGBColorSpace,EquirectangularReflectionMapping,PMREMGenerator,PCFSoftShadowMap,BackSide,Raycaster,Vector2,Vector3} from './three.module.js';
+import {WebGLRenderer,Scene,PerspectiveCamera,HemisphereLight,DirectionalLight,PointLight,BoxGeometry,ConeGeometry,SphereGeometry,CircleGeometry,CylinderGeometry,TorusGeometry,ExtrudeGeometry,Shape,BufferGeometry,BufferAttribute,MeshStandardMaterial,MeshBasicMaterial,PointsMaterial,InstancedMesh,Mesh,Points,Group,Object3D,Color,Fog,DataTexture,RGBAFormat,UnsignedByteType,RepeatWrapping,LinearFilter,LinearMipmapLinearFilter,SRGBColorSpace,EquirectangularReflectionMapping,PMREMGenerator,PCFSoftShadowMap,DoubleSide,Raycaster,Vector2,Vector3} from './three.module.js';
 import {towerScene,quality3d,framesTooSlow,initialCamera,clampCamera,cameraPosition,FOV,GOLD,BRICK_W,BRICK_D,BRICK_GAP,ROW_H,TEX,WALL_TILE,brickTexels,wallTexels,groundTexels,envTexels,skyAt,starField,flyAt,flyFrom,dustAt,flashAt,shakeAt,autoRotateAt,AUTO_ROTATE_SECONDS,DUST_POINTS,DUST_SECONDS,FLASH_SECONDS,SHAKE_SECONDS,TIERS,START_TIER,nextTier,p50,p95,GROUND_R,SKY_R,fogRange,shadowBox,
   COLS,DEPTH,PHI,CRANE_UP,SPARKS,DONE_ROOF_DROP,blueprint,houseTop,wholeCamera,gateCamera,isTallHouse,startView,flyFirst,settleCamera,spinKeepsFront,WHOLE_VIEW_PAD,craneRows,completionAt,sparkAt,BONUS_SPARKS,BONUS_BURST_SECONDS,bonusFresh,bonusSparkAt,withBadges,houseLabels,towersToPulse,pulseAt,PULSE_SECONDS,
   BRICK_MATERIALS,MORTAR_IVORY,brickTint,DAIS,TOWER_GOLD,JOINT,jointRows,TOP_GLOW,topGlow,glowPulse,sunWheel,daisTexels,MARBLE,MORTAR_GLOW,CHAMPAGNE_WALL,BLACK_MARBLE,goldFrame,isGoldRow,isShadeFace,shadeWalls,
-  backdropAt,warmGround,CONTACT_SHADOW,shadowTexels,spinStep,renderPixelRatio,isCoarsePointer,v10fTint,scaffoldOf,smallCrane,ROW_H as JOINT_ROW} from './tower-3d-layout.mjs';
+  backdropAt,warmGround,CONTACT_SHADOW,shadowTexels,spinStep,renderPixelRatio,isCoarsePointer,v10fTint,scaffoldOf,smallCrane,ROW_H as JOINT_ROW,
+  goalFrame,GOAL_LINE,DOME,domeGlow,groundRings,ridgeLayers} from './tower-3d-layout.mjs';
+// V12E: 목표 높이 흰 선(이번 주 목표 = 흰 실선, 다음 단계 = 흰 점선, 캔버스 아래 범례 한 줄) 복구, 배경 = 해 쪽 금빛이 번지는 하늘 돔 + 그림자를 받는 넓은 바닥 원반(가장자리 안개) + 지평선 먼 능선 두 겹.
 // V10F: 누르고 있는 동안만 회전 멈춤(떼면 다시 돈다), 화소 배율(PC 1.5~2·폰 ≤1.5), 그림자 지도 2배, MID도 둥근 벽돌, 빈 칸 판에 벽돌 줄눈, 짙은 금 받침·샴페인 금 모퉁이 탑·잔디 정원,
 // 예상도(전체 높이 선·반투명 유리) 대신 다음 한 층 금 골조 + 작은 금 크레인.
 // V8W6: 배경 = 지평선 아이보리 → 위 금 그라데이션(하늘 구, 안개는 V7T 그대로), 바닥 그림자(접지 원판), 반구광 땅 색을 은은한 금 반사로. 자동 회전은 40초에 한 바퀴, 손대면 멈추고 "다시 돌리기".
@@ -23,8 +25,9 @@ let active=null;
 // V11A 3D 호스트 (V10HUNT M-12, 통제탑 2026-11-15): 3D 칸(캔버스 + WebGL 문맥)은 화면 그리기 밖(이 모듈의 active)에 산다. 같은 화면을 다시 그리면(시트 저장·칭호 저장 등)
 // 새 자리 표시 칸 자리에 살아 있는 칸을 그대로 옮겨 붙이고, 그림 데이터(sceneOf의 key = 배치 결과·하늘·골조 전부, 느슨하게 하지 않는다)가 바뀌었을 때만 같은 캔버스·문맥 위에 장면을 새로 짓는다.
 // 회전 각도·멈춤·카메라·등급은 이어 간다. 화면을 떠나 캔버스가 문서에서 빠지면 예전처럼 치운다(dispose). 살아 있는 3D가 없으면 false(부르는 쪽이 예전처럼 새로 만든다).
+// V12E: 목표 높이 흰 선(goalFrame)은 골조로 줄이기 전 예상도(다음 시즌 경계)와 이번 주 하루 목표로 계산해 그림 데이터(data.goals)에 싣는다 — 키(data 전부)에 들어가 목표·다음 단계가 바뀌면 장면을 다시 짓는다.
 const sceneOf=({ach,seasons=null,hour=12,titleTier=null,titleName=null,badges=null})=>{
-  const data=withBadges(towerScene(ach,{seasons,titleTier}),badges,{titleName}),sky=skyAt(hour),scaf=scaffoldOf(blueprint(data,seasons)),week=ach.currentWeek??null;
+  const house=withBadges(towerScene(ach,{seasons,titleTier}),badges,{titleName}),sky=skyAt(hour),plan=blueprint(house,seasons),scaf=scaffoldOf(plan),week=ach.currentWeek??null,data={...house,goals:goalFrame(house,plan,{goal:week?.goal??null})};
   return {data,sky,scaf,key:JSON.stringify([data,sky,scaf,ach.today??null,week?.monday??null,week?.bonus?.total??null,seasons?.at(-1)?.date??null])};
 };
 export function adoptTower3d(opts){return Boolean(active?.adopt(opts));}
@@ -53,6 +56,40 @@ function worldBoxes(rows,tile){
   if(colored)g.setAttribute('color',new BufferAttribute(new Float32Array(col),3));
   g.setIndex(idx);return g;
 }
+// V12E 바닥 원반: groundRings(반지름·곱할 색)의 고리마다 정점 seg+1개(가까운 곳 촘촘). xy 평면·법선 +z라 원판(CircleGeometry)처럼 눕혀 쓰고, UV도 원판과 같아 대지 질감 반복은 그대로.
+function groundDisc(R,seg=96){
+  const pos=[],nor=[],uv=[],col=[],idx=[],c=new Color();
+  groundRings(R).forEach(({r,color},i)=>{
+    c.set(color);
+    for(let j=0;j<=seg;j++){const a=2*Math.PI*j/seg,x=Math.cos(a)*r,y=Math.sin(a)*r;pos.push(x,y,0);nor.push(0,0,1);uv.push(x/(2*R)+0.5,y/(2*R)+0.5);col.push(c.r,c.g,c.b);}
+    if(i)for(let j=0;j<seg;j++){const a=(i-1)*(seg+1)+j,b=a+seg+1;idx.push(a,b,a+1,a+1,b,b+1);}
+  });
+  const g=new BufferGeometry();
+  g.setAttribute('position',new BufferAttribute(new Float32Array(pos),3));g.setAttribute('normal',new BufferAttribute(new Float32Array(nor),3));g.setAttribute('uv',new BufferAttribute(new Float32Array(uv),2));g.setAttribute('color',new BufferAttribute(new Float32Array(col),3));
+  g.setIndex(idx);return g;
+}
+// V12E 원경 능선: 겹마다 둘레 n칸, 아래(시선 각 below, 지평선 색) → 위(능선 높이 el[k], 옅은 능선 색) 띠. 먼 겹을 먼저 넣어 가까운 겹이 그 위에 그려진다.
+function ridgeGeometry(layers,R){
+  const pos=[],col=[],idx=[],c=new Color();
+  for(const L of layers){
+    const n=L.el.length-1,rr=L.r*R,base=pos.length/3;
+    for(let k=0;k<=n;k++){
+      const a=2*Math.PI*k/n;
+      for(const [el,hex] of [[L.below,L.bottom],[L.el[k],L.top]]){pos.push(Math.cos(a)*rr*Math.cos(el),rr*Math.sin(el),Math.sin(a)*rr*Math.cos(el));c.set(hex);col.push(c.r,c.g,c.b);}
+      if(k){const p=base+(k-1)*2;idx.push(p,p+1,p+2,p+1,p+3,p+2);}
+    }
+  }
+  const g=new BufferGeometry();
+  g.setAttribute('position',new BufferAttribute(new Float32Array(pos),3));g.setAttribute('color',new BufferAttribute(new Float32Array(col),3));
+  g.setIndex(idx);return g;
+}
+// V12E: 하늘 구 + 원경 능선을 위치·색만 이어 붙인 한 도형으로(능선 색인은 하늘 정점 수만큼 민다).
+function joinSky(sky,ridge){
+  const n=sky.attributes.position.count,g=new BufferGeometry();
+  const cat=(k,s)=>{const a=sky.attributes[k].array,b=ridge.attributes[k].array,o=new Float32Array(a.length+b.length);o.set(a);o.set(b,a.length);return new BufferAttribute(o,s);};
+  g.setAttribute('position',cat('position',3));g.setAttribute('color',cat('color',3));
+  g.setIndex([...sky.index.array,...Array.from(ridge.index.array,i=>i+n)]);return g;
+}
 // V10F: 완공 예상도 선(blueprintLines, 전체 높이 1px 선)은 없앴다 — 공사 중 맨 위층 금 골조(scaffoldOf)가 대신한다.
 // HIGH·MID 등급의 둥근 모서리 벽돌(약 60삼각형). 진짜 벽돌 크기로 만든 뒤 1×1×1로 줄여서 인스턴스 크기를 그대로 곱한다.
 export function roundedBrick(){
@@ -72,7 +109,7 @@ export function roundedBrick(){
 // keep(V11A, 안에서만): 장면을 다시 지을 때 이어 쓰는 캔버스·문맥·그리개(renderer)·미리 계산한 장면·회전·카메라·등급.
 export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor=null,onArea=null,hour=12,titleTier=null,titleName=null,badges=null,keep=null}){
   active?.dispose();
-  const win=doc.defaultView,{data,sky,scaf,key}=keep?.scene??sceneOf({ach,seasons,hour,titleTier,titleName,badges}),bp=scaf?.bp??null,peak=houseTop(data,bp),room={height:peak};
+  const win=doc.defaultView,{data,sky,scaf,key}=keep?.scene??sceneOf({ach,seasons,hour,titleTier,titleName,badges}),bp=scaf?.bp??null,goals=data.goals,peak=Math.max(houseTop(data,bp),goals.top+1),room={height:peak};   // V12E: 다음 단계 흰 점선 꼭대기까지 끌어 올려 볼 수 있다
   // 안개는 예상도 꼭대기까지 기준, 대지는 안개 끝보다 넓게: "집 전체"로 멀리서 봐도 원판 가장자리가 하늘에 녹는다.
   const fog=fogRange(room),groundR=Math.max(GROUND_R,fog.far*1.5);
   const setMode=(mode,why)=>{slot.dataset.mode=mode;slot.dataset.reason=why;};
@@ -83,6 +120,9 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   const gl=canvas.getContext('webgl2',{alpha:true,antialias:true,depth:true,stencil:false,premultipliedAlpha:true,powerPreference:'default'});
   if(!gl){setMode('svg','NO_WEBGL2');return null;}
   const hint=doc.createElement('p');hint.className='muted small tower-3d-hint';hint.textContent='끌어서 돌리고 위아래로 옮깁니다 · 휠이나 두 손가락으로 확대 · 모퉁이 탑을 누르면 그 영역을 봅니다';
+  // V12E 범례 한 줄(흰 실선·흰 점선이 무엇인지). 목표 선이 없으면 없음.
+  const legend=goals.legend?doc.createElement('p'):null;
+  if(legend){legend.className='muted small tower-3d-legend';legend.textContent=goals.legend;}
   // 접힌 "3D 상태" 줄: 등급·프레임 시간·드로우콜(실기기 확인용, 소유자가 펼쳐 본다)
   const status=doc.createElement('details');status.className='tower-3d-status';
   const statusHead=doc.createElement('summary');statusHead.textContent='3D 상태';
@@ -115,7 +155,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
     for(const o of owned)o.dispose();
     if(soft===true){sun.shadow.map?.dispose();return;}
     renderer?.dispose();if(!gl.isContextLost())renderer?.forceContextLoss();
-    views.remove();stage.remove();doneNote?.remove();hint.remove();status.remove();
+    views.remove();stage.remove();legend?.remove();doneNote?.remove();hint.remove();status.remove();
   };
   const toFallback=reason=>{dispose();fallback.hidden=false;slot.hidden=true;setMode('svg',reason);};
   const onLost=()=>toFallback('CONTEXT_LOST');
@@ -268,12 +308,16 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   // V10F 공사 중 맨 위층(소유자 "흰 판·와이어 골조가 어색"): 예상도 선(1px)·아이보리 반투명 유리 대신 다음 한 층 자리에 얇은 금 골조(매끈한 금 상자, 그림자 드리움). 빈 집은 받침 위 1층 골조.
   if(scaf)instanced(cube,trimMat,scaf.rows,fixed('#FFFFFF'),{cast:true});
   slot.dataset.scaffold=scaf?String(scaf.rows.length):'0';
+  // V12E 목표 높이 흰 선: 이번 주 목표(흰 실선)·다음 단계(흰 점선) 얇은 상자 한 묶음(드로우콜 1). 빛을 받지 않는 불투명 흰색이라 그늘·밤에도 밝고, 안개를 받지 않아 높은 점선도 흐려지지 않는다. 그림자 없음.
+  const goalMat=own(new MeshBasicMaterial({color:0xffffff,fog:false}));
+  const goalMesh=instanced(cube,goalMat,goals.rows,r=>tint.set(r.color));if(goalMesh)goalMesh.renderOrder=2;
+  slot.dataset.goalWeek=goals.week?String(goals.week.goal):'';slot.dataset.goalNext=goals.next?.k??'';slot.dataset.goalRows=String(goals.rows.length);
   // 글자 표지: 현판 칭호·머릿돌·예상도 시즌 경계(이름 · D-n)·지난 시즌 현판·완공 현판(houseLabels가 최대 MAX_LABELS개로 고른다).
-  const labels=!tags?[]:houseLabels(data,bp).map(l=>{
+  const labels=!tags?[]:houseLabels(data,bp,goals).map(l=>{
     const t=doc.createElementNS(SVG_NS,'text');t.setAttribute('class','tower-3d-tag tower-3d-tag-'+l.kind.toLowerCase());t.setAttribute('visibility','hidden');t.textContent=l.text;tags.append(t);
     // 글자 폭 어림(12px 굵은 글꼴: 한글 12px, 그 밖 7px) — 화면에서 겹치는 글자는 뒤 순서를 숨긴다.
     const width=[...l.text].reduce((n,ch)=>n+(ch.charCodeAt(0)>0x2E80?12:7),0);
-    return {node:t,at:new Vector3(l.x,l.y,l.z),width,start:l.kind==='PLAN',front:Boolean(l.front)};
+    return {node:t,at:new Vector3(l.x,l.y,l.z),width,start:l.kind==='PLAN'||l.kind==='GOAL',front:Boolean(l.front)};
   });
   const v3=new Vector3();
   const placeLabels=()=>{
@@ -295,13 +339,19 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   const picked=new Mesh(cube,own(new MeshBasicMaterial({color:GOLD,wireframe:true})));picked.visible=false;scene.add(picked);
 
   // 세상: 대리석 단상(윗면 y=0)·그 아래 아이보리 대지·하늘(카메라를 따라다니는 큰 구, 정점 색 그라데이션)·별·안개·반구광·세상에 고정된 해(밤에는 달)·V6C 꼭대기 작은 금빛 점광.
-  const ground=new Mesh(own(new CircleGeometry(groundR,64)),own(new MeshStandardMaterial({map:groundTex,roughness:0.9,metalness:0})));ground.rotation.x=-Math.PI/2;ground.position.y=-DAIS.h;ground.receiveShadow=true;scene.add(ground);
+  // V12E 바닥: 평평한 한 색 원판 → 그림자를 받는 넓은 원반(groundDisc, 단상 둘레 옅은 금 모래 → 포장 고리 세 겹 → 바깥 흰색 → 안개). 질감·재질 값은 그대로, 정점 색만 곱한다. 계단 띠 없게 디더링.
+  const ground=new Mesh(own(groundDisc(groundR)),own(new MeshStandardMaterial({map:groundTex,roughness:0.9,metalness:0,vertexColors:true,dithering:true})));ground.rotation.x=-Math.PI/2;ground.position.y=-DAIS.h;ground.receiveShadow=true;scene.add(ground);
   const dais=new Mesh(own(new CylinderGeometry(DAIS.r,DAIS.r+0.25,DAIS.h,96)),[daisSideMat,daisMat,daisSideMat]);dais.position.y=-DAIS.h/2;dais.receiveShadow=true;scene.add(dais);
   // V8W6: 하늘 구 = 지평선 아이보리(sky.bottom, 안개와 같은 색) → 위로 금(backdropAt). 흰 상자 대신 아이보리→금 배경.
-  const skyGeo=own(new SphereGeometry(SKY_R,32,16)),skyCol=new Float32Array(skyGeo.attributes.position.count*3);
-  for(let i=0;i<skyGeo.attributes.position.count;i++){tint.set(backdropAt(skyGeo.attributes.position.getY(i)/SKY_R,sky.bottom));skyCol.set([tint.r,tint.g,tint.b],i*3);}
+  // V12E 하늘 돔: 조각 32×16 → 64×32, 아이보리→금(backdropAt) 위에 해 쪽 금빛 번짐·지평선 밝은 안개 띠(domeGlow, 밤에는 번짐을 줄인다), 디더링.
+  const skyGeo=own(new SphereGeometry(SKY_R,...DOME.segments)),skyCol=new Float32Array(skyGeo.attributes.position.count*3),sp=skyGeo.attributes.position,domeWarm=new Color(DOME.glow),domeHaze=new Color(DOME.haze),warmth=sky.night?0.35:1;
+  for(let i=0;i<skyGeo.attributes.position.count;i++){
+    const d=domeGlow(sp.getX(i)/SKY_R,sp.getY(i)/SKY_R,sp.getZ(i)/SKY_R,sky.sun.dir);
+    tint.set(backdropAt(skyGeo.attributes.position.getY(i)/SKY_R,sky.bottom)).lerp(domeWarm,d.glow*warmth).lerp(domeHaze,d.haze);skyCol.set([tint.r,tint.g,tint.b],i*3);
+  }
   skyGeo.setAttribute('color',new BufferAttribute(skyCol,3));
-  const skyGroup=new Group(),skyMesh=new Mesh(skyGeo,own(new MeshBasicMaterial({vertexColors:true,side:BackSide,fog:false,depthWrite:false})));
+  // V12E 원경: 지평선 먼 능선 두 겹(ridgeLayers)을 하늘 구와 한 도형으로(joinSky, 능선 색인이 뒤라 하늘 위에 그려진다. 드로우콜 그대로 1). 깊이를 쓰지 않아 땅·집이 덮는다. 능선은 양면.
+  const skyGroup=new Group(),skyMesh=new Mesh(own(joinSky(skyGeo,own(ridgeGeometry(ridgeLayers(sky.bottom),SKY_R)))),own(new MeshBasicMaterial({vertexColors:true,side:DoubleSide,fog:false,depthWrite:false,dithering:true})));
   skyMesh.renderOrder=-1;skyMesh.frustumCulled=false;skyGroup.add(skyMesh);
   const starGeo=own(new BufferGeometry());starGeo.setAttribute('position',new BufferAttribute(starField().map(v=>v*SKY_R*0.9),3));
   const stars=new Points(starGeo,own(new PointsMaterial({color:0xffffff,size:2,sizeAttenuation:false,fog:false,transparent:true,opacity:sky.stars,depthWrite:false})));
@@ -604,7 +654,7 @@ export function mountTower3d({doc,slot,fallback,ach,st=null,seasons=null,onFloor
   slot.dataset.seasons=String(seasons?.length??0);slot.dataset.blueprintFloors=bp?String(bp.floors):'';slot.dataset.labels=String(labels.length);
   slot.dataset.completed=moment?(celebrate?'moment':'moment-still'):data.parts.ROOF_DONE?'done':'no';
   slot.dataset.builds=String(keep?Number(slot.dataset.builds||0)+1:1);   // V11A 측정값: 이 칸에서 장면을 지은 횟수(1 = 처음, 늘면 갱신)
-  slot.replaceChildren(...[views,stage,doneNote,hint,status].filter(Boolean));
+  slot.replaceChildren(...[views,stage,legend,doneNote,hint,status].filter(Boolean));
   active=handle;
   // V8W6: 슬롯은 첫 장면을 그린 뒤(drawFrame frames===1)에만 보인다. 그 전에는 대체 화면(2.5D)이 그대로 보여 흰 빈 캔버스가 나오지 않는다.
   observer=new win.ResizeObserver(()=>{resize();invalidate();});observer.observe(canvas);

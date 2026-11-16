@@ -209,11 +209,20 @@ export function planBlockEvents(row,{names=new Map(),blocks=MIRROR_BLOCK_DEFAULT
   return out;
 }
 // EVENT 엔티티 → 범위 안 회차마다 {date,event}. 다리에 종일 일정이 없어 종일 EVENT는 그날 00:00~24:00으로 쓴다. 시각 일정은 ICS와 같이 한 시간.
-export function eventOccurrences(rows,{from,to}){
+// V12FIX M-1: occur(data,from,to) = 앱 달력과 같은 회차 [{date,i,end}](life-plan eventSpan, 앱이 넘김). 없으면 옛 recurrence만. end = 끝 시각(시작보다 이르면 다음 날).
+export function eventOccurrences(rows,{from,to,occur=null}){
   const out=[];
   for(const row of rows??[]){
     const d=row?.data,id=row?.entityId;
     if(!d||d.deleted||hiddenItem(d)||typeof id!=='string'||id.startsWith(IMPORTED_EVENT_PREFIX)||!DATE.test(d.date)||typeof d.title!=='string'||!d.title.trim())continue;
+    if(typeof occur==='function'){
+      const timed=d.allDay!==true&&HM.test(d.time);
+      for(const o of occur(d,from,to).slice(0,MIRROR_REPEAT_MAX)){
+        const start=localMs(o.date,timed?d.time:'00:00'),end=!timed?localMs(o.date,'24:00'):HM.test(o.end??'')&&o.end!==d.time?localMs(o.end>d.time?o.date:addDays(o.date,1),o.end):start+TIMED_EVENT_MS;
+        out.push({date:o.date,event:{key:eventOccurrenceKey(id,o.i),title:d.title.slice(0,200),start,end,description:'LIFE BRICK 일정'}});
+      }
+      continue;
+    }
     const r=d.recurrence,count=Math.min(r?.count??1,MIRROR_REPEAT_MAX),step=r?r.interval*(r.frequency==='WEEKLY'?7:1):0,timed=d.allDay!==true&&HM.test(d.time);
     for(let i=0;i<count;i++){
       const date=addDays(d.date,i*step);
@@ -294,7 +303,7 @@ export function createNativeBridge({native=globalThis.LifeBrickNative,storage,no
     return out;
   };
   // 홈 위젯(P4C): 요약은 widget-summary.mjs가 만들고 검사한다. 같은 내용(갱신 시각 빼고)이면 10분 안에는 다시 보내지 않는다.
-  let widgetSent=null,widgetSentAt=0;
+  let widgetSent=null,widgetSentAt=0,extraReminders=[];
   const api={
     available,
     // 옛 APK(메서드 없음)는 BRIDGE_UNAVAILABLE로 조용히 끝난다(오류 아님). 실패해도 화면은 계속 돈다.
@@ -359,9 +368,11 @@ export function createNativeBridge({native=globalThis.LifeBrickNative,storage,no
     },
     // 켜는 순간 알림 권한을 요청하고(결과는 콜백이 아니라 다음 permissions()로 안다), 전체 목록을 다리에 보낸다.
     requestNotificationPermission:()=>callNative(native,'requestNotificationPermission'),
-    pushReminders({stackedToday=false,bedtime=null}={}){
+    // V12F: extra = 가져온 일정 알림(event-import importAlarms). 주면 기억해 두고, 안 주면(설정 토글) 기억한 것을 함께 보낸다(전체 교체라 빼면 취소된다). 다리 상한 64개.
+    pushReminders({stackedToday=false,bedtime=null,extra=null}={}){
       if(!available())return {ok:false,error:'BRIDGE_UNAVAILABLE'};
-      const list=buildReminders(api.reminderPrefs(),{now:now(),stackedToday,bedtime});
+      if(Array.isArray(extra))extraReminders=extra;
+      const list=[...buildReminders(api.reminderPrefs(),{now:now(),stackedToday,bedtime}),...extraReminders].slice(0,64);
       return callNative(native,'scheduleReminders',JSON.stringify(list));
     },
     // 걸음·수면. 옛 앱(메서드 없음)·미지원이면 healthState는 null이거나 supported:false다(건강 화면 버튼이 숨는다).
@@ -422,7 +433,7 @@ export function createNativeBridge({native=globalThis.LifeBrickNative,storage,no
     },
     // dates를 주면 그 날의 하루 계획만, 없으면 오늘부터 2주치 전체를 맞춘다. 꺼져 있으면 다리 호출 0. 권한은 묻지 않는다(토글을 켤 때만 묻는다).
     // 반환 state: OFF / NO_BRIDGE / NO_CALENDAR / NEEDS_PERMISSION / FAILED / DONE.
-    mirrorSync({life=null,events=[],subjects=[],today,dates=null}={}){
+    mirrorSync({life=null,events=[],subjects=[],today,dates=null,occur=null}={}){
       const p=api.mirrorPrefs();
       if(!p.on)return {state:'OFF'};
       if(!available())return {state:'NO_BRIDGE'};
@@ -433,7 +444,7 @@ export function createNativeBridge({native=globalThis.LifeBrickNative,storage,no
       const targets=full?span:span.filter(d=>dates.includes(d));
       const names=new Map((subjects??[]).map(s=>[s?.id,s?.name]));
       const blocks=(life?.plans??[]).filter(r=>targets.includes(r?.date)).flatMap(r=>planBlockEvents(r,{names,blocks:p.blocks}));
-      const occurrences=full&&p.events?eventOccurrences(events,{from:today,to:last}):[];
+      const occurrences=full&&p.events?eventOccurrences(events,{from:today,to:last,occur}):[];
       const want=[...blocks,...occurrences.map(o=>o.event)],wantKeys=new Set(want.map(e=>e.key));
       const stale=targets.flatMap(d=>MIRROR_BLOCKS.map(b=>planBlockKey(d,b))).filter(k=>!wantKeys.has(k));
       if(full)for(const [k,d] of Object.entries(p.tracked))if(d>=today&&!wantKeys.has(k))stale.push(k);

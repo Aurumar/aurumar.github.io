@@ -4,7 +4,7 @@
 // 쓰기 문(lb.records.d46)이 닫혀 있으면 입구를 그리지 않고 시트도 열지 않는다. 글(일기·고른 문장·다음 주 한 가지)은 알림·토스트·내보내기·이력 제목에 넣지 않는다.
 // 그 주 일기 글은 [문장 고르기]를 눌러야 만든다(화면을 보는 사람 고려). 기분은 오늘 카드 값(★3). 화면 규칙: DOM 생성 함수·SVG 속성·styles.css 클래스만(innerHTML·인라인 style 없음).
 import {sheet} from './ui-kit.mjs';
-import {shiftDay,kstDate,recordsDoorState,validateLifeData,MAX_REVIEW_PICK,MAX_REVIEW_NEXT,DIARY_GOOD_CHIPS,DIARY_BAD_CHIPS} from './life-model.mjs';
+import {shiftDay,kstDate,recordsDoorState,validateLifeData,MAX_REVIEW_PICK,MAX_REVIEW_NEXT,DIARY_GOOD_CHIPS,DIARY_BAD_CHIPS,weekAwake} from './life-model.mjs';
 import {achieve,hasVisibleText} from './life-achieve.mjs';
 import {mondayOf,weekSummary,rateText,planErrorText,unknownOutcome,PLAN_NOTICE_TEXT,maker} from './life-plan.mjs';
 import {weekMinutes,hoursText} from './study-stats.mjs';
@@ -28,6 +28,7 @@ export const WEEK_REVIEW_TEXT=Object.freeze({
   draft:'아직 저장 전 · 고르기와 입력은 이 화면에만 있어요',stored:'저장된 리뷰 · 고치면 다시 저장할 수 있어요',fail:'이 주의 숫자를 계산하지 못했어요.',
   privacy:'저장한 뒤 고치면 이전 내용이 암호화된 이력에 남아요 · 비서에게는 보내지 않아요',
   prev:'◀ 앞 주',next7:'다음 주 ▶',
+  awake:'깨어나는 데',awakeValue:m=>'평균 '+m+'분',awakeFoot:n=>'기상 뒤 정신 차린 시각을 적은 날 '+n+'일',awakeNone:'정신 차린 시각 기록 없음',   // V12B-2: 사실만(평가·훈계 문구 없음)
 });
 const WR=WEEK_REVIEW_TEXT;
 const WEEKDAY=['월','화','수','목','금','토','일'];
@@ -72,7 +73,8 @@ export function weekReviewStats({life=null,study=null,monday,today}){
     study:study?{minutes:weekMinutes(study,monday,today),prevMinutes:weekMinutes(study,shiftDay(monday,-7),today),bricks:w?.bricks??0,pieces:w?.pieces??0}:null,
     planRate:plan.rate,planned:plan.planned,habits,habitDays,habitGoal,habitDone,habitMissed,habitRate:habitGoal>0?habitDone/habitGoal:null,
     diaryDays:days.filter(d=>d.written).length,good:chipTop(diaries,'good',DIARY_GOOD_CHIPS),bad:chipTop(diaries,'bad',DIARY_BAD_CHIPS),
-    avg,low:scores.length>=LOW_MIN_DAYS&&avg<=LOW_AVG,lastNext:hasVisibleText(lastNext)?lastNext.trim():''};   // 보이는 글자가 없으면 줄을 그리지 않는다(FIX51B B3)
+    avg,low:scores.length>=LOW_MIN_DAYS&&avg<=LOW_AVG,awake:weekAwake(life?.days??[],dates.slice(0,habitDays)),   // V12B-2: 기상~정신 차림 분 평균(습관과 같은 창)
+    lastNext:hasVisibleText(lastNext)?lastNext.trim():''};   // 보이는 글자가 없으면 줄을 그리지 않는다(FIX51B B3)
 }
 // 그래프 선 조각: 값이 이어진 날끼리만 잇는다(없는 날은 끊김, 0으로 그리지 않음). [[{i,v},…],…]
 export function lineRuns(values){
@@ -148,7 +150,8 @@ export function openWeekReview(ctx,{monday=null,today=null}={}){
         s.study?cell(WR.study,hoursText(s.study.minutes),brickLine(s.study)+' · '+compareLine(s.study.minutes,s.study.prevMinutes)):cell(WR.study,'-',WR.noStudy),
         cell(WR.plan,rateText(s.planRate),s.planned>0?null:WR.noPlan),
         cell(WR.habit,s.habitRate===null?'-':Math.round(s.habitRate*100)+'%',s.habitGoal>0?(s.habitDays<7?s.habitDays+'일 중 · ':'')+s.habitDone+' / '+s.habitGoal+'칸'+(s.habitMissed?' · ✕ '+s.habitMissed:''):null),
-        cell(WR.diary,s.diaryDays+'일',s.habitDays+'일 중')));   // 계획·습관과 같은 창(FIX51B C2). 지난 주·일요일은 7일 중
+        cell(WR.diary,s.diaryDays+'일',s.habitDays+'일 중'),
+        cell(WR.awake,s.awake.avg===null?'-':WR.awakeValue(s.awake.avg),s.awake.avg===null?WR.awakeNone:WR.awakeFoot(s.awake.days))));   // 계획·습관과 같은 창(FIX51B C2). 지난 주·일요일은 7일 중
       add(body,el('h3',WR.graph,'wr-sub'));
       if(s.days.some(x=>x.score!==null||x.mood!==null))add(body,graphNode(ctx.document??globalThis.document,s.days),el('p',WR.legend,'muted small wr-legend'));
       else add(body,el('p',WR.noScore,'muted small wr-no-score'));

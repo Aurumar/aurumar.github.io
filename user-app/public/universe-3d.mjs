@@ -2,8 +2,8 @@
 // 이미지·텍스처·글자 텍스처 없이 색과 재질만 쓴다(CSP img-src 'none'): 과목 이름은 화면 아래 범례(DOM)가 맡는다. 인라인 style 없음: 캔버스 크기는 styles.css가 정하고 setSize(...,false)로 style을 건드리지 않는다.
 // 실패(WebGL2 없음·저사양·첫 장면 오류·컨텍스트 손실·프레임 너무 느림)면 3D를 치우고 fallback(SVG 우주)을 다시 보인다. 같은 데이터다.
 // V8W7: 과목마다 행성(금속 재질 구체 + 금 고리, 오답이 많을수록 크다)을 군집 가운데에 그리고, 행성도 누를 수 있다(onPlanet). 예시 우주(data.example)는 금 톤 선·"예시" 표지를 더한다.
-import {WebGLRenderer,Scene,PerspectiveCamera,SphereGeometry,TorusGeometry,BufferGeometry,BufferAttribute,LineSegments,LineBasicMaterial,MeshBasicMaterial,MeshStandardMaterial,PointsMaterial,Points,HemisphereLight,DirectionalLight,InstancedMesh,Mesh,Object3D,Color,Raycaster,Vector2,Vector3,DataTexture,RGBAFormat,UnsignedByteType,LinearFilter,SRGBColorSpace,EquirectangularReflectionMapping,PMREMGenerator} from './three.module.js';
-import {quality3d,framesTooSlow,FOV,GOLD,TOWER_GOLD,renderPixelRatio,isCoarsePointer,tooSlowFor30,glowTexels,HALO_SPRITE,envTexels,skyAt,TEX,BACKDROP} from './tower-3d-layout.mjs';
+import {WebGLRenderer,Scene,PerspectiveCamera,BackSide,SphereGeometry,TorusGeometry,BufferGeometry,BufferAttribute,LineSegments,LineBasicMaterial,MeshBasicMaterial,MeshStandardMaterial,PointsMaterial,Points,HemisphereLight,DirectionalLight,InstancedMesh,Mesh,Object3D,Color,Raycaster,Vector2,Vector3,DataTexture,RGBAFormat,UnsignedByteType,LinearFilter,SRGBColorSpace,EquirectangularReflectionMapping,PMREMGenerator} from './three.module.js';
+import {quality3d,framesTooSlow,FOV,GOLD,TOWER_GOLD,renderPixelRatio,isCoarsePointer,tooSlowFor30,glowTexels,HALO_SPRITE,envTexels,skyAt,TEX,BACKDROP,hash01} from './tower-3d-layout.mjs';
 // V10F (소유자 "구가 각져 보이고 빨간 철망 공은 뜻을 알 수 없다"): 매끈한 구(행성 64×48·별 48×24, 별이 300개를 넘으면 24×12), 별도 빛을 받는 재질,
 // 기억함 = 부드러운 빛무리(가운데 밝은 둥근 점), 복습 필요(늦음) = 붉은 빛 테(고리 점) + 캔버스 위 범례, 행성마다 옅은 궤도 선·이름표(SVG 겹침층), 행성 금속에 코드로 만든 스튜디오 환경 반사,
 // 화소 배율(PC 1.5~2·폰 ≤1.5)과 느리면(30fps 미만) 배율 1로 한 단계 낮춤.
@@ -14,6 +14,34 @@ const RED='#D9534F',WHITE='#FFFFFF',NODE_R=0.3,GLOW_R=0.42,HALO_LATE=0.66,HALO_G
 // 행성 반지름 = 군집 반지름 × 0.36(군집 반지름이 오답 수의 세제곱근으로 커지므로 행성도 함께 커진다). 고리 = 행성의 1.7배, 기울기 0.45.
 export const PLANET_SCALE=0.36,PLANET_RING=1.7,PLANET_TILT=0.45,PLANET_MATERIAL=Object.freeze({metalness:0.45,roughness:0.32,emissiveIntensity:0.16});
 export const planetRadius=c=>Math.round(c.radius*PLANET_SCALE*1e4)/1e4;
+// V12E 깊이 있는 배경(설계 V12 E2, 소유자 r81 "평평한 옅은 판·단색 그러데이션이라 저화질"): 밝은 테마 그대로, 투명 캔버스 뒤 CSS 단색 대신
+// 장면 안 배경 구(아이보리 → 위 옅은 라벤더·아래 옅은 금, 은은한 성운 네 덩이) + 먼 별 세 겹(먼 겹 = 작고 많고 옅게, 가까운 겹 = 크고 적게). 겹마다 반지름이 달라 카메라가 돌면 조금씩 어긋나 깊이가 보인다.
+// 모두 코드로 계산(그림·외부 파일 0), 결정적(난수 없음). 배경 구는 카메라가 가장 멀리 물러나도(fit × 1.6) 그 안에 있도록 군집 경계(bound)의 SPACE_BG.radius배.
+export const SPACE_BG=Object.freeze({base:'#FBF8F1',top:'#F2EEF8',bottom:'#F9F1DF',radius:24,minRadius:60,maxRadius:3000,segments:Object.freeze([64,32]),
+  clouds:Object.freeze([[[0.62,0.32,0.72],'#F2DCAA',0.62,0.7],[[-0.76,0.12,-0.42],'#E7DAF1',0.66,0.75],[[-0.22,-0.48,0.85],'#F4D9E0',0.5,0.6],[[0.28,0.82,-0.5],'#D9E6F3',0.55,0.55]].map(([dir,color,size,amount])=>Object.freeze({dir,color,size,amount})))});
+// 별 색은 V7C 금지 띠(겨자·황토·갈색) 밖: 먼 겹 = 채도 낮은 금회색, 가운데 겹 = 옅은 라벤더, 가까운 겹 = 명도 58% 위 밝은 금.
+export const STAR_LAYERS=Object.freeze([[0.96,420,6,0.62,'#ABA088',41],[0.86,160,9,0.75,'#958EC0',53],[0.78,60,13,0.9,'#D9B45C',67]].map(([r,n,size,opacity,color,seed])=>Object.freeze({r,n,size,opacity,color,seed})));
+export const spaceRadius=bound=>Math.min(SPACE_BG.maxRadius,Math.max(SPACE_BG.minRadius,bound*SPACE_BG.radius));
+const hexRgb=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255),rgbHex=c=>'#'+c.map(v=>Math.round(Math.max(0,Math.min(1,v))*255).toString(16).padStart(2,'0')).join('').toUpperCase();
+// 단위 방향(x,y,z) → 배경색. 위아래 그러데이션 + 성운 덩이(방향 사이 각의 가우스, 부드러운 물결로 얼룩을 조금).
+export function nebulaAt(x,y,z){
+  const B=SPACE_BG,mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
+  let c=y>=0?mix(hexRgb(B.base),hexRgb(B.top),Math.min(1,y)**1.4):mix(hexRgb(B.base),hexRgb(B.bottom),Math.min(1,-y)**1.4);
+  for(const k of B.clouds){
+    const l=Math.hypot(...k.dir),dot=(x*k.dir[0]+y*k.dir[1]+z*k.dir[2])/l,wave=0.78+0.22*Math.sin(3*x+5*y+1.3)*Math.cos(4*z-2*y+0.7);
+    c=mix(c,hexRgb(k.color),k.amount*Math.exp(-(2*(1-dot))/(k.size*k.size))*wave);
+  }
+  return rgbHex(c);
+}
+// 별 한 겹: 구 위 황금각 나선 + 해시 흔들림(고르되 줄 서 보이지 않게). 단위 구 좌표 × 반지름.
+export function starLayer(L,radius){
+  const out=new Float32Array(L.n*3);
+  for(let i=0;i<L.n;i++){
+    const y=Math.max(-1,Math.min(1,1-2*(i+0.5)/L.n+(hash01(L.seed,i,1)-0.5)*1.6/L.n)),r=Math.sqrt(1-y*y),a=i*2.399963229728653+(hash01(L.seed,i,2)-0.5)*0.9;
+    out[i*3]=Math.cos(a)*r*radius;out[i*3+1]=y*radius;out[i*3+2]=Math.sin(a)*r*radius;
+  }
+  return out;
+}
 export const planetsOf=data=>data.clusters.filter(c=>c.count>0);
 let active=null;
 // V11A 3D 호스트 (V10HUNT M-12): 탑(tower-3d adoptTower3d)과 같은 규칙. 다시 그리면 살아 있는 칸을 새 자리 표시 칸에 옮겨 붙이고, 우주 배치(data 전부)가 바뀌었을 때만 같은 캔버스·문맥에 다시 짓는다.
@@ -146,6 +174,17 @@ export function mountUniverse3d({doc,slot,fallback,data,onNode=null,onPlanet=nul
     const lines=new LineSegments(geo,own(new LineBasicMaterial(example?{color:TOWER_GOLD.mid,transparent:true,opacity:0.55}:{color:0xcccccc,transparent:true,opacity:0.22})));lines.frustumCulled=false;scene.add(lines);
   }
   // 행성: 군집(과목)마다 금속 구체 1개 + 얇은 금 고리 1개(오답이 있는 과목만). 조명은 행성에만 듣는다(별은 MeshBasicMaterial). 반구광 + 왼쪽 위 키 라이트 2개.
+  // V12E 배경 구(성운 그러데이션, 정점 색) + 별 세 겹(빛무리 질감 점, 화면 크기 고정). 둘 다 깊이를 쓰지 않고 가장 먼저 그린다(별·행성·선이 위에). 드로우콜 4.
+  const spaceR=spaceRadius(data.bound),bgGeo=own(new SphereGeometry(spaceR,...SPACE_BG.segments)),bp=bgGeo.attributes.position,bgCol=new Float32Array(bp.count*3);
+  for(let i=0;i<bp.count;i++){tint.set(nebulaAt(bp.getX(i)/spaceR,bp.getY(i)/spaceR,bp.getZ(i)/spaceR));bgCol.set([tint.r,tint.g,tint.b],i*3);}
+  bgGeo.setAttribute('color',new BufferAttribute(bgCol,3));
+  const bg=new Mesh(bgGeo,own(new MeshBasicMaterial({vertexColors:true,side:BackSide,depthWrite:false,dithering:true})));bg.renderOrder=-2;bg.frustumCulled=false;scene.add(bg);
+  const starDot=sprite('glow');
+  for(const L of STAR_LAYERS){
+    const g=own(new BufferGeometry());g.setAttribute('position',new BufferAttribute(starLayer(L,spaceR*L.r),3));
+    const p=new Points(g,own(new PointsMaterial({color:L.color,size:L.size,sizeAttenuation:false,map:starDot,transparent:true,opacity:L.opacity,depthWrite:false})));p.renderOrder=-1;p.frustumCulled=false;scene.add(p);
+  }
+  slot.dataset.spaceLayers=String(STAR_LAYERS.length);
   const sun=new DirectionalLight(0xffffff,2.2);sun.position.set(-1,1.6,1.2);
   scene.add(new HemisphereLight(0xfff8e8,0xe8d9b0,1.6),sun);   // V10F: 별도 빛을 받으므로 행성이 없어도 켠다
   const labels=[];

@@ -441,6 +441,77 @@ export function habitState(h,e){
   return 'done';
 }
 export const MISSED_ENTRY=Object.freeze({done:false,at:null,minutes:null,count:null});
+// ---- V12B (소유자 2026-11-16): 수면 연동 · 정신 차린 시각 · 야식 시각. 새 종류·새 칸 0, 기존 LIFE_DAY 칸 안의 값만 ----
+// 수면 = 기상(hb-wake) 시각과 그 앞 취침(hb-sleep) 시각을 잇는다(저장 0, 그릴 때 계산). 취침은 "지금"을 자정 뒤에 누르면 그날 카드에, 자정 전이면 전날 카드에 있다.
+// Health Connect(Fold에서 가져온 hc- 수면)가 있으면 그것이 먼저다. 그다음 취침·기상, 그다음 건강 카드의 다른 주 수면(손으로 적은 것).
+// 정신 차린 시각 = 기상 줄의 minutes 칸(기상~정신 차림 분, 0~720). 시각 습관 줄의 minutes는 검사기가 예전부터 받고(0~1440) 시각 습관 계산은 at만 본다(r81은 무시).
+// 야식 시각 = 그날 카드 habits의 'hb-latemeal' 줄(정의 없는 기록 값, 시각 줄 모양). 야식을 먹으면 야식X(hb-nolate)는 기존 못함 줄이다.
+export const WAKE_ID='hb-wake',BED_ID='hb-sleep',LATE_ID='hb-nolate',LATE_MEAL_KEY='hb-latemeal';
+export const SLEEP_MAX_MIN=20*60,AWAKE_MAX_MIN=720,BED_NOON=12*60;
+const hmOf=t=>timeOK(t)?Number(t.slice(0,2))*60+Number(t.slice(3,5)):null;
+const hmText=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+const timeEntry=e=>Boolean(e)&&e.done===true&&timeOK(e.at);
+const habitOf=(days,date,id)=>{const c=(days??[]).find(d=>d.date===date)?.data;return c?.habits&&Object.hasOwn(c.habits,id)?c.habits[id]:null;};
+// 건강 카드(그날·전날)의 끝난 주 수면 가운데 끝이 그 날짜(KST)인 것. hc = Fold(Health Connect)에서 가져온 것만 / 아닌 것만.
+function hltMainSleeps(hltDays,date,hc){
+  const out=[];
+  for(const d of hltDays??[])if(d.date===date||d.date===shiftDay(date,-1))for(const i of d.data?.items??[])
+    if(i?.type==='sleep'&&i.kind==='main'&&i.endAt&&kstDate(i.endAt)===date&&(typeof i.id==='string'&&i.id.startsWith('hc-'))===hc)out.push(i);
+  return out;
+}
+// 그 날짜의 기상 앞 취침: {bedDate, bed}(HH:MM) 또는 null. 자정 넘김: 그날 카드의 정오 전 취침이 기상보다 이르면 그날 새벽에 잔 것.
+// 전날 카드: 정오 이후 = 전날 밤, 정오 전 = 전날 기상보다 늦으면(또는 전날 기상이 없으면) 자정 넘긴 밤(전날 밤 몫).
+export function bedBefore(days,date,wakeAt){
+  const w=hmOf(wakeAt);if(w===null)return null;
+  const t=habitOf(days,date,BED_ID);
+  if(timeEntry(t)){const s=hmOf(t.at);if(s<BED_NOON&&s<w)return {bedDate:date,bed:t.at,minutes:w-s};}
+  const y=shiftDay(date,-1),p=habitOf(days,y,BED_ID);
+  if(!timeEntry(p))return null;
+  const s=hmOf(p.at);
+  if(s>=BED_NOON)return {bedDate:y,bed:p.at,minutes:1440-s+w};
+  const yw=habitOf(days,y,WAKE_ID);
+  if(timeEntry(yw)&&hmOf(yw.at)>s)return null;   // 전날 아침 기상 전 취침 = 전날 수면 몫
+  return s<w?{bedDate:y,bed:p.at,minutes:w-s}:null;
+}
+// 오늘 수면 한 줄 자료. days = 쌓은(또는 초안을 얹은) 하루 카드 [{date,data}], hltDays = 건강 카드 [{date,data}].
+// 돌려줌: {source:'HC'|'HABIT'|'HEALTH', minutes, bed, wake} · 기상만 있고 취침이 없으면 {missing:true, wake} · 둘 다 없으면 null.
+export function sleepLink({days=[],hltDays=[],date}){
+  const span=list=>{const m=list.reduce((n,i)=>n+Math.round((Date.parse(i.endAt)-Date.parse(i.startAt))/60000),0);if(!(m>0))return null;
+    const a=Math.min(...list.map(i=>Date.parse(i.startAt))),b=Math.max(...list.map(i=>Date.parse(i.endAt)));return {minutes:m,bed:hhmmFromIso(new Date(a).toISOString()),wake:hhmmFromIso(new Date(b).toISOString())};};
+  const hc=span(hltMainSleeps(hltDays,date,true));if(hc)return {source:'HC',...hc};
+  const we=habitOf(days,date,WAKE_ID),wake=timeEntry(we)?we.at:null;
+  if(wake){const b=bedBefore(days,date,wake);if(b&&b.minutes>0&&b.minutes<=SLEEP_MAX_MIN)return {source:'HABIT',minutes:b.minutes,bed:b.bed,wake,bedDate:b.bedDate};}
+  const other=span(hltMainSleeps(hltDays,date,false));if(other)return {source:'HEALTH',...other};
+  return wake?{missing:true,wake}:null;
+}
+// "어제 취침 넣기"에서 적은 시각을 어느 카드에 둘지: 정오 전이고 기상보다 이르면 그날(자정 넘김), 아니면 전날.
+export function bedCardDate(date,bedAt,wakeAt){
+  const s=hmOf(bedAt),w=hmOf(wakeAt);
+  return s!==null&&s<BED_NOON&&(w===null||s<w)?date:shiftDay(date,-1);
+}
+export const sleepText=m=>Math.floor(m/60)+'시간'+(m%60?' '+(m%60)+'분':'');
+// 정신 차린 시각: 기상 줄 → 분(없으면 null). 시각 → 기상 줄(기상보다 앞이거나 12시간 넘으면 null = 저장 안 함).
+export function awakeMinutes(e){return timeEntry(e)&&Number.isInteger(e.minutes)&&e.minutes>=0&&e.minutes<=AWAKE_MAX_MIN?e.minutes:null;}
+export function alertAt(e){const m=awakeMinutes(e);return m===null?null:hmText((hmOf(e.at)+m)%1440);}
+export function wakeWithAlert(e,alertHm){
+  if(!timeEntry(e))return null;
+  if(alertHm===null)return {...e,minutes:null};
+  const a=hmOf(alertHm);if(a===null)return null;
+  const m=(a-hmOf(e.at)+1440)%1440;
+  return m<=AWAKE_MAX_MIN?{...e,minutes:m}:null;
+}
+// 기상 시각을 고쳐도 적어 둔 정신 차린 시각(절대 시각)은 그대로 두고 분만 다시 계산한다. 맞지 않으면(새 기상이 그 뒤) 지운다.
+export function wakeRetimed(prev,next){
+  if(!next||!timeEntry(next))return next;
+  const a=alertAt(prev);if(a===null)return {...next,minutes:null};
+  return wakeWithAlert({...next,minutes:null},a)??{...next,minutes:null};
+}
+// 주간 리뷰: 그 주(dates) 기상 줄의 깨어나는 데 걸린 분 평균(반올림)과 날 수. 없으면 avg null.
+export function weekAwake(days,dates){
+  const set=new Set(dates),list=[];
+  for(const d of days??[])if(set.has(d.date)){const m=awakeMinutes(d.data?.habits?.[WAKE_ID]??null);if(m!==null)list.push(m);}
+  return {avg:list.length?Math.round(list.reduce((a,b)=>a+b,0)/list.length):null,days:list.length};
+}
 // V6B 습관 벽돌·기본 행동 경험치를 세는 첫 날. FIX68: 이 날부터의 카드에 쌓을 때의 기준(basis)을 함께 적는다.
 export const HABIT_EPOCH='2026-11-09';
 // FIX68 (HUNT65 F2): 지금 목록으로 정한 습관 벽돌 기준. 습관 = 보이는·고정·매일(복구 종류·주 단위 목표 제외), 행동 = 켜 둔 기본 행동(life.actionDefs, 앱이 붙여 준다).

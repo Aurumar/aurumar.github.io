@@ -113,7 +113,9 @@ const SHARED=createTodayPlanState();
 // 새 줄의 bricks 칸은 NEW_ITEM_BRICKS, 고치는 줄은 저장된 값을 그대로 둔다(예전 목표는 지우지 않는다).
 // onPut(item,close) / onDelete(close)는 오류 코드(쓰지 않음) 또는 null(시트를 닫고 저장 시작)을 돌려준다. 시트 안에서는 아무것도 쓰지 않는다.
 // block = 새 줄의 시간대를 미리 고를 값(P1A 주간 격자는 누른 칸의 블록). 없으면 지금 시각으로.
-export function openChipSheet(ctx,{date,item=null,block=null,onPut,onDelete=null}){
+// V12C-1 (소유자 2026-11-16 "주간 → 오늘 연동, 한쪽에서 완료하면 둘 다 완료"): onMark(close)가 있으면 고치는 줄에 "완료 표시"/"완료 취소" 단추.
+// 오늘 카드의 ✓와 같은 값(이 기기 lb.plan.link의 그 날 손 완료, writePlanMarks)을 바꾼다 → 주 격자·오늘 카드·오늘 탭 목록이 같이 완료로 보인다(기록 쓰기 0). marked = 지금 손 완료인지.
+export function openChipSheet(ctx,{date,item=null,block=null,onPut,onDelete=null,onMark=null,marked=false}){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button}=h;
   const defs=lifeDefs(ctx.getWhole().life??null),subjects=defs.subjects.filter(s=>!s.hidden||s.id===item?.subjectId),nameOf=id=>subjects.find(s=>s.id===id)?.name??'기타';
   // V7B: 고르는 값은 오전·오후·저녁. 옛 밤 줄을 고칠 때는 저녁이 골라져 보이고, 시간대를 바꾸지 않으면 저장값(N)을 그대로 둔다(아래 put).
@@ -146,7 +148,9 @@ export function openChipSheet(ctx,{date,item=null,block=null,onPut,onDelete=null
   };
   const old=oldTarget(item);
   // 단추는 위에 둔다(시트가 스크롤돼도 "넣기"가 보인다).
-  add(body,add(el('div',null,'buttons'),item&&onDelete?button('지우기',()=>{const code=onDelete(close,reopen);if(code)showErr(planErrorText(code));},'secondary'):null,button(item?'고치기':'넣기',put,'primary')),err,note,
+  const mark=item&&onMark?button(marked?'완료 취소':'완료 표시',()=>onMark(close),'secondary pt-sheet-mark'+(marked?' on':'')):null;
+  if(mark){mark.setAttribute('aria-pressed',String(Boolean(marked)));mark.setAttribute('aria-label',nameOf(item.subjectId)+(marked?' 완료 표시 취소':' 손으로 완료 표시')+' · 오늘 계획에도 같이 보여요');}
+  add(body,add(el('div',null,'buttons'),item&&onDelete?button('지우기',()=>{const code=onDelete(close,reopen);if(code)showErr(planErrorText(code));},'secondary'):null,mark,button(item?'고치기':'넣기',put,'primary')),err,note,
     add(el('div',null,'pt-sheet-row'),el('span','과목','pt-sheet-label'),subjRow),
     add(el('div',null,'pt-sheet-row'),el('span','시간대','pt-sheet-label'),blockRow),add(el('div',null,'pt-sheet-row'),el('span','세부내용','pt-sheet-label'),what),
     el('p','벽돌 장수는 적지 않아요 · 공부 벽돌에서 이 과목을 공부하면 자동으로 채워져요'+(old!==null?' · 예전 목표 '+barsText(old)+'(그대로 둠)':''),'muted small pt-sheet-hint'));

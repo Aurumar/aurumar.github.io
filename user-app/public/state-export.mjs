@@ -12,6 +12,8 @@ import {readPlanMarks} from './life-plan.mjs';
 import {moneyFacts} from './life-money-facts.mjs';
 import {csatTarget} from './life-plan.mjs';
 import {ddayGauge,splitEventNotes} from './life-plan.mjs';   // V10B-6: 위젯 dday·events 칸
+import {eventDates,eventColorOf,eventColorHex} from './life-plan.mjs';   // V12A: 반복 일정 펼치기 · 일정 색
+import {examDisplayName} from './life-plan.mjs';   // V12C-6: 위젯 dday 이름 = 화면 이름("2028 수능")
 import {feelOfFin,feelExport,feelExportText,feelTodayOf} from './fin-feel.mjs';
 import {STACK_DONE} from './life-flow.mjs';
 import {projectStudy} from './study-projection.mjs';
@@ -416,12 +418,15 @@ const graphemeCut=(s,max)=>{if(!GRAPHEMES)return [...s].slice(0,max).join('');le
 const shortText=(v,max)=>typeof v==='string'&&v.isWellFormed()?graphemeCut(clean(v,Number.MAX_SAFE_INTEGER),max).trim():'';
 // V10FIX M-08: 진료·약 낱말. "약속"의 약은 빼고, 한 글자 "약"은 낱말 첫머리일 때만(약 A·약국 등).
 export const WIDGET_MEDICAL=/병원|진료|처방|치료|검진|진찰|의원|클리닉|치과|약국|복약|투약|상담|입원|수술|주사|(?:^|[^가-힣])약(?!속)/;
-export const widgetMedical=v=>typeof v==='string'&&WIDGET_MEDICAL.test(v);
+// V12FIX M-3: 위 목록이 놓친 진료과·약 이름·검사·접종 낱말(V12HUNT 2-12 예). 허용 목록(제목 숨김 기본)은 기존 V10B-6b·V10FIX2·V12F 단언(약속·수업 제목 그대로)을 바꿔야 해서
+// 소유자 결정으로 남기고, 새지 않는 쪽으로 목록을 넓힌다(잘못 가려져도 "병원 일정"으로 보일 뿐 기록은 그대로). "예약·청약·계약·약속"은 걸리지 않는다.
+export const WIDGET_MEDICAL_MORE=/(?:내|외|안|피부|정신|정신건강의학|소아|소아청소년|비뇨|비뇨의학|비뇨기|산부인|이비인후|성형|신경|재활의학|가정의학|정형외|흉부외|마취통증의학)과|정신건강|심리|우울|공황|(?:감기|두통|소화|수면|위장|변비|진통|비염|알레르기|피부|여드름|탈모|혈압|당뇨|처방|상비|멀미|생리통|한)약|(?:수면|진통|항생|해열|소화|안정|항우울|영양|수면유도)제|접종|백신|혈액|검사 ?결과|건강 ?검진|리필|복용|투여|한의원|보건소|응급실|재진|초진|내원|외래/;
+export const widgetMedical=v=>typeof v==='string'&&(WIDGET_MEDICAL.test(v)||WIDGET_MEDICAL_MORE.test(v));
 export function widgetDday(exams,today){
   const up=[...(exams?.items??[])].filter(x=>dateOK(x?.date)&&x.date>=today).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:a.id<b.id?-1:a.id>b.id?1:0);
   const fin=csatTarget(exams),pick=up.slice(0,WIDGET_DDAY_MAX);
   if(fin&&fin.date>=today&&!pick.some(x=>x.id===fin.id)&&pick.length===WIDGET_DDAY_MAX)pick[WIDGET_DDAY_MAX-1]=fin;
-  return pick.map(x=>{const label=shortText(String(x.name??'').replace(/\(.*\)/,''),WIDGET_LABEL_MAX),g=ddayGauge(exams,{id:x.id,role:'next',name:label},today);return label&&g?{label,date:x.date,start:g.start}:null;}).filter(Boolean);
+  return pick.map(x=>{const label=shortText(examDisplayName(x).replace(/\(.*\)/,''),WIDGET_LABEL_MAX)   /* V12C-6: "수능" → "2028 수능"(화면과 같은 이름) */,g=ddayGauge(exams,{id:x.id,role:'next',name:label},today);return label&&g?{label,date:x.date,start:g.start}:null;}).filter(Boolean);
 }
 export function widgetEvents(events,today){
   if(!Array.isArray(events))return null;
@@ -434,8 +439,9 @@ export function widgetEvents(events,today){
     const title=medical?WIDGET_HOSPITAL_TITLE:shortText(d.title,WIDGET_LABEL_MAX);if(!title)continue;
     if(medical&&own)kind=WIDGET_HOSPITAL;
     const time=!d.allDay&&typeof d.time==='string'&&/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(d.time)?d.time:null;
-    const r=d.recurrence,count=r?r.count:1,step=r?r.interval*(r.frequency==='WEEKLY'?7:1):0;
-    for(let i=0;i<count;i++){const date=shiftDay(d.date,i*step);if(date>to)break;if(date>=from)rows.push({date,time,title,kind});}
+    // V12A-3·4: 반복 펼치기 = 달력과 같은 eventDates(새 반복 "매주 토·일 …"도), color = 일정 색(고른 색 → 종류 기본색, "#RRGGBB"). 60개 상한·가까운 날부터는 아래 그대로.
+    const color=eventColorHex(eventColorOf(d));
+    for(const {date} of eventDates(d,from,to))rows.push({date,time,title,kind,color});
   }
   const order=(a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.time??'')<(b.time??'')?-1:(a.time??'')>(b.time??'')?1:a.title<b.title?-1:a.title>b.title?1:0;
   const ahead=rows.filter(x=>x.date>=today).sort(order),past=rows.filter(x=>x.date<today).sort(order).reverse();
