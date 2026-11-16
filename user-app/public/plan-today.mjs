@@ -3,12 +3,13 @@
 // 기록을 쓰는 곳은 commitPlan() 하나(기존 savePlanDay = PLAN_DAY 1개 = 연산 1, 겹치면 줄 id 3자 병합)이고, 칩 시트의 "넣기"·"지우기"와 빈 날의 "어제처럼" 단추에서만 부른다.
 // 열기·그리기·칩 고르기·[▶ 집중]은 기록을 쓰지 않는다. [▶ 집중]·"끝내고 담기"는 넘겨받은 focus 포트(life-ui)가 기존 타이머(lb.life.timer)와 기존 finishTimer(STUDY_DAY 세션, R34B 시작 시각 id)를 그대로 쓴다.
 // V6A: 계획 줄 입력 = 과목 · 세부내용 · 시간대만(장수 입력 없음, 새 줄 bricks = 1). 줄 상태는 공부 세션을 자동으로 붙여 센다(life-plan linkPlan): 안 함 / 조각 / 완료 n장.
-// 이 기기 저장소에는 손 완료 표시(lb.plan.link, life-plan writePlanMarks)만 적는다(화면 설정, 기록 아님, 실패해도 무시). 새 기록 종류·필드 0.
+// 이 기기 저장소에는 손 완료 표시(lb.plan.link, life-plan writePlanMarks)만 적는다(화면 설정, 기록 아님, 실패해도 무시). 새 기록 종류·하루 칸 0.
+// V15_LC3: 손 완료는 스위치(life-plan PLAN_DONE_SYNC)가 켜져 있으면 계획 줄 선택 칸 done(V13B 검사기가 받는 칸)으로도 저장된다.
 // 달성 분모 = 오늘까지의 계획: 오늘보다 뒤 날짜의 계획은 "계획 n개"만 보인다(아직 오지 않은 날의 계획으로 낮아 보이지 않게).
 import {lifeDefs,kstDate,shiftDay,hhmmFromIso,validateLifeData,SUBJECT_COLOR_KEYS,PLAN_BLOCKS,MAX_PLAN_TITLE} from './life-model.mjs';
 import {achieve,previewAchieve} from './life-achieve.mjs';
 import {timerElapsedMin,liveTick} from './study-stage.mjs';
-import {planOf,daySummary,copyPlan,savePlanDay,planErrorText,PLAN_NOTICE_TEXT,barsText,dateLabel,BLOCK_TEXT,BLOCK_HINT,SHOWN_BLOCKS,shownBlock,NO_SUBJECT_COLOR,blockOfIso,daySessions,linkPlan,readPlanMarks,writePlanMarks,itemStateText,oldTarget,NEW_ITEM_BRICKS,planItemEdited} from './life-plan.mjs';
+import {planOf,daySummary,copyPlan,savePlanDay,planErrorText,PLAN_NOTICE_TEXT,barsText,dateLabel,BLOCK_TEXT,BLOCK_HINT,SHOWN_BLOCKS,shownBlock,NO_SUBJECT_COLOR,blockOfIso,daySessions,linkPlan,readPlanMarks,writePlanMarks,itemStateText,oldTarget,NEW_ITEM_BRICKS,planItemEdited,PLAN_DONE_SYNC,planDoneSet} from './life-plan.mjs';
 
 // V6F: 화면에는 약자(M·L·D·N / M·A·E·N)를 쓰지 않고 한글 시간대만. 저장값은 M·A·E·N 그대로.
 // V7B: 화면 시간대는 오전·오후·저녁 3개. 옛 밤(N) 줄은 저녁으로 보인다(life-plan shownBlock).
@@ -114,7 +115,8 @@ const SHARED=createTodayPlanState();
 // onPut(item,close) / onDelete(close)는 오류 코드(쓰지 않음) 또는 null(시트를 닫고 저장 시작)을 돌려준다. 시트 안에서는 아무것도 쓰지 않는다.
 // block = 새 줄의 시간대를 미리 고를 값(P1A 주간 격자는 누른 칸의 블록). 없으면 지금 시각으로.
 // V12C-1 (소유자 2026-11-16 "주간 → 오늘 연동, 한쪽에서 완료하면 둘 다 완료"): onMark(close)가 있으면 고치는 줄에 "완료 표시"/"완료 취소" 단추.
-// 오늘 카드의 ✓와 같은 값(이 기기 lb.plan.link의 그 날 손 완료, writePlanMarks)을 바꾼다 → 주 격자·오늘 카드·오늘 탭 목록이 같이 완료로 보인다(기록 쓰기 0). marked = 지금 손 완료인지.
+// 오늘 카드의 ✓와 같은 값(이 기기 lb.plan.link의 그 날 손 완료, writePlanMarks)을 바꾼다 → 주 격자·오늘 카드·오늘 탭 목록이 같이 완료로 보인다. marked = 지금 손 완료인지.
+// V15_LC3: 스위치(life-plan PLAN_DONE_SYNC)가 켜져 있으면 그 날 계획 줄의 done도 저장한다(다른 기기도 같은 완료). 꺼져 있으면 기록 쓰기 0.
 export function openChipSheet(ctx,{date,item=null,block=null,onPut,onDelete=null,onMark=null,marked=false}){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button}=h;
   const defs=lifeDefs(ctx.getWhole().life??null),subjects=defs.subjects.filter(s=>!s.hidden||s.id===item?.subjectId),nameOf=id=>subjects.find(s=>s.id===id)?.name??'기타';
@@ -179,7 +181,8 @@ function drawTodayPlan(ctx,{date=null,today=null,focus=null,draft=null,focusMess
   const day=today??kstDate(ctx.now()),d=date??day,timer=focus?.timer?.()??null,store=ctx.storage??globalThis.localStorage;
   const m=todayPlanModel({life,study:whole.study??null,date:d,today:day,timer,draft,marks:readPlanMarks(store,d)});
   const out=el('section',null,'pt-card'+(m.isToday?' today':''));out.id=m.isToday?'today-plan':'';out.dataset.date=d;
-  const put=(item,close,reopen)=>commitPlan(ctx,state,d,items=>{const i=items.findIndex(x=>x.id===item.id);if(i<0)items.push(item);else items[i]=planItemEdited(items[i],item);return items;},/* V13B L-C3: 고친 줄도 받은 선택 칸(done) 그대로 */m.isToday?'오늘 계획에 넣었습니다.':'계획에 넣었습니다.',close,reopen);
+  const save=(change,okText,close,reopen)=>commitPlan(ctx,state,d,change,okText,close,reopen);   // 넣기·고치기·✓(V15_LC3)가 같은 쓰기 길
+  const put=(item,close,reopen)=>save(items=>{const i=items.findIndex(x=>x.id===item.id);if(i<0)items.push(item);else items[i]=planItemEdited(items[i],item);return items;},/* V13B L-C3: 고친 줄도 받은 선택 칸(done) 그대로 */m.isToday?'오늘 계획에 넣었습니다.':'계획에 넣었습니다.',close,reopen);
   const sheetFor=item=>()=>openChipSheet(ctx,{date:d,item,onPut:put,onDelete:item?(close,reopen)=>commitPlan(ctx,state,d,items=>items.filter(x=>x.id!==item.id),'계획 줄을 지웠습니다.',close,reopen):null});
   const plus=button('+',sheetFor(null),'secondary pt-add');plus.setAttribute('aria-label','계획 줄 넣기');
   add(out,add(el('div',null,'pt-head'),el('h3',m.title,'pt-title'),m.head?el('span',m.head,'pt-sum'):null,m.empty?null:plus));
@@ -209,8 +212,9 @@ function drawTodayPlan(ctx,{date=null,today=null,focus=null,draft=null,focusMess
     add(row,slotLabel(h,r.block,'pt-block'),tag,r.showTitle?el('span',r.title,'pt-what'):el('span',null,'pt-what'),
       meter(h,r.manual?1:r.got,1,r.name+' '+r.text),el('span',r.text,'pt-status '+r.kind),r.doing?(()=>{const t=el('span','⏱','pt-doing');t.setAttribute('aria-label','이 줄 타이머 진행 중');t.title='이 줄 타이머 진행 중';return t;})():null,
       r.oldTarget!==null?el('span','예전 목표 '+barsText(r.oldTarget),'muted small pt-old'):null);
-    if(!m.future){   // 손 완료 표시(기본은 자동). 이 기기 화면 설정에만 적는다. V6F: 글자는 ✓ 하나(폭이 줄마다 같게), 켜짐은 색·aria로.
-      const c=button('✓',()=>{writePlanMarks(store,d,k=>{k.done=k.done.includes(r.id)?k.done.filter(x=>x!==r.id):[...k.done,r.id];});void ctx.rerender();},'secondary pt-check'+(r.manual?' on':''));
+    if(!m.future){   // 손 완료 표시(기본은 자동). V6F: 글자는 ✓ 하나(폭이 줄마다 같게), 켜짐은 색·aria로.
+      // V15_LC3: 이 기기 lb.plan.link에 적고, 스위치가 켜져 있으면 그 날 계획 줄의 done도 저장한다(기존 계획 저장 길 → 다른 기기도 같은 완료). 꺼져 있으면 예전처럼 이 기기에만.
+      const c=button('✓',()=>{const on=!r.manual;writePlanMarks(store,d,k=>{k.done=on?[...k.done.filter(x=>x!==r.id),r.id]:k.done.filter(x=>x!==r.id);});if(!PLAN_DONE_SYNC){void ctx.rerender();return;}const code=save(items=>planDoneSet(items,r.id,on),on?'완료로 표시했습니다.':'완료 표시를 취소했습니다.');if(code)Object.assign(state,{date:d,message:planErrorText(code),error:true,notices:[]});void ctx.rerender();},'secondary pt-check'+(r.manual?' on':''));
       c.setAttribute('aria-pressed',String(r.manual));c.setAttribute('aria-label',r.name+(r.manual?' 완료 표시 취소':' 손으로 완료 표시'));c.title=r.manual?'손으로 완료 표시됨 · 다시 누르면 취소':'손으로 완료 표시';add(row,c);
     }
     if(r.canFocus&&focus){const f=button('▶ 집중',()=>{focus.start(r.subjectId,r.id);},'primary pt-focus');f.setAttribute('aria-label',r.name+' 집중 시작');add(row,f);}

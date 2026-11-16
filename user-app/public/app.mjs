@@ -431,6 +431,11 @@ import('./status-view.mjs').then(m=>{statusView=m;if(!$('workspace').hidden&&(vi
 // ---- 계획 탭(B43): 일·주·월·연·수능까지 계획표. 보기만 하고, 쓰기는 계획 시트의 "저장" 버튼(PLAN_DAY 1개 = 연산 1)뿐이다.
 let lifePlan=null,planSt=null;
 import('./life-plan.mjs').then(m=>{lifePlan=m;planSt=m.createPlanState(globalThis.localStorage);if(!$('workspace').hidden&&['PLANS','HOME'].includes(view))void render();}).catch(()=>{lifePlan=null;});
+// V15_LC3 (L-C3 2단계): 이 기기에만 있던 손 완료(lb.plan.link)를 그 날 계획 줄 done으로 한 번 옮긴다(life-plan movePlanDone). 스위치가 꺼져 있으면 하지 않는다.
+// 잠금이 풀리고 기록을 읽은 뒤, 편집·다른 저장과 겹치지 않을 때 perform 안에서 1번. 저장은 오늘 카드와 같은 길(savePlanDay → 이 기기 초안 → 쌓기). 남은 저장 횟수가 모자라면 다음 실행에.
+let planDoneMoveTimer=null;
+function planDoneMoveStart(){if(planDoneMoveTimer!==null)return;planDoneMoveTimer=setInterval(()=>{if(ended||lifePlan&&!lifePlan.PLAN_DONE_SYNC){clearInterval(planDoneMoveTimer);return;}if(!lifePlan||!whole||mdSignedOut||(mdProfile&&!mdUnlocked)||busy||$('editor').open||drafts.size)return;const go=perform(async()=>{const ctx=lifeCtx(),r=await lifePlan.movePlanDone({life:ctx.getWhole().life??null,storage:globalThis.localStorage,save:(date,base,mine)=>lifePlan.savePlanDay(ctx,{date,base,mine}),ops:finOps(),today:kstDay(),skip:d=>dateBeforeFresh(d,FRESH_START)});if(r.moved)await render();});void go.then(ok=>{if(ok!==false)clearInterval(planDoneMoveTimer);});},3000);}
+planDoneMoveStart();
 // ---- Fold 네이티브 다리(B44B): window.LifeBrickNative가 있을 때만 동작(PC·iPad·브라우저에서는 nativeBr.available()가 거짓이라 아무것도 안 함).
 // 결제 알림 → 지출 초안은 보여주기만 하고(연산 0), 가계부 거래는 사용자가 거래 입력의 "저장"을 눌러야 만들어진다. 이 기기 설정(알림 토글 등)은 native-bridge.mjs 안에서만 저장한다.
 let nativeUi=null,nativeBr=null,nativeLife=null,nativeSeen=-1;

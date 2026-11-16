@@ -163,16 +163,53 @@ export function copyPlan(prev,date,newId){
   const used=new Set(),items=(prev?.items??[]).map((x,i)=>{let id=newId(i);while(used.has(id))id+='x';used.add(id);return {...planItemCopy(x),id};});
   return {date,items};
 }
-// ---- V13B L-C3 주간→오늘 완료를 기기 사이에 — 1단계(r83, 읽기 관용)만 ----
+// ---- V13B L-C3 주간→오늘 완료를 기기 사이에 — 1단계(r83, 읽기 관용) · V15_LC3 2단계(쓰기 스위치 켬) ----
 // 계획 줄 선택 칸 done(life-model PLAN_ITEM_OPTIONAL)을 검사기가 받고, 줄 고치기·합치기는 그 칸을 그대로 남긴다(planItemKept). 다른 날로 복사할 때만 뺀다(planItemCopy).
-// PLAN_DONE_SYNC = 완료 칸 쓰기·읽기 스위치. r83은 false: 완료 표시는 예전처럼 이 기기 lb.plan.link에만 적고(기록 쓰기 0), 받은 done 값으로 화면을 바꾸지도 않는다(r82와 같은 화면).
-// 2단계(r84, 모든 기기가 r83 이상이 된 뒤 통제탑 결정)에서 켠다. 켜기 전에는 r82 기기로 done 칸이 가지 않는다.
-export const PLAN_DONE_SYNC=false;
+// PLAN_DONE_SYNC = 완료 칸 쓰기·읽기 스위치(이 한 곳). 켜면: ✓·"완료 표시"가 그 날 PLAN_DAY 줄의 done(true|false)을 저장하고(기존 저장 길, 동기화됨),
+// 화면은 기록의 done이 있으면 그 값, 없으면 이 기기 손 완료(lb.plan.link)를 본다. 두 기기 충돌은 기존 PLAN_DAY 병합(rebasePlan) 그대로.
+// 끄면(옛 기기가 거절할 때 되돌리기): r83과 같다 — 완료 표시는 이 기기 lb.plan.link에만, 받은 done으로 화면을 바꾸지 않음, 옮기기 0. r82 이하 기기는 done 칸이 든 계획을 거절한다(INVALID_PLAN_ITEM).
+export const PLAN_DONE_SYNC=true;
 export const planItemKept=x=>Object.fromEntries(PLAN_ITEM_OPTIONAL.filter(k=>x!==null&&typeof x==='object'&&Object.hasOwn(x,k)).map(k=>[k,x[k]]));
 export const planItemCopy=x=>{const out={...x};for(const k of PLAN_ITEM_OPTIONAL)delete out[k];return out;};
 // 고친 줄(next, 시트가 만든 기본 5칸)에 저장돼 있던 줄(old)의 선택 칸을 되붙인다. 같은 줄을 고칠 때만 부른다.
 export const planItemEdited=(old,next)=>({...planItemKept(old),...next});
-export const planItemDone=x=>PLAN_DONE_SYNC&&x?.done===true;
+// 줄의 손 완료: 스위치가 켜져 있고 기록에 done이 있으면 그 값, 아니면 이 기기 손 완료(local). sync는 시험만 넘긴다.
+export const planItemDone=(x,local=false,sync=PLAN_DONE_SYNC)=>sync&&typeof x?.done==='boolean'?x.done:Boolean(local);
+// 그 날 줄 목록에서 한 줄의 done만 바꾼다(✓·"완료 표시"가 쓰는 한 곳). 다른 줄·다른 칸은 그대로.
+export const planDoneSet=(items,id,value)=>items.map(x=>x.id===id?{...x,done:value===true}:x);
+// 이 기기에만 있던 손 완료(lb.plan.link 그 날 d[])를 그 날 PLAN_DAY 줄의 done = true로 한 번 옮긴다(V15_LC3, 스위치가 켜졌을 때만).
+// 이미 done이 있는 줄은 덮어쓰지 않는다. 옮긴 날은 lb.plan.link 그 날 값에 m:1만 붙인다(로컬 값은 지우지 않음 · 다시 옮기지 않음).
+// 저장은 옮길 날마다 1번(save(date,base,mine) = 앱의 savePlanDay, 기존 저장 길). 남은 저장 횟수(ops)가 모자라면 이번에는 하나도 옮기지 않는다(다음 실행에 다시).
+// skip(date) = 새 시작 전 날짜처럼 쓰지 않는 날. 오늘 뒤 날짜는 손 완료가 없으므로 보지 않는다.
+export function planDoneMoves(life,storage,{today,skip=()=>false,sync=PLAN_DONE_SYNC}={}){
+  if(!sync)return {saves:[],quiet:[]};
+  const all=readAllMarks(storage),saves=[],quiet=[];
+  for(const date of Object.keys(all).filter(dateKeyOK).sort()){
+    const v=all[date];
+    if(!plainObj(v)||v.m===1||(today&&date>today)||skip(date))continue;
+    const done=readPlanMarks(storage,date).done;if(!done.length)continue;
+    const base=planOf(life,date);if(!base?.items)continue;   // 계획이 아직 없으면(받기 전) 다음에 다시
+    const move=new Set(base.items.filter(x=>done.includes(x.id)&&typeof x.done!=='boolean').map(x=>x.id));
+    if(!move.size){quiet.push(date);continue;}
+    let items=structuredClone(base.items);for(const id of move)items=planDoneSet(items,id,true);
+    saves.push({date,base:structuredClone(base),mine:{date,items}});
+  }
+  return {saves,quiet};
+}
+export async function movePlanDone({life,storage,save,ops=null,today,skip,sync=PLAN_DONE_SYNC}){
+  const {saves,quiet}=planDoneMoves(life,storage,{today,skip,sync});
+  const mark=date=>writePlanMarks(storage,date,()=>{},true);
+  for(const date of quiet)mark(date);
+  if(!saves.length)return {moved:0,need:0,quiet:quiet.length,reason:null};
+  if(ops?.known&&saves.length>ops.remaining)return {moved:0,need:saves.length,quiet:quiet.length,reason:'OPS_SHORT'};
+  let moved=0;
+  for(const s of saves){
+    let r;try{validateLifeData('PLAN_DAY',s.date,s.mine);r=await save(s.date,s.base,s.mine);}catch{continue;}   // 실패한 날은 표시하지 않음 → 다음 실행에 다시
+    if(r?.sealed||!['SAVED','ALREADY_APPLIED'].includes(r?.status))continue;
+    mark(s.date);moved++;
+  }
+  return {moved,need:saves.length,quiet:quiet.length,reason:null};
+}
 // 두 기기 합치기: 줄 id 단위 3자 병합(base = 편집을 시작한 시점, mine = 내 초안, latest = 저장 직전 서버 최신). life-rebase와 같은 규칙.
 export function rebasePlan({date,base,mine,latest}){
   const map=p=>new Map((p?.items??[]).map(x=>[x.id,x])),B=map(base),M=map(mine),T=map(latest),notices=[],keep=new Map();
@@ -250,8 +287,8 @@ export function daySessions(study,date,draft=null){
     .sort((a,b)=>{const x=a.at??AT_LAST,y=b.at??AT_LAST;return x<y?-1:x>y?1:a.id<b.id?-1:a.id>b.id?1:0;});
 }
 // items = 그 날 계획 줄, sessions = daySessions 결과, marks = {links:{세션 id: 줄 id}, done:[손으로 완료 표시한 줄 id]}.
-export function linkPlan(items,sessions,{links={},done=[]}={}){
-  const list=sortedItems(items??[]),rows=new Map(list.map(x=>[x.id,{id:x.id,subjectId:x.subjectId,block:x.block,minutes:0,bricks:0,pieces:0,sessions:[],manual:done.includes(x.id)||planItemDone(x),state:'NONE'}]));   // V13B L-C3: 기록의 done은 스위치가 켜졌을 때만
+export function linkPlan(items,sessions,{links={},done=[],sync=PLAN_DONE_SYNC}={}){
+  const list=sortedItems(items??[]),rows=new Map(list.map(x=>[x.id,{id:x.id,subjectId:x.subjectId,block:x.block,minutes:0,bricks:0,pieces:0,sessions:[],manual:planItemDone(x,done.includes(x.id),sync),state:'NONE'}]));   // V15_LC3: 기록의 done(스위치 켬)이 먼저, 없으면 이 기기 손 완료
   const full=r=>r.bricks>=1||r.manual,link=new Map(),outside=[];
   const order=[...(sessions??[])].sort((a,b)=>{const x=a.at??AT_LAST,y=b.at??AT_LAST;return x<y?-1:x>y?1:a.id<b.id?-1:a.id>b.id?1:0;});   // 넘겨받은 순서와 무관하게 시각 순
   for(const s of order){
@@ -285,11 +322,12 @@ export function readPlanMarks(storage,date){
   return {links,done};
 }
 // change(marks)로 그 날 값을 고쳐 적는다. 최근 PLAN_LINK_DAYS일만 남긴다. 성공 여부를 돌려준다(실패해도 기록에는 영향 없음).
-export function writePlanMarks(storage,date,change){
+// V15_LC3: 그 날 값의 m:1(손 완료를 기록으로 옮김, movePlanDone)은 고쳐 적어도 남긴다. moved = 이번에 m:1을 붙인다.
+export function writePlanMarks(storage,date,change,moved=false){
   try{
     if(!storage||!dateKeyOK(date))return false;
-    const all=readAllMarks(storage),cur=readPlanMarks(storage,date);change(cur);
-    all[date]={s:cur.links,d:cur.done};
+    const all=readAllMarks(storage),cur=readPlanMarks(storage,date),was=plainObj(all[date])&&all[date].m===1;change(cur);
+    all[date]={s:cur.links,d:cur.done,...(was||moved?{m:1}:{})};
     const keep=Object.keys(all).filter(dateKeyOK).sort().slice(-PLAN_LINK_DAYS);
     storage.setItem(PLAN_LINK_KEY,JSON.stringify(Object.fromEntries(keep.map(k=>[k,all[k]]))));
     return true;

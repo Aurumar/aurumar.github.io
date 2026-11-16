@@ -367,8 +367,8 @@
     },
     {
       "path": "user-app/public/app.mjs",
-      "sourceSha256": "b1903db4665625c626c3c26d1462c0abd0fd631823c6d7b1339e17b427a324eb",
-      "outputSha256": "b1903db4665625c626c3c26d1462c0abd0fd631823c6d7b1339e17b427a324eb",
+      "sourceSha256": "fa9e86d1ea2425cd100e8139f3d5cdb478e23f5334b62b37e4921ab6105db494",
+      "outputSha256": "fa9e86d1ea2425cd100e8139f3d5cdb478e23f5334b62b37e4921ab6105db494",
       "dependencies": [
         "user-app/public/fin-ledger.mjs",
         "user-app/public/fin-plan.mjs",
@@ -542,8 +542,8 @@
     },
     {
       "path": "user-app/public/life-plan.mjs",
-      "sourceSha256": "d71974b4099d72283aa03c2b4afaca86137b4724c303cff914e81e6a2a34fca9",
-      "outputSha256": "d71974b4099d72283aa03c2b4afaca86137b4724c303cff914e81e6a2a34fca9",
+      "sourceSha256": "24f55bf7dab449e034b247f97d1b0e3f78319aa8b2cf4303b0f00afb9809649e",
+      "outputSha256": "24f55bf7dab449e034b247f97d1b0e3f78319aa8b2cf4303b0f00afb9809649e",
       "dependencies": [
         "user-app/public/life-achieve.mjs",
         "user-app/public/life-rebase.mjs",
@@ -988,8 +988,8 @@
     },
     {
       "path": "user-app/public/plan-today.mjs",
-      "sourceSha256": "08863106a104f1954319d27d66a66210fb6be0fef90246c7cc3034990debcd9c",
-      "outputSha256": "08863106a104f1954319d27d66a66210fb6be0fef90246c7cc3034990debcd9c",
+      "sourceSha256": "cdcae1ac2eab1b811b62b068f8c62ac7f3895cf6bd0a3ce83fed456b497decb4",
+      "outputSha256": "cdcae1ac2eab1b811b62b068f8c62ac7f3895cf6bd0a3ce83fed456b497decb4",
       "dependencies": [
         "user-app/public/life-model.mjs",
         "user-app/public/life-achieve.mjs",
@@ -1000,8 +1000,8 @@
     },
     {
       "path": "user-app/public/plan-week.mjs",
-      "sourceSha256": "426701088b4c80530f3e0225133d0bc91fa6a1b08d8e6a32f9d6972e4551bcca",
-      "outputSha256": "426701088b4c80530f3e0225133d0bc91fa6a1b08d8e6a32f9d6972e4551bcca",
+      "sourceSha256": "19e86f91faee60e838e4851c68117bb388e7ce32f5c2512ba715db40b5634452",
+      "outputSha256": "19e86f91faee60e838e4851c68117bb388e7ce32f5c2512ba715db40b5634452",
       "dependencies": [
         "user-app/public/life-model.mjs",
         "user-app/public/life-achieve.mjs",

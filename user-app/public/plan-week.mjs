@@ -8,7 +8,7 @@ import {lifeDefs,kstDate,shiftDay,validateLifeData,SUBJECT_COLOR_KEYS,PLAN_BLOCK
 import {achieve} from './life-achieve.mjs';
 import {stable} from './life-rebase.mjs';
 import {planOf,sortedItems,actualOf,planVsActual,copyPlan,savePlanDay,planErrorText,unknownOutcome,PLAN_NOTICE_TEXT,barsText,rateText,RATE_MEANING,mondayOf,dateLabel,NO_SUBJECT_COLOR,choosePlanDate,followPlanToday,weekDraftChanged,
-  daySessions,linkPlan,readPlanMarks,writePlanMarks,itemStateText,oldTarget,goalVsText,NEW_ITEM_BRICKS,todayDraft,studyDraftOf,SHOWN_BLOCKS,shownBlock,weekSpanText,weekSpanLabel,planItemEdited} from './life-plan.mjs';
+  daySessions,linkPlan,readPlanMarks,writePlanMarks,itemStateText,oldTarget,goalVsText,NEW_ITEM_BRICKS,todayDraft,studyDraftOf,SHOWN_BLOCKS,shownBlock,weekSpanText,weekSpanLabel,planItemEdited,planItemDone,planDoneSet,PLAN_DONE_SYNC} from './life-plan.mjs';
 import {openChipSheet,blockLabel,BLOCK_SHORT,titleOr,slotLabel} from './plan-today.mjs';
 export const WEEKDAYS=Object.freeze(['월','화','수','목','금','토','일']);
 export const CELL_SHOW=3,LONG_PRESS_MS=450;
@@ -193,8 +193,19 @@ export function renderWeekGrid(ctx,st,{today=null}={}){
   const change=code=>{if(code){say(planErrorText(code),true);rerender();return;}if(w.error)say(null);commit();};
   const nameOf=id=>m.subjects.find(s=>s.id===id)?.name??'기타';
   // V12C-1: 오늘까지의 날 줄은 칩 시트에서 "완료 표시"(오늘 카드 ✓과 같은 lb.plan.link 값 → 오늘 계획·오늘 탭 목록도 같이 완료). 오지 않은 날은 없음(오늘 카드와 같은 규칙).
+  // V15_LC3: 스위치(PLAN_DONE_SYNC)가 켜져 있으면 그 줄의 done도 바꿔 다른 줄 고치기와 같은 길(임시 입력 → 즉시 저장)로 저장한다. 지금 완료인지 = 기록의 done 먼저, 없으면 이 기기 손 완료.
   const store=ctx.storage??null;
-  const markFor=(date,item)=>item&&date<=day0?{marked:readPlanMarks(store,date).done.includes(item.id),onMark:close=>{writePlanMarks(store,date,k=>{k.done=k.done.includes(item.id)?k.done.filter(x=>x!==item.id):[...k.done,item.id];});close();rerender();}}:{};
+  const markFor=(date,item)=>{
+    if(!item||date>day0)return {};
+    const marked=planItemDone(item,readPlanMarks(store,date).done.includes(item.id));
+    return {marked,onMark:close=>{
+      writePlanMarks(store,date,k=>{k.done=marked?k.done.filter(x=>x!==item.id):[...k.done.filter(x=>x!==item.id),item.id];});
+      if(!PLAN_DONE_SYNC){close();rerender();return;}
+      const code=editDay(life,w,date,items=>planDoneSet(items,item.id,!marked));close();
+      if(code){say(planErrorText(code),true);rerender();return;}
+      say(marked?'완료 표시를 취소했습니다 · 아직 저장 전':'완료로 표시했습니다 · 아직 저장 전');commit();
+    }};
+  };
   const sheetFor=(date,block,item)=>()=>openChipSheet(ctx,{date,block,item,...markFor(date,item),
     onPut:(next,close)=>{const code=editDay(life,w,date,items=>{const i=items.findIndex(x=>x.id===item?.id);if(i>=0)items[i]=planItemEdited(items[i],next);else items.push({...next,id:newItemId(items,ctx.uid)});return items;});if(code)return code;close();say('임시 입력에 넣었습니다 · 아직 저장 전');commit();return null;},
     onDelete:item?close=>{const code=editDay(life,w,date,items=>items.filter(x=>x.id!==item.id));if(code)return code;close();say('임시 입력에서 지웠습니다 · 아직 저장 전');commit();return null;}:null});
