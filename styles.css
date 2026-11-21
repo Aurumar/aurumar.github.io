@@ -3637,3 +3637,104 @@ button.inv-chip.active,button.inv-kind.active{box-shadow:inset 0 0 0 2px var(--l
 .loan-import-rows{margin:6px 0;padding-left:18px}
 .loan-import-rows li{overflow-wrap:anywhere}
 @media(max-width:420px){.loan-fixed{font-size:12px}.loan-stat-value{font-size:16px}}
+/* ===== 51. V18A 오늘 화면 날짜 넘기기 (life-ui renderDayNav, 통제탑 2026-11-21): ◀ 날짜 ▶ 막대 · 지난 날 띠 · 날짜 고르기 · 지난 날 아래 칸. 색은 :root 토큰만(새 색 값 0, 금·빨강 경고 토큰 0 = 45절부터 끝까지 규칙), 움직임·nowrap 없음.
+   띠 = 고른 날 하루 기록 띠(V12A-2)와 같은 남색 테두리·글자. 막대가 하루 기록 위에 있으면 그 카드 안 띠는 숨긴다(띠 하나, "오늘로"는 위 띠·막대에). 단추 높이 44px, 360폭에서 막대 한 줄. ===== */
+#view-content>.lb-daynav-wrap,#view-content>.life-day-extra{grid-column:1/-1}
+.lb-daynav-wrap{display:grid;gap:var(--lb-s-2);min-width:0}
+.lb-daynav-band{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:10px 12px;border:2px solid var(--cal-pick-edge);border-radius:var(--lb-r-1);background:var(--lb-surface-solid)}
+.lb-daynav-band-text{min-width:0;font-size:17px;font-weight:800;color:var(--cal-pick-edge);overflow-wrap:anywhere}
+.lb-daynav-dot{color:var(--lb-ink-3)}
+.lb-daynav{display:flex;align-items:center;gap:var(--lb-s-2);min-width:0}
+.lb-daynav button{flex:none;min-height:44px;padding-inline:12px}
+.lb-daynav button.lb-daynav-step{min-width:48px;font-size:18px;line-height:1}
+.lb-daynav button.lb-daynav-label{flex:1 1 auto;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:0}
+.lb-daynav-date{min-width:0;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--lb-ink-1);overflow-wrap:anywhere}
+.lb-daynav.away .lb-daynav-date{color:var(--cal-pick-edge)}
+.lb-daynav-icon{color:var(--lb-ink-3)}
+.lb-daynav .lb-daynav-go.off{flex:none;visibility:hidden;display:inline-flex;align-items:center;min-height:44px;padding:9px 12px;border:1px solid transparent;font-weight:600;line-height:1.5;word-break:keep-all}
+.lb-daynav-pick{display:grid;gap:var(--lb-s-2);min-width:0;padding:12px;border:1px solid var(--lb-line);border-radius:var(--lb-r-1);background:var(--lb-surface-solid)}
+.lb-daynav-pick-head{display:flex;align-items:center;justify-content:space-between;gap:var(--lb-s-2);min-width:0}
+.lb-daynav-pick-head button{min-width:44px;min-height:44px}
+.lb-daynav-pick-title{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+.lb-daynav-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;min-width:0}
+.lb-daynav-wd{text-align:center;font-size:12px;font-weight:700;color:var(--lb-ink-3)}
+button.lb-daynav-day{min-width:0;min-height:40px;padding:0;font-variant-numeric:tabular-nums}
+button.lb-daynav-day.today{border:2px solid var(--cal-today-edge)}
+button.lb-daynav-day.selected{outline:2px solid var(--cal-pick-edge);outline-offset:1px}
+button.lb-daynav-day:disabled{opacity:.4}
+.lb-daynav-wrap~.life-day-record .life-day-band{display:none}
+.life-day-sum{margin:8px 0 0;font-weight:700;color:var(--lb-ink-1)}
+.life-day-note input{flex:1 1 12em;min-width:0}
+.life-day-extra-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px;min-width:0;padding:6px 0;border-top:1px solid var(--lb-line-soft)}
+.life-day-extra-text{min-width:0;overflow-wrap:anywhere}
+@media(max-width:420px){.lb-daynav{gap:4px}.lb-daynav button{padding-inline:8px}.lb-daynav button.lb-daynav-step{min-width:44px}.lb-daynav-date,.lb-daynav-band-text{font-size:15px}}
+/* ===== 52. V18B 순자산 (돈 탭 하위 탭, asset-ui): 색은 :root 토큰만(새 색 값 0, 금·빨강 경고 토큰 0 = 45절부터 끝까지 규칙). 음수 순자산 = 노란 안내 왼쪽 띠 + "음수" 글자(색만으로 뜻을 전하지 않음), 오래된 가격 = 노란 안내 테두리 + 글자, 비중 막대 = 중립 회색.
+   칸 배치는 JS가 폭으로 고른다(>1000 2열 · 그 밖 1열, ≤420 줄 단추 두 줄). 움직임·nowrap 없음, 글자 11px 이상, 긴 이름·금액은 칸 안에서 줄바꿈 ===== */
+.asset-page{--asset-bar:var(--lb-chart-rest);min-width:0}
+.asset-page p{overflow-wrap:anywhere}
+.asset-fixed{margin:16px 0 0;padding:10px 12px;border:1px solid var(--lb-line);border-left:4px solid var(--lb-ink-3);border-radius:10px;background:var(--lb-surface-solid);font-size:13px;font-weight:600;line-height:1.45;color:var(--lb-ink-1)}
+.asset-grid{display:grid;gap:16px;align-items:start;min-width:0}
+.asset-grid.asset-cols-2{grid-template-columns:minmax(0,2fr) minmax(0,3fr)}
+.asset-grid.asset-cols-1{grid-template-columns:minmax(0,1fr)}
+.asset-col{display:grid;gap:16px;align-content:start;min-width:0}
+.asset-card{min-width:0;margin:0}
+.asset-card p{margin:4px 0}
+.asset-card .asset-card-title{margin:0 0 6px;font-size:16px}
+.asset-net{display:grid;gap:2px;min-width:0;padding:10px 12px;border:1px solid var(--lb-line);border-left:4px solid var(--lb-ink-3);border-radius:10px;background:var(--lb-surface-solid)}
+.asset-net.negative{border-left-color:var(--lb-warn-line);background:var(--lb-warn-bg)}
+.asset-net-label{font-size:13px;font-weight:600;color:var(--lb-ink-3)}
+.asset-net-value{font-size:28px;line-height:1.2;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;color:var(--lb-ink-1)}
+.asset-net-neg{font-weight:700;color:var(--lb-ink-1)}
+.asset-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:8px 0}
+.asset-stat{display:grid;gap:2px;min-width:0;padding:8px 10px;border:1px solid var(--lb-line);border-radius:8px;background:var(--lb-surface-solid)}
+.asset-stat-label{font-size:12px;color:var(--lb-ink-3)}
+.asset-stat-value{font-size:18px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;color:var(--lb-ink-1)}
+.asset-stat-foot{overflow-wrap:anywhere}
+.asset-formula{font-weight:600;color:var(--lb-ink-1)}
+.asset-invest-line{color:var(--lb-ink-1)}
+.asset-groups{display:grid;gap:8px;min-width:0}
+.asset-group{display:grid;gap:2px;min-width:0}
+.asset-group-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 10px;margin:0;font-variant-numeric:tabular-nums}
+.asset-group-name{font-weight:600;color:var(--lb-ink-1)}
+.asset-group-num{min-width:0;overflow-wrap:anywhere;color:var(--lb-ink-1)}
+.asset-page progress.asset-bar{width:100%;accent-color:var(--asset-bar)}
+.asset-page progress.asset-bar::-webkit-progress-value{background:var(--asset-bar)}
+.asset-page progress.asset-bar::-moz-progress-bar{background:var(--asset-bar)}
+.asset-list{display:grid;gap:0;min-width:0}
+.asset-row{display:grid;gap:4px;min-width:0;padding:10px 0;border-top:1px solid var(--lb-line-soft)}
+.asset-row:first-child{border-top:0}
+.asset-row-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;min-width:0}
+.asset-name{min-width:0;overflow-wrap:anywhere}
+.asset-inst{min-width:0;overflow-wrap:anywhere}
+.asset-kind,.asset-stale{display:inline-block;padding:1px 6px;border:1px solid var(--lb-line);border-radius:999px;font-size:11px;font-weight:600;line-height:1.5;color:var(--lb-ink-3)}
+.asset-stale{border-color:var(--lb-warn-line);background:var(--lb-warn-bg);color:var(--lb-ink-1)}
+.asset-nums{display:flex;flex-wrap:wrap;gap:2px 12px;font-variant-numeric:tabular-nums;color:var(--lb-ink-1)}
+.asset-value{font-weight:700}
+.asset-calc-line{font-variant-numeric:tabular-nums;overflow-wrap:anywhere;color:var(--lb-ink-1)}
+.asset-row-acts{margin-top:2px}
+.asset-row.compact .asset-row-acts button{flex:1 1 40%}
+.asset-archived{margin-top:10px;border-top:1px solid var(--lb-line);padding-top:6px}
+.asset-archived-sum{min-height:44px;padding:8px 0;cursor:pointer}
+.asset-archived-row{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:space-between;padding:6px 0}
+.asset-points{display:grid;gap:0;min-width:0}
+.asset-point{display:grid;gap:2px;min-width:0;padding:8px 0;border-top:1px solid var(--lb-line-soft)}
+.asset-point:first-child{border-top:0}
+.asset-point-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;margin:0;font-variant-numeric:tabular-nums}
+.asset-point-date{color:var(--lb-ink-3)}
+.asset-point-net{min-width:0;overflow-wrap:anywhere;color:var(--lb-ink-1)}
+.asset-point.negative .asset-point-net{padding-left:6px;border-left:3px solid var(--lb-warn-line)}
+.asset-point-change{color:var(--lb-ink-1)}
+.asset-door-line{font-weight:700;color:var(--lb-ink-1)}
+.asset-door-ask{margin-top:8px}
+.asset-opt{margin-top:0}
+.asset-sheet-head{font-weight:700;color:var(--lb-ink-1)}
+.asset-file{display:grid;gap:6px}
+.asset-import-preview p{overflow-wrap:anywhere}
+.asset-import-head{font-weight:700;color:var(--lb-ink-1)}
+.asset-import-rows{margin:6px 0;padding-left:18px}
+.asset-import-rows li{overflow-wrap:anywhere}
+@media(max-width:420px){.asset-fixed{font-size:12px}.asset-net-value{font-size:24px}.asset-stat-value{font-size:16px}}
+/* ===== 53. V18C 지난 날 화면 다듬기 (life-plan renderHomeCal, 통제탑 2026-11-21): 지난 날을 보는 중이면 달력 큰 제목 = 보는 날(막대·띠와 같은 남색 글자) + 아래 작은 "오늘은 …" · 고른 날 계획 = 요약 한 줄. 색은 :root 토큰만(새 색 값 0, 금·빨강 경고 토큰 0), 움직임·nowrap 없음 ===== */
+.hc-head.away .hc-big{color:var(--cal-pick-edge)}
+.hc-today-is{margin:0;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--lb-ink-3)}
+.hc-plan-sum{font-size:14px;color:var(--lb-ink-2);overflow-wrap:anywhere}

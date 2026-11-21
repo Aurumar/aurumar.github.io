@@ -15,6 +15,7 @@ import {dailyCharStrip} from './study-live.mjs';   // V7A: 오늘의 캐릭터 1
 import {dayRoomCard,CELEBRATED_KEY} from './study-room.mjs';
 import {brickCells} from './study-room.mjs';   // DS1: 오늘 벽돌 칸(공부방 기둥과 같은 금 벽돌 스프라이트)
 import {examLineText,daySummary,barsText,ddayChips,ddayChipsNode,readDdayActive,writeDdayActive,ddayGauge,ddayGaugeNode,maker as planMaker,planOf,dayPlanLink,writePlanMarks,BLOCK_TEXT} from './life-plan.mjs';
+import {daySessions} from './life-plan.mjs';   // V18A_DAY_NAV: 지난 날 공부 분(계획 칸과 같은 세션 읽기)
 import {diaryEntryState,renderDiaryEntry,openDiarySheet,diaryDayRow,diaryErrorText} from './diary-ui.mjs';   // FIX49B: 일기 입구·시트(쓰기 문이 열렸을 때만)
 import {LOG_LIMIT_CODE,LOG_LIMIT_TEXT} from './fin-ledger.mjs';   // OPS1A: LOG_LIMIT 전용 문구(한 곳에서)
 import {HABIT_KINDS,HABIT_AREAS,DAY_TYPES,MAX_NAME,MAX_NOTE,SUBJECT_COLOR_KEYS,HABIT_HINTS,
@@ -223,8 +224,8 @@ function entryFor(h,{now,minutes,count}={}){
   if(h.kind==='COUNT')return {done:true,at:null,minutes:null,count};
   return {done:true,at:null,minutes:null,count:null};
 }
-function habitValueText(h,e,week){
-  if(h.kind==='COUNT'){const w=week!==null&&h.target.per==='WEEK'?' · 이번 주 '+week+'/'+h.target.count:'';return e?.count?e.count+'회'+w:'오늘 0회'+w;}
+function habitValueText(h,e,week,past=false){   // V18C_DAY_NAV_POLISH: past = 지난 날 칸 → "오늘 0회" 대신 "그날 0회"
+  if(h.kind==='COUNT'){const w=week!==null&&h.target.per==='WEEK'?' · 이번 주 '+week+'/'+h.target.count:'';return e?.count?e.count+'회'+w:(past?DAY_NAV_TEXT.countZero:'오늘 0회')+w;}
   if(e&&entryExcused(h,e))return V10C_TEXT.noSun;   // V10C-3
   if(e&&!e.done&&isMealHabit(h))return V10C_TEXT.mealMiss;   // V10C-2
   if(!e||!entryDone(h,e))return h.kind==='TIME'&&h.target.time?'목표 '+h.target.time:h.kind==='DURATION'&&h.target.minutes?'목표 '+h.target.minutes+'분':'';
@@ -278,7 +279,7 @@ function habitCells(ctx,st,h,{defs,life,date,card,act,ach=null,recDate=recordDat
     const week=hb.kind==='COUNT'&&hb.target.per==='WEEK'?weekCount(hb.id,recDate,life.days,recCard):null;
     // V12B-3: 끼니 시각은 눌러서 고친다(먹음이면 시각 단추, 아직이면 "시각 입력" = 나중에 기록할 때 시각 직접 입력). 안 먹음(✕)은 글자 그대로.
     const lm=hb.id===LATE_ID?recCard.habits[LATE_MEAL_KEY]??null:null,ate=Boolean(lm?.done&&timeOK(lm.at));
-    const value=meal&&!missed?mealTimeButton(h,hb.name,done?e.at:null,()=>editTime(hb,e)):el('span',ate?MEAL_TIME_TEXT.lateAte(lm.at):habitValueText(hb,e,week),'life-habit-value');
+    const value=meal&&!missed?mealTimeButton(h,hb.name,done?e.at:null,()=>editTime(hb,e)):el('span',ate?MEAL_TIME_TEXT.lateAte(lm.at):habitValueText(hb,e,week,past),'life-habit-value');
     const head=add(el('div',null,'life-habit-head'),el('strong',hb.name),value);
     add(cell,head,HABIT_HINTS[hb.id]?el('span',HABIT_HINTS[hb.id],'muted small'):null);
     if(meal){
@@ -299,7 +300,7 @@ function habitCells(ctx,st,h,{defs,life,date,card,act,ach=null,recDate=recordDat
       // V10C-3: 햇볕 = '오늘 해 없음(비·흐림)'. 실패도 성공도 아닌 어쩔 수 없음(연속이 끊기지 않음). 다시 누르면 지운다.
       // 칩 줄은 한 줄 가로 밀기라 끝에 두면 안 보인다(PC 캡처) → 칩 줄 아래 자기 줄.
       const noRow=hb.id===SUN_HABIT_ID?el('div',null,'life-nosun-row'):null;
-      if(noRow){const no=chip(V10C_TEXT.noSunChip,{selected:skip,onClick:setEntry(hb,()=>skip?null:{...NO_SUN_ENTRY})});no.className=(no.className?no.className+' ':'')+'life-nosun';add(noRow,no);}
+      if(noRow){const no=chip(past?DAY_NAV_TEXT.noSunChip:V10C_TEXT.noSunChip,{selected:skip,onClick:setEntry(hb,()=>skip?null:{...NO_SUN_ENTRY})});no.className=(no.className?no.className+' ':'')+'life-nosun';add(noRow,no);}
       add(cell,row,noRow);
     }else if(hb.kind==='COUNT'){
       const row=el('div',null,'life-chip-row');
@@ -327,6 +328,9 @@ function habitCells(ctx,st,h,{defs,life,date,card,act,ach=null,recDate=recordDat
   return {grid,moreBox};
 }
 
+// V18A_DAY_NAV: 계획 카드를 받는 한 곳(앱 ctx.todayPlan = plan-today renderTodayPlan, P1B 같은 함수). 오늘 카드와 고른 날 하루 기록이 같이 쓴다.
+// 인자는 함수로 받는다: 카드가 없으면(ctx.todayPlan 없음) 예전 ctx.todayPlan?.({...})처럼 인자(focusPort 등)를 아예 만들지 않는다.
+const dayPlanCard=(ctx,args)=>ctx.todayPlan?.(args())??null;
 export function renderLifeToday(root,ctx,st){
   const doc=ctx.document??globalThis.document,h=maker(doc),{el,add,button,hint,input}=h;
   const whole=ctx.getWhole(),life=whole.life??{habits:[],days:[],subjects:[],exams:null};
@@ -387,7 +391,7 @@ export function renderLifeToday(root,ctx,st){
   const {grid,moreBox}=habitCells(ctx,st,h,{defs,life,date,card,act,ach});
 
   // 4) 오늘 계획(P1B): 앱이 ctx.todayPlan으로 넘겨 준 카드(계획 탭 '일' 보기와 같은 함수). [▶ 집중]은 아래 공부 벽돌과 같은 타이머·담기를 쓴다(focusPort, 기록 쓰기 0).
-  const planCard=ctx.todayPlan?.({date,today:date,focus:ctx.study?.()?focusPort(ctx,st,act):null,draft:st.studyCard?.status==='LOCAL_DRAFT'?st.studyCard.card:null})??null;
+  const planCard=dayPlanCard(ctx,()=>({date,today:date,focus:ctx.study?.()?focusPort(ctx,st,act):null,draft:st.studyCard?.status==='LOCAL_DRAFT'?st.studyCard.card:null}));
   st.planLinked=Boolean(planCard?.dataset?.focusItem);
   if(planCard)add(out,planCard);
   // 4-0) 공부 벽돌
@@ -1760,6 +1764,12 @@ export function renderDayRecord(root,ctx,st,date,{toToday=null}={}){
   if(locked)add(out,el('p',ctx.freshText?.badge??'새 시작 전 기록 · 읽기 전용','notice fresh-badge'));
   const act=fn=>()=>void ctx.perform(async()=>{st.message=null;st.error=false;try{await fn();}catch(x){st.message=st.ports?.box?.ERROR_TEXT[x?.code]??lifeErrorText(x?.code);st.error=true;}flagBoxFail(st,date);await prepareLife(ctx,st);await ctx.rerender();});
   const card=boardCard(ctx,st,date,today);
+  // V18A_DAY_NAV: 그날 XP 한 줄(오늘 카드 머리와 같은 투영 achieve를 그 날짜로 = 쌓은 기록에서 다시 계산, 따로 더하지 않음) + 그날 계획 카드(오늘 카드·계획 탭 '일' 보기와 같은 renderTodayPlan).
+  // 계획 카드에는 focus를 넘기지 않는다(null) → 지난 날에는 [▶ 집중](지금 시각 타이머)이 없다. 줄 넣기·고치기·✓는 그 날짜 PLAN_DAY(기존 commitPlan 한 길).
+  const dayAch=dayXp(ctx,whole,date);
+  if(dayAch)add(out,el('p',DAY_NAV_TEXT.xp(dayAch.xp,dayAch.goal),'life-day-sum'));
+  const planCard=dayPlanCard(ctx,()=>({date,today,focus:null,draft:null}));
+  if(planCard)add(out,planCard);
   // V12_MERGE (A2·B6 잇기): 고칠 수 있는 지난 날 = 오늘 카드와 같은 습관·끼니·수면 칸(habitCells)을 이 날짜로(B6 날짜 인자) — 끼니 시각 고치기·야식 먹음·수면 연동·정신 차린 시각까지 그날 카드에.
   // 칸이 읽는 날짜 = st.recordDate(앱이 renderCore에서 setRecordDate로 맞추고 prepareLife가 그날 카드 상태를 읽음). 새 시작 전 날짜(읽기 전용)만 아래 줄 목록(단추 막힘).
   if(!locked){
@@ -1784,5 +1794,101 @@ export function renderDayRecord(root,ctx,st,date,{toToday=null}={}){
     b.addEventListener('click',()=>stackAt(act,ctx,st,date,()=>st.flow.setMood(date,sel?null:v),ctx.autoStack?()=>draftLoose(st,date):null)());add(moodRow,b);
   }
   add(out,el('h3',DAY_RECORD_TEXT.mood,'life-day-sub'),moodRow);
+  // V18A_DAY_NAV: 그날 한 줄 · 하루 종류 = 오늘 카드와 같은 칸(setNote·setDayType, 그 날짜 LIFE_DAY). 기분 칩과 같은 쌓기 규칙(초안 → 확실히 남지 않았으면 그 자리에서 그 날짜 카드 쌓기).
+  // 한 줄은 입력이 끝날 때(change = 칸을 떠날 때·Enter) 한 번 쓴다(글자마다 다시 그리지 않음).
+  if(!locked){
+    const note=h.input(card?.note??'',{maxlength:String(MAX_NOTE),placeholder:'한 줄 (최대 '+MAX_NOTE+'자)','aria-label':dateLabel(date)+' 한 줄'});
+    note.addEventListener('change',()=>stackAt(act,ctx,st,date,()=>st.flow.setNote(date,note.value),ctx.autoStack?()=>draftLoose(st,date):null)());
+    const typeSel=h.select(DAY_TYPES.map(t=>[t,DAY_TYPE_TEXT[t]]),card?.dayType??emptyDay(date).dayType);
+    typeSel.setAttribute('aria-label',dateLabel(date)+' 하루 종류');
+    typeSel.addEventListener('change',()=>stackAt(act,ctx,st,date,()=>st.flow.setDayType(date,typeSel.value),ctx.autoStack?()=>draftLoose(st,date):null)());
+    add(out,el('h3',DAY_NAV_TEXT.note,'life-day-sub'),add(el('div',null,'life-note-row life-day-note'),note,typeSel));
+  }
+  root.append(out);return out;
+}
+
+// ---- V18A_DAY_NAV (통제탑 2026-11-21, 소유자 승인): 오늘 화면 날짜 넘기기 ◀ 날짜 ▶ ----
+// 보는 날 = 앱의 오늘 탭 달력 고른 날(homeCalSt.date, V12A-2)과 같은 값 하나. 이 막대는 그 값을 하루씩 옮기거나(◀ ▶) 날짜 고르기·"오늘로"로 바꾸기만 한다(go).
+// 새 기록 종류·새 칸·새 쓰기 경로 0. 보는 날은 메모리뿐(이 기기 저장소에도 적지 않음) → 앱을 다시 열면 오늘, 자정이 지나면 오늘(V12FIX M-8 homeCalDay).
+// ▶는 오늘이면 꺼진다(앞날로 넘기지 않음). 날짜 고르기 범위 = 기록 시작일(가장 이른 하루·계획·공부·건강 카드 날짜)~오늘. ◀는 그보다 앞으로도 갈 수 있다.
+// 지난 날이면 맨 위 띠 "11월 19일(목) 기록을 보고 있어요 · 오늘로". 앱이 이 막대를 고른 날 하루 기록(renderDayRecord) 위에 두면 그 카드 안 띠는 CSS로 숨긴다(띠 하나).
+export const DAY_NAV_TEXT=Object.freeze({group:'날짜 넘기기',prev:'◀',next:'▶',toToday:'오늘로',today:'오늘',pick:'날짜 고르기',close:'닫기',prevMonth:'지난달',nextMonth:'다음 달',
+  nextOff:'오늘보다 뒤로는 갈 수 없어요',note:'한 줄 · 하루 종류',study:'그날 공부',studyNone:'그날 쌓은 공부 기록 없음',studyFix:'공부 탭에서 이날 고치기',
+  band:d=>dayShort(d)+' 기록을 보고 있어요',bandFuture:d=>dayShort(d)+' 일정을 보고 있어요',xp:(x,g)=>'그날 XP '+x+' / '+g,
+  countZero:'그날 0회',noSunChip:'그날 해 없음'});   // V18C_DAY_NAV_POLISH: 지난 날 습관 칸의 "오늘 0회"·"오늘 해 없음" 대신(오늘 칸 글자는 그대로)
+export const dayShort=d=>{const dt=new Date(d+'T12:00:00Z');return (dt.getUTCMonth()+1)+'월 '+dt.getUTCDate()+'일('+WEEKDAY[dt.getUTCDay()]+')';};
+export function createDayNavState(){return {pick:null};}   // pick = 날짜 고르기에 펼친 달(YYYY-MM), null = 닫힘
+export function dayNavMin(whole,today){
+  let min=today;
+  for(const rows of [whole?.life?.days,whole?.life?.plans,whole?.study?.days,whole?.hlt?.days])for(const r of Array.isArray(rows)?rows:[])if(dateKeyOK(r?.date)&&r.date<min)min=r.date;
+  return min;
+}
+const ymShift=(ym,n)=>{const t=Number(ym.slice(0,4))*12+Number(ym.slice(5,7))-1+n;return String(Math.floor(t/12)).padStart(4,'0')+'-'+String(t%12+1).padStart(2,'0');};
+// 그날 XP = 오늘 카드 머리(renderLifeToday)와 같은 계산을 그 날짜로(today = 그 날짜, 그날 돈 사실). 쌓은 기록만 읽는 투영이라 고친 값은 다시 그릴 때 한 번만 반영된다.
+function dayXp(ctx,whole,date){
+  try{const a=achieve({life:whole.life??null,study:whole.study??null,fin:whole.fin??null,today:date,money:ctx.money?.(date)??null});return a.todayDay?.date===date?{xp:a.todayXp,goal:a.goalXp}:null;}catch{return null;}
+}
+export function renderDayNav(root,ctx,nav,{date=null,go}={}){
+  const doc=ctx.document??globalThis.document,{el,add,button}=maker(doc);
+  const today=kstDate(ctx.now()),d=dateKeyOK(date)&&date!==today?date:today,future=d>today,min=dayNavMin(ctx.getWhole(),today);
+  // 옮기기: 뒤(앞날)로는 오늘까지만. 저장 중(perform이 잠근 동안)에는 겹쳐 다시 그리지 않는다(V13 L-F3와 같은 규칙).
+  const move=to=>()=>{if(!dateKeyOK(to)||(to>today&&to>=d))return;const run=()=>{nav.pick=null;go(to===today?null:to);};void (ctx.perform?ctx.perform(async()=>{run();}):run());};
+  const out=el('div',null,'lb-daynav-wrap');out.id='day-nav';out.dataset.date=d;
+  if(d!==today){
+    const band=add(el('div',null,'lb-daynav-band'+(future?' future':'')),el('strong',future?DAY_NAV_TEXT.bandFuture(d):DAY_NAV_TEXT.band(d),'lb-daynav-band-text'),el('span',' · ','lb-daynav-dot'),button(DAY_NAV_TEXT.toToday,move(today),'secondary lb-daynav-today'));
+    band.setAttribute('role','status');add(out,band);
+  }
+  const bar=el('div',null,'lb-daynav'+(d===today?'':' away'));bar.setAttribute('role','group');bar.setAttribute('aria-label',DAY_NAV_TEXT.group);
+  const prevD=shiftDay(d,-1),nextD=shiftDay(d,1);
+  const prev=button(DAY_NAV_TEXT.prev,move(prevD),'secondary lb-daynav-step lb-daynav-prev');prev.setAttribute('aria-label','하루 전 · '+dayShort(prevD));
+  const next=button(DAY_NAV_TEXT.next,move(nextD),'secondary lb-daynav-step lb-daynav-next');
+  if(d>=today){next.disabled=true;next.setAttribute('aria-disabled','true');next.title=DAY_NAV_TEXT.nextOff;next.setAttribute('aria-label','하루 뒤 · '+DAY_NAV_TEXT.nextOff);}
+  else next.setAttribute('aria-label','하루 뒤 · '+dayShort(nextD));
+  const label=add(button(null,()=>{nav.pick=nav.pick?null:d.slice(0,7);void ctx.rerender();},'secondary lb-daynav-label'),el('strong',(d===today?DAY_NAV_TEXT.today+' · ':'')+dayShort(d),'lb-daynav-date'),el('span','▾','lb-daynav-icon'));
+  label.setAttribute('aria-label',dayShort(d)+(d===today?' · 오늘':'')+' · '+DAY_NAV_TEXT.pick);label.setAttribute('aria-expanded',String(Boolean(nav.pick)));
+  // 오늘이면 "오늘로" 대신 같은 폭의 빈 자리(V11B L-35와 같은 이유: 단추가 생겨도 가운데 글자가 밀리지 않게)
+  const slot=d===today?el('span',DAY_NAV_TEXT.toToday,'lb-daynav-go off'):button(DAY_NAV_TEXT.toToday,move(today),'secondary lb-daynav-go');
+  if(d===today)slot.setAttribute('aria-hidden','true');
+  add(out,add(bar,prev,label,next,slot));
+  if(nav.pick){
+    const ym=/^\d{4}-\d{2}$/.test(nav.pick)?nav.pick:d.slice(0,7),pop=el('div',null,'lb-daynav-pick');pop.setAttribute('role','group');pop.setAttribute('aria-label',DAY_NAV_TEXT.pick);
+    const shift=n=>()=>{nav.pick=ymShift(ym,n);void ctx.rerender();};
+    const pm=button('‹',shift(-1),'secondary lb-daynav-month'),nm=button('›',shift(1),'secondary lb-daynav-month');pm.setAttribute('aria-label',DAY_NAV_TEXT.prevMonth);nm.setAttribute('aria-label',DAY_NAV_TEXT.nextMonth);
+    if(ym<=min.slice(0,7))pm.disabled=true;if(ym>=today.slice(0,7))nm.disabled=true;
+    add(pop,add(el('div',null,'lb-daynav-pick-head'),pm,el('strong',Number(ym.slice(0,4))+'년 '+Number(ym.slice(5,7))+'월','lb-daynav-pick-title'),nm));
+    const grid=el('div',null,'lb-daynav-grid');
+    for(const w of ['월','화','수','목','금','토','일'])grid.append(el('span',w,'lb-daynav-wd'));
+    const first=new Date(ym+'-01T12:00:00Z'),lead=(first.getUTCDay()+6)%7,n=new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,0)).getUTCDate();
+    for(let i=0;i<lead;i++)grid.append(el('span',null,'lb-daynav-blank'));
+    for(let k=1;k<=n;k++){
+      const day=ym+'-'+String(k).padStart(2,'0'),b=button(String(k),move(day),'secondary lb-daynav-day'+(day===today?' today':'')+(day===d?' selected':''));
+      b.dataset.date=day;b.setAttribute('aria-label',dayShort(day)+(day===today?' · 오늘':''));b.setAttribute('aria-pressed',String(day===d));
+      if(day>today||day<min)b.disabled=true;
+      grid.append(b);
+    }
+    add(pop,grid,add(el('div',null,'button-row lb-daynav-pick-actions'),button(DAY_NAV_TEXT.toToday,move(today),'secondary lb-daynav-pick-today'),button(DAY_NAV_TEXT.close,()=>{nav.pick=null;void ctx.rerender();},'secondary lb-daynav-pick-close')));
+    add(out,pop);
+  }
+  root.append(out);return out;
+}
+// 지난 날 오늘 화면의 아래 칸: 그날 공부(쌓은 STUDY_DAY 세션 분·과목) · 그날 지출 한 줄 · 그날 수면·걸음 한 줄. 읽기만 한다(쓰기 0).
+// 공부는 지금 시각 타이머 대신 공부 탭의 그 날짜 카드로 간다(ctx.openStudyDay = 기존 공부 카드 날짜 칸·초안 상자 길, 빠른 입력은 늘 오늘 카드 B17).
+export function renderDayExtras(root,ctx,st,date){
+  const doc=ctx.document??globalThis.document,{el,add,button}=maker(doc);
+  const today=kstDate(ctx.now());if(!dateKeyOK(date)||date>=today)return null;
+  const whole=ctx.getWhole(),defs=lifeDefs(whole.life??{habits:[],days:[],subjects:[],exams:null}),rows=[];
+  if(ctx.study?.()){
+    const ss=daySessions(whole.study??null,date),total=ss.reduce((n,s)=>n+s.minutes,0),by=new Map();
+    for(const s of ss){const name=defs.subjects.find(x=>x.id===s.subjectId)?.name??'기타';by.set(name,(by.get(name)??0)+s.minutes);}
+    const text=total?'공부 '+total+'분 · '+[...by].map(([k,v])=>k+' '+v+'분').join(' · '):DAY_NAV_TEXT.studyNone;
+    const fix=ctx.openStudyDay?button(DAY_NAV_TEXT.studyFix,()=>ctx.openStudyDay(date),'secondary life-day-study-fix'):null;if(fix)fix.dataset.navOnly='1';
+    const r=add(el('div',null,'life-day-extra-row life-day-study'),el('span',text,'life-day-extra-text'),fix);r.dataset.minutes=String(total);rows.push(r);
+  }
+  const spend=ctx.spendLine?.(date)??null;
+  if(spend){const r=add(el('div',null,'life-day-extra-row life-day-spend'),el('span',spend.replace(/^오늘 /,dayShort(date)+' '),'life-day-extra-text'));rows.push(r);}
+  const health=ctx.healthLine?.(date)??null;
+  if(health){const r=add(el('div',null,'life-day-extra-row life-day-health'),el('span',health.replace(/^지난밤 /,'전날 밤 ').replace(' · 오늘 걸음 ',' · 그날 걸음 '),'life-day-extra-text'));rows.push(r);}   // 한 줄 글자(FIX45)는 오늘 기준 낱말 → 그날 낱말로만 바꾼다
+  if(!rows.length)return null;
+  const out=add(el('section',null,'panel life-day-extra'),el('h3',dayShort(date)+' · 공부 · 돈 · 건강','life-day-sub'),...rows);out.id='life-day-extra';out.dataset.date=date;
   root.append(out);return out;
 }

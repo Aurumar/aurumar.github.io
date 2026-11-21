@@ -854,6 +854,8 @@ function openDaySheet(ctx,st,data,date){
 // st.date = 고른 날(null = 오늘을 따라감: 자정이 지나면 오늘 칸·목록이 새 날로). ‹ ›는 고른 날을 7일씩 옮기고, "오늘로"는 고른 날·펼친 달을 비운다. st.month = 펼친 달력에서 ◀▶로 옮긴 달(null = 고른 날의 달).
 export const HOME_CAL_KEY='lb.home.cal';
 export const HOME_CAL_TEXT=Object.freeze({open:'달력 펼치기 ▾',close:'달력 접기 ▴',empty:'이날 계획·일정 없음',addPlan:'계획 추가',addEvent:'일정 추가',toToday:'오늘로',failed:'일정을 불러오지 못했습니다 · 계획만 보입니다.',yearOpen:'연간 달력 열기',yearClose:'닫기',yesterday:'어제 기록'});
+// V18C_DAY_NAV_POLISH: 앱이 오늘 탭 맨 위 ◀ 날짜 ▶ 막대를 그리고(ctx.homeCal.dayView) 지난 날을 보는 중일 때만 쓰는 글자. 큰 제목 아래 "오늘은 11월 21일(토)", 고른 날 계획 요약 끝 "아래에서 고치기".
+export const HOME_CAL_VIEW_TEXT=Object.freeze({todayIs:t=>'오늘은 '+Number(t.slice(5,7))+'월 '+Number(t.slice(8,10))+'일('+WEEKDAY[sunday0(t)]+')',fixBelow:'아래에서 고치기'});
 // V8W1: st.year = 연간 달력에 보이는 해(null = 닫힘). 화면 상태라 이 기기에도 적지 않는다.
 export function createHomeCalState(storage=null){
   let open=false;try{open=storage?.getItem(HOME_CAL_KEY)==='1';}catch{/* 저장소가 막혀 있으면 접힘 */}
@@ -1160,8 +1162,12 @@ export function renderHomeCal(root,ctx,st){
   const defs=lifeDefs(life),subjects=subjectMap(defs),weekCal=hc?.read?.({mode:'7_DAY',date:monday})??null;
   const out=el('section',null,'panel home-cal');out.id='home-cal';
   // V8W1-2: 맨 위 큰 글씨 "11월 14일 토요일"(언제나 오늘) + 진행 띠 2개(이번 달 · 올해: 지난 날 회색 빗금 · 오늘 금 · 남은 날 흰 칸)
-  const th=homeTodayHead(today),big=el('h2',th.text,'hc-big');big.setAttribute('aria-current','date');
-  add(out,add(el('div',null,'hc-head'),big,progRow(h,th.month,'m'),progRow(h,th.year,'y')));
+  // V18C_DAY_NAV_POLISH: 앱이 맨 위 ◀ 날짜 ▶ 막대를 그릴 때(hc.dayView)만 — 지난 날을 보는 중(날짜 칸을 눌렀거나 막대로 옮김 = nav 아님)이면 큰 제목 = 보는 날, 그 아래 작은 글자 "오늘은 11월 21일(토)".
+  // 진행 띠·주 칸은 오늘 기준 그대로(보는 날 칸 강조도 그대로). 막대가 없는 곳(dayView 없음)은 예전처럼 언제나 오늘.
+  const viewPast=Boolean(hc?.dayView)&&st.date!==null&&!st.nav&&date<today;
+  const th=homeTodayHead(today),big=el('h2',viewPast?homeTodayHead(date).text:th.text,'hc-big');
+  if(viewPast)big.dataset.date=date;else big.setAttribute('aria-current','date');
+  add(out,add(el('div',null,'hc-head'+(viewPast?' away':'')),big,viewPast?el('p',HOME_CAL_VIEW_TEXT.todayIs(today),'hc-today-is'):null,progRow(h,th.month,'m'),progRow(h,th.year,'y')));
   const ymOf=()=>typeof st.month==='string'&&/^\d{4}-\d{2}$/.test(st.month)?st.month:date.slice(0,7),openYear=()=>{st.year=Number(ymOf().slice(0,4));rerender();};
   // V8W1-4: 연간 달력이 열려 있으면 띠·펼친 달 대신 그것을 보인다(아래 고른 날 목록은 그대로).
   if(Number.isInteger(st.year)&&st.year>=1&&st.year<=9999){
@@ -1216,7 +1222,10 @@ export function renderHomeCal(root,ctx,st){
     }
     add(list,g);
   }
-  if(plans.rows.length){
+  // V18C_DAY_NAV_POLISH: 지난 날을 보는 중이고 아래 하루 기록에 그날 계획 카드가 있으면(hc.planBelow) 고치는 곳은 그 카드 하나 → 여기는 요약 한 줄만("계획 2개 중 1개 달성 · 아래에서 고치기"), "계획 추가"도 아래 카드의 + 하나로.
+  const planBelow=viewPast&&Boolean(hc?.planBelow);
+  if(plans.rows.length&&planBelow){const g=add(el('div',null,'hc-group hc-plans hc-plans-sum'),el('p',plans.head+' · '+HOME_CAL_VIEW_TEXT.fixBelow,'hc-sub hc-plan-sum'));g.dataset.rows=String(plans.rows.length);add(list,g);}
+  else if(plans.rows.length){
     const g=add(el('div',null,'hc-group hc-plans'),el('h4',plans.head,'hc-sub'));
     for(const r of plans.rows){const row=add(el('div',null,'plan-row hc-plan-row'),tag(h,subjects,r.subjectId),el('span',BLOCK_TEXT[r.block],'hc-block'),el('span',r.showTitle?r.title:'','plan-title'),el('span',r.text,'plan-status '+r.kind));row.dataset.itemId=r.id;g.append(row);}
     add(list,g);
@@ -1226,7 +1235,7 @@ export function renderHomeCal(root,ctx,st){
   if(locked)add(list,el('p',ctx.freshText?.lock??'새 시작 전 기록이라 읽기만 할 수 있어','notice fresh-lock-note'));
   // V12A-2: 오늘을 보는 중이면 "어제 기록"(월요일엔 어제가 이번 주 띠 밖이라 ‹를 한 번 더 눌러야 했다) → 어제 하루 기록. 어제 야식 체크 = 이 단추 → 야식X → 했음(3번).
   const yday=shiftDay(today,-1),ydayBtn=date===today&&dateKeyOK(yday)?button(HOME_CAL_TEXT.yesterday,()=>pick(yday),'secondary hc-yesterday'):null;
-  add(list,add(el('div',null,'button-row hc-add'),locked?null:button(HOME_CAL_TEXT.addPlan,()=>openPlanEditor(ctx,st,date),'secondary hc-add-plan'),hc?.add?button(HOME_CAL_TEXT.addEvent,()=>hc.add(date),'secondary hc-add-event'):null,ydayBtn));
+  add(list,add(el('div',null,'button-row hc-add'),locked||planBelow?null:button(HOME_CAL_TEXT.addPlan,()=>openPlanEditor(ctx,st,date),'secondary hc-add-plan'),hc?.add?button(HOME_CAL_TEXT.addEvent,()=>hc.add(date),'secondary hc-add-event'):null,ydayBtn));
   add(out,list);
   root.append(out);
   return out;

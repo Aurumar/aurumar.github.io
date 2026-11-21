@@ -11,6 +11,7 @@ import {eventDates,eventRepeatOf,eventOvernightEnd} from './public/life-plan.mjs
 import {rangeDayTitle,rangeRawView,RANGE_TYPES} from './public/study-range-model.mjs';
 import {investTitle,investRawView,INVEST_TYPES} from './public/invest-model.mjs';   // V16 투자 계획·한 달 투자 기록
 import {loanTitle,loanRawView,LOAN_TYPES} from './public/loan-model.mjs';   // V17 대출 목록
+import {assetTitle,assetRawView,ASSET_TYPES} from './public/asset-model.mjs';   // V18B 자산 목록 · 순자산
 import {finView} from './fin-projection.mjs';
 import {WL_FORMAT,DOMAIN_CODES,DOMAIN_NAMES,effectiveActions,entityKey,emptyDomain,financeTotals,shiftDate,dateOK,shape} from './whole-life-model.mjs';
 
@@ -38,8 +39,8 @@ export function wholeHistory(graph,orderedOperations=null){
       if(v.format===FORMATS.definition){
         context.set(v.actionId,{title:v.title,domain:null});type='ACTION';title=v.title;
       }else if(v.format===WL_FORMAT){
-        type=v.entityType;domain=type==='DOMAIN'?v.entityId:type==='FINANCE'||type.startsWith('FIN_')?'E':type.startsWith('HLT_')?'B':INVEST_TYPES.includes(type)||LOAN_TYPES.includes(type)?'E':type.startsWith('STUDY_')?'F':type==='LIFE_DAY'||type==='HABIT_DEF'||type==='DIARY_DAY'||type==='WEEK_REVIEW'?'C':type==='SUBJECT_DEF'||type==='EXAM_SCHEDULE'||type==='PLAN_GOAL'||type==='EXAM_RESULT'||type==='GAME_PROFILE'||type==='PLAN_DAY'?'F':v.data.domain??null;
-        title=type==='DOMAIN'?DOMAIN_NAMES[v.entityId]:type==='FINANCE'?v.data.snapshotDate+' 재정 스냅샷':type==='PREFERENCES'?'표시 설정':type.startsWith('FIN_')?finTitle(v):type.startsWith('HLT_')?hltTitle(v):CARD_TYPES.includes(type)?cardDayTitle(v):RANGE_TYPES.includes(type)?rangeDayTitle(v):INVEST_TYPES.includes(type)?investTitle(v):LOAN_TYPES.includes(type)?loanTitle(v):type.startsWith('STUDY_')?studyTitle(v):LIFE_TYPES.includes(type)?lifeTitle(v):v.data.title;
+        type=v.entityType;domain=type==='DOMAIN'?v.entityId:type==='FINANCE'||type.startsWith('FIN_')?'E':type.startsWith('HLT_')?'B':INVEST_TYPES.includes(type)||LOAN_TYPES.includes(type)?'E':ASSET_TYPES.includes(type)?'E':type.startsWith('STUDY_')?'F':type==='LIFE_DAY'||type==='HABIT_DEF'||type==='DIARY_DAY'||type==='WEEK_REVIEW'?'C':type==='SUBJECT_DEF'||type==='EXAM_SCHEDULE'||type==='PLAN_GOAL'||type==='EXAM_RESULT'||type==='GAME_PROFILE'||type==='PLAN_DAY'?'F':v.data.domain??null;
+        title=type==='DOMAIN'?DOMAIN_NAMES[v.entityId]:type==='FINANCE'?v.data.snapshotDate+' 재정 스냅샷':type==='PREFERENCES'?'표시 설정':type.startsWith('FIN_')?finTitle(v):type.startsWith('HLT_')?hltTitle(v):CARD_TYPES.includes(type)?cardDayTitle(v):RANGE_TYPES.includes(type)?rangeDayTitle(v):INVEST_TYPES.includes(type)?investTitle(v):LOAN_TYPES.includes(type)?loanTitle(v):ASSET_TYPES.includes(type)?assetTitle(v):type.startsWith('STUDY_')?studyTitle(v):LIFE_TYPES.includes(type)?lifeTitle(v):v.data.title;
         if(type==='ACTION'){context.set(v.entityId,{title:v.data.title,domain:v.data.domain});actionId=v.entityId;}
       }else{
         type=v.format===FORMATS.result?'RESULT':v.format===MEASUREMENT_FORMAT?'MEASUREMENT':'RESTART';const current=context.get(v.actionId);
@@ -132,6 +133,7 @@ export function wholeLifeView(graph,date=clock().localDate,orderedOperations=nul
     range:rangeRawView(RANGE_TYPES.flatMap(type=>entities(graph,type))),   // V9B 공부 범위 하루 묶음(역산 계획·모의고사 목표선)
     invest:investRawView(INVEST_TYPES.flatMap(type=>entities(graph,type))),   // V16 투자 계획·한 달 투자 기록(계산은 화면이 investView로, 저장 0)
     loans:loanRawView(LOAN_TYPES.flatMap(type=>entities(graph,type))),   // V17 대출 목록(계산은 화면이 loanView로, 저장 0)
+    assets:assetRawView(ASSET_TYPES.flatMap(type=>entities(graph,type))),   // V18B 자산 목록 · 날짜별 순자산(계산은 화면이 assetView로, 부채는 loans를 읽기만)
     home:{priorityActions:actions.filter(a=>a.active).slice(0,5),restartPoints:actions.filter(a=>a.restartPoint.trim()),
       upcoming:expandCalendar(events,plans,date,shiftDate(date,90)).filter(r=>!r.cont).slice(0,10),
       activePlans:plans.filter(p=>['ACTIVE','MAINTAIN'].includes(p.data.status)),
