@@ -3591,3 +3591,49 @@ button.inv-chip.active,button.inv-kind.active{box-shadow:inset 0 0 0 2px var(--l
 .inv-import-bad{font-weight:700;color:var(--money-in)}
 .st-invest-bricks{margin:4px 0 0}
 @media(max-width:420px){.inv-step{grid-template-columns:auto minmax(0,1fr)}.inv-fixed{font-size:12px}}
+/* ===== 50. V17 대출 (돈 탭 하위 탭, loan-ui): 색은 :root 토큰만(새 색 값 0, 금·빨강 경고 토큰 0 = 45절부터 끝까지 규칙). 정확하지 않은 금리 = 노란 안내 테두리 + 글자(색만으로 뜻을 전하지 않음), 한도 사용 막대 = 중립 회색.
+   칸 배치는 JS가 폭으로 고른다(>1000 2열 · 그 밖 1열, ≤420 줄 단추 두 줄). 움직임·nowrap 없음, 글자 11px 이상, 긴 이름·금액은 칸 안에서 줄바꿈 ===== */
+.loan-page{--loan-bar:var(--lb-chart-rest);min-width:0}
+.loan-page p{overflow-wrap:anywhere}
+.loan-fixed{margin:16px 0 0;padding:10px 12px;border:1px solid var(--lb-line);border-left:4px solid var(--lb-ink-3);border-radius:10px;background:var(--lb-surface-solid);font-size:13px;font-weight:600;line-height:1.45;color:var(--lb-ink-1)}
+.loan-grid{display:grid;gap:16px;align-items:start;min-width:0}
+.loan-grid.loan-cols-2{grid-template-columns:minmax(0,2fr) minmax(0,3fr)}
+.loan-grid.loan-cols-1{grid-template-columns:minmax(0,1fr)}
+.loan-col{display:grid;gap:16px;align-content:start;min-width:0}
+.loan-card{min-width:0;margin:0}
+.loan-card p{margin:4px 0}
+.loan-card .loan-card-title{margin:0 0 6px;font-size:16px}
+.loan-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:6px 0 8px}
+.loan-stat{display:grid;gap:2px;min-width:0;padding:8px 10px;border:1px solid var(--lb-line);border-radius:8px;background:var(--lb-surface-solid)}
+.loan-stat-label{font-size:12px;color:var(--lb-ink-3)}
+.loan-stat-value{font-size:18px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;color:var(--lb-ink-1)}
+.loan-stat-foot{overflow-wrap:anywhere}
+.loan-invest-line{color:var(--lb-ink-1)}
+.loan-list{display:grid;gap:0;min-width:0}
+.loan-row{display:grid;gap:4px;min-width:0;padding:10px 0;border-top:1px solid var(--lb-line-soft)}
+.loan-row:first-child{border-top:0}
+.loan-row-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;min-width:0}
+.loan-name{min-width:0;overflow-wrap:anywhere}
+.loan-kind,.loan-inexact{display:inline-block;padding:1px 6px;border:1px solid var(--lb-line);border-radius:999px;font-size:11px;font-weight:600;line-height:1.5;color:var(--lb-ink-3)}
+.loan-inexact{border-color:var(--lb-warn-line);background:var(--lb-warn-bg);color:var(--lb-ink-1)}
+.loan-nums{display:flex;flex-wrap:wrap;gap:2px 12px;font-variant-numeric:tabular-nums;color:var(--lb-ink-1)}
+.loan-balance{font-weight:700}
+.loan-kind-line{color:var(--lb-ink-1)}
+.loan-page progress.loan-bar{width:100%;accent-color:var(--loan-bar)}
+.loan-page progress.loan-bar::-webkit-progress-value{background:var(--loan-bar)}
+.loan-page progress.loan-bar::-moz-progress-bar{background:var(--loan-bar)}
+.loan-row-acts{margin-top:2px}
+.loan-row.compact .loan-row-acts button{flex:1 1 40%}
+.loan-closed{margin-top:10px;border-top:1px solid var(--lb-line);padding-top:6px}
+.loan-closed-sum{min-height:44px;padding:8px 0;cursor:pointer}
+.loan-closed-row{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:space-between;padding:6px 0}
+.loan-door-line{font-weight:700;color:var(--lb-ink-1)}
+.loan-door-ask{margin-top:8px}
+.loan-opt{margin-top:0}
+.loan-sheet-head{font-weight:700;color:var(--lb-ink-1)}
+.loan-file{display:grid;gap:6px}
+.loan-import-preview p{overflow-wrap:anywhere}
+.loan-import-head{font-weight:700;color:var(--lb-ink-1)}
+.loan-import-rows{margin:6px 0;padding-left:18px}
+.loan-import-rows li{overflow-wrap:anywhere}
+@media(max-width:420px){.loan-fixed{font-size:12px}.loan-stat-value{font-size:16px}}
