@@ -461,12 +461,21 @@ function withMoney(base,fin,today){
 }
 // 같은 입력(같은 객체와 같은 날짜)이면 다시 계산하지 않는다. 화면이 기록을 다시 읽으면 객체가 바뀌어 새로 계산한다. 돈 XP는 그 위에 얹으므로 fin을 안 넘기는 화면과 번갈아 불러도 다시 계산하지 않는다.
 // R36: Q1A 돈 사실(money: 지킨 달·사용률, 월간 퀘스트 판정)은 엔진 입력이라 memo 열쇠에 넣고, M1A 돈 XP(fin: 직접 입력한 지출 날)는 그 위에 얹는다.
-let memo=null,moneyMemo=null;
-export function achieve({life=null,study=null,fin=null,today,money=null}){
+let memo=null,moneyMemo=null,investMemo=null;
+// V16 (설계 3-7): invest = investView의 요약 {bricks,months,planned}(금액 없음). 계획이 있을 때만 out.investBricks = {done,of}를 더한다(습관 벽돌처럼 데이터가 있을 때만 필드 추가).
+// 공부 벽돌·습관 벽돌·XP·돈 XP에는 더하지 않는다(매수 XP 0: 매수를 늘릴수록 보상이 커지면 추가 매수 금지 규칙과 반대 방향). memo 열쇠 = 요약 값(매수 뒤 바로 바뀜).
+const investKey=v=>v&&Number.isInteger(v.months)&&v.months>0&&Number.isInteger(v.bricks)?v.bricks+'/'+v.months:null;
+function withInvest(base,key){
+  if(!key)return base;
+  if(!(investMemo&&investMemo.base===base&&investMemo.key===key)){const [done,of]=key.split('/').map(Number);investMemo={base,key,result:{...base,investBricks:{done,of}}};}
+  return investMemo.result;
+}
+export function achieve({life=null,study=null,fin=null,today,money=null,invest=null}){
   if(!(memo&&memo.life===life&&memo.study===study&&memo.today===today&&memo.money===money))memo={life,study,today,money,result:compute(life,study,today,money)};
-  if(!fin)return memo.result;
+  const key=investKey(invest);
+  if(!fin)return withInvest(memo.result,key);
   if(!(moneyMemo&&moneyMemo.base===memo.result&&moneyMemo.fin===fin))moneyMemo={base:memo.result,fin,result:withMoney(memo.result,fin,today)};
-  return moneyMemo.result;
+  return withInvest(moneyMemo.result,key);
 }
 // FIX50A (HUNT49 C1): 일기 날(04:00 경계, life-model diaryOpenDate)이 엔진의 오늘(00:00 경계)보다 앞이면(00:00~03:59) 그날부터는 아직 쓸 수 있는 일기 날이다.
 // 그 날을 빠진 날로 세지 않은 일기 연속(diary.streak)만 바꾼 결과를 돌려준다. 하루별 값·최고 연속·XP·보상·메인 연속은 그대로다(엔진의 오늘은 바꾸지 않는다).
@@ -497,6 +506,7 @@ export const brickTotalText=weeks=>{const s=smallWeight(weeks);return '벽돌 '+
 // 층의 금빛 기둥 = 그 주 ✦(주간·월간·보스) + 일기 ✦.
 export const weekBonusTotal=w=>(w?.bonus?.total??0)+(w?.diary?.bonus??0);
 export const habitBrickText=ach=>ach?.habitBricks?'습관 벽돌 '+ach.habitBricks.toLocaleString('en-US')+'장':'';   // V6B: 공부 벽돌 합계와 따로
+export const investBrickText=ach=>ach?.investBricks?'투자 벽돌 '+ach.investBricks.done+'/'+ach.investBricks.of:'';   // V16: 공부·습관 벽돌과 따로(한 달 계획 칸을 다 채운 회차 수)
 
 // ---- V6B 습관 성취표(저장 0, 읽기 투영) ----
 // 기본 행동(코어 행동 기록) 결과: 이력 줄(앱의 /api/history changes, 최신이 앞) 중 RESULT의 기록 칸(entityKey)마다 첫 줄 = 지금 값(whole-life-projection progressProjection과 같은 규칙).

@@ -3512,3 +3512,82 @@ button.pcs-month.selected,button.pcs-month.selected:hover{box-shadow:inset 0 0 0
 .ipo-today .ipo-today-more{color:var(--lb-ink-3)}
 .ipo-auto-settings p{overflow-wrap:anywhere}
 .ipo-auto-settings .ipo-auto-status{margin:8px 0 2px;font-weight:700;color:var(--lb-ink-1)}
+/* ===== 49. V16 투자 계획 (돈 탭 하위 탭, invest-ui): 색은 :root 토큰만(새 색 값 0, 금·빨강 경고 토큰 0 = 45절부터 끝까지 규칙). 위반 = 빨간 띠(--money-in, 돈 색 규칙의 빨강) + "위반" 글자(색만으로 뜻을 전하지 않음), 진행 막대 = 중립 회색, 투자 벽돌 = 공부 금색과 다른 초록 토큰.
+   칸 배치는 JS가 폭으로 고른다(>1000 3열 · 601~1000 2열 · ≤600 1열, ≤420 종목 줄 축약). 움직임·nowrap 없음, 글자 11px 이상, 긴 이름은 칸 안에서 줄바꿈 ===== */
+.inv-page{--inv-brick:var(--lb-ok);--inv-bar:var(--lb-chart-rest);--inv-bar-target:var(--lb-chart-none);min-width:0}
+.inv-page p{overflow-wrap:anywhere}
+.inv-fixed{margin:0 0 14px;padding:10px 12px;border:1px solid var(--lb-line);border-left:4px solid var(--lb-ink-3);border-radius:10px;background:var(--lb-surface-solid);font-size:13px;font-weight:600;line-height:1.45;color:var(--lb-ink-1)}
+.inv-grid{display:grid;gap:16px;align-items:start;min-width:0}
+.inv-grid.inv-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.inv-grid.inv-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.inv-grid.inv-cols-1{grid-template-columns:minmax(0,1fr)}
+.inv-col{display:grid;gap:16px;align-content:start;min-width:0}
+.inv-card{min-width:0;margin:0}
+.inv-card p{margin:4px 0}
+.inv-card .inv-card-title{margin:0 0 6px;font-size:16px}
+.inv-sub{margin:10px 0 2px;font-size:13px}
+.inv-warns{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px}
+.inv-w{display:flex;gap:8px;align-items:flex-start;min-width:0;padding:8px 10px;border:1px solid var(--lb-line);border-left-width:4px;border-radius:8px;font-size:13px;line-height:1.45;color:var(--lb-ink-1)}
+.inv-w-tag{flex:0 0 auto;font-weight:800}
+.inv-w-text{min-width:0;overflow-wrap:anywhere}
+.inv-w.inv-red{border-left-color:var(--money-in);background:var(--lb-surface-solid)}
+.inv-w.inv-red .inv-w-tag{color:var(--money-in)}
+.inv-w.inv-yellow{border-color:var(--lb-warn-line);background:var(--lb-warn-bg)}
+.inv-w.inv-gray{border-left-color:var(--lb-chart-none);background:var(--lb-info-bg);color:var(--lb-ink-3)}
+.inv-round-head{font-weight:700;color:var(--lb-ink-1)}
+.inv-bricks{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px}
+.inv-brick{display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:28px;padding:0 6px;border:1px solid var(--lb-line);border-radius:6px;background:var(--lb-surface-solid);font-size:12px;font-weight:700;color:var(--lb-ink-3)}
+.inv-brick.done{border-color:var(--inv-brick);background:var(--inv-brick);color:var(--lb-surface-solid)}
+.inv-brick.cur{box-shadow:inset 0 0 0 2px var(--inv-brick);color:var(--lb-ink-1)}
+.inv-draft-line{color:var(--lb-ink-1)}
+.inv-ladder-line{font-size:13px;line-height:1.5;color:var(--lb-ink-1)}
+.inv-steps{list-style:none;margin:8px 0;padding:0;display:grid;gap:6px}
+.inv-step{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:4px 8px;align-items:center;padding:6px 10px;border:1px solid var(--lb-line);border-radius:8px;font-size:13px}
+.inv-step.done{background:var(--lb-bg-2);color:var(--lb-ink-3)}
+.inv-step.met{border-color:var(--lb-ok-line);background:var(--lb-ok-bg)}
+.inv-step-state{font-weight:700}
+.inv-group{border-top:1px solid var(--lb-line);padding:6px 0}
+.inv-group-sum{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;min-height:44px;padding:8px 0;cursor:pointer}
+.inv-item{display:grid;gap:4px;min-width:0;padding:8px 0;border-top:1px solid var(--lb-line-soft)}
+.inv-item-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;min-width:0}
+.inv-item-name{min-width:0;overflow-wrap:anywhere}
+.inv-item-pct{margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums}
+.inv-item.compact .inv-item-sum{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:8px;align-items:center;min-height:44px;cursor:pointer}
+.inv-item.compact .inv-item-pct{margin-left:0}
+.inv-item-sym{font-size:13px}
+.inv-item.compact :is(.inv-item-sym,.inv-item-pct,.inv-over){word-break:keep-all;overflow-wrap:normal}   /* 기호·%는 글자 사이에서 꺾이지 않는다(칸이 좁아도 막대가 줄어든다) */
+.inv-venue,.inv-fixed-tag{display:inline-block;margin-left:6px;padding:1px 6px;border:1px solid var(--lb-line);border-radius:999px;font-size:11px;font-weight:600;line-height:1.5;color:var(--lb-ink-3)}
+.inv-fixed-tag{color:var(--lb-ink-1)}
+.inv-over{margin-left:6px;font-weight:700;color:var(--money-in)}
+.inv-page progress.inv-bar,dialog progress.inv-bar{accent-color:var(--inv-bar)}
+.inv-page progress.inv-bar::-webkit-progress-value{background:var(--inv-bar)}
+.inv-page progress.inv-bar::-moz-progress-bar{background:var(--inv-bar)}
+.inv-page progress.inv-bar.target::-webkit-progress-value{background:var(--inv-bar-target)}
+.inv-page progress.inv-bar.target::-moz-progress-bar{background:var(--inv-bar-target)}
+.inv-gauge-row{display:grid;gap:4px;padding:6px 0;min-width:0}
+.inv-gauge-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 8px;min-width:0}
+.inv-gauge-bars{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 8px;align-items:center}
+.inv-market{display:grid;gap:2px;margin:8px 0 0;color:var(--lb-ink-3)}
+.inv-signals{list-style:none;margin:6px 0;padding:0;display:grid;gap:6px}
+.inv-signal{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:space-between;font-size:13px}
+.inv-signal-text{min-width:0;overflow-wrap:anywhere}
+.inv-signal.on .inv-signal-text{font-weight:700;color:var(--lb-ink-1)}
+.inv-plan-name{font-weight:700;color:var(--lb-ink-1)}
+.inv-door-line{font-weight:700;color:var(--lb-ink-1)}
+.inv-door-ask{margin-top:8px}
+.inv-picks{display:grid;gap:8px;margin:0 0 10px}
+.inv-pick-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.inv-pick-label{flex:0 0 100%}
+button.inv-chip,button.inv-kind{min-height:44px;overflow-wrap:anywhere}
+button.inv-chip.active,button.inv-kind.active{box-shadow:inset 0 0 0 2px var(--lb-ink-1)}
+.inv-kinds{margin:0 0 10px}
+.inv-judge{margin:10px 0;padding:8px 10px;border:1px dashed var(--lb-line);border-radius:8px}
+.inv-judge-head{margin:0 0 4px;font-weight:700;color:var(--lb-ink-1)}
+.inv-judge-head.red{color:var(--money-in)}
+.inv-late{color:var(--lb-ink-1)}
+.inv-file{display:grid;gap:6px}
+.inv-import-preview p{overflow-wrap:anywhere}
+.inv-import-name{font-weight:700;color:var(--lb-ink-1)}
+.inv-import-bad{font-weight:700;color:var(--money-in)}
+.st-invest-bricks{margin:4px 0 0}
+@media(max-width:420px){.inv-step{grid-template-columns:auto minmax(0,1fr)}.inv-fixed{font-size:12px}}

@@ -5,6 +5,7 @@
 //  mood·note·dayType: 한쪽만 바뀌었으면 그쪽, 양쪽이 바뀌었으면 mine + 알림.
 //  결과가 최신 카드와 같으면 쓰지 않는다(ALREADY_APPLIED). 결과는 검증 규칙으로 다시 검사하고 위반하면 아무것도 저장하지 않는다(REJECTED).
 import {validateLifeData,emptyDay,emptyDiary,emptyWeekReview,MAX_DIARY_GOOD,MAX_DIARY_BAD} from './life-model.mjs';
+import {validateInvestData} from './invest-model.mjs';   // V16: 투자 기록 한 달 묶음(INVEST_MONTH)의 3자 병합
 
 export function stable(v){
   if(v===null||typeof v!=='object')return JSON.stringify(v);
@@ -132,6 +133,29 @@ export function rebaseDiary({date,base,mine,latest}){
   try{validateLifeData('DIARY_DAY',date,merged);}
   catch(e){return {status:'REJECTED',code:e.code??'DIARY_REBASE_INVALID',notices};}
   return {status:'MERGED',card:merged,notices};   // 초안 상자는 합친 결과를 .card로 읽는다
+}
+// V16 (설계 R9): 같은 달 투자 기록을 두 기기에서 넣었을 때의 3자 병합. 매수는 id 단위(위 rebaseRecord와 같은 규칙: 한쪽만 바꾸면 그쪽, 양쪽이 다르게 바꾸면 내 값 = 마지막 저장 + 알림),
+// 가격 메모는 (기호·날짜·출처) 단위로 같은 규칙. 알림에는 줄 id·기호만 싣는다(금액·메모 없음). 결과가 최신과 같으면 쓰지 않고(ALREADY_APPLIED), 검사기를 다시 통과해야 한다(80건 등).
+const markKey=m=>m.sym+'|'+m.date+'|'+m.src;
+function mergeRows(rows,keyOf,base,mine,latest,notices,label){
+  const map=c=>new Map((c?.[rows]??[]).map(x=>[keyOf(x),x])),B=map(base),M=map(mine),T=map(latest),keep=new Map();
+  for(const k of new Set([...T.keys(),...M.keys(),...B.keys()])){
+    const b=B.get(k),m=M.get(k),t=T.get(k);
+    if(b===undefined){if(m!==undefined&&t!==undefined&&!same(m,t)){keep.set(k,m);notices.push({code:'REBASE_VALUE_OVERWRITTEN',list:label,itemId:k});}else if(m!==undefined||t!==undefined)keep.set(k,m!==undefined?m:t);continue;}
+    const mineState=m===undefined?'deleted':same(m,b)?'same':'modified',theirState=t===undefined?'deleted':same(t,b)?'same':'modified';
+    if(mineState==='same'){if(theirState!=='deleted')keep.set(k,t);continue;}
+    if(mineState==='modified'){keep.set(k,m);if(!(theirState==='same'||theirState==='modified'&&same(m,t)))notices.push({code:theirState==='modified'?'REBASE_VALUE_OVERWRITTEN':'REBASE_CONFLICT_KEPT_LOCAL',list:label,itemId:k});continue;}
+    if(theirState==='modified'){keep.set(k,t);notices.push({code:'REBASE_CONFLICT_KEPT_REMOTE',list:label,itemId:k});}
+  }
+  return [...keep.values()];
+}
+export function rebaseInvestMonth({month,base,mine,latest}){
+  const notices=[],merged={month,plan:mine.plan,buys:mergeRows('buys',b=>b.id,base,mine,latest,notices,'buys'),marks:mergeRows('marks',markKey,base,mine,latest,notices,'marks')};
+  if(latest&&latest.plan!==mine.plan)notices.push({code:'REBASE_SCALAR_OVERWRITTEN',field:'plan'});
+  if(latest?same(merged,latest):!merged.buys.length&&!merged.marks.length)return {status:'ALREADY_APPLIED',notices};
+  try{validateInvestData('INVEST_MONTH',month,merged);}
+  catch(e){return {status:'REJECTED',code:e.code??'INVEST_REBASE_INVALID',notices};}
+  return {status:'MERGED',card:merged,notices};
 }
 export function rebaseWeekReview({id,base,mine,latest}){
   const empty=emptyWeekReview(id),b=base??empty,t=latest??empty,notices=[],merged={monday:id};

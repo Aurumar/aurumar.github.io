@@ -4,6 +4,7 @@
 // ctx = lifeCtx와 같은 document·now·getWhole·rerender + draftCard·timer(오늘 초안·진행 중 타이머), openStudy·openTower·openUniverse(선택), avatarArt(시험용, 없으면 AVATAR_ART_READY).
 import {STUDY_STAGES,FINAL_STAGE,GOLD_TIERS,goldTierOf,STAR_EVERY_HOURS,AVATAR_ART_READY,FULL_EFFECT_MIN,RECENT_DAYS,artFile,lifetimeMinutes,recentMinutes,stageOf,progressOf,todayEffectOf,todayMinutes,hoursText,hoursLeftText,perDayText,shortDate,hmText,clockText,liveTick} from './study-stage.mjs';
 import {achieve} from './life-achieve.mjs';
+import {investBrickText} from './life-achieve.mjs';   // V16: "투자 벽돌 n/m"(공부·습관 벽돌과 따로)
 import {kstDate} from './life-model.mjs';
 import {universeData} from './universe-view.mjs';
 import {todayEffectStrip} from './study-live.mjs';   // DS5: 오늘 효과 5단계 띠(작게 보기와 같은 함수)
@@ -207,6 +208,14 @@ function titleRow({el,add},ctx,whole,date,money){
   }catch{return null;}
 }
 function moneyOf(ctx,date){try{return ctx.money?.(date)??null;}catch{return null;}}
+// V16 (설계 3-7): 투자 계획이 있을 때만 "투자 벽돌 n/m" 한 줄(회차 칸을 다 채운 달 수, 금액·종목 없음). 앱이 ctx.investSummary(investView 요약)를 넘길 때만 돈다. 탑·우주·위젯·비서 내보내기에는 넣지 않는다.
+function investLine({el},ctx,whole,date,money){
+  try{
+    const invest=ctx.investSummary?.()??null;if(!invest)return null;
+    const t=investBrickText(achieve({life:whole.life??null,study:whole.study??null,fin:whole.fin??null,today:date,money,invest}));
+    return t?el('p',t,'muted small st-invest-bricks'):null;
+  }catch{return null;}
+}
 
 // V8W6 3: 나만의 건물 수집. 쌓은 실제 벽돌 수(탑 입구와 같은 값)로 6채(오두막 → 성) 중 완성된 것을 모은다(저장 0, 새 기록 종류 0).
 // 위 = 고른 건물의 3D 모형(WebGL2가 있을 때, 첫 장면을 그린 뒤에만 보임) / 그 전·실패 때는 같은 부품의 2D 입면 그림. 아래 = 수집 목록 6칸(잠긴 건물은 빗금·점선 + "n장 남음").
@@ -299,7 +308,7 @@ export function renderStatusView(root,ctx){
 
   // 3) 금 장신구·전체 단계  4) 탑·우주 입구
   const doors=add(el('div',null,'st-doors'),door(h,'탑',towerSub(whole,date,money),ctx.openTower),door(h,'우주',universeSub(whole,nowIso),ctx.openUniverse));
-  add(out,add(el('div',null,'st-body'),avatar,add(el('div',null,'st-side'),daily.node,todayCard,ladderCard(h,proj),doors)));
+  add(out,add(el('div',null,'st-body'),avatar,add(el('div',null,'st-side'),daily.node,todayCard,ladderCard(h,proj),doors,investLine(h,ctx,whole,date,money))));
   const build=buildingPanel(h,doc,whole,date,money);   // V8W6 3: 나만의 건물(상태 아래 전체 폭)
   if(build)add(out,build);
 

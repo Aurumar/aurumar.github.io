@@ -39,8 +39,10 @@ export const CARD_DRAFT_KINDS=Object.freeze(['HLT_DAY','STUDY_DAY','LIFE_DAY','D
 // 이 종류를 모르는 옛 빌드는 일기와 같이 열 수 없는 초안으로 보존한다(지우지 않음).
 // V9A: 공부 카드 하루 묶음(STUDY_CARD_DAY) 초안도 같은 상자에 둔다(카드·복습 입력을 모았다가 쌓기 1번). 옛 빌드는 계획과 같이 열 수 없는 초안으로 보존한다(지우지 않음).
 // V9B: 공부 범위 하루 묶음(STUDY_RANGE_DAY, 단원·진도·목표선)도 같은 상자(쌓기 1번 = 묶음 1건). 옛 빌드는 열 수 없는 초안으로 보존한다(지우지 않음).
-export const CARD_DRAFT_EXTRA_KINDS=Object.freeze(['PLAN_DAY','STUDY_CARD_DAY','STUDY_RANGE_DAY']);
+// V16: 한 달 투자 기록(INVEST_MONTH, 그달 매수·가격 메모)도 같은 상자(쌓기 1번 = 그 달 1건). 이 종류만 열쇠가 날짜가 아니라 달("YYYY-MM")이다. 옛 빌드는 열 수 없는 초안으로 보존한다(지우지 않음).
+export const CARD_DRAFT_EXTRA_KINDS=Object.freeze(['PLAN_DAY','STUDY_CARD_DAY','STUDY_RANGE_DAY','INVEST_MONTH']);
 const BOX_KINDS=Object.freeze([...CARD_DRAFT_KINDS,...CARD_DRAFT_EXTRA_KINDS]);
+const MONTH_KINDS=Object.freeze(['INVEST_MONTH']);
 export const CARD_DRAFT_LIMITS=Object.freeze({records:60,recordBytes:96*1024});
 export const CARD_DRAFT_EVENT='lb:card-drafts-changed';
 export const CARD_DRAFT_DEBOUNCE_MS=600;
@@ -89,7 +91,8 @@ const basesUnion=(a,b)=>{const out={},bad=new Set();for(const x of [a,b])for(con
 const touchedUnion=(a,b,bs=null)=>Array.isArray(a)&&Array.isArray(b)?touchedOf([...a,...b],bs?basesUnion(bs.mine,bs.disk):null):{};
 
 const KEY_ID='key',UNREADABLE_PREFIX='UNREADABLE|',FLUSH_ROUNDS=8;
-const SCOPE_RE=/^v1:[A-Za-z0-9_-]{1,128}:[A-Za-z0-9_-]{1,128}$/,DATE_RE=/^\d{4}-\d{2}-\d{2}$/;
+const SCOPE_RE=/^v1:[A-Za-z0-9_-]{1,128}:[A-Za-z0-9_-]{1,128}$/,DATE_RE=/^\d{4}-\d{2}-\d{2}$/,MONTH_RE=/^\d{4}-\d{2}$/;
+const keyRe=kind=>MONTH_KINDS.includes(kind)?MONTH_RE:DATE_RE;   // V16: 레코드 열쇠(날짜 또는 달) 모양
 const enc=new TextEncoder(),dec=new TextDecoder('utf-8',{fatal:true});
 const fail=code=>Object.assign(new Error(code),{code});
 const usableKey=k=>!!k&&typeof k==='object'&&k.type==='secret'&&k.extractable===false&&k.algorithm?.name==='AES-GCM'&&k.algorithm.length===256&&Array.isArray(k.usages)&&k.usages.includes('encrypt')&&k.usages.includes('decrypt');
@@ -178,7 +181,7 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
   async function open(row,key){
     if(!key||row.kid!==key.kid)return {reason:'KEY_MISSING'};
     try{
-      if(row.scope!==scopeId||!BOX_KINDS.includes(row.kind)||!DATE_RE.test(row.date)||!Number.isSafeInteger(row.rev)||row.rev<1)throw fail('SHAPE');
+      if(row.scope!==scopeId||!BOX_KINDS.includes(row.kind)||!keyRe(row.kind).test(row.date)||!Number.isSafeInteger(row.rev)||row.rev<1)throw fail('SHAPE');
       const pt=await cr.subtle.decrypt({name:'AES-GCM',iv:row.iv,additionalData:aad(row.kind,row.date,row.rev)},key.key,row.ct);
       const d=JSON.parse(dec.decode(pt));
       if(d?.format!==CARD_DRAFT_FORMAT||typeof d.draftId!=='string'||d.type!=='ENTITY'||d.body?.entityType!==row.kind||d.body.entityId!==row.date||typeof d.createdAt!=='string')throw fail('SHAPE');
@@ -435,7 +438,7 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
       list:tracked(async opts=>{if(isLocked())return [];if(opts?.fresh)loaded=null;await load();if(!unlocked())return [];return live().filter(e=>e.kind===kind).map(e=>structuredClone(e.draft));}),
       // B16: opts.input = defer 토큰(그 실행의 저장), opts.base = 이 카드를 계산한 초안의 draftId(없었으면 null). 둘 다 선택.
       save:tracked(async({type,body,touched,bases},opts={})=>{
-        if(type!=='ENTITY'||body?.entityType!==kind||!DATE_RE.test(body?.entityId??''))throw fail('CARD_DRAFT_SHAPE');
+        if(type!=='ENTITY'||body?.entityType!==kind||!keyRe(kind).test(body?.entityId??''))throw fail('CARD_DRAFT_SHAPE');
         const hasBase=Boolean(opts)&&Object.hasOwn(opts,'base');
         const input=inputOf(kind+'|'+body.entityId+'|',opts?.input),refuse=input.refuse;   // 거부된 입력도 기록(호출자가 오류를 삼켜도 flush가 던짐)
         try{
@@ -480,7 +483,7 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
         checkToken(opts?.input,null);   // B18: 끝난·다른 상자 토큰은 아무것도 읽거나 바꾸기 전에 거절
         let denied=null;try{guardWrite();}catch(err){denied=err;}
         if(!isLocked())await load();   // S1c: 잠긴 뒤에는 디스크를 다시 읽지 않는다(메모리의 미저장 입력만 본다)
-        const e=byDraft(id),token=opts?.input,date=e?.date??(DATE_RE.test(opts?.date??'')?opts.date:null),pfx=date?kind+'|'+date+'|':null;
+        const e=byDraft(id),token=opts?.input,date=e?.date??(keyRe(kind).test(opts?.date??'')?opts.date:null),pfx=date?kind+'|'+date+'|':null;
         if(pfx)checkToken(token,pfx);   // 다른 날짜 실행의 토큰(또는 load 동안 끝난 실행)
         if(denied){if(pfx&&(e||ownerOf(token,pfx))){const input=inputOf(pfx,token);if(input.attributed){const err=input.refuse(denied.code);input.done();throw err;}}throw denied;}   // 버튼으로 직접 버린 거부는 화면 오류만
         if(!e){
@@ -505,7 +508,7 @@ export function createCardDraftBox({indexedDB:idb=globalThis.indexedDB,crypto:cr
       // save·discard를 막는다(초안을 새로 만들지 않음, 쓰기 0). base = 흐름이 본 초안 draftId(없었으면 null): 그 사이 초안이 바뀌었으면 STALE_BASE(다시 계산).
       // 토큰 없는 호출은 할 일이 없다(직접 호출은 언제나 새 세대).
       keep:tracked(async(date,opts={})=>{
-        if(!DATE_RE.test(date??''))throw fail('CARD_DRAFT_SHAPE');
+        if(!keyRe(kind).test(date??''))throw fail('CARD_DRAFT_SHAPE');
         const pfx=kind+'|'+date+'|',token=opts?.input;
         checkToken(token,pfx);
         if(token==null||isLocked())return;

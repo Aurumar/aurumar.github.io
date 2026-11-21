@@ -7,6 +7,7 @@ import {STUDY_TYPES,STUDY_LIMITS,validateStudyData,studyTransition} from './publ
 import {LIFE_TYPES,LIFE_LIMITS,validateLifeData,lifeTransition} from './public/life-model.mjs';
 import {CARD_TYPES,CARD_LIMITS,validateCardDay,cardTransition} from './public/study-cards-model.mjs';   // V9A: 공부 카드 하루 묶음(새 기록 종류, 소유자 승인 2026-11-14)
 import {RANGE_TYPES,RANGE_LIMITS,validateRangeDay,rangeTransition} from './public/study-range-model.mjs';   // V9B: 공부 범위 하루 묶음(D-day 역산·모의고사 목표선, 새 기록 종류, 소유자 승인 2026-11-14)
+import {INVEST_TYPES,INVEST_LIMITS,validateInvestData,investTransition} from './public/invest-model.mjs';   // V16: 투자 계획·한 달 투자 기록(새 기록 종류 2개, 소유자 승인 2026-11-19, 쓰기는 투자 문이 열려야)
 
 export const WL_FORMAT='LB_WHOLE_LIFE_1';
 export const DOMAIN_NAMES=Object.freeze({
@@ -17,8 +18,8 @@ export const DOMAIN_NAMES=Object.freeze({
 export const DOMAIN_CODES=Object.freeze(Object.keys(DOMAIN_NAMES));
 export const DOMAIN_STATUSES=Object.freeze(['ACTIVE','MAINTAIN','DEFERRED_WITH_REASON','UNKNOWN','NOT_APPLICABLE']);
 export const PLAN_STATUSES=Object.freeze(['ACTIVE','MAINTAIN','DEFERRED_WITH_REASON','COMPLETE','UNKNOWN']);
-export const ENTITY_TYPES=Object.freeze(['ACTION','DOMAIN','PLAN','EVENT','FINANCE','PREFERENCES',...FIN_TYPES,...HLT_TYPES,...STUDY_TYPES,...LIFE_TYPES,...CARD_TYPES,...RANGE_TYPES]);
-const LIMITS={ACTION:100,DOMAIN:10,PLAN:200,EVENT:1000,FINANCE:500,PREFERENCES:1,...FIN_LIMITS,...HLT_LIMITS,...STUDY_LIMITS,...LIFE_LIMITS,...CARD_LIMITS,...RANGE_LIMITS};
+export const ENTITY_TYPES=Object.freeze(['ACTION','DOMAIN','PLAN','EVENT','FINANCE','PREFERENCES',...FIN_TYPES,...HLT_TYPES,...STUDY_TYPES,...LIFE_TYPES,...CARD_TYPES,...RANGE_TYPES,...INVEST_TYPES]);
+const LIMITS={ACTION:100,DOMAIN:10,PLAN:200,EVENT:1000,FINANCE:500,PREFERENCES:1,...FIN_LIMITS,...HLT_LIMITS,...STUDY_LIMITS,...LIFE_LIMITS,...CARD_LIMITS,...RANGE_LIMITS,...INVEST_LIMITS};
 export const entityKey=(type,id)=>'sd11:'+type.toLowerCase()+':'+id;
 export function shape(v,keys){
   requireValue(v&&Object.getPrototypeOf(v)===Object.prototype&&Object.keys(v).sort().join('|')===[...keys].sort().join('|'),'INVALID_WHOLE_LIFE_SCHEMA');
@@ -45,6 +46,7 @@ export function validateData(type,id,d){
   if(LIFE_TYPES.includes(type)){validateLifeData(type,id,d);return;}
   if(CARD_TYPES.includes(type)){validateCardDay(type,id,d);return;}
   if(RANGE_TYPES.includes(type)){validateRangeDay(type,id,d);return;}
+  if(INVEST_TYPES.includes(type)){validateInvestData(type,id,d);return;}
   if(type==='ACTION'){
     shape(d,['title','active','domain','planId','trackStreak']);text(d.title,100,false);
     requireValue(bool(d.active)&&domainOK(d.domain)&&nullableId(d.planId)&&bool(d.trackStreak),'INVALID_ACTION_DEFINITION');
@@ -134,6 +136,7 @@ function transition(v,old,ctx,provenance){
   if(LIFE_TYPES.includes(type)){lifeTransition(v,old,ctx,provenance);return;}
   if(CARD_TYPES.includes(type)){cardTransition(v,old,ctx);return;}
   if(RANGE_TYPES.includes(type)){rangeTransition(v,old,ctx);return;}
+  if(INVEST_TYPES.includes(type)){investTransition(v,old,ctx);return;}
   if(!old)requireValue([...ctx.entities.values()].filter(x=>x.entityType===type).length<LIMITS[type],'APP_ENTITY_LIMIT');
   if(type==='ACTION'){
     if(!ctx.actions.has(id))requireValue(ctx.actions.size<100,'APP_ACTION_LIMIT');
